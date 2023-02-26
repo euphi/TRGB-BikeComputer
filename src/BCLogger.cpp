@@ -1,0 +1,335 @@
+/*
+ * BCLogger.cpp
+ *
+ *  Created on: 25.02.2023
+ *      Author: ian
+ */
+
+#include <BCLogger.h>
+#include <DateTime.h>
+#include <SD_MMC.h>
+#include "Singletons.h"
+
+const char *BCLogger::TAG_STRING[LogTagMax] = { "RAW", "FL", "BLE", "STAT", "WIFI", "SD", "OP", "CLI" };
+const char *BCLogger::LEVEL_STRING[LogTypeMax] = { "DEBUG", "INFO", "WARN", "ERROR" };
+
+const String BCLogger::TAG_SYMBOL[LogTagMax] = { String("📜"), String("📟"), String("🔵"), String("📊"), String("📶"), String("💾"), String("🎮"), String("⌨") };
+const String BCLogger::LEVEL_SYMBOL[LogTypeMax] = { String("🐛"), String("ℹ️"), String("⚠️"), String("❌") };
+
+const String BCLogger::LOGDIR = "/BIKECOMP";
+
+Command logcmd;
+Command logShow;
+
+void cmdCB(cmd *c) {
+	const Command cmd(c); // Create wrapper object
+	bclog.handleCommand(cmd);
+}
+
+BCLogger::BCLogger() {
+}
+
+void BCLogger::setup() {
+	logPrefs[OUT_Serial].begin("LSer", true);
+	logPrefs[OUT_File].begin("LFile", true);
+	for (uint_fast8_t c = 0; c < LogOutputMax; c++) {
+		for (uint_fast8_t d = 0; d < LogTagMax; d++) {
+			LogType level = static_cast<LogType>(logPrefs[c].getLong(TAG_STRING[d], -1));
+			if (level >= 0) {
+				loglevel[c][d] = level;
+			} else {
+				logf(Log_Info, TAG_OP, "Can't load loglevel for %s from preferences [out: %d]", TAG_STRING[d], c);
+			}
+		}
+	}
+	logPrefs[OUT_File].end();
+	logPrefs[OUT_Serial].end();
+
+	uint8_t cardType = SD_MMC.cardType();
+	if (cardType == CARD_NONE) {
+		log(Log_Warn, TAG_SD, "No SD card attached!");
+		return;
+	}
+	logf(Log_Info, TAG_SD, "SD Card Type: %s", (cardType == CARD_MMC) ? "MMC" : (cardType == CARD_SD) ? "SDSC" : (cardType == CARD_SDHC) ? "SDHC" : "UNKNOWN");
+	logf(Log_Info, TAG_SD, "SD Card Size: %lluMBn", SD_MMC.cardSize() / (1024 * 1024));
+	logf(Log_Info, TAG_SD, "Total space: %lluMB", SD_MMC.totalBytes() / (1024 * 1024));
+	logf(Log_Info, TAG_SD, "Used space: %lluMB", SD_MMC.usedBytes() / (1024 * 1024));
+
+	if (!SD_MMC.exists(LOGDIR) && !SD_MMC.mkdir(LOGDIR))
+		log(Log_Error, TAG_SD, "Failed to create dir " + LOGDIR);
+
+	if (DateTime.getParts().getYear() >= 2023) { // time seems to be somehow valid
+		time_t now;
+		time(&now);
+		file_data = DateFormatter::format((LOGDIR + "/%Y%m%d/L_%H%M%S.bin").c_str(), now);
+		file_debuglog = DateFormatter::format((LOGDIR + "/%Y%m%d/D_%H%M%S.log").c_str(), now);
+		file_nmealog = DateFormatter::format((LOGDIR + "/%Y%m%d/N_%H%M%S.log").c_str(), now);
+		fileNameIncludesDateTime = true;
+	} else {
+		log(Log_Warn, TAG_SD, "No time available to create file names");
+		String dirName = LOGDIR + "/NO_TIME";
+		SD_MMC.mkdir(dirName);
+	    char fnumber[24];
+	    snprintf(fnumber, sizeof(fnumber), "%04u", listDir(dirName, 0));
+		file_data = dirName + "/L" + fnumber + ".bin";
+		file_debuglog = dirName + "/D" + fnumber + ".log";
+		file_nmealog = dirName + "/N" + fnumber + ".log";
+	}
+	fdebug = SD_MMC.open(file_debuglog, FILE_APPEND, true);
+	fnmea  = SD_MMC.open(file_nmealog, FILE_APPEND, true);
+	fdata  = SD_MMC.open(file_data, FILE_APPEND, true);
+
+	logf(Log_Info, TAG_SD, "New file name: %s\n", file_data.c_str());
+
+	logcmd = cli.addCmd("loglevel", cmdCB);
+	logcmd.addPositionalArgument("logtag");
+	logcmd.addPositionalArgument("loglevel");
+	logcmd.addFlagArgument("serial");
+	logcmd.addFlagArgument("file");
+
+	logShow = cli.addCmd("showloglevel", cmdCB);
+	fileFlusher.attach(5, +[](BCLogger* thisInstance){thisInstance->flushAllFiles();}, this);
+}
+
+void BCLogger::flushAllFiles() {  // Ticker all 5 seconds
+	if (fdebug) fdebug.flush();
+	if (fnmea) fnmea.flush();
+	if (fdata) fdata.flush();
+}
+
+void BCLogger::printLoglevels() {
+	for (int16_t line = -1; line < LogOutputMax; line++) {
+		Serial.print(line == -1 ? "TAG" : line == 0 ? "Serial" : "File");
+		Serial.print("\t|");
+		for (uint16_t t = TAG_RAW_NMEA; t < LogTagMax; t++) {
+			if (line == -1) {
+				Serial.print(TAG_STRING[t]);
+			} else {
+				Serial.print(LEVEL_STRING[loglevel[line][t]]);
+			}
+			Serial.print("\t|");
+		}
+		Serial.println();
+	}
+}
+void BCLogger::handleCommand(const Command &cmd) {
+	if (cmd.equals(logShow)) {
+		printLoglevels();
+		return;
+	}
+	// Get arguments
+	Argument argTag = cmd.getArgument("logtag");
+	Argument argLevel = cmd.getArgument("loglevel");
+	bool argSerial = cmd.getArgument("serial").isSet();
+	bool argFile = cmd.getArgument("file").isSet();
+
+	uint16_t t = TAG_RAW_NMEA;
+	for (; t < LogTagMax; t++) {
+		if (argTag.getValue().equalsIgnoreCase(TAG_STRING[t]))
+			break;
+	}
+	if (t == LogTagMax) {
+		logf(Log_Info, TAG_OP, "Invalid log tag %s", argTag.getValue().c_str());
+		return;
+	}
+	uint16_t l = Log_Debug;
+	for (; l < LogTypeMax; l++) {
+		if (argLevel.getValue().equalsIgnoreCase(LEVEL_STRING[l]))
+			break;
+	}
+	Serial.print("Level: ");
+	Serial.println(l);
+	Serial.flush();
+	if (l == LogTypeMax) {
+		logf(Log_Info, TAG_OP, "Invalid log level %s", argLevel.getValue().c_str());
+		return;
+	}
+	setLogLevel(static_cast<LogType>(l), static_cast<LogTag>(t), argFile, argSerial);
+}
+
+//void BCLogger::storeAllPrefs() {
+//	logPrefs[OUT_Serial].begin("LSer");
+//	logPrefs[OUT_File].begin("LFile");
+//	for (uint_fast8_t c = 0; c < LogOutputMax; c++) {
+//		for (uint_fast8_t d = 0; d < LogTagMax; d++) {
+//			logPrefs[c].putLong(TAG_STRING[d], loglevel[c][d]);
+//		}
+//	}
+//	logPrefs[OUT_File].end();
+//	logPrefs[OUT_Serial].end();
+//}
+
+void BCLogger::storeLoglevel(LogType level, LogTag tag, bool file, bool serial) {
+	if (file) {
+		logPrefs[OUT_File].begin("LFile");
+		logPrefs[OUT_File].putLong(TAG_STRING[tag], loglevel[OUT_File][tag]);
+		logPrefs[OUT_File].end();
+	}
+	if (serial) {
+		logPrefs[OUT_Serial].begin("LSer");
+		logPrefs[OUT_Serial].putLong(TAG_STRING[tag], loglevel[OUT_Serial][tag]);
+		logPrefs[OUT_Serial].end();
+	}
+}
+
+void BCLogger::setLogLevel(LogType level, LogTag tag, bool file, bool serial) {
+	if (level >= LogTypeMax || level < 0) {
+		logf(Log_Error, TAG_OP, "Wrong new log-level %d", level);
+		return;
+	}
+	if (tag >= LogTagMax || tag < 0) {
+		logf(Log_Error, TAG_OP, "Wrong new log-tag %d", tag);
+		return;
+	}
+	logf(Log_Info, TAG_OP, "New log-level %s [%d] for tag %s [%d] for %s %s.", LEVEL_STRING[level], level, TAG_STRING[tag], tag, file ? "File" : "",
+			serial ? "Serial" : "");
+	if (file)
+		loglevel[OUT_File][tag] = level;
+	if (serial)
+		loglevel[OUT_Serial][tag] = level;
+	storeLoglevel(level, tag, file, serial);
+}
+
+void BCLogger::log(LogType type, LogTag tag, const String str) const {
+	bool write_file = checkLogLevel(type, tag, true) && !file_debuglog.isEmpty();  // empty during init
+	bool write_serial = checkLogLevel(type, tag, false);
+	if (!(write_file || write_serial))
+		return;
+
+	File f;
+	if (write_file) {
+		f = (tag == TAG_RAW_NMEA) ? fnmea : fdebug;
+		if (!f) {
+			Serial.printf("❌ 💾 Failed to use file %s for appending.\n", f.name());
+			write_file = false;
+			write_serial = true; // writing to file failed, so send it to serial
+			//if (!write_serial) return;
+		}
+	}
+	time_t now;
+	time(&now);
+	String format = String(DateFormatter::COMPAT) + ": ";
+	String timeStr = DateFormatter::format(format.c_str(), now);
+
+	String symbolStr = LEVEL_SYMBOL[type] + TAG_SYMBOL[tag] + String(" ");
+
+	if (write_file) {
+		f.print(timeStr);
+		f.println(str);
+	}
+	if (write_serial) {
+		Serial.print(symbolStr);
+		Serial.print(timeStr);
+		Serial.println(str);
+	}
+}
+
+void BCLogger::logf(LogType type, LogTag tag, const char *format, ...) const {
+	if (!(checkLogLevel(type, tag, true) || checkLogLevel(type, tag, false))) return;
+	va_list arg;
+	va_start(arg, format);
+	char temp[128];
+	size_t len = vsnprintf(temp, sizeof(temp), format, arg);
+	if (len >= sizeof(temp)) {
+		log(Log_Error, TAG_OP, "Logger: Log-String shortened (too long)");
+		log(type, tag, format);
+	}
+	va_end(arg);
+	log(type, tag, String(temp));
+}
+
+int16_t BCLogger::listDir(const String &dirname, uint8_t levels) const {
+	int16_t max_number = 0;
+	logf(Log_Debug, TAG_SD, "📁 Listing directory: %s\n", dirname);
+
+	File root = SD_MMC.open(dirname);
+	if (!root) {
+		log(Log_Error, TAG_SD, "Failed to open directory");
+		return -1;
+	}
+	if (!root.isDirectory()) {
+		log(Log_Error, TAG_SD, "Not a directory");
+		return -1;
+	}
+	File file = root.openNextFile();
+	while (file) {
+		if (file.isDirectory()) {
+			Serial.print("  DIR : ");
+			Serial.println(file.name());
+			if (levels) {
+				listDir(String(file.name()), levels - 1);
+			}
+		} else {
+			Serial.print("  FILE: ");
+			Serial.print(file.name());
+			Serial.print("  SIZE: ");
+			Serial.println(file.size());
+			unsigned int filenumber;
+			if (sscanf(file.name(), "D%4u.BIN", &filenumber) == 1) {
+				if (filenumber > max_number)
+					max_number = filenumber;
+			}
+		}
+		file = root.openNextFile();
+	}
+	return ++max_number;
+}
+
+
+uint16_t BCLogger::getAllFileLinks(String &rc) const {
+	rc += "<html><body><h1>Logfiles</h1>\n<p>\n";
+	File root = SD_MMC.open(LOGDIR);
+
+	  if(!root){
+	    rc += "Failed to open directory";
+	    Serial.println("500 - Can't open file/dir");
+	    return 500;
+	  }
+	  if(!root.isDirectory()){
+	    rc += "Not a directory";
+	    Serial.println("500 - Not a directory");
+	    return 500;
+	  }
+	  getFileHTML(rc, root, 9);  // 9 chars for "/BIKECOMP"
+
+	rc += "</p></body></html>";
+	return 200;
+}
+
+void BCLogger::getFileHTML(String &rc, File &root, uint8_t strip_front) const {
+    File file = root.openNextFile();  // First file in root-DIR
+	while (file) {
+		//esp_task_wdt_reset();
+		log(Log_Info, TAG_SD, file.name());
+		if (file.name()[0] == 'N' || file.name()[0] == 'x') {  // D->x to temporarily access debug files
+			file = root.openNextFile();   // next file in root-DIR
+			continue;
+		}
+		String filehtml;
+		if (file.isDirectory()) {
+			rc += "<h2>";
+			rc += file.name();
+			rc += "</h2>\n";
+			String fh;
+			getFileHTML(fh, file, strip_front);
+			rc += fh;
+			rc += "\n";
+		} else {
+			String uri= (file.path()+ strip_front+1);
+			rc = rc + "<a href=\"/log/"+uri+"\">" + uri + "</a>";
+			rc = rc + " (" + file.size() + ")";
+			rc = rc + " <a href=\"/del/"+uri+"\">DEL</a><br />\n";
+		}
+		file = root.openNextFile();   // next file in root-DIR
+	}
+}
+
+bool BCLogger::deleteFile(const String& path){
+  if (SD_MMC.remove(path.c_str())) {
+	  logf(Log_Info, TAG_SD, "File %s deleted.", path.c_str());
+	  return true;
+  } else {
+	  logf(Log_Warn, TAG_SD, "Deletion of file %s failed.", path.c_str());
+	  return false;
+  }
+}
