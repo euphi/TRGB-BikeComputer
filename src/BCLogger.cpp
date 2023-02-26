@@ -301,7 +301,7 @@ void BCLogger::getFileHTML(String &rc, File &root, uint8_t strip_front) const {
 	while (file) {
 		//esp_task_wdt_reset();
 		log(Log_Info, TAG_SD, file.name());
-		if (file.name()[0] == 'N' || file.name()[0] == 'x') {  // D->x to temporarily access debug files
+		if (file.name()[0] == 'x' || file.name()[0] == 'x') {  // D / N ->x to temporarily access nmea/debug files
 			file = root.openNextFile();   // next file in root-DIR
 			continue;
 		}
@@ -333,3 +333,37 @@ bool BCLogger::deleteFile(const String& path){
 	  return false;
   }
 }
+
+void BCLogger::autoCleanUp(const char* root_name) {
+	  File root = SD_MMC.open(root_name);
+	  if(!root){
+	    log(Log_Warn, TAG_SD, F("🧹 autoCleanUp - Failed to open directory"));
+	    return;
+	  }
+	  if(!root.isDirectory()){
+		log(Log_Warn, TAG_SD, F("🧹 autoCleanUp - Not a directory"));
+	    return;
+	  }
+	  cleanUp(root, 250);
+}
+
+bool BCLogger::cleanUp(File& root, uint32_t minsize) {
+    File file = root.openNextFile();  // First file in root-DIR
+    bool allFileDeleted = true;
+	while (file) {
+		if (file.isDirectory()) {
+			bool dirClean = cleanUp(file, minsize);
+			allFileDeleted &= dirClean;
+			bool delOk = SD_MMC.rmdir(file.path());
+			logf(delOk ? Log_Info : Log_Warn, TAG_SD, "🧹%s Directory %s empty. Deleting - %s", delOk ? "✅":"❌", file.name(), delOk ? "OK":"failed!");
+		} else if (file.size() < minsize) {
+			bool delOk = SD_MMC.remove(file.path());
+			logf(delOk ? Log_Info : Log_Warn, TAG_SD, "🧹%s File %s to small (%d). Deleting - %s", delOk ? "✅":"❌", file.name(), file.size(), delOk ? "OK":"failed!");
+		} else {
+			allFileDeleted = false;
+		}
+		file = root.openNextFile();   // next file in root-DIR
+	}
+	return allFileDeleted;
+}
+

@@ -94,9 +94,13 @@ public:
 
 	uint16_t getAllFileLinks(String &rc) const;
 	bool deleteFile(const String& path);
+	void autoCleanUp(const char* root_name);
+
+
 
 
 private:
 	void getFileHTML(String &rc, File &root, uint8_t strip_front) const;
+	bool cleanUp(File& root, uint32_t minsize);
 
 };

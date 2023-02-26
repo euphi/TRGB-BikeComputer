@@ -74,7 +74,7 @@ void WifiWebserver::checkLoop() {
 void WifiWebserver::setupWebserver() {
 	// Enable file deletion
     // using DELETE method on the same URI as for "serveStatic" would be more elegant, but is not possible to create links that result in making the browser use DELETE method. So use special "del" uri
-	server.on("^\\/del\\/([A-Z,0-9,_,.,/]+)$", HTTP_GET, [](AsyncWebServerRequest *request) {
+	server.on("^\\/del\\/([A-Za-z0-9_\\.\\/]+)$", HTTP_GET, [](AsyncWebServerRequest *request) {
 		// using DELETE method on the same URI as for "serveStatic" would be more elegant, but is not possible to create links that result in making the browser use DELETE method. So use special "del" uri
 		bclog.logf(BCLogger::Log_Info, TAG, "💻 Request on /del/: %s\n\tPath-Arg: %s", request->url().c_str(), request->pathArg(0).c_str());
 		String dUri = String("/BIKECOMP/") + request->pathArg(0);
@@ -98,17 +98,17 @@ void WifiWebserver::setupWebserver() {
 		Serial.println(htmlresponse);
 		request->send(200, "text/html", htmlresponse.c_str()); // TODO: Check if the webserver handles the String. It's on stack, so there may be a use-after-free issue here.
 	});
+	// -- offer cleanup
+	server.on("/cleanup", HTTP_GET, [](AsyncWebServerRequest *request) {
+		bclog.autoCleanUp("/BIKECOMP");
+		request->send(200, "text/plain", "Cleanup done.");
+	});
 
 	// -- download Binary Logfile
 	server.serveStatic("/log/", SD_MMC, "/BIKECOMP/");
 	server.serveStatic("/", LittleFS, "/site/").setDefaultFile("index.html");
 
-//	// -- offer cleanup
-//	server.on("/cleanup", HTTP_GET, [](AsyncWebServerRequest *request) {
-//		//sdl.autoCleanUp("/BTTacho/");
-//		request->send(200, "text/plain", "Cleanup done.");
-//	});
-//
+
 //	// -- Allow OTA via Web ("ElegantOTA" library)
 	AsyncElegantOTA.begin(&server); // Start ElegantOTA - it listens on "/update/"
 	server.onNotFound([](AsyncWebServerRequest *request) {
