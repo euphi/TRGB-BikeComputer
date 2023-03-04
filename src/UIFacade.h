@@ -5,15 +5,21 @@
  *      Author: ian
  */
 
-#ifndef SRC_UIFACADE_H_
-#define SRC_UIFACADE_H_
+#pragma once
+
+#include <Arduino.h>
+#include <Ticker.h>
 
 class UIFacade {
 public:
 	UIFacade();
 
+	void initDisplay();
+	void updateHandler();
 
+private:
+	void updateFLPower(uint16_t batVoltage, uint8_t batPerc, int8_t powerStage, int16_t CurBat, int16_t CurConsumer, bool ConsumerOn);
+	void updateData();
+	Ticker updateTicker;
 
 };
-
-#endif /* SRC_UIFACADE_H_ */

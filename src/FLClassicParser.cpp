@@ -107,9 +107,9 @@ void FLClassicParser::updateFromString(const String &flStr) {
 			case 5: // $FLC,5,1870,100,1667,36,73053775;   $FLC,5,1921,99,1667,37,74684176;  // StartCounter, Batt%, fullCap in mAh, CycleCount, Acc CCADCvalue
 				batt_perc = scanFLC_buffer[1];
 				break;
-
 			}
-			// Ignore for now (Total data)
+			break;
+		case 'V':	// $FLV,500290515,5.01;  // Version Info
 			break;
 		default:
 			Serial.printf("❌ Unknown FL-ID '%c'\n", flStr.charAt(3));

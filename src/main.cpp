@@ -15,6 +15,7 @@ BLEDevices bleDevs;
 #include <Ticker.h>
 Ticker tickerDispUpdate;		// Ticker  for slow display updates. Most data should be updated directly, so this can run not that often
 
+
 Command cmdPing;
 String inputBuffer;
 void errorCallback(cmd_error* e) {
@@ -49,14 +50,13 @@ void setup() {
     stats.setup();
 	tickerDispUpdate.attach_ms(250, displayUpdate);
 	bleDevs.setup();
-	bclog.replayFile("/BIKECOMP/20230304/N_144428.log");
+	//bclog.replayFile("/BIKECOMP/20230304/N_144428.log");
+	ui.initDisplay();
 
 }
 
 
 void loop() {
-	lv_timer_handler();		//TODO: Replace with auto-ticker in UI facade
-
     // Handle command line
 	if (Serial.available()) {
     	bool lineComplete = false;

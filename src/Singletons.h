@@ -21,5 +21,5 @@ extern Statistics stats;
 #include "FLClassicParser.h"
 extern FLClassicParser flparser;
 
-//TODO:
-// - UIFacade
+#include "UIFacade.h"
+extern UIFacade ui;

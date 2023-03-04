@@ -74,6 +74,10 @@ private:
 	File fileReplay;
 	uint32_t timeLasteLine = 0;
 
+	Command logcmd;
+	Command logShow;
+	Command replayLog;
+
 
 public:
 	BCLogger();

@@ -11,5 +11,5 @@
 SimpleCLI cli;
 BCLogger bclog;
 Statistics stats;
-
-FLClassicParser flparser(14, 2155);
+FLClassicParser flparser(14, 2155);  // TODO: Load parameters from preferences
+UIFacade ui;

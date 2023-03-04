@@ -20,7 +20,9 @@ A bike computer based on [LilyGO T-RGB](https://www.lilygo.cc/products/t-rgb):
 ### Logging
 
 - [X] Write debug information to logfiles
-- [ ] Write raw forumslader data to logfiles
+- [X] Write raw forumslader data to logfiles
+- [X] Replay FL log file
+- [ ] User Interface for replay
 - [ ] Write summary in binary logfile (not yet integrated, to be merged from [ESP32_BTTacho](https://github.com/euphi/ESP32_BTTacho)
 
 ### Console
@@ -33,7 +35,7 @@ A bike computer based on [LilyGO T-RGB](https://www.lilygo.cc/products/t-rgb):
 ### Webserver
 - [X] Connect to WiFi
 - [X] Give static overview and server logfiles
-- [ ] Delete/Cleanup logfiles (integrated, but does not work yet)
+- [X] Delete/Cleanup logfiles (integrated, but does not work yet)
 
 ### User interface
 
@@ -54,7 +56,7 @@ A bike computer based on [LilyGO T-RGB](https://www.lilygo.cc/products/t-rgb):
 
 ## Prio 1 Features -- Help wanted
 
-- [ ] robust webserver for data download
+- [ ] WIP: robust webserver for data download
 - [ ] Improve statistics (e.g. graphs )
 - [ ] better User Interface
 - [ ] Animations on display (e.g driving state, heart rate)

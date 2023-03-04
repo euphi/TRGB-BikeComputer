@@ -18,9 +18,6 @@ const String BCLogger::LEVEL_SYMBOL[LogTypeMax] = { String("🐛"), String("ℹ�
 
 const String BCLogger::LOGDIR = "/BIKECOMP";
 
-Command logcmd;
-Command logShow;
-
 void cmdCB(cmd *c) {
 	const Command cmd(c); // Create wrapper object
 	bclog.handleCommand(cmd);
@@ -88,6 +85,10 @@ void BCLogger::setup() {
 	logcmd.addFlagArgument("file");
 
 	logShow = cli.addCmd("showloglevel", cmdCB);
+
+	replayLog = cli.addCmd("replay", cmdCB);
+	replayLog.addPositionalArgument("path");
+
 	fileFlusher.attach(5, +[](BCLogger* thisInstance){thisInstance->flushAllFiles();}, this);
 }
 
@@ -117,6 +118,13 @@ void BCLogger::handleCommand(const Command &cmd) {
 		printLoglevels();
 		return;
 	}
+
+	if (cmd.equals(replayLog)) {
+		Argument pathArg = cmd.getArgument("path");
+		logf(Log_Info, TAG_OP, "Replay file %s", pathArg.getValue());
+		replayFile(pathArg.getValue());
+		return;
+	}
 	// Get arguments
 	Argument argTag = cmd.getArgument("logtag");
 	Argument argLevel = cmd.getArgument("loglevel");
@@ -129,7 +137,7 @@ void BCLogger::handleCommand(const Command &cmd) {
 			break;
 	}
 	if (t == LogTagMax) {
-		logf(Log_Info, TAG_OP, "Invalid log tag %s", argTag.getValue().c_str());
+		logf(Log_Warn, TAG_OP, "Invalid log tag %s", argTag.getValue().c_str());
 		return;
 	}
 	uint16_t l = Log_Debug;
@@ -141,7 +149,7 @@ void BCLogger::handleCommand(const Command &cmd) {
 	Serial.println(l);
 	Serial.flush();
 	if (l == LogTypeMax) {
-		logf(Log_Info, TAG_OP, "Invalid log level %s", argLevel.getValue().c_str());
+		logf(Log_Warn, TAG_OP, "Invalid log level %s", argLevel.getValue().c_str());
 		return;
 	}
 	setLogLevel(static_cast<LogType>(l), static_cast<LogTag>(t), argFile, argSerial);
@@ -249,6 +257,7 @@ int16_t BCLogger::listDir(const String &dirname, uint8_t levels) const {
 	}
 	if (!root.isDirectory()) {
 		log(Log_Error, TAG_SD, "Not a directory");
+		root.close();
 		return -1;
 	}
 	File file = root.openNextFile();
@@ -272,6 +281,7 @@ int16_t BCLogger::listDir(const String &dirname, uint8_t levels) const {
 		}
 		file = root.openNextFile();
 	}
+	root.close();
 	return ++max_number;
 }
 
@@ -288,11 +298,13 @@ uint16_t BCLogger::getAllFileLinks(String &rc) const {
 	  if(!root.isDirectory()){
 	    rc += "Not a directory";
 	    Serial.println("500 - Not a directory");
+	    root.close();
 	    return 500;
 	  }
 	  getFileHTML(rc, root, 9);  // 9 chars for "/BIKECOMP"
 
 	rc += "</p></body></html>";
+	root.close();
 	return 200;
 }
 
@@ -322,6 +334,7 @@ void BCLogger::getFileHTML(String &rc, File &root, uint8_t strip_front) const {
 		}
 		file = root.openNextFile();   // next file in root-DIR
 	}
+	file.close();
 }
 
 bool BCLogger::deleteFile(const String& path){
@@ -354,6 +367,12 @@ void BCLogger::replayNextLine() {
 		String dataStr = "$" + fileReplay.readStringUntil('\n');
 		String timeStr = fileReplay.readStringUntil(':').substring(11);
 		uint32_t timeNext = timeStr.toInt();
+		if (!timeNext) {
+			bclog.log(Log_Warn, TAG_SD, "End of Replay file. Closing.");
+			fileReplay.close();
+			replayTicker.detach();		// there should be no timer running, but better safe than sorry
+			return;
+		}
 		if (timeLasteLine == 0)	timeLasteLine = timeNext;
 		next = timeNext-timeLasteLine;
 		timeLasteLine = timeNext;

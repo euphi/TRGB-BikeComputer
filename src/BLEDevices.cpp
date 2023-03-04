@@ -147,7 +147,6 @@ void BLEDevices::setup() {
 	  komootTicker.attach(4, +[](BLEDevices* thisInstance) {thisInstance->komootLoop();}, this);
 	  connCheckTicker.attach_ms(250, +[](BLEDevices* thisInstance) {thisInstance->connCheckLoop();}, this);
 	  // 	typedef std::function<void(EFLConnState cstate)> FLStateUpdateHandler;
-	  flparser.setStateCb([](FLClassicParser::EFLConnState cstate, uint32_t flag, int16_t timeout) {stats.setConnected(cstate == FLClassicParser::FL_STATE_CONNECTED);});
 }
 
 void BLEDevices::notifyCallbackCSC(BLERemoteCharacteristic *pBLERemoteCharacteristic, uint8_t *pData, size_t length, bool isNotify, EDevType ctype) {
@@ -241,8 +240,10 @@ void BLEDevices::connCheckLoop() {
 		if (connState[c] == CONN_CONNECTED && !pClient[c]->isConnected()) { // check if existing connection is lost
 			connState[c] = CONN_LOST;
 			bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_BLE, "%s Lost connection.", DEV_EMOJI[c]);
-			if (c == DEV_FL) flparser.setConnState(FLClassicParser::FL_STATE_LOST);
-			stats.setConnected(false);
+			if (c == DEV_FL) {
+				flparser.setConnState(FLClassicParser::FL_STATE_LOST);
+				stats.setConnected(false);
+			}
 			reconnCount += 16;
 		}
 	}
