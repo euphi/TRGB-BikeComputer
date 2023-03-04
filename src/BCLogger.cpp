@@ -228,7 +228,7 @@ void BCLogger::logf(LogType type, LogTag tag, const char *format, ...) const {
 	if (!(checkLogLevel(type, tag, true) || checkLogLevel(type, tag, false))) return;
 	va_list arg;
 	va_start(arg, format);
-	char temp[128];
+	char temp[256];
 	size_t len = vsnprintf(temp, sizeof(temp), format, arg);
 	if (len >= sizeof(temp)) {
 		log(Log_Error, TAG_OP, "Logger: Log-String shortened (too long)");
@@ -345,6 +345,35 @@ void BCLogger::autoCleanUp(const char* root_name) {
 	    return;
 	  }
 	  cleanUp(root, 250);
+}
+
+void BCLogger::replayNextLine() {
+	uint32_t next;
+	do {
+		String wasteStr = fileReplay.readStringUntil('$');	// waste string necessary for first line. It always helps to get in sync again if replay gets out of sync for whatever reason.
+		String dataStr = "$" + fileReplay.readStringUntil('\n');
+		String timeStr = fileReplay.readStringUntil(':').substring(11);
+		uint32_t timeNext = timeStr.toInt();
+		if (timeLasteLine == 0)	timeLasteLine = timeNext;
+		next = timeNext-timeLasteLine;
+		timeLasteLine = timeNext;
+		bclog.logf(Log_Debug, TAG_SD, "Replay Strings:\n\tWaste:\t%s\n\tData:\t%s\n\tTime:\t%s (%d -> next in %d sec))",wasteStr.c_str(), dataStr.c_str(), timeStr.c_str(), timeNext, next );
+		flparser.updateFromString(dataStr);
+	} while (!next);
+	replayTicker.once(next, +[](BCLogger* thisInstance){thisInstance->replayNextLine();}, this);
+}
+
+void BCLogger::replayFile(const String &path) {
+	if (fileReplay) {
+		logf(Log_Warn, TAG_SD, "ReplayFile %s already open - closing it.", path);
+		fileReplay.close();
+	}
+	fileReplay = SD_MMC.open(path);
+	if (!fileReplay) {
+		logf(Log_Error, TAG_SD, "Failed to open replay file %s", path);
+		return;
+	}
+	replayNextLine();
 }
 
 bool BCLogger::cleanUp(File& root, uint32_t minsize) {

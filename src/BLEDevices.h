@@ -46,13 +46,13 @@ private:
 	bool connectToServer(EDevType ctype);
 
 	String bufferFL;
-	FLClassicParser flparser;
 
     // CSC related
 	uint16_t crank_rev_last, crank_time_last = 0;
 	time_t crank_time_last_received = 0;
-	uint16_t cadence;
+	uint16_t cadence = 0;
 
+	uint8_t reconnCount = 0;
 
 	BLERemoteCharacteristic* pKomootRemoteCharacteristic = nullptr;
 	Ticker komootTicker;
@@ -60,14 +60,13 @@ private:
 
 	void komootLoop();
 	void connCheckLoop();
-
+	void startBLEScan();
 
 public:
 	BLEDevices();
 
 	static const BLEUUID serviceUUID[DEV_COUNT];
 	static const BLEUUID charUUID[DEV_COUNT];
-
 
 	// Interface BLEAdvertisedDeviceCallbacks
 	void onResult(BLEAdvertisedDevice advertisedDevice);
@@ -77,5 +76,4 @@ public:
 
 	void setup();
 
-	//FLClassicParser& getFlparser() {return flparser;}
 };

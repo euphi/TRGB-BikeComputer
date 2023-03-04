@@ -24,13 +24,8 @@ void FLClassicParser::setConnState(EFLConnState state) {
 
 void FLClassicParser::updateFromString(const String &flStr) {
 	lastUpdate = millis();
+	bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_FL, "Rvcd string: %s", flStr.c_str());
 
-//	bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_FL, "Rvcd string from BT: %s", flStr.c_str());
-
-//	Serial.printf("Received string:\n%s\n", flStr.c_str());
-//	Serial.printf("First chars: '%x' '%x' '%x' \n", flStr[0], flStr[1], flStr[2]);
-//	Serial.printf("First chars: '%c' '%c' '%c' \n", flStr[0], flStr[1], flStr[2]);
-//	Serial.printf("Substring: '%s'\n", flStr.substring(0,3));
 	int8_t scanCt = 0;
 	float speed_f = NAN;
 	uint8_t scanFLC_id;
@@ -54,6 +49,7 @@ void FLClassicParser::updateFromString(const String &flStr) {
 
 		uint32_t flags;
 		uint32_t hm_total;
+		uint32_t dist_total;
 
 		//Forumslader V5 uses $FL5, $FLB and $FLC only
 		switch(flStr.charAt(3)) { //                                                                                                                 Strom in mA? // Verbraucherstrom int. Temp Verbraucher Timeout
@@ -71,15 +67,21 @@ void FLClassicParser::updateFromString(const String &flStr) {
 				//    (uint16_t batVoltage, uint8_t batPerc, int8_t powerStage, int16_t CurBat, int16_t CurConsumer, bool ConsumerOn)> FLBatUpdateHandler;
 				batCB(batterie[0]+batterie[1]+batterie[2], batt_perc, stufe, batt_current, cons_current, cons_on_off);
 			}
-			speed_f = pulses_per_s * kmh_per_pulse_per_s;
-			//FIXME: stats.updateDistance(ceil((pulsecounter * 4096 + micropulsecounter) * m_per_pulse));
-			//FIXME: speed = static_cast<uint16_t>(speed_f);
-			//FIXME: stats.updateSpeed(speed/10.0);
-			//Serial.printf("Speed: %.1f - %d ", speed_f, speed);
+			if (speedCB) {
+				speed_f = pulses_per_s * kmh_per_pulse_per_s;
+				dist_total = ceil((pulsecounter * 4096 + micropulsecounter) * dist_m_per_pulse);
+				speedCB(speed_f, dist_total);
+			}
+//			stats.updateDistance(dist_total);
+//			stats.addDistance(dist_total, Statistics::SUM_FL_TOTAL);
+//			stats.addSpeed(speed_f);
 			break;
 		case 'B': // $FLB,850,98591,2731,0;
 			scanCt = sscanf(flStr.c_str(), "$FLB,%hd,%d,%hd,%hd\n", &temperature, &pressure,&height,&gradient);
 			if (scanCt != 4) Serial.println("❌ Not all fields scanned");
+			if (envCB) {
+				envCB(temperature, pressure, height, gradient);
+			}
 			//Serial.printf("[%x] Temp: %.02f\tPressure: %.01f\tHeight: %.01f\tGradient: %d\n", scanCt, temperature/10.0, pressure/100.0, height/10.0, gradient);
 			break;
 		case 'C':
@@ -87,11 +89,11 @@ void FLClassicParser::updateFromString(const String &flStr) {
 			switch (scanFLC_id) {
 			case 0: // $FLC,0,0,0,200,3798,26;
 				//Tour: Höhenmeter Total, Tour Steigung Max, Tour Temperatur Max, Tour Höhe Max, Tour Pulse Max
-				//FIXME: stats.updateFLStoredDistance(sumType, scanFLC_buffer[4]);
+				stats.addDistance(scanFLC_buffer[4], Statistics::SUM_FL_TOUR);
 				break;
 			case 1: // $FLC,1,0,0,200,3798,26;
 				//Trip: Höhenmeter Total, Tour Steigung Max, Tour Temperatur Max, Tour Höhe Max, Tour Pulse Max
-				//FIXME: stats.updateFLStoredDistance(sumType, scanFLC_buffer[4]);
+				stats.addDistance(scanFLC_buffer[4], Statistics::SUM_FL_TRIP);
 				break;
 			case 2: // $FLC,2,478561,0,200,0,200;
 				// Mixed: Höhenmeter Total Toal, Tour Steigung Min, Tour Temperatur Min, Trip Steigung Min, Trip Temperatur Min

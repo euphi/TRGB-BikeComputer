@@ -14,6 +14,12 @@ extern SimpleCLI cli;
 #include "BCLogger.h"
 extern BCLogger bclog;
 
+
+#include "Statistics.h"
+extern Statistics stats;
+
+#include "FLClassicParser.h"
+extern FLClassicParser flparser;
+
 //TODO:
-// - Statistics
 // - UIFacade

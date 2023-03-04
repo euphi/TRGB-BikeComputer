@@ -70,6 +70,10 @@ private:
 
 	Ticker fileFlusher;
 
+	Ticker replayTicker;
+	File fileReplay;
+	uint32_t timeLasteLine = 0;
+
 
 public:
 	BCLogger();
@@ -96,11 +100,14 @@ public:
 	bool deleteFile(const String& path);
 	void autoCleanUp(const char* root_name);
 
+	void replayFile(const String& path);
+
 
 
 
 private:
 	void getFileHTML(String &rc, File &root, uint8_t strip_front) const;
 	bool cleanUp(File& root, uint32_t minsize);
+	void replayNextLine();
 
 };

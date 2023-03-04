@@ -23,12 +23,13 @@ public:
 
 
 	//Types
-	typedef std::function<void(uint8_t idx, bool state)> FLSpeedDistUpdateHandler;
+	typedef std::function<void(float speed, float distance)> FLSpeedDistUpdateHandler;
 	typedef std::function<void(uint16_t batVoltage, uint8_t batPerc, int8_t powerStage, int16_t CurBat, int16_t CurConsumer, bool ConsumerOn)> FLBatUpdateHandler;
-	typedef std::function<void(uint8_t idx, bool state)> FLEnvUpdateHandler;
 
-//	typedef std::function<void(EFLConnState cstate, EFLFlags flags)> FLStateUpdateHandler;
-	typedef std::function<void(EFLConnState cstate, uint32_t flags, uint16_t timeout)> FLStateUpdateHandler;
+
+	typedef std::function<void(uint16_t temperature, uint16_t pressure, uint16_t height, uint16_t gradient)> FLEnvUpdateHandler;
+
+	typedef std::function<void(EFLConnState cstate, uint32_t flags, int16_t timeout)> FLStateUpdateHandler;
 
 	//Methods
 	FLClassicParser(uint8_t polePair, uint16_t circum_mm);
