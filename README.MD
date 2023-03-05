@@ -22,7 +22,7 @@ A bike computer based on [LilyGO T-RGB](https://www.lilygo.cc/products/t-rgb):
 - [X] Write debug information to logfiles
 - [X] Write raw forumslader data to logfiles
 - [X] Replay FL log file
-- [ ] User Interface for replay
+- [X] User Interface for replay
 - [ ] Write summary in binary logfile (not yet integrated, to be merged from [ESP32_BTTacho](https://github.com/euphi/ESP32_BTTacho)
 
 ### Console
@@ -40,9 +40,9 @@ A bike computer based on [LilyGO T-RGB](https://www.lilygo.cc/products/t-rgb):
 ### User interface
 
 - [X] Initialize RGB display
-- [ ] Merge and refactor existing UI from my [T-RGB Experiments](https://github.com/euphi/T-RGB-Experiments) (speed, FL batterie, heart rate, FL details, IP Adress)
-- [ ] Add Navigation Screen
-- [ ] Show basic statistics
+- [X] Merge and refactor existing UI from my [T-RGB Experiments](https://github.com/euphi/T-RGB-Experiments) (speed, FL batterie, heart rate, FL details, IP Adress)
+- [ ] WIP: Add Navigation Screen
+- [ ] WIP: Show basic statistics
 - [ ] Add very simple screen
 - [ ] Add screen for more detailed information
 - [ ] Show connection information on screeen
@@ -56,7 +56,7 @@ A bike computer based on [LilyGO T-RGB](https://www.lilygo.cc/products/t-rgb):
 
 ## Prio 1 Features -- Help wanted
 
-- [ ] WIP: robust webserver for data download
+- [X] robust webserver for data download
 - [ ] Improve statistics (e.g. graphs )
 - [ ] better User Interface
 - [ ] Animations on display (e.g driving state, heart rate)
