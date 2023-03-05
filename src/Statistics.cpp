@@ -115,10 +115,16 @@ void Statistics::setConnected(bool connected) {
 	}
 }
 
-void Statistics::addCadence(uint16_t _cadence) {
+void Statistics::addCadence(int16_t _cadence) {
 	cadence = _cadence;
 	//TODO: Add cadence
 	ui.updateCadence(cadence);
+}
+
+void Statistics::addHR(int16_t _hr) {
+	hr = _hr;
+	//TODO: add HR
+	ui.updateHR(hr);
 }
 
 void Statistics::addSpeed(float _speed) {
@@ -145,6 +151,7 @@ uint32_t Statistics::getDistance(ESummaryType type) const {
 	case SUM_ESP_TOTAL:
 	case SUM_ESP_TOUR:
 	case SUM_ESP_TRIP:
+	case SUM_ESP_START:
 		return distance-start_distance[type];
 	case SUM_FL_TRIP:
 	case SUM_FL_TOUR:
@@ -153,14 +160,6 @@ uint32_t Statistics::getDistance(ESummaryType type) const {
 		return distance;
 	}
 	return 0;
-}
-
-
-void Statistics::addHR(uint16_t _hr) {
-	hr = _hr;
-	//TODO: add HR
-	ui.updateHR(hr);
-
 }
 
 void Statistics::reset(ESummaryType type) {
@@ -176,4 +175,21 @@ void Statistics::reset(ESummaryType type) {
 void Statistics::setCurDriveState(EDrivingState _curDriveState) {
 	curDriveState = _curDriveState;
 	bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Driving state changed to %s", (PREF_TIME_STRING[curDriveState]+8));
+}
+
+float Statistics::getAvg(ESummaryType type, EAvgType avgtype) const {
+	//FIXME: avg does not take into account distance in no connection. There should be at least a mechanism to compensate distance in NO_CONN
+	uint32_t relevantTime = time_in[DS_DRIVE_COASTING][type] + time_in[DS_DRIVE_POWER][type];
+	switch (avgtype) {
+	case AVG_ALL:
+		relevantTime += time_in[DS_BREAK][type];
+		//no break
+	case AVG_NOBREAK:
+		relevantTime += time_in[DS_STOP][type];
+	}
+	//TRACE: Serial.print(getDistance(type)); Serial.print('\t');Serial.println(relevantTime);
+
+	//        .. in m         / msec          / msec/sec  * 3.6 km/h / m/s..
+	return (getDistance(type) / (relevantTime / 1000.0)) * 3.6;
+
 }

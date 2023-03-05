@@ -67,6 +67,7 @@ void UIFacade::updateData() {
     time_t now;
     time(&now);
 	updateClock(now);
+	updateStats();
 }
 
 // redraw screen
@@ -85,6 +86,12 @@ void UIFacade::updateClock(const time_t now) {
 
 	ui_ScrMainUpdateClock(strClock.c_str(), strDate.c_str());
 	ui_ScrFLUpdateClock(strClock.c_str(), strDate.c_str());
+}
+
+void UIFacade::updateStats() {
+	ui_ScrMainUpdateStats(stats.getAvg(Statistics::SUM_ESP_START, Statistics::AVG_DRIVE), stats.getSpeedMax(Statistics::SUM_ESP_START), stats.getDistance(Statistics::SUM_ESP_START));
+	//ui_ScrMainUpdateStats(14.3, 22.3, 1000);
+
 }
 
 // ---------------- external (public) data updater ----------------

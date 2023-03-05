@@ -47,11 +47,12 @@ void WifiWebserver::checkLoop() {
 	if (!wifiWasConnected) {
 		if (WiFi.status() == WL_CONNECTED) {
 			wifiWasConnected = true;
-			bclog.logf(BCLogger::Log_Info, TAG, "Wifi connected. IPv4: %s IPv6: %s", WiFi.localIP().toString(), WiFi.localIPv6().toString());
-			ui.updateIP(WiFi.localIP().toString());
-			//ui.updateIP(WiFi.localIP().toString());
+			bclog.logf(BCLogger::Log_Info, TAG, "Wifi connected. IPv4: %s", WiFi.localIP().toString());
+			//bclog.logf(BCLogger::Log_Info, TAG, "Wifi connected. IPv4: %s IPv6: %s", WiFi.localIP().toString(), WiFi.localIPv6().toString());
 			// Setup Web Server
 			setupWebserver();
+			delay(1000);	//TODO: Wifi reconnection after reset can be very fast, so IP can be available BEFORE UI has been initialized. So wait a second...
+			ui.updateIP(WiFi.localIP().toString());
 		} else if (millis() > 100000) { //disable Wifi if no connection was established during the first 10 seconds
 			wifiWasConnected = true;
 			bclog.log(BCLogger::Log_Warn, TAG, "Not connected to Wifi - disabling it");
@@ -86,10 +87,26 @@ void WifiWebserver::setupWebserver() {
 			html_resp += "OK - file deleted.";
 		} else {
 			http_code = 403;
-			html_resp += "Forbidden - file can't be deleted (probably because it does not exist";
+			html_resp += "Forbidden - file can't be deleted (probably because it does not exist).";
 		}
 		html_resp += "</body></html>";
 		request->send(http_code, "text/html", html_resp.c_str());
+	});
+	server.on("^\\/replay\\/([A-Za-z0-9_\\.\\/]+)$", HTTP_GET, [](AsyncWebServerRequest *request) {
+		bclog.logf(BCLogger::Log_Info, TAG, "💻 Request on /replay/: %s\n\tPath-Arg: %s", request->url().c_str(), request->pathArg(0).c_str());
+		String dUri = String("/BIKECOMP/") + request->pathArg(0);
+		uint16_t http_code = 500;
+		String html_resp("<html><body>");
+		if (bclog.replayFile(dUri)) {
+			http_code = 200;
+			html_resp += "OK - file replay started";
+		} else {
+			http_code = 403;
+			html_resp += "Forbidden - file can't be openend for replay (probably because it does not exist).";
+		}
+		html_resp += "</body></html>";
+		request->send(http_code, "text/html", html_resp.c_str());
+
 	});
 
 	// -- generate Logfile Index

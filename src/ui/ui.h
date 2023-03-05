@@ -50,15 +50,6 @@ extern lv_obj_t * ui_S1BarBatt;
 extern lv_obj_t * ui_S1BarBattLabel;
 extern lv_obj_t * ui_S1LabelClock;
 extern lv_obj_t * ui_Label2;
-void ui_event_ScreenWifi(lv_event_t * e);
-extern lv_obj_t * ui_ScreenWifi;
-extern lv_obj_t * ui_SWifiLabelIPAddr;
-void ui_event_ScreenWifi_Slider1(lv_event_t * e);
-extern lv_obj_t * ui_ScreenWifi_Slider1;
-extern lv_obj_t * ui_ScreenWifi_Label8;
-void ui_event_SWifiButtonStandby(lv_event_t * e);
-extern lv_obj_t * ui_SWifiButtonStandby;
-extern lv_obj_t * ui_ScreenWifiButtonLabelStandby;
 void ui_event_ScreenChart(lv_event_t * e);
 extern lv_obj_t * ui_ScreenChart;
 extern lv_obj_t * ui_ScreenSettings_Panel2;
@@ -66,14 +57,13 @@ extern lv_obj_t * ui_ScreenChart_Chart1;
 
 void chartModeHeartRate(lv_event_t * e);
 void chartModeBatterie(lv_event_t * e);
-void ui_ev_bright(lv_event_t * e);
-void ui_ev_standby(lv_event_t * e);
 
 LV_IMG_DECLARE(ui_img_bt_png);    // assets/bt.png
 LV_IMG_DECLARE(ui_img_heartrate_png);    // assets/heartrate.png
 LV_IMG_DECLARE(ui_img_wlan_png);    // assets/wlan.png
 LV_IMG_DECLARE(ui_img_kmh_xs_png);    // assets/kmh_XS.png
 
+LV_FONT_DECLARE(ui_font_by75_96);
 
 void ui_S1Main_screen_init();
 void ui_ScreenWifi_screen_init();

@@ -9,6 +9,7 @@
 #include <DateTime.h>
 #include <SD_MMC.h>
 #include "Singletons.h"
+#include <esp_task_wdt.h>
 
 const char *BCLogger::TAG_STRING[LogTagMax] = { "RAW", "FL", "BLE", "STAT", "WIFI", "SD", "OP", "CLI" };
 const char *BCLogger::LEVEL_STRING[LogTypeMax] = { "DEBUG", "INFO", "WARN", "ERROR" };
@@ -201,7 +202,7 @@ void BCLogger::setLogLevel(LogType level, LogTag tag, bool file, bool serial) {
 	storeLoglevel(level, tag, file, serial);
 }
 
-void BCLogger::log(LogType type, LogTag tag, const String str) const {
+void BCLogger::log(LogType type, LogTag tag, const String& str) const {
 	bool write_file = checkLogLevel(type, tag, true) && !file_debuglog.isEmpty();  // empty during init
 	bool write_serial = checkLogLevel(type, tag, false);
 	if (!(write_file || write_serial))
@@ -315,7 +316,7 @@ uint16_t BCLogger::getAllFileLinks(String &rc) const {
 void BCLogger::getFileHTML(String &rc, File &root, uint8_t strip_front) const {
     File file = root.openNextFile();  // First file in root-DIR
 	while (file) {
-		//esp_task_wdt_reset();
+		esp_task_wdt_reset();
 		log(Log_Info, TAG_SD, file.name());
 		if (file.name()[0] == 'x' || file.name()[0] == 'x') {  // D / N ->x to temporarily access nmea/debug files
 			file = root.openNextFile();   // next file in root-DIR
@@ -334,9 +335,13 @@ void BCLogger::getFileHTML(String &rc, File &root, uint8_t strip_front) const {
 			String uri= (file.path()+ strip_front+1);
 			rc = rc + "<a href=\"/log/"+uri+"\">" + uri + "</a>";
 			rc = rc + " (" + file.size() + ")";
+			if (!fileReplay && (uri.charAt(uri.length()-9) == 'N' || uri.charAt(uri.length()-12) == 'N')) { 	//RAW_NMEA-File
+					rc = rc + " <a href=\"/replay/"+uri+"\">Replay</a> ";
+			}
 			rc = rc + " <a href=\"/del/"+uri+"\">DEL</a><br />\n";
 		}
 		file = root.openNextFile();   // next file in root-DIR
+		yield();
 	}
 	file.close();
 }
@@ -361,7 +366,7 @@ void BCLogger::autoCleanUp(const char* root_name) {
 		log(Log_Warn, TAG_SD, F("🧹 autoCleanUp - Not a directory"));
 	    return;
 	  }
-	  cleanUp(root, 250);
+	  cleanUp(root, 512);
 }
 
 void BCLogger::replayNextLine() {
@@ -375,34 +380,40 @@ void BCLogger::replayNextLine() {
 			bclog.log(Log_Warn, TAG_SD, "End of Replay file. Closing.");
 			fileReplay.close();
 			replayTicker.detach();		// there should be no timer running, but better safe than sorry
+			stats.setConnected(false);
 			return;
 		}
 		if (timeLasteLine == 0)	timeLasteLine = timeNext;
 		next = timeNext-timeLasteLine;
 		timeLasteLine = timeNext;
+		if (next > 40) next -=40; //FIXME: Ugly workaround for 60seconds wrap
 		bclog.logf(Log_Debug, TAG_SD, "Replay Strings:\n\tWaste:\t%s\n\tData:\t%s\n\tTime:\t%s (%d -> next in %d sec))",wasteStr.c_str(), dataStr.c_str(), timeStr.c_str(), timeNext, next );
 		flparser.updateFromString(dataStr);
 	} while (!next);
 	replayTicker.once(next, +[](BCLogger* thisInstance){thisInstance->replayNextLine();}, this);
 }
 
-void BCLogger::replayFile(const String &path) {
+bool BCLogger::replayFile(const String &path) {
 	if (fileReplay) {
 		logf(Log_Warn, TAG_SD, "ReplayFile %s already open - closing it.", path);
 		fileReplay.close();
+		timeLasteLine = 0;
 	}
 	fileReplay = SD_MMC.open(path);
 	if (!fileReplay) {
 		logf(Log_Error, TAG_SD, "Failed to open replay file %s", path);
-		return;
+		return false;
 	}
+	stats.setConnected(true);	// Fake connect FL
 	replayNextLine();
+	return true;
 }
 
 bool BCLogger::cleanUp(File& root, uint32_t minsize) {
     File file = root.openNextFile();  // First file in root-DIR
     bool allFileDeleted = true;
 	while (file) {
+		esp_task_wdt_reset();
 		if (file.isDirectory()) {
 			bool dirClean = cleanUp(file, minsize);
 			allFileDeleted &= dirClean;
@@ -414,6 +425,7 @@ bool BCLogger::cleanUp(File& root, uint32_t minsize) {
 		} else {
 			allFileDeleted = false;
 		}
+		yield();
 		file = root.openNextFile();   // next file in root-DIR
 	}
 	return allFileDeleted;

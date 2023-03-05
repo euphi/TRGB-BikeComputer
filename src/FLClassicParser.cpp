@@ -112,7 +112,7 @@ void FLClassicParser::updateFromString(const String &flStr) {
 		default:
 			Serial.printf("❌ Unknown FL-ID '%c'\n", flStr.charAt(3));
 		}
-		bclog.log(BCLogger::Log_Info, BCLogger::TAG_RAW_NMEA, flStr.c_str());
+		bclog.log(BCLogger::Log_Info, BCLogger::TAG_RAW_NMEA, flStr);
 
 	} else {
 		Serial.println("❌ Unknown String identifier");

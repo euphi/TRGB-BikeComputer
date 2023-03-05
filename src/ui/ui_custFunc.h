@@ -15,6 +15,8 @@ void ui_ScrMainUpdatePower(uint16_t batVoltage, uint8_t batPerc, int8_t powerSta
 void ui_ScrMainUpdateClock(const char* clockStr, const char* dateStr);
 
 void ui_ScrMainUpdateSpeed(float speed);
+void ui_ScrMainUpdateStats(float avgSpd, float maxSpd, uint32_t dist);
+
 void ui_ScrMainUpdateCadence(uint16_t cadence);
 void ui_ScrMainUpdateHR(uint16_t hr);
 

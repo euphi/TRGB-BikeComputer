@@ -22,6 +22,12 @@ void ui_ScrMainUpdateSpeed(float speed) {
 	lv_arc_set_value(ui_S1ArcSpeed, (uint16_t)(speed*10.0));
 }
 
+void ui_ScrMainUpdateStats(float avgSpd, float maxSpd, uint32_t dist) {
+	lv_label_set_text_fmt(ui_S1PStatLspdMaxVar, "%.1f", maxSpd);
+	lv_label_set_text_fmt(ui_S1PStatLAvgVar, "%.1f", avgSpd);
+	lv_label_set_text_fmt(ui_S1PStatLDistVar, "%.1f", dist/1000.0);
+}
+
 void ui_ScrMainUpdateCadence(int16_t cadence) {
 	lv_label_set_text_fmt(ui_Label2, (cadence >= 0) ? "%d rpm" : "-/-", cadence);
 	lv_arc_set_value(ui_S1ArcCadence, cadence);

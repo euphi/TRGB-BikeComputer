@@ -46,12 +46,12 @@ void setup() {
     cli.setOnError(errorCallback);
     cmdPing = cli.addCmd("ping", pingCallback);
     cmdPing.setDescription("Responds with a pong and logs it");
+	ui.initDisplay();
 
     stats.setup();
 	tickerDispUpdate.attach_ms(250, displayUpdate);
 	bleDevs.setup();
 	//bclog.replayFile("/BIKECOMP/20230304/N_144428.log");
-	ui.initDisplay();
 
 }
 

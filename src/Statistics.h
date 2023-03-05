@@ -22,6 +22,12 @@ public:
 		SUM_FL_TRIP,                // Trip Distance as stored in external device, e. g. FL
 		ESummaryTypeMax
 	};
+	enum EAvgType {
+		AVG_ALL,
+		AVG_DRIVE,
+		AVG_NOBREAK,   // but Pause/Stop
+		EAvgTypeMax
+	};
 private:
 	enum EDrivingState {	// Various driving states
 		DS_NO_CONN,
@@ -32,12 +38,6 @@ private:
 		EDrivingStateMax
 	};
 
-	enum EAvgType {
-		AVG_ALL,
-		AVG_DRIVE,
-		AVG_NOBREAK,   // but Pause/Stop
-		EAvgTypeMax
-	};
 
 	enum EStatDataType {
 		DT_SPEED,
@@ -58,8 +58,9 @@ private:
 
 	//uint32_t timestamp_last;
 
-	uint16_t hr;
-	uint16_t cadence;
+	// use int instead of uint, so -1 can be used as "invalid".
+	int16_t hr;
+	int16_t cadence;
 	float speed=0.0;
 
 	uint32_t start_distance[ESummaryTypeMax];   // start_distance: For locally stored distances, this is the distance the counter was reset. For extern stored (FL) distance this is the actual distance
@@ -83,18 +84,15 @@ public:
 	void addDistance(uint16_t dist, ESummaryType type = SUM_ESP_TOUR);
 	void reset(ESummaryType type);
 	void updateDistance(uint16_t dist);
-	void addHR(uint16_t heartrate);
-	void addCadence(uint16_t cadence);
+	void addHR(int16_t heartrate);
+	void addCadence(int16_t cadence);
 	void setConnected(bool connected);
 
-	float getAvg(ESummaryType type, EAvgType avgtype) const {
-		return 0.0;
-		//return dist_total[type] / (10.0 * speed_avg_count);
-	};
+	float getAvg(ESummaryType type, EAvgType avgtype) const;
 
-	uint16_t getHr() const {return hr;}
+	int16_t getHr() const {return hr;}
 	//uint16_t getSpeed() {speed += (rand() % 21) - 10;return speed;}  // FIXME: make const again when simulation is removed
-	uint16_t getSpeed() {return speed;}  // FIXME: make const again when simulation is removed
+	//int16_t getSpeed() {return speed;}  // FIXME: make const again when simulation is removed
 
 	const float getSpeedMax(ESummaryType type) const {
 		return speed_max[type];

@@ -28,6 +28,7 @@ private:
 	void updateFLPower(uint16_t batVoltage, uint8_t batPerc, int8_t powerStage, int16_t CurBat, int16_t CurConsumer, bool ConsumerOn);
 	void updateData();
 	void updateClock(const time_t now);
+	void updateStats();
 
 	Ticker updateTicker;
 	Ticker dataTicker;

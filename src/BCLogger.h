@@ -82,7 +82,7 @@ private:
 public:
 	BCLogger();
 	void setup();
-	void log(LogType type, LogTag tag, const String str) const;
+	void log(LogType type, LogTag tag, const String& str) const;
 	void logf(LogType type, LogTag tag, const char* format, ...) const;
 	inline bool checkLogLevel(LogType type, LogTag tag, bool write_file = false) const {return loglevel[write_file?OUT_File:OUT_Serial][tag] <= type;}
 
@@ -104,7 +104,7 @@ public:
 	bool deleteFile(const String& path);
 	void autoCleanUp(const char* root_name);
 
-	void replayFile(const String& path);
+	bool replayFile(const String& path);
 
 
 
