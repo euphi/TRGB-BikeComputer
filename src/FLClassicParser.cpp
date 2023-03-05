@@ -67,14 +67,12 @@ void FLClassicParser::updateFromString(const String &flStr) {
 				//    (uint16_t batVoltage, uint8_t batPerc, int8_t powerStage, int16_t CurBat, int16_t CurConsumer, bool ConsumerOn)> FLBatUpdateHandler;
 				batCB(batterie[0]+batterie[1]+batterie[2], batt_perc, stufe, batt_current, cons_current, cons_on_off);
 			}
-			if (speedCB) {
-				speed_f = pulses_per_s * kmh_per_pulse_per_s;
-				dist_total = ceil((pulsecounter * 4096 + micropulsecounter) * dist_m_per_pulse);
-				speedCB(speed_f, dist_total);
-			}
-//			stats.updateDistance(dist_total);
-//			stats.addDistance(dist_total, Statistics::SUM_FL_TOTAL);
-//			stats.addSpeed(speed_f);
+			speed_f = pulses_per_s * kmh_per_pulse_per_s;
+			dist_total = ceil((pulsecounter * 4096 + micropulsecounter) * dist_m_per_pulse);
+			stats.addSpeed(speed_f);
+			stats.updateDistance(dist_total);
+			stats.addDistance(dist_total, Statistics::SUM_FL_TOTAL);
+			if (speedCB) speedCB(speed_f, dist_total);
 			break;
 		case 'B': // $FLB,850,98591,2731,0;
 			scanCt = sscanf(flStr.c_str(), "$FLB,%hd,%d,%hd,%hd\n", &temperature, &pressure,&height,&gradient);

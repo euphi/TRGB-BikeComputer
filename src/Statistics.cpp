@@ -118,6 +118,7 @@ void Statistics::setConnected(bool connected) {
 void Statistics::addCadence(uint16_t _cadence) {
 	cadence = _cadence;
 	//TODO: Add cadence
+	ui.updateCadence(cadence);
 }
 
 void Statistics::addSpeed(float _speed) {
@@ -125,6 +126,8 @@ void Statistics::addSpeed(float _speed) {
 	for (uint_fast8_t i = 0; i<= SUM_ESP_START; i++) {
 		if (speed_max[i] < speed) speed_max[i] = speed;
 	}
+	ui.updateSpeed(speed);
+
 }
 
 void Statistics::addDistance(uint16_t dist, ESummaryType type) {
@@ -155,6 +158,9 @@ uint32_t Statistics::getDistance(ESummaryType type) const {
 
 void Statistics::addHR(uint16_t _hr) {
 	hr = _hr;
+	//TODO: add HR
+	ui.updateHR(hr);
+
 }
 
 void Statistics::reset(ESummaryType type) {

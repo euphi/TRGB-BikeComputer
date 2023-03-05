@@ -9,6 +9,9 @@
 #include "Singletons.h"
 #include "ui/ui_FL.h"
 #include "ui/ui.h"
+#include "ui/ui_custFunc.h"
+
+#include <DateTime.h>
 
 UIFacade::UIFacade() {
 	// TODO Auto-generated constructor stub
@@ -46,17 +49,54 @@ void UIFacade::initDisplay() {
 
     // 5. Start Update ticker
     updateHandler();
+    dataTicker.attach_ms(250, +[](UIFacade* thisInstance) {thisInstance->updateData();}, this);
 }
 
+
+// ---------------- Internal (private) ticker handlers (automatic update) ----------------
+
+// data updater
 void UIFacade::updateData() {
+    time_t now;
+    time(&now);
+	updateClock(now);
 }
 
+// redraw screen
 void UIFacade::updateHandler() {
 	updateData();
 	uint32_t next_ms = lv_timer_handler();
 	updateTicker.once_ms(next_ms, +[](UIFacade* thisInstance) {thisInstance->updateHandler();}, this);
 }
 
+
+// ---------------- Internal (private) data updater ----------------
+
+void UIFacade::updateClock(const time_t now) {
+	String strClock = DateFormatter::format(DateFormatter::TIME_ONLY,now);
+	String strDate = DateFormatter::format(DateFormatter::DATE_ONLY,now);
+
+	ui_ScrMainUpdateClock(strClock.c_str(), strDate.c_str());
+	ui_ScrFLUpdateClock(strClock.c_str(), strDate.c_str());
+}
+
+// ---------------- external (public) data updater ----------------
+void UIFacade::updateSpeed(float speed) {
+	ui_ScrMainUpdateSpeed(speed);
+}
+
+void UIFacade::updateCadence(uint16_t cad) {
+	ui_ScrMainUpdateCadence(cad);
+}
+
+void UIFacade::updateHR(uint16_t hr) {
+	ui_ScrMainUpdateHR(hr);
+}
+
+
+// ----------- Forumslader-specific -----------
 void UIFacade::updateFLPower(uint16_t batVoltage, uint8_t batPerc, int8_t powerStage, int16_t CurBat, int16_t CurConsumer, bool ConsumerOn) {
 	ui_ScrFLUpdatePower(batVoltage, batPerc, powerStage, CurBat, CurConsumer, ConsumerOn);
+	ui_ScrMainUpdatePower(batVoltage, batPerc, powerStage, CurBat, CurConsumer, ConsumerOn);
 }
+

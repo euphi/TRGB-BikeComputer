@@ -94,7 +94,9 @@ void BCLogger::setup() {
 
 void BCLogger::flushAllFiles() {  // Ticker all 5 seconds
 	if (fdebug) fdebug.flush();
+	yield();
 	if (fnmea) fnmea.flush();
+	yield();
 	if (fdata) fdata.flush();
 }
 
@@ -109,6 +111,7 @@ void BCLogger::printLoglevels() {
 				Serial.print(LEVEL_STRING[loglevel[line][t]]);
 			}
 			Serial.print("\t|");
+			yield();
 		}
 		Serial.println();
 	}
@@ -225,6 +228,7 @@ void BCLogger::log(LogType type, LogTag tag, const String str) const {
 		f.print(timeStr);
 		f.println(str);
 	}
+	yield();
 	if (write_serial) {
 		Serial.print(symbolStr);
 		Serial.print(timeStr);

@@ -104,6 +104,11 @@ void ui_ScrFLUpdatePower(uint16_t batVoltage, uint8_t batPerc, int8_t powerStage
     lv_label_set_text(ui_Screen1_Label4, txtBuffer);
 }
 
+void ui_ScrFLUpdateClock(const char* clockStr, const char* dateStr) {
+	lv_label_set_text_fmt(ui_Screen1_Label5, "%s\n%s", clockStr, dateStr);
+}
+
+
 void ui_ScrFLUpdateFlags(uint32_t flags) {
 	for (uint8_t f=0; f < FL_FLAG_MAX; f++) {
 		lv_obj_t* cb=0;

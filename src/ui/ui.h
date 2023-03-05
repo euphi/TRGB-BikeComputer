@@ -23,8 +23,9 @@ void ui_event_S1ImgIconBLEhrm(lv_event_t * e);
 extern lv_obj_t * ui_S1ImgIconBLEhrm;
 void ui_event_S1ImgIconWifi(lv_event_t * e);
 extern lv_obj_t * ui_S1ImgIconWifi;
-extern lv_obj_t * ui_S1ArcSpeed;
+extern lv_obj_t * ui_S1ArcCadence;
 extern lv_obj_t * ui_S1ArcAvg;
+extern lv_obj_t * ui_S1ArcSpeed;
 extern lv_obj_t * ui_S1BarPuls;
 extern lv_obj_t * ui_S1BarPulsLabel;
 extern lv_obj_t * ui_S1LabelSpeed;
@@ -48,6 +49,7 @@ void ui_event_S1BarBatt(lv_event_t * e);
 extern lv_obj_t * ui_S1BarBatt;
 extern lv_obj_t * ui_S1BarBattLabel;
 extern lv_obj_t * ui_S1LabelClock;
+extern lv_obj_t * ui_Label2;
 void ui_event_ScreenWifi(lv_event_t * e);
 extern lv_obj_t * ui_ScreenWifi;
 extern lv_obj_t * ui_SWifiLabelIPAddr;
@@ -67,10 +69,10 @@ void chartModeBatterie(lv_event_t * e);
 void ui_ev_bright(lv_event_t * e);
 void ui_ev_standby(lv_event_t * e);
 
-LV_IMG_DECLARE(ui_img_1672049344351_png);    // assets/1672049344351.png
-LV_IMG_DECLARE(ui_img_1672052474193_png);    // assets/1672052474193.png
-LV_IMG_DECLARE(ui_img_1672050212073_png);    // assets/1672050212073.png
-LV_IMG_DECLARE(ui_img_1719627537);    // assets/equation (1).png
+LV_IMG_DECLARE(ui_img_bt_png);    // assets/bt.png
+LV_IMG_DECLARE(ui_img_heartrate_png);    // assets/heartrate.png
+LV_IMG_DECLARE(ui_img_wlan_png);    // assets/wlan.png
+LV_IMG_DECLARE(ui_img_kmh_xs_png);    // assets/kmh_XS.png
 
 
 void ui_S1Main_screen_init();

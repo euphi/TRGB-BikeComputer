@@ -54,6 +54,7 @@ extern lv_obj_t * ui_ScreenFL_Label3;
 
 void ui_ScrFLUpdateFlags(uint32_t flags);
 void ui_ScrFLUpdatePower(uint16_t batVoltage, uint8_t batPerc, int8_t powerStage, int16_t CurBat, int16_t CurConsumer, bool ConsumerOn);
+void ui_ScrFLUpdateClock(const char* clockStr, const char* dateStr);
 
 void ui_ScreenFL_screen_init(void);
 

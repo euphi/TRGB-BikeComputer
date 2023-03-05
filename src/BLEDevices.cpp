@@ -190,6 +190,7 @@ void BLEDevices::notifyCallbackCSC(BLERemoteCharacteristic *pBLERemoteCharacteri
 		}
 		crank_rev_last = crank_rev;
 		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "Cadence %d revs per minute", cadence);
+		stats.addCadence(cadence);
 		break;
 	case DEV_HRM:
 		if (length < 2)
