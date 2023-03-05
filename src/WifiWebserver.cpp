@@ -48,6 +48,7 @@ void WifiWebserver::checkLoop() {
 		if (WiFi.status() == WL_CONNECTED) {
 			wifiWasConnected = true;
 			bclog.logf(BCLogger::Log_Info, TAG, "Wifi connected. IPv4: %s IPv6: %s", WiFi.localIP().toString(), WiFi.localIPv6().toString());
+			ui.updateIP(WiFi.localIP().toString());
 			//ui.updateIP(WiFi.localIP().toString());
 			// Setup Web Server
 			setupWebserver();

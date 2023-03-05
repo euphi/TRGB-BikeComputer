@@ -5,6 +5,7 @@
 
 #include "ui.h"
 #include "ui_FL.h"
+#include "ui_WLAN.h"
 #include "ui_helpers.h"
 
 ///////////////////// VARIABLES ////////////////////
@@ -101,7 +102,7 @@ void ui_event_S1ImgIconWifi(lv_event_t * e)
     lv_event_code_t event_code = lv_event_get_code(e);
     lv_obj_t * target = lv_event_get_target(e);
     if(event_code == LV_EVENT_CLICKED) {
-        _ui_screen_change(ui_ScreenWifi, LV_SCR_LOAD_ANIM_OVER_BOTTOM, 500, 0);
+        _ui_screen_change(ui_SWLAN, LV_SCR_LOAD_ANIM_OVER_BOTTOM, 500, 0);
     }
 }
 void ui_event_S1PanelStat(lv_event_t * e)
@@ -266,7 +267,6 @@ void ui_S1Main_screen_init(void)
     lv_obj_clear_flag(ui_S1ArcSpeed, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_PRESS_LOCK | LV_OBJ_FLAG_CLICK_FOCUSABLE |
                       LV_OBJ_FLAG_SNAPPABLE);     /// Flags
     lv_arc_set_range(ui_S1ArcSpeed, 0, 600);
-    lv_arc_set_value(ui_S1ArcSpeed, 214);
 
     lv_obj_set_style_arc_width(ui_S1ArcSpeed, 14, LV_PART_INDICATOR | LV_STATE_DEFAULT);
 

@@ -226,6 +226,7 @@ void BLEDevices::komootLoop() {
 			distance = value.substr(5, 8);
 			uint32_t dist = distance[0] | distance[1] << 8 | distance[2] << 16 | distance[3] << 24;
 			bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "Komoot-Navigation: %d m in Richtung %0x auf %s", dist, d, street.c_str());
+			ui.updateNavi(String(street.c_str()), dist, d);
 		} else {
 			bclog.log(BCLogger::Log_Error, BCLogger::TAG_BLE, "Less than 10 byte received from komoot");
 		}
@@ -241,9 +242,17 @@ void BLEDevices::connCheckLoop() {
 		if (connState[c] == CONN_CONNECTED && !pClient[c]->isConnected()) { // check if existing connection is lost
 			connState[c] = CONN_LOST;
 			bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_BLE, "%s Lost connection.", DEV_EMOJI[c]);
-			if (c == DEV_FL) {
+			switch (c) {
+			case DEV_FL:
 				flparser.setConnState(FLClassicParser::FL_STATE_LOST);
 				stats.setConnected(false);
+				break;
+			case DEV_HRM:
+				stats.addHR(-1);
+				break;
+			case DEV_CSC:
+				stats.addCadence(-1);
+				break;
 			}
 			reconnCount += 16;
 		}

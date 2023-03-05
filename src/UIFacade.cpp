@@ -8,6 +8,9 @@
 #include <UIFacade.h>
 #include "Singletons.h"
 #include "ui/ui_FL.h"
+#include "ui/ui_WLAN.h"
+#include "ui/ui_Navi.h"
+#include "ui/ui_NaviCustFunc.h"
 #include "ui/ui.h"
 #include "ui/ui_custFunc.h"
 
@@ -28,9 +31,13 @@ void UIFacade::initDisplay() {
 
     // 2. Init all screens
     ui_S1Main_screen_init();
-    ui_ScreenWifi_screen_init();
+    //ui_ScreenWifi_screen_init();
     ui_ScreenChart_screen_init();
     ui_ScreenFL_screen_init();
+    ui_SWLAN_screen_init();
+    ui_SWLAN_extra_init(); // QR Code
+    ui_SNavi_screen_init();
+
 
     // .. add init of new screens here
 
@@ -81,18 +88,43 @@ void UIFacade::updateClock(const time_t now) {
 }
 
 // ---------------- external (public) data updater ----------------
+
 void UIFacade::updateSpeed(float speed) {
 	ui_ScrMainUpdateSpeed(speed);
+	ui_ScrNaviUpdateSpeed(speed);
 }
 
 void UIFacade::updateCadence(uint16_t cad) {
 	ui_ScrMainUpdateCadence(cad);
+	ui_ScrNaviUpdateCadence(cad);
 }
 
 void UIFacade::updateHR(uint16_t hr) {
 	ui_ScrMainUpdateHR(hr);
+	ui_ScrNaviUpdateHR(hr);
 }
 
+void UIFacade::updateIP(const String& ipStr) {
+	ui_SWLANUpdateIP(ipStr.c_str());
+}
+
+void UIFacade::updateNavi(const String& navStr, uint32_t dist, uint8_t dirCode) {
+	static uint8_t oldDirCode = 0;
+	static bool distAnn = false;
+	if ( dirCode != oldDirCode) {
+		oldDirCode = dirCode;
+	    lv_disp_load_scr(ui_SNavi);
+	}
+	if (!distAnn && dist < 200) {
+		distAnn = true;
+		lv_disp_load_scr(ui_SNavi);
+	}
+	if (distAnn && dist > 250) {
+		distAnn = false;
+	}
+	ui_ScrNaviUpdateNav(navStr.c_str(), dist, dirCode);
+
+}
 
 // ----------- Forumslader-specific -----------
 void UIFacade::updateFLPower(uint16_t batVoltage, uint8_t batPerc, int8_t powerStage, int16_t CurBat, int16_t CurConsumer, bool ConsumerOn) {
