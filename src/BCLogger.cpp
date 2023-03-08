@@ -279,7 +279,7 @@ int16_t BCLogger::listDir(const String &dirname, uint8_t levels) const {
 			Serial.print("  SIZE: ");
 			Serial.println(file.size());
 			unsigned int filenumber;
-			if (sscanf(file.name(), "D%4u.BIN", &filenumber) == 1) {
+			if (sscanf(file.name(), "N%4u.BIN", &filenumber) == 1) {
 				if (filenumber > max_number)
 					max_number = filenumber;
 			}

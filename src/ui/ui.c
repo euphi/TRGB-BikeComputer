@@ -6,6 +6,7 @@
 #include "ui.h"
 #include "ui_FL.h"
 #include "ui_WLAN.h"
+#include "ui_Settings.h"
 #include "ui_helpers.h"
 
 ///////////////////// VARIABLES ////////////////////
@@ -45,6 +46,7 @@ lv_obj_t * ui_S1BarPowerMode;
 void ui_event_S1BarBatt(lv_event_t * e);
 lv_obj_t * ui_S1BarBatt;
 lv_obj_t * ui_S1BarBattLabel;
+void ui_event_S1LabelClock(lv_event_t * e);
 lv_obj_t * ui_S1LabelClock;
 lv_obj_t * ui_Label2;
 void ui_event_ScreenChart(lv_event_t * e);
@@ -111,6 +113,14 @@ void ui_event_S1BarBatt(lv_event_t * e)
     if(event_code == LV_EVENT_LONG_PRESSED) {
         chartModeBatterie(e);
         _ui_screen_change(ui_ScreenChart, LV_SCR_LOAD_ANIM_FADE_ON, 500, 0);
+    }
+}
+void ui_event_S1LabelClock(lv_event_t * e)
+{
+    lv_event_code_t event_code = lv_event_get_code(e);
+    lv_obj_t * target = lv_event_get_target(e);
+    if(event_code == LV_EVENT_LONG_PRESSED) {
+        _ui_screen_change(ui_ScrSettings, LV_SCR_LOAD_ANIM_MOVE_TOP, 500, 0);
     }
 }
 void ui_event_ScreenChart(lv_event_t * e)
@@ -190,7 +200,6 @@ void ui_S1Main_screen_init(void)
     lv_obj_clear_flag(ui_S1ArcCadence, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_PRESS_LOCK | LV_OBJ_FLAG_CLICK_FOCUSABLE |
                       LV_OBJ_FLAG_SNAPPABLE | LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_SCROLL_ELASTIC);     /// Flags
     lv_arc_set_range(ui_S1ArcCadence, 0, 200);
-    lv_arc_set_value(ui_S1ArcCadence, 100);
     lv_obj_set_style_blend_mode(ui_S1ArcCadence, LV_BLEND_MODE_ADDITIVE, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_arc_width(ui_S1ArcCadence, 1, LV_PART_MAIN | LV_STATE_DEFAULT);
 
@@ -212,7 +221,6 @@ void ui_S1Main_screen_init(void)
     lv_obj_clear_flag(ui_S1ArcAvg, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_PRESS_LOCK | LV_OBJ_FLAG_CLICK_FOCUSABLE |
                       LV_OBJ_FLAG_SNAPPABLE | LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_SCROLL_ELASTIC);     /// Flags
     lv_arc_set_range(ui_S1ArcAvg, 0, 600);
-    lv_arc_set_value(ui_S1ArcAvg, 243);
     lv_obj_set_style_blend_mode(ui_S1ArcAvg, LV_BLEND_MODE_ADDITIVE, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_arc_width(ui_S1ArcAvg, 1, LV_PART_MAIN | LV_STATE_DEFAULT);
 
@@ -275,7 +283,7 @@ void ui_S1Main_screen_init(void)
     lv_obj_set_x(ui_S1LabelSpeed, 140);
     lv_obj_set_y(ui_S1LabelSpeed, -110);
     lv_obj_set_align(ui_S1LabelSpeed, LV_ALIGN_LEFT_MID);
-    lv_label_set_text(ui_S1LabelSpeed, "22.9");
+    lv_label_set_text(ui_S1LabelSpeed, "0.0");
     lv_obj_set_style_text_font(ui_S1LabelSpeed, &ui_font_by75_96, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     ui_S1PanelStat = lv_obj_create(ui_S1Main);
@@ -460,7 +468,7 @@ void ui_S1Main_screen_init(void)
     lv_obj_set_x(ui_S1BarBattLabel, 0);
     lv_obj_set_y(ui_S1BarBattLabel, -1);
     lv_obj_set_align(ui_S1BarBattLabel, LV_ALIGN_CENTER);
-    lv_label_set_text(ui_S1BarBattLabel, "62%");
+    lv_label_set_text(ui_S1BarBattLabel, "? %");
     lv_obj_set_style_text_color(ui_S1BarBattLabel, lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_opa(ui_S1BarBattLabel, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_font(ui_S1BarBattLabel, &lv_font_montserrat_24, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -473,6 +481,7 @@ void ui_S1Main_screen_init(void)
     lv_obj_set_align(ui_S1LabelClock, LV_ALIGN_CENTER);
     lv_label_set_long_mode(ui_S1LabelClock, LV_LABEL_LONG_DOT);
     lv_label_set_text(ui_S1LabelClock, "--:--:--");
+    lv_obj_add_flag(ui_S1LabelClock, LV_OBJ_FLAG_CLICKABLE);     /// Flags
     lv_obj_set_style_text_align(ui_S1LabelClock, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_font(ui_S1LabelClock, &lv_font_montserrat_36, LV_PART_MAIN | LV_STATE_DEFAULT);
 
@@ -482,7 +491,7 @@ void ui_S1Main_screen_init(void)
     lv_obj_set_x(ui_Label2, 0);
     lv_obj_set_y(ui_Label2, -58);
     lv_obj_set_align(ui_Label2, LV_ALIGN_CENTER);
-    lv_label_set_text(ui_Label2, "0 rpm");
+    lv_label_set_text(ui_Label2, "? rpm");
     lv_obj_set_style_text_font(ui_Label2, &lv_font_montserrat_24, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     lv_obj_add_event_cb(ui_S1RollerStatMode, ui_event_S1RollerStatMode, LV_EVENT_ALL, NULL);
@@ -491,6 +500,7 @@ void ui_S1Main_screen_init(void)
     lv_obj_add_event_cb(ui_S1ImgIconWifi, ui_event_S1ImgIconWifi, LV_EVENT_ALL, NULL);
     lv_obj_add_event_cb(ui_S1PanelStat, ui_event_S1PanelStat, LV_EVENT_ALL, NULL);
     lv_obj_add_event_cb(ui_S1BarBatt, ui_event_S1BarBatt, LV_EVENT_ALL, NULL);
+    lv_obj_add_event_cb(ui_S1LabelClock, ui_event_S1LabelClock, LV_EVENT_ALL, NULL);
 
 }
 void ui_ScreenChart_screen_init(void)

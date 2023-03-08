@@ -48,6 +48,7 @@ extern lv_obj_t * ui_S1BarPowerMode;
 void ui_event_S1BarBatt(lv_event_t * e);
 extern lv_obj_t * ui_S1BarBatt;
 extern lv_obj_t * ui_S1BarBattLabel;
+void ui_event_S1LabelClock(lv_event_t * e);
 extern lv_obj_t * ui_S1LabelClock;
 extern lv_obj_t * ui_Label2;
 void ui_event_ScreenChart(lv_event_t * e);

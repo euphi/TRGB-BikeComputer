@@ -182,10 +182,10 @@ void BLEDevices::notifyCallbackCSC(BLERemoteCharacteristic *pBLERemoteCharacteri
 			crank_time_last_received = millis();
 			crank_time_last = crank_time;
 		} else {
-			if (millis()-crank_time_last_received > 600) {
+			if (millis()-crank_time_last_received > 1200) {
 				cadence = 0;
 			} else {
-				bclog.log(BCLogger::Log_Info, BCLogger::TAG_BLE, "Ignore 0 revolutions since last update is less than 600ms");
+				bclog.log(BCLogger::Log_Info, BCLogger::TAG_BLE, "Ignore 0 revolutions since last update is less than 1200ms");
 			}
 		}
 		crank_rev_last = crank_rev;

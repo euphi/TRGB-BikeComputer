@@ -9,6 +9,8 @@
 
 #include <Arduino.h>
 #include <Ticker.h>
+#include "freertos/semphr.h"
+
 
 class UIFacade {
 public:
@@ -21,6 +23,8 @@ public:
 	void updateCadence(uint16_t cad);	// cadence in revs per min
 	void updateHR(uint16_t hr);       	// heartbet in beats per min
 
+	void updateFast() {xSemaphoreGive(xUpdateFast);}
+
 	void updateIP(const String& ipStr);
 	void updateNavi(const String& navStr, uint32_t dist, uint8_t dirCode);
 
@@ -32,5 +36,13 @@ private:
 
 	Ticker updateTicker;
 	Ticker dataTicker;
+
+	//TODO: Use notify/poll mechanism instead of storing data
+	int16_t hr, cad;
+	float speed;
+	bool update = true;
+
+	SemaphoreHandle_t xUpdateFast;
+	SemaphoreHandle_t xUpdateSlow;
 
 };

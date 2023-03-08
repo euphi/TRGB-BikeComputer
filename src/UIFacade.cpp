@@ -11,14 +11,15 @@
 #include "ui/ui_WLAN.h"
 #include "ui/ui_Navi.h"
 #include "ui/ui_NaviCustFunc.h"
+#include "ui/ui_Settings.h"
 #include "ui/ui.h"
 #include "ui/ui_custFunc.h"
 
 #include <DateTime.h>
 
 UIFacade::UIFacade() {
-	// TODO Auto-generated constructor stub
-
+	xUpdateFast = xSemaphoreCreateBinary();
+	xUpdateSlow = xSemaphoreCreateBinary();
 }
 
 void UIFacade::initDisplay() {
@@ -37,6 +38,7 @@ void UIFacade::initDisplay() {
     ui_SWLAN_screen_init();
     ui_SWLAN_extra_init(); // QR Code
     ui_SNavi_screen_init();
+    ui_ScrSettings_screen_init();
 
 
     // .. add init of new screens here
@@ -47,12 +49,11 @@ void UIFacade::initDisplay() {
 		updateFLPower(batVoltage, batPerc, powerStage, CurBat, CurConsumer, ConsumerOn);
 	});
 	flparser.setStateCb([](FLClassicParser::EFLConnState cstate, uint32_t flag, int16_t timeout) {
-		ui_ScrFLUpdateFlags(flag);
+		//TODO: check thread safety ui_ScrFLUpdateFlags(flag);
 	});
 
     // 4. Load initial screen
     lv_disp_load_scr(ui_S1Main);
-    //lv_disp_load_scr(ui_ScreenFL); // TODO: this should not be the first screen
 
     // 5. Start Update ticker
     updateHandler();
@@ -72,7 +73,16 @@ void UIFacade::updateData() {
 
 // redraw screen
 void UIFacade::updateHandler() {
-	updateData();
+	//updateData();
+	if (update) {
+		ui_ScrMainUpdateSpeed(speed);
+		ui_ScrNaviUpdateSpeed(speed);
+		ui_ScrMainUpdateCadence(cad);
+		ui_ScrNaviUpdateCadence(cad);
+		ui_ScrMainUpdateHR(hr);
+		ui_ScrNaviUpdateHR(hr);
+		update = false;
+	}
 	uint32_t next_ms = lv_timer_handler();
 	updateTicker.once_ms(next_ms, +[](UIFacade* thisInstance) {thisInstance->updateHandler();}, this);
 }
@@ -90,25 +100,30 @@ void UIFacade::updateClock(const time_t now) {
 
 void UIFacade::updateStats() {
 	ui_ScrMainUpdateStats(stats.getAvg(Statistics::SUM_ESP_START, Statistics::AVG_DRIVE), stats.getSpeedMax(Statistics::SUM_ESP_START), stats.getDistance(Statistics::SUM_ESP_START));
-	//ui_ScrMainUpdateStats(14.3, 22.3, 1000);
 
 }
 
 // ---------------- external (public) data updater ----------------
 
-void UIFacade::updateSpeed(float speed) {
-	ui_ScrMainUpdateSpeed(speed);
-	ui_ScrNaviUpdateSpeed(speed);
+void UIFacade::updateSpeed(float _speed) {
+//	ui_ScrMainUpdateSpeed(speed);
+//	ui_ScrNaviUpdateSpeed(speed);
+	speed=_speed;
+	update = true;
 }
 
-void UIFacade::updateCadence(uint16_t cad) {
-	ui_ScrMainUpdateCadence(cad);
-	ui_ScrNaviUpdateCadence(cad);
+void UIFacade::updateCadence(uint16_t _cad) {
+//	ui_ScrMainUpdateCadence(cad);
+//	ui_ScrNaviUpdateCadence(cad);
+	cad=_cad;
+	update = true;
 }
 
-void UIFacade::updateHR(uint16_t hr) {
-	ui_ScrMainUpdateHR(hr);
-	ui_ScrNaviUpdateHR(hr);
+void UIFacade::updateHR(uint16_t _hr) {
+//	ui_ScrMainUpdateHR(hr);
+//	ui_ScrNaviUpdateHR(hr);
+	hr=_hr;
+	update = true;
 }
 
 void UIFacade::updateIP(const String& ipStr) {
@@ -135,7 +150,7 @@ void UIFacade::updateNavi(const String& navStr, uint32_t dist, uint8_t dirCode) 
 
 // ----------- Forumslader-specific -----------
 void UIFacade::updateFLPower(uint16_t batVoltage, uint8_t batPerc, int8_t powerStage, int16_t CurBat, int16_t CurConsumer, bool ConsumerOn) {
-	ui_ScrFLUpdatePower(batVoltage, batPerc, powerStage, CurBat, CurConsumer, ConsumerOn);
-	ui_ScrMainUpdatePower(batVoltage, batPerc, powerStage, CurBat, CurConsumer, ConsumerOn);
+//	ui_ScrFLUpdatePower(batVoltage, batPerc, powerStage, CurBat, CurConsumer, ConsumerOn);
+//	ui_ScrMainUpdatePower(batVoltage, batPerc, powerStage, CurBat, CurConsumer, ConsumerOn);
 }
 

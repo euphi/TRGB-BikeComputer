@@ -53,7 +53,6 @@ void Statistics::restoreStats() {
 void Statistics::autoStore() {
 	bclog.log(BCLogger::Log_Debug, BCLogger::TAG_STAT, "Store distance to preferences");
 	for (uint_fast8_t c = 0 ; c < SUM_ESP_START; c++) {
-		//StatPreferences[c].begin(SUM_TYPE_STRING[c], true);
 		bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_STAT, "Store distance to preferences %s", SUM_TYPE_STRING[c]);
 		if (!StatPreferences[c].putLong("START_DISTANCE", start_distance[c])) {
 			bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_STAT, "Can't save distance %s to preferences", SUM_TYPE_STRING[c]);
@@ -63,7 +62,6 @@ void Statistics::autoStore() {
 				bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_STAT, "Can't save time in %s for %s to preferences", PREF_TIME_STRING[d], SUM_TYPE_STRING[c]);
 			}
 		}
-		//StatPreferences[c].end();
 	}
 }
 
@@ -143,7 +141,6 @@ void Statistics::addDistance(uint16_t dist, ESummaryType type) {
 void Statistics::updateDistance(uint16_t _dist) {
 	distance = _dist;
 	if (start_distance[SUM_ESP_START] == 0) addDistance(distance, SUM_ESP_START);
-
 }
 
 uint32_t Statistics::getDistance(ESummaryType type) const {

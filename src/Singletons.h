@@ -23,3 +23,6 @@ extern FLClassicParser flparser;
 
 #include "UIFacade.h"
 extern UIFacade ui;
+
+#include "TRGBSuppport.h"
+extern TRGBSuppport trgb;

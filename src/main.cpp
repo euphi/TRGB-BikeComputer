@@ -5,9 +5,6 @@
 #include <WifiWebserver.h>
 WifiWebserver webserver;
 
-#include "TRGBSuppport.h"
-TRGBSuppport trgb;
-
 #include "BLEDevices.h"
 BLEDevices bleDevs;
 
@@ -15,6 +12,7 @@ BLEDevices bleDevs;
 #include <Ticker.h>
 Ticker tickerDispUpdate;		// Ticker  for slow display updates. Most data should be updated directly, so this can run not that often
 
+#include <task.h>
 
 Command cmdPing;
 String inputBuffer;
@@ -51,8 +49,6 @@ void setup() {
     stats.setup();
 	tickerDispUpdate.attach_ms(250, displayUpdate);
 	bleDevs.setup();
-	//bclog.replayFile("/BIKECOMP/20230304/N_144428.log");
-
 }
 
 

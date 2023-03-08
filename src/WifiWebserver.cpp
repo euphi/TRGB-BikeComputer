@@ -11,10 +11,6 @@
 #include <LittleFS.h>
 #include <AsyncElegantOTA.h>
 
-
-
-//FIXME: #include <UIFacade.h>
-
 //TODO: Read this from preferences
 const char* ntpServer = "pool.ntp.org";
 const char* ssid = "IA216oT";
@@ -114,7 +110,7 @@ void WifiWebserver::setupWebserver() {
 		htmlresponse.clear();
 		bclog.getAllFileLinks(htmlresponse);
 		Serial.println(htmlresponse);
-		request->send(200, "text/html", htmlresponse.c_str()); // TODO: Check if the webserver handles the String. It's on stack, so there may be a use-after-free issue here.
+		request->send(200, "text/html", htmlresponse.c_str());
 	});
 	// -- offer cleanup
 	server.on("/cleanup", HTTP_GET, [](AsyncWebServerRequest *request) {

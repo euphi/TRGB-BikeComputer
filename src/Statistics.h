@@ -70,12 +70,10 @@ private:
 	Ticker statStore;
 	Preferences StatPreferences[SUM_ESP_START];
 
-
 	void cycle();			// 500ms ticker
 	void autoStore();		// 5s ticker
 	void restoreStats();
 	void setCurDriveState(EDrivingState curDriveState);
-
 
 public:
 	Statistics();
@@ -89,19 +87,13 @@ public:
 	void setConnected(bool connected);
 
 	float getAvg(ESummaryType type, EAvgType avgtype) const;
-
 	int16_t getHr() const {return hr;}
-	//uint16_t getSpeed() {speed += (rand() % 21) - 10;return speed;}  // FIXME: make const again when simulation is removed
-	//int16_t getSpeed() {return speed;}  // FIXME: make const again when simulation is removed
-
 	const float getSpeedMax(ESummaryType type) const {
 		return speed_max[type];
 	}
-
 	uint32_t getDistance(ESummaryType type) const;
 
 	static const char* PREF_TIME_STRING[Statistics::EDrivingStateMax];
 	static const char* SUM_TYPE_STRING[Statistics::ESummaryTypeMax];
-
 };
 
