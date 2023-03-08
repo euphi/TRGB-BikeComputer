@@ -44,5 +44,7 @@ private:
 
 	SemaphoreHandle_t xUpdateFast;
 	SemaphoreHandle_t xUpdateSlow;
+	TaskHandle_t uiTaskHandle = NULL;
+
 
 };

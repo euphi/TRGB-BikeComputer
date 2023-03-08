@@ -17,8 +17,12 @@
 
 #include <DateTime.h>
 
+void startTaskUiUpdate(void*) {
+	ui.updateHandler();
+}
+
 UIFacade::UIFacade() {
-	xUpdateFast = xSemaphoreCreateBinary();
+    xUpdateFast = xSemaphoreCreateBinary();
 	xUpdateSlow = xSemaphoreCreateBinary();
 }
 
@@ -39,8 +43,6 @@ void UIFacade::initDisplay() {
     ui_SWLAN_extra_init(); // QR Code
     ui_SNavi_screen_init();
     ui_ScrSettings_screen_init();
-
-
     // .. add init of new screens here
 
 
@@ -55,8 +57,10 @@ void UIFacade::initDisplay() {
     // 4. Load initial screen
     lv_disp_load_scr(ui_S1Main);
 
-    // 5. Start Update ticker
-    updateHandler();
+    // 5. Start fast update Thread
+    xTaskCreate(startTaskUiUpdate, "UI Task", 4096, NULL, 20, &uiTaskHandle);	// High priority task for smooth display updates
+
+    // 6. Start Update ticker
     dataTicker.attach_ms(250, +[](UIFacade* thisInstance) {thisInstance->updateData();}, this);
 }
 
@@ -65,26 +69,45 @@ void UIFacade::initDisplay() {
 
 // data updater
 void UIFacade::updateData() {
-    time_t now;
-    time(&now);
-	updateClock(now);
-	updateStats();
+	xSemaphoreGive(xUpdateSlow);
 }
+
+
+// Internal task handler
 
 // redraw screen
 void UIFacade::updateHandler() {
+
 	//updateData();
-	if (update) {
-		ui_ScrMainUpdateSpeed(speed);
-		ui_ScrNaviUpdateSpeed(speed);
-		ui_ScrMainUpdateCadence(cad);
-		ui_ScrNaviUpdateCadence(cad);
-		ui_ScrMainUpdateHR(hr);
-		ui_ScrNaviUpdateHR(hr);
-		update = false;
+	unsigned long next_millis = 0;
+	while (true) {
+		uint32_t next_ms = lv_timer_handler();	// --> call lvgl main loop
+		unsigned long mil_start = millis();
+		// Fast update - use this only for data that should be shown with no (further) delay
+		if (xSemaphoreTake(xUpdateFast, static_cast<TickType_t>(0) ) == pdTRUE) {		// Semaphore is used for message "please update" only. So there is no reason to wait.
+			ui_ScrMainUpdateSpeed(speed);
+			ui_ScrNaviUpdateSpeed(speed);
+			ui_ScrMainUpdateCadence(cad);
+			ui_ScrNaviUpdateCadence(cad);
+			ui_ScrMainUpdateHR(hr);
+			ui_ScrNaviUpdateHR(hr);
+		}
+		// Slow update is used for more expensive updates
+		if (xSemaphoreTake(xUpdateSlow, static_cast<TickType_t>(0) ) == pdTRUE) {		// Semaphore is used for message "please update" only. So there is no reason to wait.
+			updateStats();
+		}
+		if (millis() > next_millis) {
+			timeval tv;
+			gettimeofday(&tv, NULL);
+			updateClock(tv.tv_sec);
+			next_millis = millis() + (1005 - ( (tv.tv_usec / 1000) % 1000) ) ;		// Update clock only 5ms after full second
+			//TRACE:printf("millis: %d\tclock:%d - %d -> %d\n", millis(), tv.tv_sec, tv.tv_usec, next_millis);
+		}
+
+		next_ms -= (millis()-mil_start);
+		if (next_ms > 100) next_ms = 100; // minimum refresh rate + catches overflow
+		vTaskDelay(next_ms / portTICK_PERIOD_MS);
 	}
-	uint32_t next_ms = lv_timer_handler();
-	updateTicker.once_ms(next_ms, +[](UIFacade* thisInstance) {thisInstance->updateHandler();}, this);
 }
 
 
@@ -127,7 +150,7 @@ void UIFacade::updateHR(uint16_t _hr) {
 }
 
 void UIFacade::updateIP(const String& ipStr) {
-	ui_SWLANUpdateIP(ipStr.c_str());
+	//ui_SWLANUpdateIP(ipStr.c_str());
 }
 
 void UIFacade::updateNavi(const String& navStr, uint32_t dist, uint8_t dirCode) {
@@ -144,7 +167,7 @@ void UIFacade::updateNavi(const String& navStr, uint32_t dist, uint8_t dirCode) 
 	if (distAnn && dist > 250) {
 		distAnn = false;
 	}
-	ui_ScrNaviUpdateNav(navStr.c_str(), dist, dirCode);
+	//ui_ScrNaviUpdateNav(navStr.c_str(), dist, dirCode);
 
 }
 
