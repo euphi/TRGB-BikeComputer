@@ -7,7 +7,7 @@
 
 #include <UIFacade.h>
 #include "Singletons.h"
-#include "ui/ui_FL.h"
+//#include "ui/ui_FL.h"
 #include "ui/ui_WLAN.h"
 #include "ui/ui_Navi.h"
 #include "ui/ui_NaviCustFunc.h"
@@ -24,6 +24,7 @@ void startTaskUiUpdate(void*) {
 UIFacade::UIFacade() {
     xUpdateFast = xSemaphoreCreateBinary();
 	xUpdateSlow = xSemaphoreCreateBinary();
+	xUIDrawMutex = xSemaphoreCreateMutex();
 }
 
 void UIFacade::initDisplay() {
@@ -36,23 +37,14 @@ void UIFacade::initDisplay() {
 
     // 2. Init all screens
     ui_S1Main_screen_init();
-    //ui_ScreenWifi_screen_init();
     ui_ScreenChart_screen_init();
-    ui_ScreenFL_screen_init();
     ui_SWLAN_screen_init();
     ui_SWLAN_extra_init(); // QR Code
     ui_SNavi_screen_init();
     ui_ScrSettings_screen_init();
     // .. add init of new screens here
 
-
-    // Glue oberserver/listeners to data model
-	flparser.setBatCb([this](uint16_t batVoltage, uint8_t batPerc, int8_t powerStage, int16_t CurBat, int16_t CurConsumer, bool ConsumerOn) {
-		updateFLPower(batVoltage, batPerc, powerStage, CurBat, CurConsumer, ConsumerOn);
-	});
-	flparser.setStateCb([](FLClassicParser::EFLConnState cstate, uint32_t flag, int16_t timeout) {
-		//TODO: check thread safety ui_ScrFLUpdateFlags(flag);
-	});
+    uifl.init();
 
     // 4. Load initial screen
     lv_disp_load_scr(ui_S1Main);
@@ -75,14 +67,27 @@ void UIFacade::updateData() {
 
 // Internal task handler
 
-// redraw screen
+/* updateHandler(): Update and Redraw Screens
+ *
+ * lvgl is not thread-safe, so semaphores and mutexes must be used here.
+ *
+ * There are 3 different update mechanism;
+ *
+ * "quick" - signaled by binary semaphore xUpdateFast
+ * 		   - this redraws all quickly changing data like speed, cadence, heart rate
+ *
+ * "slow"  - signaled by binary semaphore xUpdateSlow.
+ *         - it isn't that slow: a time is used to give the semaphore every 250ms (4 Hz)
+ *         - here, data that slowly changes is polled from data model. (`Statistics stats`)
+ *
+ * "direct" - data that is rarely updated may directly update lvgl objects. This MUST be not done during refresh, so a mutex (xUIDrawMutex) is used to protect refresh.
+ *          - this may block refreshing and thus may lead to less smooth display animations or even some flickering. So use only for rarely updated labels (like IP adress).
+ */
 void UIFacade::updateHandler() {
 
 	//updateData();
 	unsigned long next_millis = 0;
 	while (true) {
-		uint32_t next_ms = lv_timer_handler();	// --> call lvgl main loop
-		unsigned long mil_start = millis();
 		// Fast update - use this only for data that should be shown with no (further) delay
 		if (xSemaphoreTake(xUpdateFast, static_cast<TickType_t>(0) ) == pdTRUE) {		// Semaphore is used for message "please update" only. So there is no reason to wait.
 			ui_ScrMainUpdateSpeed(speed);
@@ -92,6 +97,17 @@ void UIFacade::updateHandler() {
 			ui_ScrMainUpdateHR(hr);
 			ui_ScrNaviUpdateHR(hr);
 		}
+
+		int32_t next_ms = 20; // wait 20ms if Mutex can't be taken within 100ms
+		if (xSemaphoreTake(xUIDrawMutex, static_cast<TickType_t>(100 / portTICK_PERIOD_MS)) == pdTRUE) {
+			next_ms = lv_timer_handler();	// --> call lvgl main loop
+			xSemaphoreGive(xUIDrawMutex);
+		} else {
+			//TaskHandle_t t = xSemaphoreGetMutexHolder(xUIDrawMutex);
+			printf("%d: UI draw task", millis());
+		}
+
+		unsigned long mil_start = millis();
 		// Slow update is used for more expensive updates
 		if (xSemaphoreTake(xUpdateSlow, static_cast<TickType_t>(0) ) == pdTRUE) {		// Semaphore is used for message "please update" only. So there is no reason to wait.
 			updateStats();
@@ -102,10 +118,13 @@ void UIFacade::updateHandler() {
 			updateClock(tv.tv_sec);
 			next_millis = millis() + (1005 - ( (tv.tv_usec / 1000) % 1000) ) ;		// Update clock only 5ms after full second
 			//TRACE:printf("millis: %d\tclock:%d - %d -> %d\n", millis(), tv.tv_sec, tv.tv_usec, next_millis);
+
+			uifl.redraw();	//Redraw FL screens
 		}
 
-		next_ms -= (millis()-mil_start);
-		if (next_ms > 100) next_ms = 100; // minimum refresh rate + catches overflow
+		next_ms -= (millis() - mil_start);
+		if (next_ms < 0) next_ms = 0;
+		if (next_ms > 100) next_ms = 100; // minimum refresh rate 10Hz
 		vTaskDelay(next_ms / portTICK_PERIOD_MS);
 	}
 }
@@ -118,7 +137,8 @@ void UIFacade::updateClock(const time_t now) {
 	String strDate = DateFormatter::format(DateFormatter::DATE_ONLY,now);
 
 	ui_ScrMainUpdateClock(strClock.c_str(), strDate.c_str());
-	ui_ScrFLUpdateClock(strClock.c_str(), strDate.c_str());
+	uifl.updateClock(strClock, strDate);
+
 }
 
 void UIFacade::updateStats() {
@@ -129,28 +149,27 @@ void UIFacade::updateStats() {
 // ---------------- external (public) data updater ----------------
 
 void UIFacade::updateSpeed(float _speed) {
-//	ui_ScrMainUpdateSpeed(speed);
-//	ui_ScrNaviUpdateSpeed(speed);
 	speed=_speed;
-	update = true;
+	xSemaphoreGive(xUpdateFast);
 }
 
 void UIFacade::updateCadence(uint16_t _cad) {
-//	ui_ScrMainUpdateCadence(cad);
-//	ui_ScrNaviUpdateCadence(cad);
 	cad=_cad;
-	update = true;
+	xSemaphoreGive(xUpdateFast);
 }
 
 void UIFacade::updateHR(uint16_t _hr) {
-//	ui_ScrMainUpdateHR(hr);
-//	ui_ScrNaviUpdateHR(hr);
 	hr=_hr;
-	update = true;
+	xSemaphoreGive(xUpdateFast);
 }
 
 void UIFacade::updateIP(const String& ipStr) {
-	//ui_SWLANUpdateIP(ipStr.c_str());
+	if (xSemaphoreTake(xUIDrawMutex, 500 / portTICK_PERIOD_MS) == pdTRUE) {
+		ui_SWLANUpdateIP(ipStr.c_str());
+		xSemaphoreGive(xUIDrawMutex);
+	} else {
+		bclog.log(BCLogger::Log_Error, BCLogger::TAG_OP, "Update IP blocked by mutex");
+	}
 }
 
 void UIFacade::updateNavi(const String& navStr, uint32_t dist, uint8_t dirCode) {

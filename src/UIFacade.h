@@ -11,6 +11,7 @@
 #include <Ticker.h>
 #include "freertos/semphr.h"
 
+#include "ui/uiFLmodel.h"
 
 class UIFacade {
 public:
@@ -34,17 +35,21 @@ private:
 	void updateClock(const time_t now);
 	void updateStats();
 
+	UiFLModel uifl;
+
 	Ticker updateTicker;
 	Ticker dataTicker;
 
 	//TODO: Use notify/poll mechanism instead of storing data
 	int16_t hr, cad;
 	float speed;
-	bool update = true;
 
+	// Use (binary) Semaphores as messaging mechanism
+	//    give: Signal an information (please update)
+	//    take: receive signal
 	SemaphoreHandle_t xUpdateFast;
 	SemaphoreHandle_t xUpdateSlow;
+	SemaphoreHandle_t xUIDrawMutex;
 	TaskHandle_t uiTaskHandle = NULL;
-
 
 };

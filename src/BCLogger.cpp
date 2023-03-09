@@ -90,15 +90,19 @@ void BCLogger::setup() {
 	replayLog = cli.addCmd("replay", cmdCB);
 	replayLog.addPositionalArgument("path");
 
-	fileFlusher.attach(5, +[](BCLogger* thisInstance){thisInstance->flushAllFiles();}, this);
+	xTaskCreate(+[](void* thisInstance){((BCLogger*)thisInstance)->flushAllFiles();}, "FlusherTask", 2048, this, 5, &flushTaskHandle);
 }
 
 void BCLogger::flushAllFiles() {  // Ticker all 5 seconds
-	if (fdebug) fdebug.flush();
-	yield();
-	if (fnmea) fnmea.flush();
-	yield();
-	if (fdata) fdata.flush();
+	do {  // FlusherTask, Prio 5
+		bclog.log(Log_Debug, TAG_SD, "Flush");
+		if (fdebug) fdebug.flush();
+		yield();
+		if (fnmea) fnmea.flush();
+		yield();
+		if (fdata) fdata.flush();
+		vTaskDelay(5000 / portTICK_PERIOD_MS);
+	} while (true);
 }
 
 void BCLogger::printLoglevels() {

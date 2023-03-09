@@ -25,10 +25,7 @@ public:
 	//Types
 	typedef std::function<void(float speed, float distance)> FLSpeedDistUpdateHandler;
 	typedef std::function<void(uint16_t batVoltage, uint8_t batPerc, int8_t powerStage, int16_t CurBat, int16_t CurConsumer, bool ConsumerOn)> FLBatUpdateHandler;
-
-
 	typedef std::function<void(uint16_t temperature, uint16_t pressure, uint16_t height, uint16_t gradient)> FLEnvUpdateHandler;
-
 	typedef std::function<void(EFLConnState cstate, uint32_t flags, int16_t timeout)> FLStateUpdateHandler;
 
 	//Methods
@@ -37,10 +34,11 @@ public:
 	void setConnState(EFLConnState state);
 	void updateFromString(const String& flStr);
 
+
 	void setBatCb(const FLBatUpdateHandler &batCb) {batCB = batCb;}
-	void setEnvCb(const FLEnvUpdateHandler &envCb) {envCB = envCb;}
-	void setSpeedCb(const FLSpeedDistUpdateHandler &speedCb) {speedCB = speedCb;}
 	void setStateCb(const FLStateUpdateHandler &stateCb) {stateCB = stateCb;}
+//	void setEnvCb(const FLEnvUpdateHandler &envCb) {envCB = envCb;}
+//	void setSpeedCb(const FLSpeedDistUpdateHandler &speedCb) {speedCB = speedCb;}
 
 private:
 	// Fields

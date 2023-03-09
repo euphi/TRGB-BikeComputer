@@ -68,8 +68,6 @@ private:
 	void storeLoglevel(LogType level, LogTag tag, bool file, bool serial);
 	void printLoglevels();
 
-	Ticker fileFlusher;
-
 	Ticker replayTicker;
 	File fileReplay;
 	uint32_t timeLasteLine = 0;
@@ -77,6 +75,8 @@ private:
 	Command logcmd;
 	Command logShow;
 	Command replayLog;
+
+	TaskHandle_t flushTaskHandle = nullptr;
 
 
 public:
