@@ -7,6 +7,9 @@ A bike computer based on [LilyGO T-RGB](https://www.lilygo.cc/products/t-rgb):
 - SD Card
 - Battery connector incl. charging logic
 
+## Build
+
+Compile and upload with platformio. 
 
 ## Prio 0 Features - work in progress or already working
 
