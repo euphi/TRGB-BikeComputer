@@ -43,6 +43,17 @@ void BCLogger::setup() {
 	logPrefs[OUT_File].end();
 	logPrefs[OUT_Serial].end();
 
+	logcmd = cli.addCmd("loglevel", cmdCB);
+	logcmd.addPositionalArgument("logtag");
+	logcmd.addPositionalArgument("loglevel");
+	logcmd.addFlagArgument("serial");
+	logcmd.addFlagArgument("file");
+
+	logShow = cli.addCmd("showloglevel", cmdCB);
+
+	replayLog = cli.addCmd("replay", cmdCB);
+	replayLog.addPositionalArgument("path");
+
 	uint8_t cardType = SD_MMC.cardType();
 	if (cardType == CARD_NONE) {
 		log(Log_Warn, TAG_SD, "No SD card attached!");
@@ -79,18 +90,8 @@ void BCLogger::setup() {
 
 	logf(Log_Info, TAG_SD, "New file name: %s\n", file_data.c_str());
 
-	logcmd = cli.addCmd("loglevel", cmdCB);
-	logcmd.addPositionalArgument("logtag");
-	logcmd.addPositionalArgument("loglevel");
-	logcmd.addFlagArgument("serial");
-	logcmd.addFlagArgument("file");
 
-	logShow = cli.addCmd("showloglevel", cmdCB);
-
-	replayLog = cli.addCmd("replay", cmdCB);
-	replayLog.addPositionalArgument("path");
-
-	xTaskCreate(+[](void* thisInstance){((BCLogger*)thisInstance)->flushAllFiles();}, "FlusherTask", 2048, this, 5, &flushTaskHandle);
+	xTaskCreate(+[](void* thisInstance){((BCLogger*)thisInstance)->flushAllFiles();}, "FlusherTask", 3072, this, 5, &flushTaskHandle);
 }
 
 void BCLogger::flushAllFiles() {  // Ticker all 5 seconds

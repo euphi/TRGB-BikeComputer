@@ -13,8 +13,8 @@
 #include "Singletons.h"
 
 // HRM, CSC, FL, KomootApp
-const BLEUUID BLEDevices::serviceUUID[DEV_COUNT] = { BLEUUID((uint16_t)0x180D), BLEUUID((uint16_t)0x1816), BLEUUID("e62efa94-afa8-11ed-afa1-0242ac120002"), BLEUUID("71C1E128-D92F-4FA8-A2B2-0F171DB3436C")};
-const BLEUUID BLEDevices::charUUID[DEV_COUNT] = { BLEUUID((uint16_t)0x2A37), BLEUUID((uint16_t)0x2A5B), BLEUUID("e62efe40-afa8-11ed-afa1-0242ac120002"), BLEUUID("503DD605-9BCB-4F6E-B235-270A57483026")};
+const BLEUUID BLEDevices::serviceUUID[DEV_COUNT] = { BLEUUID((uint16_t)0x180D), BLEUUID((uint16_t)0x1816), BLEUUID((uint16_t)0x1816), BLEUUID("e62efa94-afa8-11ed-afa1-0242ac120002"), BLEUUID("71C1E128-D92F-4FA8-A2B2-0F171DB3436C")};
+const BLEUUID BLEDevices::charUUID[DEV_COUNT] = { BLEUUID((uint16_t)0x2A37), BLEUUID((uint16_t)0x2A5B), BLEUUID((uint16_t)0x2A5B), BLEUUID("e62efe40-afa8-11ed-afa1-0242ac120002"), BLEUUID("503DD605-9BCB-4F6E-B235-270A57483026")};
 
 const char* BLEDevices::DEV_EMOJI[DEV_COUNT] = {"❤️","🚴","⚡", "🧭"};
 
@@ -31,10 +31,13 @@ void BLEDevices::onResult(BLEAdvertisedDevice advertisedDevice) {
 	if (bclog.checkLogLevel(BCLogger::Log_Debug, BCLogger::TAG_BLE)) {
 		bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "🔵 Advertised Device: %s ", advertisedDevice.toString().c_str());
 		bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "\tServiceDataCount: %d ServiceDataUUIDCount: %d ServiceUUIDCount: %d", advertisedDevice.getServiceDataCount(), advertisedDevice.getServiceDataUUIDCount(), advertisedDevice.getServiceUUIDCount());
-		for (uint8_t c=0; c < advertisedDevice.getServiceDataCount(); c++) {
-			std::string servStr = advertisedDevice.getServiceData(c);
-			Serial.printf("\tServiceData: %s", servStr.c_str());
-		}
+
+		//TRACE: (ServiceData may contain binary information)
+		//		for (uint8_t c=0; c < advertisedDevice.getServiceDataCount(); c++) {
+		//			std::string servStr = advertisedDevice.getServiceData(c);
+		//			Serial.printf("\tServiceData: %s", servStr.c_str());
+		//		}
+
 		for (uint8_t c=0; c < advertisedDevice.getServiceDataUUIDCount(); c++) {
 			BLEUUID uuid = advertisedDevice.getServiceDataUUID(c);
 			bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "\tServiceData-UUID: %s", uuid.toString().c_str());
@@ -42,11 +45,20 @@ void BLEDevices::onResult(BLEAdvertisedDevice advertisedDevice) {
 	}
 	for (uint8_t c=0; c < advertisedDevice.getServiceUUIDCount(); c++) {
 		BLEUUID uuid = advertisedDevice.getServiceUUID(c);
-		if (uuid.equals(serviceUUID[DEV_CSC])) {
-			bclog.log(BCLogger::Log_Info, BCLogger::TAG_BLE, "\t🚴 Found CSC Device");
-			pServerAddress[DEV_CSC] = new BLEAddress(advertisedDevice.getAddress());
-			doConnect[DEV_CSC] = true;
-			connState[DEV_CSC] = CONN_ADVERTISED;
+		if (uuid.equals(serviceUUID[DEV_CSC_1])) {
+			EDevType dtype = DEV_CSC_1;
+			if (connState[DEV_CSC_1] == CONN_LOST || connState[DEV_CSC_1] == CONN_DEV_NOTFOUND) {
+				dtype = DEV_CSC_1;
+			} else if (connState[DEV_CSC_2] == CONN_LOST || connState[DEV_CSC_2] == CONN_DEV_NOTFOUND) {
+				dtype = DEV_CSC_2;
+			} else {
+				bclog.log(BCLogger::Log_Warn, BCLogger::TAG_BLE, "\t🚴 More than two Cycling Speed and Cadence (CSC) devices advertised - ignoring");
+				break; // out of for loop
+			}
+			bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "\t🚴 Found CSC Device %d", dtype);
+			pServerAddress[dtype] = new BLEAddress(advertisedDevice.getAddress());
+			doConnect[dtype] = true;
+			connState[dtype] = CONN_ADVERTISED;
 		}
 		if (uuid.equals(serviceUUID[DEV_HRM])) {
 			bclog.log(BCLogger::Log_Info, BCLogger::TAG_BLE, "\t❤️ Found HRM Device");
@@ -83,7 +95,7 @@ bool BLEDevices::connectToServer(EDevType ctype) {
 		bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "Client already exists for %s %d - reusing it", DEV_EMOJI[ctype], ctype);
 	}
 	bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "%s Connecting to address %s", DEV_EMOJI[ctype], pServerAddress[ctype]->toString().c_str());
-	if (pClient[ctype]->connect(*pServerAddress[ctype], (ctype==DEV_CSC || ctype==DEV_KOMOOT) ? BLE_ADDR_TYPE_RANDOM : BLE_ADDR_TYPE_PUBLIC)) {
+	if (pClient[ctype]->connect(*pServerAddress[ctype], (ctype==DEV_CSC_1 || ctype==DEV_CSC_2 || ctype==DEV_KOMOOT) ? BLE_ADDR_TYPE_RANDOM : BLE_ADDR_TYPE_PUBLIC)) {
 		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "Client %s connected", DEV_EMOJI[ctype]);
 		connState[ctype] = CONN_CONNECTED;
 	} else {
@@ -150,8 +162,9 @@ void BLEDevices::setup() {
 }
 
 void BLEDevices::notifyCallbackCSC(BLERemoteCharacteristic *pBLERemoteCharacteristic, uint8_t *pData, size_t length, bool isNotify, EDevType ctype) {
+	uint16_t crank_rev, crank_time, speed_time, hr,  delta;
 	uint8_t flags;
-	uint16_t crank_rev, crank_time, hr,  delta;
+	bool isSpeed;
 	switch (ctype) {
 	case DEV_FL:
 		bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_FL, "Received %d bytes:\n\t%s", length, pData);
@@ -162,39 +175,66 @@ void BLEDevices::notifyCallbackCSC(BLERemoteCharacteristic *pBLERemoteCharacteri
 			bufferFL.clear();
 		}
 		break;
-	case DEV_CSC:
+	case DEV_CSC_1:
+	case DEV_CSC_2:
 
 		bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "Received from CSC %d bytes", length);
 //		for (uint8_t c = 0; c<length; c++) {Serial.print(*(pData+c), 16);}
-		if (length < 1) {
-			return;
-		}
 		flags = pData[0];
 		bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, " - Flag %x: Wheel: [%c] Crank: [%c]", flags, (flags & 1) ? 'x':' ', (flags & 2) ? 'x':' ');
-		if (length < 5) return;
-		crank_rev = (pData[2] << 8 )+ pData[1];		// LSB first
-		crank_time = (pData[4] << 8 )+ pData[3];	// LSB first
-		delta = crank_time - crank_time_last;
-		bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE,"%d revs at %d. Delta: %d at %ul", crank_rev, crank_time, (crank_rev - crank_rev_last), delta);
-		if (delta > 0) {
-			uint32_t rev_delta = (crank_rev - crank_rev_last) * 1024 * 60; // 32bit-calculation necessary for rev_delta >= 2.
-			cadence = rev_delta / delta;
-			crank_time_last_received = millis();
-			crank_time_last = crank_time;
-		} else {
-			if (millis()-crank_time_last_received > 1200) {
-				cadence = 0;
-			} else {
-				bclog.log(BCLogger::Log_Info, BCLogger::TAG_BLE, "Ignore 0 revolutions since last update is less than 1200ms");
-			}
+		isSpeed = (flags & 1);
+		if ((!isSpeed && !(flags & 2)) || (length < (5 + (isSpeed?2:0)))) {		// 1 + 4 bytes for cadence, 1 + 6 bytes for speed
+			bclog.log(BCLogger::Log_Error, BCLogger::TAG_BLE, "Unknown flags or message to small from CSC device");
+			return;
 		}
-		crank_rev_last = crank_rev;
-		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "Cadence %d revs per minute", cadence);
-		stats.addCadence(cadence);
+		if (isSpeed) {
+			uint32_t speed_rev = (pData[4] << 24) + (pData[3] << 16) + (pData[2] << 8) + pData[1];		// LSB first
+			speed_time = (pData[6] << 8) + pData[5];	// LSB first
+			delta = speed_time - speed_time_last;
+			if (speed_rev_last == 0) speed_rev_last = speed_rev;		// if this is the first received message, set the "last known" value to current value -> speed = 0.0.
+			bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "%d revs at %d. Delta: %d at %d", speed_rev, speed_time, (speed_rev - speed_rev_last), delta);
+			if (delta > 0) {
+				uint32_t speed_delta = (speed_rev - speed_rev_last);
+				// km/h     1           m  * tick/s * (km/h / m/s)  / tick
+				speed = (speed_delta * 2.155 * 1024 * 3.6 ) / delta;		// TODO: Make circummeter configurable
+				speed_time_last_received = millis();
+				speed_time_last = speed_time;
+			} else {
+				if (millis() - speed_time_last_received > 1200) {
+					speed = 0.0;
+				} else {
+					bclog.log(BCLogger::Log_Info, BCLogger::TAG_BLE, "Ignore 0 revolutions (speed) since last update is less than 1200ms");
+				}
+			}
+			speed_rev_last = speed_rev;
+			bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "Speed %.2f km/h", speed);
+			stats.addSpeed(speed);
+		} else {
+
+			crank_rev = (pData[2] << 8) + pData[1];		// LSB first
+			crank_time = (pData[4] << 8) + pData[3];	// LSB first
+			delta = crank_time - crank_time_last;
+			if (crank_rev_last == 0) crank_rev_last = crank_rev;		// if this is the first received message, set the "last known" value to current value -> cadence = 0.
+			bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "%d revs at %d. Delta: %d at %ul", crank_rev, crank_time, (crank_rev - crank_rev_last), delta);
+			if (delta > 0) {
+				uint32_t rev_delta = (crank_rev - crank_rev_last) * 1024 * 60; // 32bit-calculation necessary for rev_delta >= 2.
+				cadence = rev_delta / delta;
+				crank_time_last_received = millis();
+				crank_time_last = crank_time;
+			} else {
+				if (millis() - crank_time_last_received > 1200) {
+					cadence = 0;
+				} else {
+					bclog.log(BCLogger::Log_Info, BCLogger::TAG_BLE, "Ignore 0 revolutions since last update is less than 1200ms");
+				}
+			}
+			crank_rev_last = crank_rev;
+			bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "Cadence %d revs per minute", cadence);
+			stats.addCadence(cadence);
+		}
 		break;
 	case DEV_HRM:
-		if (length < 2)
-			return;
+		if (length < 2)	return;
 		flags = pData[0];
 		hr = pData[1];
 		bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "HR Data with length %ul. HR 8bit: %x FLAG: %X", length,	hr, flags);
@@ -250,7 +290,8 @@ void BLEDevices::connCheckLoop() {
 			case DEV_HRM:
 				stats.addHR(-1);
 				break;
-			case DEV_CSC:
+			case DEV_CSC_1:		//FIXME: distinguish beetween speed and cadence
+			case DEV_CSC_2:
 				stats.addCadence(-1);
 				break;
 			}

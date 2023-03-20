@@ -18,7 +18,8 @@ class BLEDevices: public BLEAdvertisedDeviceCallbacks {
 
 typedef enum {
 	DEV_HRM,
-	DEV_CSC,
+	DEV_CSC_1,
+	DEV_CSC_2,
 	DEV_FL,
 	DEV_KOMOOT,
 	DEV_COUNT
@@ -48,9 +49,11 @@ private:
 	String bufferFL;
 
     // CSC related
-	uint16_t crank_rev_last, crank_time_last = 0;
-	time_t crank_time_last_received = 0;
+	uint32_t speed_rev_last = 0;
+	uint16_t crank_rev_last, crank_time_last, speed_time_last = 0;
+	time_t crank_time_last_received, speed_time_last_received = 0;
 	uint16_t cadence = 0;
+	float speed;
 
 	uint8_t reconnCount = 0;
 

@@ -7,7 +7,6 @@
 
 #include <UIFacade.h>
 #include "Singletons.h"
-//#include "ui/ui_FL.h"
 #include "ui/ui_WLAN.h"
 #include "ui/ui_Navi.h"
 #include "ui/ui_NaviCustFunc.h"
@@ -104,7 +103,7 @@ void UIFacade::updateHandler() {
 			xSemaphoreGive(xUIDrawMutex);
 		} else {
 			//TaskHandle_t t = xSemaphoreGetMutexHolder(xUIDrawMutex);
-			printf("%d: UI draw task", millis());
+			printf("%d: UI draw task blocked", millis());
 		}
 
 		unsigned long mil_start = millis();
@@ -188,11 +187,5 @@ void UIFacade::updateNavi(const String& navStr, uint32_t dist, uint8_t dirCode) 
 	}
 	//ui_ScrNaviUpdateNav(navStr.c_str(), dist, dirCode);
 
-}
-
-// ----------- Forumslader-specific -----------
-void UIFacade::updateFLPower(uint16_t batVoltage, uint8_t batPerc, int8_t powerStage, int16_t CurBat, int16_t CurConsumer, bool ConsumerOn) {
-//	ui_ScrFLUpdatePower(batVoltage, batPerc, powerStage, CurBat, CurConsumer, ConsumerOn);
-//	ui_ScrMainUpdatePower(batVoltage, batPerc, powerStage, CurBat, CurConsumer, ConsumerOn);
 }
 

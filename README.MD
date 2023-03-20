@@ -11,10 +11,10 @@ A bike computer based on [LilyGO T-RGB](https://www.lilygo.cc/products/t-rgb):
 ## Prio 0 Features - work in progress or already working
 
 ### BLE Devices
-- [X] Connect to Cadence
+- [X] Connect to CSC Cadence
 - [X] Connect to heart rate
 - [X] Connect to komoot App
-- [ ] connect to speed (Sensor delivery pending)
+- [X] connect to CSC speed
 - [X] connect to Forumslader Classic via my [BLE gateway](https://github.com/euphi/ESP32_FLClassic2BLE)
 
 ### Logging
@@ -62,6 +62,8 @@ A bike computer based on [LilyGO T-RGB](https://www.lilygo.cc/products/t-rgb):
 - [ ] Animations on display (e.g driving state, heart rate)
 - [ ] Configuration via Display (wheel diameter etc.)
 - [ ] manage BLE devices via display
+- [ ] improve handling of CSC devices: "Lock" connected devices and only allow adding new devices on demand. Also check if max 1 speed and max 1 cadence is connected
+- [ ] read battery state of BLE devices
 - [ ] add additional sensors (barometer/temperature, gyro/inertial)
 
 
