@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   width="192"
+   height="192"
+   viewBox="0 0 50.799999 50.800001"
+   version="1.1"
+   id="svg3449"
+   inkscape:version="1.1.2 (0a00cf5339, 2022-02-04)"
+   sodipodi:docname="nav_reserved.svg"
+   inkscape:export-filename="/home/ian/Downloads/finish.png"
+   inkscape:export-xdpi="96"
+   inkscape:export-ydpi="96"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview3451"
+     pagecolor="#ffffff"
+     bordercolor="#999999"
+     borderopacity="1"
+     inkscape:pageshadow="0"
+     inkscape:pageopacity="0"
+     inkscape:pagecheckerboard="0"
+     inkscape:document-units="mm"
+     showgrid="false"
+     units="px"
+     showguides="true"
+     inkscape:guide-bbox="true"
+     inkscape:zoom="3.7950337"
+     inkscape:cx="-14.756127"
+     inkscape:cy="81.685705"
+     inkscape:window-width="3840"
+     inkscape:window-height="2095"
+     inkscape:window-x="1920"
+     inkscape:window-y="0"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="layer1">
+    <sodipodi:guide
+       position="25.4,0"
+       orientation="-1,0"
+       id="guide3843"
+       inkscape:label=""
+       inkscape:locked="false"
+       inkscape:color="rgb(0,0,255)" />
+    <sodipodi:guide
+       position="50.8,25.4"
+       orientation="0,1"
+       id="guide3845"
+       inkscape:label=""
+       inkscape:locked="false"
+       inkscape:color="rgb(0,0,255)" />
+    <sodipodi:guide
+       position="25.4,25.4"
+       orientation="0.70710678,0.70710678"
+       id="guide4136"
+       inkscape:label=""
+       inkscape:locked="false"
+       inkscape:color="rgb(0,0,255)" />
+    <sodipodi:guide
+       position="25.4,25.4"
+       orientation="-0.70710678,0.70710678"
+       id="guide4556"
+       inkscape:label=""
+       inkscape:locked="false"
+       inkscape:color="rgb(0,0,255)" />
+  </sodipodi:namedview>
+  <defs
+     id="defs3446">
+    <marker
+       style="overflow:visible"
+       id="TriangleOutS"
+       refX="0.0"
+       refY="0.0"
+       orient="auto"
+       inkscape:stockid="TriangleOutS"
+       inkscape:isstock="true">
+      <path
+         transform="scale(0.2)"
+         style="fill-rule:evenodd;fill:context-stroke;stroke:context-stroke;stroke-width:1.0pt"
+         d="M 5.77,0.0 L -2.88,5.0 L -2.88,-5.0 L 5.77,0.0 z "
+         id="path2537" />
+    </marker>
+    <marker
+       style="overflow:visible"
+       id="marker3778"
+       refX="0.0"
+       refY="0.0"
+       orient="auto"
+       inkscape:stockid="TriangleOutL"
+       inkscape:isstock="true">
+      <path
+         transform="scale(0.8)"
+         style="fill-rule:evenodd;fill:context-stroke;stroke:context-stroke;stroke-width:1.0pt"
+         d="M 5.77,0.0 L -2.88,5.0 L -2.88,-5.0 L 5.77,0.0 z "
+         id="path3776" />
+    </marker>
+    <marker
+       style="overflow:visible"
+       id="TriangleOutL"
+       refX="0.0"
+       refY="0.0"
+       orient="auto"
+       inkscape:stockid="TriangleOutL"
+       inkscape:isstock="true">
+      <path
+         transform="scale(0.8)"
+         style="fill-rule:evenodd;fill:context-stroke;stroke:context-stroke;stroke-width:1.0pt"
+         d="M 5.77,0.0 L -2.88,5.0 L -2.88,-5.0 L 5.77,0.0 z "
+         id="path2531" />
+    </marker>
+    <marker
+       style="overflow:visible"
+       id="marker3760"
+       refX="0.0"
+       refY="0.0"
+       orient="auto"
+       inkscape:stockid="Arrow1Lstart"
+       inkscape:isstock="true">
+      <path
+         transform="scale(0.8) translate(12.5,0)"
+         style="fill-rule:evenodd;fill:context-stroke;stroke:context-stroke;stroke-width:1.0pt"
+         d="M 0.0,0.0 L 5.0,-5.0 L -12.5,0.0 L 5.0,5.0 L 0.0,0.0 z "
+         id="path3758" />
+    </marker>
+    <marker
+       style="overflow:visible;"
+       id="Arrow1Lend"
+       refX="0.0"
+       refY="0.0"
+       orient="auto"
+       inkscape:stockid="Arrow1Lend"
+       inkscape:isstock="true">
+      <path
+         transform="scale(0.8) rotate(180) translate(12.5,0)"
+         style="fill-rule:evenodd;fill:context-stroke;stroke:context-stroke;stroke-width:1.0pt;"
+         d="M 0.0,0.0 L 5.0,-5.0 L -12.5,0.0 L 5.0,5.0 L 0.0,0.0 z "
+         id="path2392" />
+    </marker>
+    <marker
+       style="overflow:visible"
+       id="Arrow1Lstart"
+       refX="0.0"
+       refY="0.0"
+       orient="auto"
+       inkscape:stockid="Arrow1Lstart"
+       inkscape:isstock="true">
+      <path
+         transform="scale(0.8) translate(12.5,0)"
+         style="fill-rule:evenodd;fill:context-stroke;stroke:context-stroke;stroke-width:1.0pt"
+         d="M 0.0,0.0 L 5.0,-5.0 L -12.5,0.0 L 5.0,5.0 L 0.0,0.0 z "
+         id="path2389" />
+    </marker>
+  </defs>
+  <g
+     inkscape:label="Ebene 1"
+     inkscape:groupmode="layer"
+     id="layer1">
+    <g
+       aria-label="?"
+       id="text14035"
+       style="font-size:50.8px;line-height:1.25;letter-spacing:0px;word-spacing:0px;stroke-width:0.264583">
+      <path
+         d="m 23.023622,32.253049 q 0,-1.9304 0.3556,-3.302 0.4064,-1.4224 1.3208,-2.6924 0.9652,-1.269999 2.5908,-2.641599 1.9812,-1.6764 3.048,-2.794 1.1176,-1.1176 1.5748,-2.1844 0.4572,-1.0668 0.4572,-2.5908 0,-2.4384 -1.5748,-3.7592 -1.5748,-1.3208 -4.572,-1.3208 -2.4892,0 -4.4196,0.6604 -1.9304,0.6096 -3.7084,1.4732 l -1.5748,-3.5560003 q 2.032,-1.0668 4.4704,-1.7779999 2.4892,-0.7112 5.5372,-0.7112 4.826,0 7.4676,2.3875999 2.6416,2.3876003 2.6416,6.5024003 0,2.286 -0.762,3.9116 -0.7112,1.5748 -2.0828,2.9464 -1.3208,1.3208 -3.1496,2.844799 -1.6764,1.4224 -2.5908,2.4892 -0.8636,1.0668 -1.1684,2.1336 -0.3048,1.016 -0.3048,2.4892 v 0.8636 h -3.556 z m -1.1684,8.8392 q 0,-1.8796 0.8636,-2.6416 0.9144,-0.762 2.286,-0.762 1.27,0 2.1844,0.762 0.9144,0.762 0.9144,2.6416 0,1.8288 -0.9144,2.6416 -0.9144,0.8128 -2.1844,0.8128 -1.3716,0 -2.286,-0.8128 -0.8636,-0.8128 -0.8636,-2.6416 z"
+         id="path17625" />
+    </g>
+  </g>
+</svg>

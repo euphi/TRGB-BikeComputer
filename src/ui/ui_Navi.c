@@ -69,6 +69,8 @@ void ui_SNavi_screen_init(void)
     lv_obj_clear_flag(ui_SNavImgNav, LV_OBJ_FLAG_SCROLLABLE);      /// Flags
     lv_obj_set_style_bg_color(ui_SNavImgNav, lv_color_hex(0xAAAAAA), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_bg_opa(ui_SNavImgNav, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_img_set_src(ui_SNavImgNav, &nav_reserved);
+
 
     ui_SNavBarNavDist = lv_bar_create(ui_SNavi);
     lv_bar_set_value(ui_SNavBarNavDist, 25, LV_ANIM_OFF);
@@ -84,7 +86,7 @@ void ui_SNavi_screen_init(void)
     lv_obj_set_x(ui_SNavLabelStreet, 0);
     lv_obj_set_y(ui_SNavLabelStreet, lv_pct(-30));
     lv_obj_set_align(ui_SNavLabelStreet, LV_ALIGN_CENTER);
-    lv_label_set_text(ui_SNavLabelStreet, "Badstraße");
+    lv_label_set_text(ui_SNavLabelStreet, "-no street-");
     lv_obj_set_style_text_font(ui_SNavLabelStreet, &lv_font_montserrat_36, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     ui_SNavLabelNavDist = lv_label_create(ui_SNavi);
@@ -93,7 +95,7 @@ void ui_SNavi_screen_init(void)
     lv_obj_set_x(ui_SNavLabelNavDist, 175);
     lv_obj_set_y(ui_SNavLabelNavDist, lv_pct(0));
     lv_obj_set_align(ui_SNavLabelNavDist, LV_ALIGN_CENTER);
-    lv_label_set_text(ui_SNavLabelNavDist, "200m");
+    lv_label_set_text(ui_SNavLabelNavDist, "? m");
     lv_obj_set_style_text_font(ui_SNavLabelNavDist, &lv_font_montserrat_24, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     ui_SNavLabelSpeed = lv_label_create(ui_SNavi);
@@ -102,7 +104,7 @@ void ui_SNavi_screen_init(void)
     lv_obj_set_x(ui_SNavLabelSpeed, 0);
     lv_obj_set_y(ui_SNavLabelSpeed, lv_pct(33));
     lv_obj_set_align(ui_SNavLabelSpeed, LV_ALIGN_CENTER);
-    lv_label_set_text(ui_SNavLabelSpeed, "22,3");
+    lv_label_set_text(ui_SNavLabelSpeed, "?,?");
     lv_obj_set_style_text_font(ui_SNavLabelSpeed, &lv_font_montserrat_48, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     ui_SNavBarHR = lv_bar_create(ui_SNavi);
@@ -120,7 +122,7 @@ void ui_SNavi_screen_init(void)
     lv_obj_set_x(ui_SNavLabenHR, 0);
     lv_obj_set_y(ui_SNavLabenHR, lv_pct(-43));
     lv_obj_set_align(ui_SNavLabenHR, LV_ALIGN_CENTER);
-    lv_label_set_text(ui_SNavLabenHR, "125bpm");
+    lv_label_set_text(ui_SNavLabenHR, "? bpm");
     lv_obj_set_style_text_font(ui_SNavLabenHR, &lv_font_montserrat_24, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     ui_SNavLabelCad = lv_label_create(ui_SNavi);
@@ -129,7 +131,7 @@ void ui_SNavi_screen_init(void)
     lv_obj_set_x(ui_SNavLabelCad, 0);
     lv_obj_set_y(ui_SNavLabelCad, 197);
     lv_obj_set_align(ui_SNavLabelCad, LV_ALIGN_CENTER);
-    lv_label_set_text(ui_SNavLabelCad, "101 rpm");
+    lv_label_set_text(ui_SNavLabelCad, "? rpm");
     lv_obj_set_style_text_font(ui_SNavLabelCad, &lv_font_montserrat_24, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     ui_SNavBarBat = lv_bar_create(ui_SNavi);

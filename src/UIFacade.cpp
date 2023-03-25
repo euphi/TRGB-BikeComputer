@@ -185,7 +185,7 @@ void UIFacade::updateNavi(const String& navStr, uint32_t dist, uint8_t dirCode) 
 	if (distAnn && dist > 250) {
 		distAnn = false;
 	}
-	//ui_ScrNaviUpdateNav(navStr.c_str(), dist, dirCode);
+	ui_ScrNaviUpdateNav(navStr.c_str(), dist, dirCode);
 
 }
 
