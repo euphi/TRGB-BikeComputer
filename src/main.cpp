@@ -8,16 +8,8 @@ WifiWebserver webserver;
 #include "BLEDevices.h"
 BLEDevices bleDevs;
 
-
-#include <Ticker.h>
-Ticker tickerDispUpdate;		// Ticker  for slow display updates. Most data should be updated directly, so this can run not that often
-
-#include <task.h>
-
-Command cmdPing;
-String inputBuffer;
 void errorCallback(cmd_error* e) {
-    CommandError cmdError(e); // Create wrapper object
+    CommandError cmdError(e);
     bclog.log(BCLogger::Log_Warn, BCLogger::TAG_CLI, "Serial command "+ cmdError.toString());
     if (cmdError.hasCommand()) {
         Serial.print("Wrong parameters. Help: ");
@@ -25,14 +17,8 @@ void errorCallback(cmd_error* e) {
     }
 }
 
-void pingCallback(cmd* c) {
-    Command cmd(c); // Create wrapper object
-    Serial.println("Pong!");
-}
-
-void displayUpdate() {  // Slow running loop function (4x per second) to update display information
-	// Note: Try to update values directly when new information arrives, e.g. write speed from sensor directly to UI via UIFacade. Use this function here only for global stuff.
-}
+Command cmdPing;
+String inputBuffer;
 
 void setup() {
 	trgb.init();
@@ -42,15 +28,13 @@ void setup() {
 	trgb.SD_init();
 	bclog.setup();
     cli.setOnError(errorCallback);
-    cmdPing = cli.addCmd("ping", pingCallback);
+    cli.available();
+    cmdPing = cli.addCmd("ping", [](cmd* c) {Serial.println("Pong!");});
     cmdPing.setDescription("Responds with a pong and logs it");
 	ui.initDisplay();
-
     stats.setup();
-	tickerDispUpdate.attach_ms(250, displayUpdate);
 	bleDevs.setup();
 }
-
 
 void loop() {
     // Handle command line
@@ -61,7 +45,7 @@ void loop() {
     		if (inChar == 255) continue;
     		if (inChar == '\n') lineComplete = true;
     		inputBuffer += inChar;
-    		Serial.print(inChar);
+    		Serial.print(inChar);		// Echo
     	}
     	if (lineComplete) {
     		bclog.log(BCLogger::Log_Info, BCLogger::TAG_OP, "Received command: " + inputBuffer);

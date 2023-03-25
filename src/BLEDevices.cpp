@@ -14,9 +14,12 @@
 
 // HRM, CSC, FL, KomootApp
 const BLEUUID BLEDevices::serviceUUID[DEV_COUNT] = { BLEUUID((uint16_t)0x180D), BLEUUID((uint16_t)0x1816), BLEUUID((uint16_t)0x1816), BLEUUID("e62efa94-afa8-11ed-afa1-0242ac120002"), BLEUUID("71C1E128-D92F-4FA8-A2B2-0F171DB3436C")};
+const BLEUUID BLEDevices::serviceUUIDBat = BLEUUID((uint16_t) 0x180F);
+const BLEUUID BLEDevices::serviceUUIDExposure = BLEUUID((uint16_t) 0xFD6F);
 const BLEUUID BLEDevices::charUUID[DEV_COUNT] = { BLEUUID((uint16_t)0x2A37), BLEUUID((uint16_t)0x2A5B), BLEUUID((uint16_t)0x2A5B), BLEUUID("e62efe40-afa8-11ed-afa1-0242ac120002"), BLEUUID("503DD605-9BCB-4F6E-B235-270A57483026")};
+const BLEUUID BLEDevices::charUUIDBat = BLEUUID((uint16_t) 0x2A19);
 
-const char* BLEDevices::DEV_EMOJI[DEV_COUNT] = {"❤️","🚴","⚡", "🧭"};
+const char* BLEDevices::DEV_EMOJI[DEV_COUNT] = {"❤️","🚴","🚴","⚡", "🧭"};
 
 const uint8_t twoByteOn[] = {0x01,0x00};
 
@@ -28,6 +31,10 @@ BLEDevices::BLEDevices()
 }
 
 void BLEDevices::onResult(BLEAdvertisedDevice advertisedDevice) {
+	if (advertisedDevice.getServiceUUID().equals(serviceUUIDExposure)) {
+		bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "🔵 Exposure UUID: %s ", advertisedDevice.getServiceUUID().toString().c_str());
+		return;
+	}
 	if (bclog.checkLogLevel(BCLogger::Log_Debug, BCLogger::TAG_BLE)) {
 		bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "🔵 Advertised Device: %s ", advertisedDevice.toString().c_str());
 		bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "\tServiceDataCount: %d ServiceDataUUIDCount: %d ServiceUUIDCount: %d", advertisedDevice.getServiceDataCount(), advertisedDevice.getServiceDataUUIDCount(), advertisedDevice.getServiceUUIDCount());
@@ -38,12 +45,12 @@ void BLEDevices::onResult(BLEAdvertisedDevice advertisedDevice) {
 		//			Serial.printf("\tServiceData: %s", servStr.c_str());
 		//		}
 
-		for (uint8_t c=0; c < advertisedDevice.getServiceDataUUIDCount(); c++) {
+		for (uint8_t c = 0; c < advertisedDevice.getServiceDataUUIDCount(); c++) {
 			BLEUUID uuid = advertisedDevice.getServiceDataUUID(c);
 			bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "\tServiceData-UUID: %s", uuid.toString().c_str());
 		}
 	}
-	for (uint8_t c=0; c < advertisedDevice.getServiceUUIDCount(); c++) {
+	for (uint8_t c = 0; c < advertisedDevice.getServiceUUIDCount(); c++) {
 		BLEUUID uuid = advertisedDevice.getServiceUUID(c);
 		if (uuid.equals(serviceUUID[DEV_CSC_1])) {
 			EDevType dtype = DEV_CSC_1;
@@ -79,7 +86,7 @@ void BLEDevices::onResult(BLEAdvertisedDevice advertisedDevice) {
 	if (advertisedDevice.getName().find("ForumsLader") != std::string::npos) {
 		bclog.log(BCLogger::Log_Info, BCLogger::TAG_BLE, "\t⚡ Found FL Device");
 		pServerAddress[DEV_FL] = new BLEAddress(advertisedDevice.getAddress());
-		doConnect[DEV_FL]=true;
+		doConnect[DEV_FL] = true;
 		connState[DEV_FL] = CONN_ADVERTISED;
 	}
 }
@@ -124,6 +131,22 @@ bool BLEDevices::connectToServer(EDevType ctype) {
 
 	pRemoteCharacteristic->registerForNotify([&, ctype](BLERemoteCharacteristic* pBLERemoteCharacteristic, uint8_t* pData, size_t length, bool isNotify) {notifyCallbackCSC(pBLERemoteCharacteristic, pData, length, isNotify, ctype);});
 	bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "🔵%s Notify registered\n", DEV_EMOJI[ctype]);
+
+	//TODO: Improve (hasBatService is unnecessary etc.)
+	if (hasBatService[ctype]) {
+		BLERemoteService *pRemoteServiceBat = pClient[ctype]->getService(serviceUUIDBat);
+		if (pRemoteServiceBat == nullptr) {
+			bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_BLE, "🔵⚠️ Cannot find battery remote service %s", DEV_EMOJI[ctype]);
+			return false;
+		}
+		BLERemoteCharacteristic *pRemoteCharacteristicBat = pRemoteServiceBat->getCharacteristic(charUUIDBat);
+		if (pRemoteCharacteristicBat == nullptr) {
+			bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_BLE, "🔵⚠️ Cannot find battery remote characteristics %s", DEV_EMOJI[ctype]);
+			return false;
+		}
+		uint8_t batLevel = pRemoteCharacteristicBat->readUInt8();
+		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "%s battery level %d %%", DEV_EMOJI[ctype], batLevel);
+	}
 	return true;
 }
 
@@ -158,7 +181,7 @@ void BLEDevices::setup() {
 	  startBLEScan();
 	  komootTicker.attach(4, +[](BLEDevices* thisInstance) {thisInstance->komootLoop();}, this);
 	  connCheckTicker.attach_ms(250, +[](BLEDevices* thisInstance) {thisInstance->connCheckLoop();}, this);
-	  // 	typedef std::function<void(EFLConnState cstate)> FLStateUpdateHandler;
+	  batScanTicker.attach(300, +[](BLEDevices* thisInstance) {thisInstance->batCheckLoop();}, this);
 }
 
 void BLEDevices::notifyCallbackCSC(BLERemoteCharacteristic *pBLERemoteCharacteristic, uint8_t *pData, size_t length, bool isNotify, EDevType ctype) {
@@ -177,9 +200,7 @@ void BLEDevices::notifyCallbackCSC(BLERemoteCharacteristic *pBLERemoteCharacteri
 		break;
 	case DEV_CSC_1:
 	case DEV_CSC_2:
-
 		bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "Received from CSC %d bytes", length);
-//		for (uint8_t c = 0; c<length; c++) {Serial.print(*(pData+c), 16);}
 		flags = pData[0];
 		bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, " - Flag %x: Wheel: [%c] Crank: [%c]", flags, (flags & 1) ? 'x':' ', (flags & 2) ? 'x':' ');
 		isSpeed = (flags & 1);
@@ -188,6 +209,7 @@ void BLEDevices::notifyCallbackCSC(BLERemoteCharacteristic *pBLERemoteCharacteri
 			return;
 		}
 		if (isSpeed) {
+			cscIsSpeed[ctype==DEV_CSC_1?1:2] = true;
 			uint32_t speed_rev = (pData[4] << 24) + (pData[3] << 16) + (pData[2] << 8) + pData[1];		// LSB first
 			speed_time = (pData[6] << 8) + pData[5];	// LSB first
 			delta = speed_time - speed_time_last;
@@ -209,8 +231,10 @@ void BLEDevices::notifyCallbackCSC(BLERemoteCharacteristic *pBLERemoteCharacteri
 			speed_rev_last = speed_rev;
 			bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "Speed %.2f km/h", speed);
 			stats.addSpeed(speed);
+			stats.updateDistance((speed_rev * 2155)/1000);
+			stats.addDistance((speed_rev * 2155)/1000, Statistics::SUM_FL_TOTAL);
 		} else {
-
+			cscIsSpeed[ctype==DEV_CSC_1?1:2] = false;
 			crank_rev = (pData[2] << 8) + pData[1];		// LSB first
 			crank_time = (pData[4] << 8) + pData[3];	// LSB first
 			delta = crank_time - crank_time_last;
@@ -292,7 +316,11 @@ void BLEDevices::connCheckLoop() {
 				break;
 			case DEV_CSC_1:		//FIXME: distinguish beetween speed and cadence
 			case DEV_CSC_2:
-				stats.addCadence(-1);
+				if (cscIsSpeed[c==DEV_CSC_1?1:2]) {
+					stats.addSpeed(NAN);
+				} else {
+					stats.addCadence(-1);
+				}
 				break;
 			}
 			reconnCount += 16;
@@ -303,3 +331,15 @@ void BLEDevices::connCheckLoop() {
 		startBLEScan();
 	}
 }
+
+void BLEDevices::batCheckLoop() {
+	for (uint16_t c = 0; c < DEV_COUNT; c++) {
+		if (connState[c] == CONN_CONNECTED) {
+			bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "Read %s battery level", DEV_EMOJI[c]);
+			//FIXME: Implement
+
+		}
+	}
+
+}
+

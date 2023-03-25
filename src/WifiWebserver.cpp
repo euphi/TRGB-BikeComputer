@@ -29,7 +29,7 @@ void WifiWebserver::setup() {
 	  WiFi.enableIpV6();
 	  WiFi.begin(ssid, password);
 	  bclog.log(BCLogger::Log_Info, TAG, "Connecting to WiFi and set timeserver");
-	  configTime(3600, 3600, ntpServer);
+	  configTzTime("CET-1CEST,M3.5.0,M10.5.0/3", ntpServer);
 	  wifiCheckTicker.attach_ms(500, +[](WifiWebserver* thisInstance) {thisInstance->checkLoop();}, this);
 	  LittleFS.begin();
 }
