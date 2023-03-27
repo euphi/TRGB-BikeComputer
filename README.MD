@@ -44,7 +44,8 @@ Compile and upload with platformio.
 
 - [X] Initialize RGB display
 - [X] Merge and refactor existing UI from my [T-RGB Experiments](https://github.com/euphi/T-RGB-Experiments) (speed, FL batterie, heart rate, FL details, IP Adress)
-- [ ] WIP: Add Navigation Screen
+- [X] Add Navigation Screen
+- [ ] WIP: Implement all navigation items (roundabouts are still missing, all others ok)
 - [ ] WIP: Show basic statistics
 - [ ] Add very simple screen
 - [ ] Add screen for more detailed information
@@ -52,8 +53,8 @@ Compile and upload with platformio.
 
 ### Case
 
-- [ ] Create case model for 3D-printer
-- [ ] Create mount for trekking handle bar
+- [ ] WIP: Create case model for 3D-printer
+- [X] Create mount for trekking handle bar
 - [ ] Create mount for Canyon double decker bar
 
 
