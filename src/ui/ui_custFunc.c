@@ -6,6 +6,8 @@
  */
 
 #include "ui.h"
+#include <math.h> // to initialize float to NAN
+
 
 void ui_ScrMainUpdatePower(uint16_t batVoltage, uint8_t batPerc, int8_t powerStage, int16_t CurBat, int16_t CurConsumer, bool ConsumerOn) {
 	lv_bar_set_value(ui_S1BarPowerMode, powerStage, LV_ANIM_OFF);
@@ -22,10 +24,12 @@ void ui_ScrMainUpdateSpeed(float speed) {
 	lv_arc_set_value(ui_S1ArcSpeed, (uint16_t)(speed*10.0));
 }
 
-void ui_ScrMainUpdateStats(float avgSpd, float maxSpd, uint32_t dist) {
+void ui_ScrMainUpdateStats(const char* modeStr, float avgSpd, float maxSpd, uint32_t dist, const char* timeStr) {
+	lv_label_set_text(ui_S1PStatLTitle, modeStr);
 	lv_label_set_text_fmt(ui_S1PStatLspdMaxVar, "%.1f", maxSpd);
 	lv_label_set_text_fmt(ui_S1PStatLAvgVar, "%.1f", avgSpd);
 	lv_label_set_text_fmt(ui_S1PStatLDistVar, "%.1f", dist/1000.0);
+	lv_label_set_text(ui_S1PStatLTimeVar, timeStr);
 }
 
 void ui_ScrMainUpdateCadence(int16_t cadence) {
@@ -37,3 +41,32 @@ void ui_ScrMainUpdateHR(int16_t hr) {
 	lv_label_set_text_fmt(ui_S1BarPulsLabel, (hr >= 0) ? "%d bpm": "-/-", hr);
 	lv_bar_set_value(ui_S1BarPuls, hr, LV_ANIM_OFF);
 }
+
+void ui_ScrChartUpdateSpeed(float speed) {
+	lv_label_set_text_fmt(ui_ScreenChartLabelSpeed, "%.1f", speed);
+}
+
+
+float ui_ScrChartUpdateBat(float batVolt, int8_t perc, char *batString) {
+	static uint32_t count = 0;
+	float avg = NAN;
+	lv_chart_set_next_value(ui_ScreenChart_Chart1, ui_ScreenChart_Chart1_series_v, (uint16_t)(batVolt * 100));		// Add voltage every call
+	if (++count % 60 == 0) {	// for each 60th call, calculate avarage and set percentage
+		avg = 0.0;
+		int16_t cur_point = ui_ScreenChart_Chart1_series_v->start_point;
+		for (uint8_t c = 0; c < 60; c++) {
+			if (--cur_point < 0) cur_point = ((lv_chart_t*) ui_ScreenChart_Chart1)->point_cnt - 1;
+			float v1 = ui_ScreenChart_Chart1_series_v->y_points[cur_point] / 100.0;
+			avg += v1;
+		}
+		avg = avg / 60.0;
+		lv_chart_set_next_value(ui_ScreenChart_Chart1, ui_ScreenChart_Chart1_ser_v_per_minute, (uint16_t)(avg * 100));
+		lv_chart_set_next_value(ui_ScreenChart_Chart1, ui_ScreenChart_Chart1_series_perc_per_minute, perc);
+	}
+
+	lv_chart_refresh(ui_ScreenChart_Chart1);
+	lv_label_set_text_fmt(ui_S1BarBattLabel, "I %s", batString);
+	lv_label_set_text(ui_ScreenChartLabelInfo, batString);
+	return avg;
+}
+

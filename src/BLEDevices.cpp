@@ -337,7 +337,6 @@ void BLEDevices::batCheckLoop() {
 		if (connState[c] == CONN_CONNECTED) {
 			bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "Read %s battery level", DEV_EMOJI[c]);
 			//FIXME: Implement
-
 		}
 	}
 

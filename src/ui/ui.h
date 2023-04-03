@@ -53,11 +53,15 @@ extern lv_obj_t * ui_S1LabelClock;
 extern lv_obj_t * ui_Label2;
 void ui_event_ScreenChart(lv_event_t * e);
 extern lv_obj_t * ui_ScreenChart;
-extern lv_obj_t * ui_ScreenSettings_Panel2;
+void ui_event_ScreenChart_Chart1(lv_event_t * e);
 extern lv_obj_t * ui_ScreenChart_Chart1;
+extern lv_obj_t * ui_ScreenChartLabelInfo;
+extern lv_obj_t * ui_ScreenChartLabelSpeed;
 
-void chartModeHeartRate(lv_event_t * e);
-void chartModeBatterie(lv_event_t * e);
+extern lv_chart_series_t* ui_ScreenChart_Chart1_series_v;
+extern lv_chart_series_t* ui_ScreenChart_Chart1_series_perc_per_minute;
+extern lv_chart_series_t* ui_ScreenChart_Chart1_ser_v_per_minute;
+
 
 LV_IMG_DECLARE(ui_img_bt_png);    // assets/bt.png
 LV_IMG_DECLARE(ui_img_heartrate_png);    // assets/heartrate.png
@@ -69,6 +73,16 @@ LV_FONT_DECLARE(ui_font_by75_96);
 void ui_S1Main_screen_init();
 void ui_ScreenWifi_screen_init();
 void ui_ScreenChart_screen_init();
+
+// Events
+void chartModeHeartRate(lv_event_t * e);
+void chartModeBatterie(lv_event_t * e);
+void chart_up(lv_event_t * e);
+void chart_dn(lv_event_t * e);
+
+void statModeChanged(uint8_t mode);
+
+
 
 #ifdef __cplusplus
 } /*extern "C"*/

@@ -6,7 +6,7 @@
 #include "ui.h"
 #include "ui_Settings.h"
 #include "Singletons.h"
-
+#include "Statistics.h"
 
 void chartModeHeartRate(lv_event_t * e)
 {
@@ -37,3 +37,48 @@ void BrightChanged(lv_event_t * e)
 	}
 }
 
+void chart_up(lv_event_t * e)
+{
+	// Your code here
+}
+
+void chart_dn(lv_event_t * e)
+{
+	// Your code here
+}
+
+void statModeChanged(uint8_t mode) {
+/*
+Selected Mode 0: Auto
+Selected Mode 1: Trip
+Selected Mode 2: Tour
+Selected Mode 3: Total
+Selected Mode 4: FLTour
+Selected Mode 5: FLTrip
+Selected Mode 6: FL-Tot
+ */
+	switch (mode) {
+	case 0:
+		ui.setStatMode(Statistics::SUM_ESP_START);
+		break;
+	case 1:
+		ui.setStatMode(Statistics::SUM_ESP_TRIP);
+		break;
+	case 2:
+		ui.setStatMode(Statistics::SUM_ESP_TOUR);
+		break;
+	case 3:
+		ui.setStatMode(Statistics::SUM_ESP_TOTAL);
+		break;
+	case 4:
+		ui.setStatMode(Statistics::SUM_FL_TOUR);
+		break;
+	case 5:
+		ui.setStatMode(Statistics::SUM_FL_TRIP);
+		break;
+	case 6:
+		ui.setStatMode(Statistics::SUM_FL_TOTAL);
+		break;
+	}
+
+}

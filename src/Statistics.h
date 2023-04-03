@@ -86,6 +86,8 @@ public:
 	void addCadence(int16_t cadence);
 	void setConnected(bool connected);
 
+	uint32_t getTime(ESummaryType type, EAvgType avgtype) const;
+
 	float getAvg(ESummaryType type, EAvgType avgtype) const;
 	int16_t getHr() const {return hr;}
 	const float getSpeedMax(ESummaryType type) const {

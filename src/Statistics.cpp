@@ -21,8 +21,9 @@ const char* Statistics::SUM_TYPE_STRING[Statistics::ESummaryTypeMax] = {
 		"ST_TOUR",
 		"ST_TRIP",
 		"ST_START",
+		"ST_FL_TOTAL",
 		"ST_FL_TOUR",
-		"ST_FL_TRIP"
+		"ST_FL_TRIP",
 };
 
 
@@ -174,8 +175,7 @@ void Statistics::setCurDriveState(EDrivingState _curDriveState) {
 	bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Driving state changed to %s", (PREF_TIME_STRING[curDriveState]+8));
 }
 
-float Statistics::getAvg(ESummaryType type, EAvgType avgtype) const {
-	//FIXME: avg does not take into account distance in no connection. There should be at least a mechanism to compensate distance in NO_CONN
+uint32_t Statistics::getTime(ESummaryType type, EAvgType avgtype) const {
 	uint32_t relevantTime = time_in[DS_DRIVE_COASTING][type] + time_in[DS_DRIVE_POWER][type];
 	switch (avgtype) {
 	case AVG_ALL:
@@ -184,9 +184,14 @@ float Statistics::getAvg(ESummaryType type, EAvgType avgtype) const {
 	case AVG_NOBREAK:
 		relevantTime += time_in[DS_STOP][type];
 	}
+	return relevantTime;
+}
+
+float Statistics::getAvg(ESummaryType type, EAvgType avgtype) const {
+	//FIXME: avg does not take into account distance in no connection. There should be at least a mechanism to compensate distance in NO_CONN
 	//TRACE: Serial.print(getDistance(type)); Serial.print('\t');Serial.println(relevantTime);
 
 	//        .. in m         / msec          / msec/sec  * 3.6 km/h / m/s..
-	return (getDistance(type) / (relevantTime / 1000.0)) * 3.6;
+	return (getDistance(type) / (getTime(type, avgtype) / 1000.0)) * 3.6;
 
 }

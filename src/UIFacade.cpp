@@ -52,7 +52,7 @@ void UIFacade::initDisplay() {
     xTaskCreate(startTaskUiUpdate, "UI Task", 4096, NULL, 20, &uiTaskHandle);	// High priority task for smooth display updates
 
     // 6. Start Update ticker
-    dataTicker.attach_ms(250, +[](UIFacade* thisInstance) {thisInstance->updateData();}, this);
+    dataTicker.attach_ms(1000, +[](UIFacade* thisInstance) {thisInstance->updateData();}, this);
 }
 
 
@@ -83,33 +83,33 @@ void UIFacade::updateData() {
  *          - this may block refreshing and thus may lead to less smooth display animations or even some flickering. So use only for rarely updated labels (like IP adress).
  */
 void UIFacade::updateHandler() {
-
-	//updateData();
 	unsigned long next_millis = 0;
 	while (true) {
 		// Fast update - use this only for data that should be shown with no (further) delay
 		if (xSemaphoreTake(xUpdateFast, static_cast<TickType_t>(0) ) == pdTRUE) {		// Semaphore is used for message "please update" only. So there is no reason to wait.
 			ui_ScrMainUpdateSpeed(speed);
 			ui_ScrNaviUpdateSpeed(speed);
+			ui_ScrChartUpdateSpeed(speed);
 			ui_ScrMainUpdateCadence(cad);
 			ui_ScrNaviUpdateCadence(cad);
 			ui_ScrMainUpdateHR(hr);
 			ui_ScrNaviUpdateHR(hr);
 		}
 
-		int32_t next_ms = 20; // wait 20ms if Mutex can't be taken within 100ms
+		int32_t next_ms = 20; // wait 20ms if Mutex can't be taken within 100ms (this should never happen)
 		if (xSemaphoreTake(xUIDrawMutex, static_cast<TickType_t>(100 / portTICK_PERIOD_MS)) == pdTRUE) {
 			next_ms = lv_timer_handler();	// --> call lvgl main loop
 			xSemaphoreGive(xUIDrawMutex);
 		} else {
 			//TaskHandle_t t = xSemaphoreGetMutexHolder(xUIDrawMutex);
-			printf("%d: UI draw task blocked", millis());
+			printf("%d: !!!!! UI draw task blocked !!!!!", millis());
 		}
 
 		unsigned long mil_start = millis();
 		// Slow update is used for more expensive updates
 		if (xSemaphoreTake(xUpdateSlow, static_cast<TickType_t>(0) ) == pdTRUE) {		// Semaphore is used for message "please update" only. So there is no reason to wait.
 			updateStats();
+			updateIntBatteryInt();
 		}
 		if (millis() > next_millis) {
 			timeval tv;
@@ -117,10 +117,8 @@ void UIFacade::updateHandler() {
 			updateClock(tv.tv_sec);
 			next_millis = millis() + (1005 - ( (tv.tv_usec / 1000) % 1000) ) ;		// Update clock only 5ms after full second
 			//TRACE:printf("millis: %d\tclock:%d - %d -> %d\n", millis(), tv.tv_sec, tv.tv_usec, next_millis);
-
 			uifl.redraw();	//Redraw FL screens
 		}
-
 		next_ms -= (millis() - mil_start);
 		if (next_ms < 0) next_ms = 0;
 		if (next_ms > 100) next_ms = 100; // minimum refresh rate 10Hz
@@ -141,9 +139,21 @@ void UIFacade::updateClock(const time_t now) {
 }
 
 void UIFacade::updateStats() {
-	ui_ScrMainUpdateStats(stats.getAvg(Statistics::SUM_ESP_START, Statistics::AVG_DRIVE), stats.getSpeedMax(Statistics::SUM_ESP_START), stats.getDistance(Statistics::SUM_ESP_START));
+	Statistics::ESummaryType t = statMode;
 
+	uint32_t timeTot = stats.getTime(t, Statistics::AVG_DRIVE);
+	String timeStr = DateFormatter::format(DateFormatter::TIME_ONLY, timeTot, "UTC0");
+	//                                       +3 to omit "ST_"
+	ui_ScrMainUpdateStats(Statistics::SUM_TYPE_STRING[t] + 3, stats.getAvg(t, Statistics::AVG_DRIVE), stats.getSpeedMax(t), stats.getDistance(t), timeStr.c_str());
 }
+
+void UIFacade::updateIntBatteryInt() {
+	char batStr[32];
+	snprintf(batStr, 31, "Volt: %.02fV - %d%% %s", batIntVoltage, batIntPerc, batIntCharging?"- C": "");
+	float avg = ui_ScrChartUpdateBat(batIntVoltage, batIntPerc, batStr);
+	if (! isnan(avg)) batIntVoltageAvg = avg;
+}
+
 
 // ---------------- external (public) data updater ----------------
 
@@ -163,7 +173,7 @@ void UIFacade::updateHR(uint16_t _hr) {
 }
 
 void UIFacade::updateIP(const String& ipStr) {
-	if (xSemaphoreTake(xUIDrawMutex, 500 / portTICK_PERIOD_MS) == pdTRUE) {
+	if (xSemaphoreTake(xUIDrawMutex, 50 / portTICK_PERIOD_MS) == pdTRUE) {
 		ui_SWLANUpdateIP(ipStr.c_str());
 		xSemaphoreGive(xUIDrawMutex);
 	} else {
@@ -174,18 +184,30 @@ void UIFacade::updateIP(const String& ipStr) {
 void UIFacade::updateNavi(const String& navStr, uint32_t dist, uint8_t dirCode) {
 	static uint8_t oldDirCode = 0;
 	static bool distAnn = false;
+	bool loadScreen=false;
 	if ( dirCode != oldDirCode) {
 		oldDirCode = dirCode;
-	    lv_disp_load_scr(ui_SNavi);
+	    loadScreen = true;
 	}
 	if (!distAnn && dist < 200) {
 		distAnn = true;
-		lv_disp_load_scr(ui_SNavi);
+		loadScreen = true;
 	}
 	if (distAnn && dist > 250) {
 		distAnn = false;
 	}
-	ui_ScrNaviUpdateNav(navStr.c_str(), dist, dirCode);
+	if (xSemaphoreTake(xUIDrawMutex, 50 / portTICK_PERIOD_MS) == pdTRUE) {
+		if (loadScreen)	lv_disp_load_scr(ui_SNavi);
+		ui_ScrNaviUpdateNav(navStr.c_str(), dist, dirCode);
+		xSemaphoreGive(xUIDrawMutex);
+	} else {
+		bclog.log(BCLogger::Log_Error, BCLogger::TAG_OP, "Nav blocked by mutex");
+	}
 
 }
 
+void UIFacade::updateBatInt(float voltage, uint8_t batPerc, bool charging) {
+	batIntVoltage = voltage;
+	batIntPerc = batPerc;
+	batIntCharging = charging;
+}
