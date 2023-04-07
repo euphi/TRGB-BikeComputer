@@ -456,7 +456,8 @@ void ui_S1Main_screen_init(void)
     lv_obj_set_x(ui_S1PStatLTimeVar, 14);
     lv_obj_set_y(ui_S1PStatLTimeVar, lv_pct(90));
     lv_obj_set_align(ui_S1PStatLTimeVar, LV_ALIGN_TOP_RIGHT);
-    lv_label_set_text(ui_S1PStatLTimeVar, "--:--:--");
+    lv_label_set_long_mode(ui_S1PStatLTimeVar, LV_LABEL_LONG_DOT);
+    lv_label_set_text(ui_S1PStatLTimeVar, "---:--:--");
     lv_obj_set_style_text_color(ui_S1PStatLTimeVar, lv_color_hex(0x7F8A4A), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_opa(ui_S1PStatLTimeVar, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_align(ui_S1PStatLTimeVar, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -464,14 +465,12 @@ void ui_S1Main_screen_init(void)
 
     ui_S1BarPowerMode = lv_bar_create(ui_S1Main);
     lv_bar_set_range(ui_S1BarPowerMode, 0, 4);
-    lv_bar_set_value(ui_S1BarPowerMode, 2, LV_ANIM_OFF);
     lv_obj_set_width(ui_S1BarPowerMode, 10);
     lv_obj_set_height(ui_S1BarPowerMode, 75);
     lv_obj_set_x(ui_S1BarPowerMode, 134);
     lv_obj_set_y(ui_S1BarPowerMode, lv_pct(25));
     lv_obj_set_align(ui_S1BarPowerMode, LV_ALIGN_CENTER);
     lv_obj_set_style_bg_color(ui_S1BarPowerMode, lv_color_hex(0x570000), LV_PART_MAIN | LV_STATE_DISABLED);
-
 
     ui_S1BarBatt = lv_bar_create(ui_S1Main);
     lv_obj_set_width(ui_S1BarBatt, 310);

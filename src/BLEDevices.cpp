@@ -21,7 +21,7 @@ const BLEUUID BLEDevices::charUUIDBat = BLEUUID((uint16_t) 0x2A19);
 
 const char* BLEDevices::DEV_EMOJI[DEV_COUNT] = {"❤️","🚴","🚴","⚡", "🧭"};
 const char* BLEDevices::DEV_STRING[DEV_COUNT] = {"HeartRate","CSC1","CSC2","Forumslader", "Komoot"};
-
+const char* BLEDevices::CONN_STRING[CONN_COUNT] = {"Not Found","Advertised (not yet connected)","Connected","Lost"};
 
 const uint8_t twoByteOn[] = {0x01,0x00};
 
@@ -68,6 +68,14 @@ void BLEDevices::storeAdress(EDevType type, BLEAddress &addr) {
 	StatPreferences.end();
 }
 
+void BLEDevices::resetAdress(EDevType type) {
+	StatPreferences.begin("BLEConn");
+	bool succ = StatPreferences.remove(DEV_STRING[type]);
+	bclog.logf(succ ? BCLogger::Log_Debug : BCLogger::Log_Warn, BCLogger::TAG_BLE, "Removed stored address for pref %s: %s\n", DEV_STRING[type], succ ? "OK":"FAILED");
+	if (succ) {pStoredAddress[type] = nullptr;}
+	StatPreferences.end();
+}
+
 void BLEDevices::onResult(BLEAdvertisedDevice advertisedDevice) {
 	if (advertisedDevice.getServiceUUID().equals(serviceUUIDExposure)) {
 		bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "🔵 Exposure UUID: %s ", advertisedDevice.getServiceUUID().toString().c_str());
@@ -94,11 +102,11 @@ void BLEDevices::onResult(BLEAdvertisedDevice advertisedDevice) {
 			BLEAddress *pAddr = new BLEAddress(advertisedDevice.getAddress());
 			EDevType dtype = DEV_CSC_1;
 			bool devFound = false;
-			if (pAddr->equals(*pStoredAddress[DEV_CSC_1])) {
+			if (pStoredAddress[DEV_CSC_1] && pAddr->equals(*pStoredAddress[DEV_CSC_1])) {
 				bclog.log(BCLogger::Log_Info, BCLogger::TAG_BLE, "Found stored device for CSC1");
 				devFound = true;
 				dtype = DEV_CSC_1;
-			} else if (pAddr->equals(*pStoredAddress[DEV_CSC_2])) {
+			} else if (pStoredAddress[DEV_CSC_2] && pAddr->equals(*pStoredAddress[DEV_CSC_2])) {
 				bclog.log(BCLogger::Log_Info, BCLogger::TAG_BLE, "Found stored device for CSC2");
 				devFound = true;
 				dtype = DEV_CSC_2;
@@ -153,7 +161,6 @@ void BLEDevices::onResult(BLEAdvertisedDevice advertisedDevice) {
 			bclog.log(BCLogger::Log_Warn, BCLogger::TAG_BLE, "\t⚡ no new connection to FL allowed");
 			delete pServerAddress[DEV_FL];
 			pServerAddress[DEV_FL] = nullptr;
-
 		}
 	}
 }
@@ -214,10 +221,8 @@ bool BLEDevices::connectToServer(EDevType ctype) {
 	} else if (ctype == DEV_FL) {
 		stats.setConnected(true);
 	}
-
 	pRemoteCharacteristic->registerForNotify([&, ctype](BLERemoteCharacteristic* pBLERemoteCharacteristic, uint8_t* pData, size_t length, bool isNotify) {notifyCallbackCSC(pBLERemoteCharacteristic, pData, length, isNotify, ctype);});
 	bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "🔵%s Notify registered\n", DEV_EMOJI[ctype]);
-
 	storeAdress(ctype, *pServerAddress[ctype]);
 
 	//TODO: Improve (hasBatService is unnecessary etc.)
@@ -232,8 +237,8 @@ bool BLEDevices::connectToServer(EDevType ctype) {
 			bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_BLE, "🔵⚠️ Cannot find battery remote characteristics %s", DEV_EMOJI[ctype]);
 			return false;
 		}
-		uint8_t batLevel = pRemoteCharacteristicBat->readUInt8();
-		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "%s battery level %d %%", DEV_EMOJI[ctype], batLevel);
+		batLevel[ctype] = pRemoteCharacteristicBat->readUInt8();
+		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "%s battery level %d %%", DEV_EMOJI[ctype], batLevel[ctype]);
 	}
 	return true;
 }
@@ -424,4 +429,40 @@ void BLEDevices::batCheckLoop() {
 			//FIXME: Implement
 		}
 	}
+}
+
+uint16_t BLEDevices::getHTMLPage(String &htmlresponse) {
+	uint16_t rc = 200;
+	htmlresponse += "<html><head><title>BLE Devices</title><link rel=\"stylesheet\" href=\"/stylesheet.css\"></head><body>\n<h1>BLE Devices</h1>\n\n<table>\n";
+	htmlresponse += "<thead><tr><td>Devices</td><td>Stored Address</td><td>State</td><td>Address</td><td>Battery</td><td>Action</td></tr></thead>\n<tbody>\n";
+	for (uint16_t c = 0; c < DEV_COUNT; c++) {
+		char buffer[255];
+		char buffer_short[32];
+		snprintf(buffer_short, 31, "<a href=\"reset?dev=%d\">Del stored Addr</a>", c);
+		snprintf(buffer, 254, "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%d%%</td><td>%s</td></tr>\n",
+				DEV_STRING[c],
+				pStoredAddress[c] ? pStoredAddress[c]->toString().c_str() : "-empty-",
+				CONN_STRING[connState[c]],
+				pServerAddress[c] ? pServerAddress[c]->toString().c_str() : "-n/a-",
+				batLevel[c],
+				pStoredAddress[c] ? buffer_short :"-");
+		htmlresponse += buffer;
+	}
+	htmlresponse += "</tbody>\n</table>\n</body></html>";
+	return rc;
+}
+
+uint16_t BLEDevices::procHTMLCmd(String& htmlresponse, const String& cmd, const String& arg) {
+	if (cmd.equals("reset")) {
+		int8_t devNum = arg.toInt();
+		if (devNum < 0 || devNum >= DEV_COUNT) {
+			htmlresponse += "Invalid devices";
+			return 400;
+		}
+		resetAdress(static_cast<EDevType>(devNum));
+		htmlresponse += "OK - deleted address";
+		return 200;
+	}
+	htmlresponse += "Not implemented (yet)\n";
+	return 501;
 }

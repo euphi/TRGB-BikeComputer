@@ -25,3 +25,9 @@ extern UIFacade ui;
 
 #include "TRGBSuppport.h"
 extern TRGBSuppport trgb;
+
+#include <WifiWebserver.h>
+extern WifiWebserver webserver;
+
+#include "BLEDevices.h"
+extern BLEDevices bleDevs;

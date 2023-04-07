@@ -31,11 +31,13 @@ typedef enum {
 	CONN_DEV_NOTFOUND,
 	CONN_ADVERTISED,
 	CONN_CONNECTED,
-	CONN_LOST
+	CONN_LOST,
+	CONN_COUNT
 } EBLEConnState;
 
 static const char* DEV_EMOJI[DEV_COUNT];
 static const char* DEV_STRING[DEV_COUNT];
+static const char* CONN_STRING[CONN_COUNT];
 
 private:
 	BLEScan* pBLEScan = nullptr;
@@ -46,6 +48,7 @@ private:
 	bool scanning=false;
 	bool doConnect[DEV_COUNT] = {false, false, false, false, false};
 	bool hasBatService[DEV_COUNT] = {true, true, true, true, true};
+	int16_t batLevel[DEV_COUNT] = {-1, -1, -1, -1, -1};
 	EBLEConnState connState[DEV_COUNT] = {CONN_DEV_NOTFOUND, CONN_DEV_NOTFOUND, CONN_DEV_NOTFOUND, CONN_DEV_NOTFOUND, CONN_DEV_NOTFOUND};
 	Preferences StatPreferences;
 
@@ -84,6 +87,8 @@ private:
 	void startBLEScan();
 	void restoreAdresses();
 	void storeAdress(EDevType type, BLEAddress& addr);
+	void resetAdress(EDevType type);
+
 	EDevType nextCSCSlotAvailable();
 
 public:
@@ -102,6 +107,8 @@ public:
 	// helper functions called from lambda
 	void notifyCallbackCSC( BLERemoteCharacteristic* pBLERemoteCharacteristic, uint8_t* pData, size_t length, bool isNotify, EDevType ctype);
 
-	void setup();
+	uint16_t getHTMLPage(String& htmlresponse);
+	uint16_t procHTMLCmd(String& htmlresponse, const String& cmd, const String& arg);
 
+	void setup();
 };

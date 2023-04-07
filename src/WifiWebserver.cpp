@@ -66,8 +66,6 @@ void WifiWebserver::checkLoop() {
 	}
 }
 
-
-
 //
 void WifiWebserver::setupWebserver() {
 	// Enable file deletion
@@ -118,13 +116,38 @@ void WifiWebserver::setupWebserver() {
 		request->send(200, "text/plain", "Cleanup done.");
 	});
 
+	server.on("/coredump_now", HTTP_GET, [](AsyncWebServerRequest *request) {
+		request->send(200, "text/plain", "Crash for coredump");
+		delay(1000);
+		abort();
+	});
+
+	server.on("/dev/", HTTP_GET,  [this](AsyncWebServerRequest *request) {
+		htmlresponse.clear();
+		bleDevs.getHTMLPage(htmlresponse);
+		request->send(200, "text/html", htmlresponse.c_str());
+	});
+
+	server.on("^\\/dev\\/([A-Za-z0-9]+)$", HTTP_GET, [this] (AsyncWebServerRequest *request) {
+		htmlresponse.clear();
+		const AsyncWebParameter* para = request->getParam(0);
+		bclog.logf(BCLogger::Log_Info, TAG, "💻 Request on /dev/: %s\n\tPath-Arg: %s - %s", request->url().c_str(), request->pathArg(0).c_str(), para ? para->value().c_str() : "n/a");
+		if (!para) {
+			request->send(400, "text/plain", "Missing parameter");
+		} else {
+			int16_t code = bleDevs.procHTMLCmd(htmlresponse, request->pathArg(0), para->value());
+			request->send(code, "text/plain", htmlresponse.c_str());
+		}
+	});
+
+	// -- Allow OTA via Web ("ElegantOTA" library)
+	AsyncElegantOTA.begin(&server); // Start ElegantOTA - it listens on "/update/"
+
 	// -- download Binary Logfile
 	server.serveStatic("/log/", SD_MMC, "/BIKECOMP/");
 	server.serveStatic("/", LittleFS, "/site/").setDefaultFile("index.html");
 
-
-//	// -- Allow OTA via Web ("ElegantOTA" library)
-	AsyncElegantOTA.begin(&server); // Start ElegantOTA - it listens on "/update/"
+	// URI not found
 	server.onNotFound([](AsyncWebServerRequest *request) {
 		bclog.logf(BCLogger::Log_Info, TAG, "💻 Can't handle request on : %s\n", request->url().c_str());
 		String responsetext = request->url() + " not found!\n";
@@ -133,3 +156,4 @@ void WifiWebserver::setupWebserver() {
 	server.begin();
 	bclog.logf(BCLogger::Log_Debug, TAG, "💻 HTTP server started at %s.\n", WiFi.localIP().toString().c_str());
 }
+

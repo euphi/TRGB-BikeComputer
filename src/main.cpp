@@ -2,12 +2,6 @@
 
 #include "Singletons.h"
 
-#include <WifiWebserver.h>
-WifiWebserver webserver;
-
-#include "BLEDevices.h"
-BLEDevices bleDevs;
-
 #include <Battery.h>
 Battery batt = Battery(3000, 4200, BAT_VOLT_PIN);
 

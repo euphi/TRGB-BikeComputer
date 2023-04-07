@@ -21,6 +21,7 @@ public:
 	WifiWebserver();
 	void setup();
 	void checkLoop();
+	bool addHandler(const char* uri, ArRequestHandlerFunction onRequest);
 
 private:
 	void setupWebserver();
