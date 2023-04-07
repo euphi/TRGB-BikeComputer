@@ -24,7 +24,7 @@ public:
 
 	//Types
 	typedef std::function<void(float speed, float distance)> FLSpeedDistUpdateHandler;
-	typedef std::function<void(uint16_t batVoltage, uint8_t batPerc, int8_t powerStage, int16_t CurBat, int16_t CurConsumer, bool ConsumerOn)> FLBatUpdateHandler;
+	typedef std::function<void(uint16_t batVoltage, uint8_t batPerc, uint32_t batFullCap, int8_t powerStage, int16_t CurBat, int16_t CurConsumer, bool ConsumerOn)> FLBatUpdateHandler;
 	typedef std::function<void(uint16_t temperature, uint16_t pressure, uint16_t height, uint16_t gradient)> FLEnvUpdateHandler;
 	typedef std::function<void(EFLConnState cstate, uint32_t flags, int16_t timeout)> FLStateUpdateHandler;
 
@@ -37,7 +37,7 @@ public:
 
 	void setBatCb(const FLBatUpdateHandler &batCb) {batCB = batCb;}
 	void setStateCb(const FLStateUpdateHandler &stateCb) {stateCB = stateCb;}
-//	void setEnvCb(const FLEnvUpdateHandler &envCb) {envCB = envCb;}
+	void setEnvCb(const FLEnvUpdateHandler &envCb) {envCB = envCb;}
 //	void setSpeedCb(const FLSpeedDistUpdateHandler &speedCb) {speedCB = speedCb;}
 
 private:
@@ -54,6 +54,7 @@ private:
 	unsigned long lastUpdate;
 	uint32_t flags_last = 0;
 	uint8_t batt_perc=0;
+	uint16_t batt_fullCap = 0;
 
 
 	// Methods

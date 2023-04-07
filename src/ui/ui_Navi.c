@@ -60,6 +60,8 @@ void ui_SNavi_screen_init(void)
     lv_obj_set_width(ui_SNavArcSpeed, 480);
     lv_obj_set_height(ui_SNavArcSpeed, 480);
     lv_obj_set_align(ui_SNavArcSpeed, LV_ALIGN_CENTER);
+    lv_arc_set_range(ui_SNavArcSpeed, 0, 600);
+    lv_obj_set_style_arc_width(ui_SNavArcSpeed, 14, LV_PART_INDICATOR | LV_STATE_DEFAULT);
 
     ui_SNavImgNav = lv_img_create(ui_SNavi);
     lv_obj_set_width(ui_SNavImgNav, LV_SIZE_CONTENT);   /// 200

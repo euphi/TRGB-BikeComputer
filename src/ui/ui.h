@@ -82,6 +82,8 @@ void chart_dn(lv_event_t * e);
 
 void statModeChanged(uint8_t mode);
 
+void resetStats(lv_event_t * e);
+void statsTimeMode(bool dir);
 
 
 #ifdef __cplusplus

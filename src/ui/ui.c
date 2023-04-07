@@ -109,8 +109,14 @@ void ui_event_S1PanelStat(lv_event_t * e)
 {
     lv_event_code_t event_code = lv_event_get_code(e);
     lv_obj_t * target = lv_event_get_target(e);
+    if(event_code == LV_EVENT_LONG_PRESSED) {
+        resetStats(e);
+    }
+    if(event_code == LV_EVENT_GESTURE &&  lv_indev_get_gesture_dir(lv_indev_get_act()) == LV_DIR_TOP) {
+        statsTimeMode(true);
+    }
     if(event_code == LV_EVENT_GESTURE &&  lv_indev_get_gesture_dir(lv_indev_get_act()) == LV_DIR_BOTTOM) {
-        _ui_bar_increment(ui_S1BarPowerMode, 1, LV_ANIM_ON);
+        statsTimeMode(false);
     }
 }
 void ui_event_S1BarBatt(lv_event_t * e)
@@ -464,6 +470,8 @@ void ui_S1Main_screen_init(void)
     lv_obj_set_x(ui_S1BarPowerMode, 134);
     lv_obj_set_y(ui_S1BarPowerMode, lv_pct(25));
     lv_obj_set_align(ui_S1BarPowerMode, LV_ALIGN_CENTER);
+    lv_obj_set_style_bg_color(ui_S1BarPowerMode, lv_color_hex(0x570000), LV_PART_MAIN | LV_STATE_DISABLED);
+
 
     ui_S1BarBatt = lv_bar_create(ui_S1Main);
     lv_obj_set_width(ui_S1BarBatt, 310);

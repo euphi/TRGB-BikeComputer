@@ -79,7 +79,7 @@ void Statistics::cycle() {
 	case DS_STOP:
 		if (time_now - timestamp_stop > 120000) {
 			for (uint_fast8_t c = SUM_ESP_TOTAL; c <= SUM_ESP_START; c++) {
-				time_in[DS_STOP][c] -= 120000;
+				if (time_in[DS_STOP][c] > 120000) time_in[DS_STOP][c] -= 120000; else time_in[DS_STOP][c] = 0;
 			}
 			setCurDriveState(DS_BREAK);
 		}
@@ -114,9 +114,9 @@ void Statistics::setConnected(bool connected) {
 	}
 }
 
-void Statistics::addCadence(int16_t _cadence) {
+void Statistics::addCadence(int16_t _cadence, int16_t _total) {
 	cadence = _cadence;
-	//TODO: Add cadence
+	cadence_tot = _total;
 	ui.updateCadence(cadence);
 }
 
@@ -142,6 +142,12 @@ void Statistics::addDistance(uint16_t dist, ESummaryType type) {
 void Statistics::updateDistance(uint16_t _dist) {
 	distance = _dist;
 	if (start_distance[SUM_ESP_START] == 0) addDistance(distance, SUM_ESP_START);
+}
+
+void Statistics::addGradient(int16_t _grad, int16_t _height) {
+	height = _height;
+	grad = _grad;
+	ui.updateGrad(grad, height);
 }
 
 uint32_t Statistics::getDistance(ESummaryType type) const {
@@ -195,3 +201,13 @@ float Statistics::getAvg(ESummaryType type, EAvgType avgtype) const {
 	return (getDistance(type) / (getTime(type, avgtype) / 1000.0)) * 3.6;
 
 }
+
+float Statistics::getAvgCadence(EAvgType avgtype) const {
+	//FIXME: avg does not take into account distance in no connection. There should be at least a mechanism to compensate distance in NO_CONN
+	//TRACE: Serial.print(getDistance(type)); Serial.print('\t');Serial.println(relevantTime);
+
+	//        .. in m         / msec          / msec/sec  * 3.6 km/h / m/s..
+		return (cadence_tot / (getTime(SUM_ESP_START, avgtype) / 1000.0)) * 3.6;
+
+}
+

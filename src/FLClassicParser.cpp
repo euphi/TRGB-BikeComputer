@@ -63,9 +63,9 @@ void FLClassicParser::updateFromString(const String &flStr) {
 				flags_last=flags;
 			}
 			if (batCB) {
-				//Note batt_perc is not updated in $FL5 string, but it changes slowly, so use last value
+				//Note batt_perc and batt_fullCap are not updated in $FL5 string, but change slowly, so use last value
 				//    (uint16_t batVoltage, uint8_t batPerc, int8_t powerStage, int16_t CurBat, int16_t CurConsumer, bool ConsumerOn)> FLBatUpdateHandler;
-				batCB(batterie[0]+batterie[1]+batterie[2], batt_perc, stufe, batt_current, cons_current, cons_on_off);
+				batCB(batterie[0]+batterie[1]+batterie[2], batt_perc, batt_fullCap, stufe, batt_current, cons_current, cons_on_off);
 			}
 			speed_f = pulses_per_s * kmh_per_pulse_per_s;
 			dist_total = ceil((pulsecounter * 4096 + micropulsecounter) * dist_m_per_pulse);
@@ -88,6 +88,7 @@ void FLClassicParser::updateFromString(const String &flStr) {
 			case 0: // $FLC,0,0,0,200,3798,26;
 				//Tour: Höhenmeter Total, Tour Steigung Max, Tour Temperatur Max, Tour Höhe Max, Tour Pulse Max
 				stats.addDistance(scanFLC_buffer[4], Statistics::SUM_FL_TOUR);
+				//stats.updateFLStats();
 				break;
 			case 1: // $FLC,1,0,0,200,3798,26;
 				//Trip: Höhenmeter Total, Tour Steigung Max, Tour Temperatur Max, Tour Höhe Max, Tour Pulse Max
@@ -104,6 +105,7 @@ void FLClassicParser::updateFromString(const String &flStr) {
 				break;
 			case 5: // $FLC,5,1870,100,1667,36,73053775;   $FLC,5,1921,99,1667,37,74684176;  // StartCounter, Batt%, fullCap in mAh, CycleCount, Acc CCADCvalue
 				batt_perc = scanFLC_buffer[1];
+				batt_fullCap = scanFLC_buffer[2];
 				break;
 			}
 			break;

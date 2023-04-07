@@ -87,7 +87,7 @@ void UIFacade::updateHandler() {
 	while (true) {
 		// Fast update - use this only for data that should be shown with no (further) delay
 		if (xSemaphoreTake(xUpdateFast, static_cast<TickType_t>(0) ) == pdTRUE) {		// Semaphore is used for message "please update" only. So there is no reason to wait.
-			ui_ScrMainUpdateSpeed(speed);
+			ui_ScrMainUpdateFast(speed, grad / 10.0);
 			ui_ScrNaviUpdateSpeed(speed);
 			ui_ScrChartUpdateSpeed(speed);
 			ui_ScrMainUpdateCadence(cad);
@@ -142,9 +142,7 @@ void UIFacade::updateStats() {
 	Statistics::ESummaryType t = statMode;
 
 	uint32_t timeTot = stats.getTime(t, Statistics::AVG_DRIVE);
-	String timeStr = DateFormatter::format(DateFormatter::TIME_ONLY, timeTot, "UTC0");
-	//                                       +3 to omit "ST_"
-	ui_ScrMainUpdateStats(Statistics::SUM_TYPE_STRING[t] + 3, stats.getAvg(t, Statistics::AVG_DRIVE), stats.getSpeedMax(t), stats.getDistance(t), timeStr.c_str());
+	ui_ScrMainUpdateStats(Statistics::SUM_TYPE_STRING[t] + 3, stats.getAvg(t, Statistics::AVG_DRIVE), stats.getSpeedMax(t), stats.getDistance(t), timeTot);
 }
 
 void UIFacade::updateIntBatteryInt() {
@@ -171,6 +169,14 @@ void UIFacade::updateHR(uint16_t _hr) {
 	hr=_hr;
 	xSemaphoreGive(xUpdateFast);
 }
+
+void UIFacade::updateGrad(int16_t _grad, int16_t _height) {
+	height = _height;
+	grad   = _grad;
+	xSemaphoreGive(xUpdateFast);
+
+}
+
 
 void UIFacade::updateIP(const String& ipStr) {
 	if (xSemaphoreTake(xUIDrawMutex, 50 / portTICK_PERIOD_MS) == pdTRUE) {
@@ -204,6 +210,15 @@ void UIFacade::updateNavi(const String& navStr, uint32_t dist, uint8_t dirCode) 
 		bclog.log(BCLogger::Log_Error, BCLogger::TAG_OP, "Nav blocked by mutex");
 	}
 
+}
+
+void UIFacade::updateNaviDist(uint32_t dist) {
+	if (xSemaphoreTake(xUIDrawMutex, 50 / portTICK_PERIOD_MS) == pdTRUE) {
+		ui_ScrNaviUpdateNavDist(dist);
+		xSemaphoreGive(xUIDrawMutex);
+	} else {
+		bclog.log(BCLogger::Log_Error, BCLogger::TAG_OP, "Nav blocked by mutex");
+	}
 }
 
 void UIFacade::updateBatInt(float voltage, uint8_t batPerc, bool charging) {

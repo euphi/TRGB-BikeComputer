@@ -20,6 +20,8 @@ const BLEUUID BLEDevices::charUUID[DEV_COUNT] = { BLEUUID((uint16_t)0x2A37), BLE
 const BLEUUID BLEDevices::charUUIDBat = BLEUUID((uint16_t) 0x2A19);
 
 const char* BLEDevices::DEV_EMOJI[DEV_COUNT] = {"❤️","🚴","🚴","⚡", "🧭"};
+const char* BLEDevices::DEV_STRING[DEV_COUNT] = {"HeartRate","CSC1","CSC2","Forumslader", "Komoot"};
+
 
 const uint8_t twoByteOn[] = {0x01,0x00};
 
@@ -29,6 +31,42 @@ BLEDevices::BLEDevices()
 {
 
 }
+
+void BLEDevices::setup() {
+	  BLEDevice::init("TRGB_BTTacho BLE");
+	  scanCB = [this](BLEScanResults result) {
+		  bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "🔵 ✔️ BLE scan completed: %d devices found.", result.getCount());
+		  this->scanning=false;
+	  };
+	  startBLEScan();
+	  komootTicker.attach_ms(100, +[](BLEDevices* thisInstance) {thisInstance->komootLoop();}, this);
+	  connCheckTicker.attach_ms(250, +[](BLEDevices* thisInstance) {thisInstance->connCheckLoop();}, this);
+	  batScanTicker.attach(300, +[](BLEDevices* thisInstance) {thisInstance->batCheckLoop();}, this);
+	  restoreAdresses();
+}
+
+
+void BLEDevices::restoreAdresses() {
+	for (uint16_t c = 0; c < DEV_COUNT; c++) {
+		StatPreferences.begin("BLEConn");
+		uint8_t bit128[16];
+		if (StatPreferences.getBytes(DEV_STRING[c], &bit128, 16) > 0) {
+			pStoredAddress[c] = new BLEAddress(bit128);
+			bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "Addr of %s: %s\n", DEV_STRING[c], pStoredAddress[c]->toString().c_str());
+		} else {
+			bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "Can't read pref %s\n", DEV_STRING[c]);
+		}
+		StatPreferences.end();
+	}
+}
+
+void BLEDevices::storeAdress(EDevType type, BLEAddress& addr) {
+		StatPreferences.begin("BLEConn");
+		size_t rc = StatPreferences.putBytes(DEV_STRING[type], addr.getNative(), 16);
+		bclog.logf(rc > 0 ? BCLogger::Log_Debug : BCLogger::Log_Error, BCLogger::TAG_BLE, "Stored %d bytes to pref %s: %s\n", rc, DEV_STRING[type], addr.toString().c_str());
+		StatPreferences.end();
+}
+
 
 void BLEDevices::onResult(BLEAdvertisedDevice advertisedDevice) {
 	if (advertisedDevice.getServiceUUID().equals(serviceUUIDExposure)) {
@@ -53,32 +91,53 @@ void BLEDevices::onResult(BLEAdvertisedDevice advertisedDevice) {
 	for (uint8_t c = 0; c < advertisedDevice.getServiceUUIDCount(); c++) {
 		BLEUUID uuid = advertisedDevice.getServiceUUID(c);
 		if (uuid.equals(serviceUUID[DEV_CSC_1])) {
+			BLEAddress *pAddr = new BLEAddress(advertisedDevice.getAddress());
 			EDevType dtype = DEV_CSC_1;
-			if (connState[DEV_CSC_1] == CONN_LOST || connState[DEV_CSC_1] == CONN_DEV_NOTFOUND) {
+			bool devFound = false;
+			if (pAddr->equals(*pStoredAddress[DEV_CSC_1])) {
+				bclog.log(BCLogger::Log_Info, BCLogger::TAG_BLE, "Found stored device for CSC1");
+				devFound = true;
 				dtype = DEV_CSC_1;
-			} else if (connState[DEV_CSC_2] == CONN_LOST || connState[DEV_CSC_2] == CONN_DEV_NOTFOUND) {
+			} else if (pAddr->equals(*pStoredAddress[DEV_CSC_2])) {
+				bclog.log(BCLogger::Log_Info, BCLogger::TAG_BLE, "Found stored device for CSC2");
+				devFound = true;
 				dtype = DEV_CSC_2;
 			} else {
-				bclog.log(BCLogger::Log_Warn, BCLogger::TAG_BLE, "\t🚴 More than two Cycling Speed and Cadence (CSC) devices advertised - ignoring");
-				break; // out of for loop
+				dtype = nextCSCSlotAvailable();
+				if (dtype == DEV_UNKNOWN) {
+					bclog.log(BCLogger::Log_Warn, BCLogger::TAG_BLE, "\t🚴 No free CSC connection");
+					delete pAddr;
+					break; // out of for loop
+				}
 			}
 			bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "\t🚴 Found CSC Device %d", dtype);
-			pServerAddress[dtype] = new BLEAddress(advertisedDevice.getAddress());
+			pServerAddress[dtype] = pAddr;
 			doConnect[dtype] = true;
 			connState[dtype] = CONN_ADVERTISED;
 		}
 		if (uuid.equals(serviceUUID[DEV_HRM])) {
 			bclog.log(BCLogger::Log_Info, BCLogger::TAG_BLE, "\t❤️ Found HRM Device");
 			pServerAddress[DEV_HRM] = new BLEAddress(advertisedDevice.getAddress());
-			doConnect[DEV_HRM] = true;
-			connState[DEV_HRM] = CONN_ADVERTISED;
+			if (connectUnknown || (pStoredAddress[DEV_HRM] != nullptr && pServerAddress[DEV_HRM]->equals(*pStoredAddress[DEV_HRM])) ) {
+				doConnect[DEV_HRM] = true;
+				connState[DEV_HRM] = CONN_ADVERTISED;
+			} else {
+				bclog.log(BCLogger::Log_Warn, BCLogger::TAG_BLE, "\t❤️ no new connection to HRM allowed");
+				delete pServerAddress[DEV_HRM];
+			}
+
 		}
 		if (uuid.equals(serviceUUID[DEV_KOMOOT])) {
 			bclog.log(BCLogger::Log_Info, BCLogger::TAG_BLE, "\t🧭 Found Komoot App");
 			if (connState[DEV_KOMOOT] != CONN_CONNECTED) {
-				pServerAddress[DEV_KOMOOT] = new BLEAddress(advertisedDevice.getAddress());
-				doConnect[DEV_KOMOOT] = true;
-				connState[DEV_KOMOOT] = CONN_ADVERTISED;
+				if (connectUnknown || (pStoredAddress[DEV_KOMOOT] != nullptr && pServerAddress[DEV_KOMOOT]->equals(*pStoredAddress[DEV_KOMOOT])) ) {
+					pServerAddress[DEV_KOMOOT] = new BLEAddress(advertisedDevice.getAddress());
+					doConnect[DEV_KOMOOT] = true;
+					connState[DEV_KOMOOT] = CONN_ADVERTISED;
+				} else {
+					bclog.log(BCLogger::Log_Warn, BCLogger::TAG_BLE, "\t🧭 no new connection to komoot allowed");
+					delete pServerAddress[DEV_KOMOOT];
+				}
 			}
 		}
 		bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "\tService-UUID: %s", uuid.toString().c_str());
@@ -86,11 +145,37 @@ void BLEDevices::onResult(BLEAdvertisedDevice advertisedDevice) {
 	if (advertisedDevice.getName().find("ForumsLader") != std::string::npos) {
 		bclog.log(BCLogger::Log_Info, BCLogger::TAG_BLE, "\t⚡ Found FL Device");
 		pServerAddress[DEV_FL] = new BLEAddress(advertisedDevice.getAddress());
-		doConnect[DEV_FL] = true;
-		connState[DEV_FL] = CONN_ADVERTISED;
+		if (connectUnknown || (pStoredAddress[DEV_FL] != nullptr && pServerAddress[DEV_FL]->equals(*pStoredAddress[DEV_FL])) ) {
+			doConnect[DEV_FL] = true;
+			connState[DEV_FL] = CONN_ADVERTISED;
+		} else {
+			bclog.log(BCLogger::Log_Warn, BCLogger::TAG_BLE, "\t⚡ no new connection to FL allowed");
+			delete pServerAddress[DEV_FL];
+
+		}
 	}
 }
 
+BLEDevices::EDevType BLEDevices::nextCSCSlotAvailable() {
+	bool csc1Free = (pStoredAddress[DEV_CSC_1] == nullptr);
+	bool csc2Free = (pStoredAddress[DEV_CSC_2] == nullptr);
+	bool csc1Disconnected =  connState[DEV_CSC_1] == CONN_LOST || connState[DEV_CSC_1] == CONN_DEV_NOTFOUND;
+	bool csc2Disconnected =  connState[DEV_CSC_2] == CONN_LOST || connState[DEV_CSC_2] == CONN_DEV_NOTFOUND;
+	bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "🚴\tCSC1: [%c] free \t [%c] conn\n\tCSC2: [%c] free \t [%c] conn\n", csc1Free ? 'X':' ', csc2Free ? 'X':' ',csc1Disconnected ? 'X':' ',csc2Disconnected ? 'X':' ');
+	if (! ( connectUnknown || csc1Free || csc2Free)) return DEV_UNKNOWN;  // both connection already reserved
+	if (csc1Free && csc1Disconnected) return DEV_CSC_1;  // CSC1 unreserved and disconnected
+	if (csc2Free && csc2Disconnected) return DEV_CSC_2;  // CSC2 unreserved and disconnected
+	if (!connectUnknown) {
+		bclog.log(BCLogger::Log_Info, BCLogger::TAG_BLE, "\t🚴 No new connection allowed");
+		return DEV_UNKNOWN;			 // no unreserved connection that is still disconnected
+	}
+	//--> now, overwriting disconnected connection is allowed
+	if (csc1Disconnected) return DEV_CSC_1;
+	if (csc2Disconnected) return DEV_CSC_2;
+	//--> both connection are already connected
+	bclog.log(BCLogger::Log_Warn, BCLogger::TAG_BLE, "\t🚴 More than two Cycling Speed and Cadence (CSC) devices advertised - ignoring");
+	return DEV_UNKNOWN;
+}
 
 bool BLEDevices::connectToServer(EDevType ctype) {
 	doConnect[ctype] = false;
@@ -132,6 +217,8 @@ bool BLEDevices::connectToServer(EDevType ctype) {
 	pRemoteCharacteristic->registerForNotify([&, ctype](BLERemoteCharacteristic* pBLERemoteCharacteristic, uint8_t* pData, size_t length, bool isNotify) {notifyCallbackCSC(pBLERemoteCharacteristic, pData, length, isNotify, ctype);});
 	bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "🔵%s Notify registered\n", DEV_EMOJI[ctype]);
 
+	storeAdress(ctype, *pServerAddress[ctype]);
+
 	//TODO: Improve (hasBatService is unnecessary etc.)
 	if (hasBatService[ctype]) {
 		BLERemoteService *pRemoteServiceBat = pClient[ctype]->getService(serviceUUIDBat);
@@ -172,17 +259,6 @@ void BLEDevices::startBLEScan() {
 	scanning = true;
 }
 
-void BLEDevices::setup() {
-	  BLEDevice::init("TRGB_BTTacho BLE");
-	  scanCB = [this](BLEScanResults result) {
-		  bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "🔵 ✔️ BLE scan completed: %d devices found.", result.getCount());
-		  this->scanning=false;
-	  };
-	  startBLEScan();
-	  komootTicker.attach(4, +[](BLEDevices* thisInstance) {thisInstance->komootLoop();}, this);
-	  connCheckTicker.attach_ms(250, +[](BLEDevices* thisInstance) {thisInstance->connCheckLoop();}, this);
-	  batScanTicker.attach(300, +[](BLEDevices* thisInstance) {thisInstance->batCheckLoop();}, this);
-}
 
 void BLEDevices::notifyCallbackCSC(BLERemoteCharacteristic *pBLERemoteCharacteristic, uint8_t *pData, size_t length, bool isNotify, EDevType ctype) {
 	uint16_t crank_rev, crank_time, speed_time, hr,  delta;
@@ -254,7 +330,7 @@ void BLEDevices::notifyCallbackCSC(BLERemoteCharacteristic *pBLERemoteCharacteri
 			}
 			crank_rev_last = crank_rev;
 			bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "Cadence %d revs per minute", cadence);
-			stats.addCadence(cadence);
+			stats.addCadence(cadence, crank_rev);
 		}
 		break;
 	case DEV_HRM:
@@ -275,24 +351,35 @@ void BLEDevices::notifyCallbackCSC(BLERemoteCharacteristic *pBLERemoteCharacteri
 }
 
 void BLEDevices::komootLoop() {
-	if (millis() < 6000) return;
+	static uint8_t kCounter = 0;
+	if (millis() < 6000) return; // no display update in first 6 seconds - (safe value that is much longer than display init but shorter than connection to komoot BLE service)
+	bool readValue = false;
 	if (pKomootRemoteCharacteristic) {
-		std::string value = pKomootRemoteCharacteristic->readValue();
-		bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "Read komoot string with %d bytes", value.length());
-		if (value.length() > 4) {
-			//in case we have update flag but characteristic changed due to navigation stop between
-			std::string street;
-			street = value.substr(9); //this causes abort when there are not at least 9 bytes available
-			std::string direction;
-			direction = value.substr(4, 4);
-			uint8_t d = direction[0];
-			std::string distance;
-			distance = value.substr(5, 8);
-			uint32_t dist = distance[0] | distance[1] << 8 | distance[2] << 16 | distance[3] << 24;
-			bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "Komoot-Navigation: %d m in Richtung %0x auf %s", dist, d, street.c_str());
-			ui.updateNavi(String(street.c_str()), dist, d);
+		if (++kCounter >= 40 || readValue) {		// at least every 4 seconds
+			kCounter = 0;
+			std::string value = pKomootRemoteCharacteristic->readValue();
+			bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "Read komoot string with %d bytes", value.length());
+			if (value.length() > 4) {
+				//in case we have update flag but characteristic changed due to navigation stop between
+				std::string street;
+				street = value.substr(9); //this causes abort when there are not at least 9 bytes available
+				std::string direction;
+				direction = value.substr(4, 4);
+				uint8_t d = direction[0];
+				std::string distance;
+				distance = value.substr(5, 8);
+				nav_distance = distance[0] | distance[1] << 8 | distance[2] << 16 | distance[3] << 24;
+				nav_distance_int = stats.getDistance(Statistics::SUM_ESP_START);
+				nav_timestamp = millis();
+				bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "Komoot-Navigation: %d m in Richtung %0x auf %s", nav_distance, d, street.c_str());
+				ui.updateNavi(String(street.c_str()), nav_distance, d);
+			} else {
+				bclog.log(BCLogger::Log_Error, BCLogger::TAG_BLE, "Less than 10 byte received from komoot");
+			}
 		} else {
-			bclog.log(BCLogger::Log_Error, BCLogger::TAG_BLE, "Less than 10 byte received from komoot");
+			int32_t d = (stats.getDistance(Statistics::SUM_ESP_START) - nav_distance_int);
+			if (d < 0) d = 0;
+			ui.updateNaviDist(d);
 		}
 	}
 }
@@ -319,7 +406,7 @@ void BLEDevices::connCheckLoop() {
 				if (cscIsSpeed[c==DEV_CSC_1?1:2]) {
 					stats.addSpeed(NAN);
 				} else {
-					stats.addCadence(-1);
+					stats.addCadence(-1, 0);
 				}
 				break;
 			}

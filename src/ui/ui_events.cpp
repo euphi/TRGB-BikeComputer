@@ -82,3 +82,14 @@ Selected Mode 6: FL-Tot
 	}
 
 }
+
+void resetStats(lv_event_t * e)
+{
+	stats.reset(ui.getStatMode());
+}
+
+void statsTimeMode(bool dir)
+{
+	ui.setStatTimeMode(dir);
+}
+

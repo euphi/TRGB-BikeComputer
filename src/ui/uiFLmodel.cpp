@@ -19,8 +19,8 @@ void UiFLModel::init() {
 	ui_ScreenFL_screen_init();
 
 	// Glue oberserver/listeners to data model
-	flparser.setBatCb([this](uint16_t batVoltage, uint8_t batPerc, int8_t powerStage, int16_t CurBat, int16_t CurConsumer, bool ConsumerOn) {
-		updateFLPower(batVoltage, batPerc, powerStage, CurBat, CurConsumer, ConsumerOn);
+	flparser.setBatCb([this](uint16_t batVoltage, uint8_t batPerc, uint16_t batFullCap, int8_t powerStage, int16_t CurBat, int16_t CurConsumer, bool ConsumerOn) {
+		updateFLPower(batVoltage, batPerc, batFullCap, powerStage, CurBat, CurConsumer, ConsumerOn);
 	});
 	flparser.setStateCb([this](FLClassicParser::EFLConnState cstate, uint32_t flag, int16_t timeout) {
 		updateFLState(cstate, flag, timeout);
@@ -35,7 +35,7 @@ bool UiFLModel::redraw() {
 		updateDone = true;
 	}
 	if (updatePower) {
-		ui_ScrFLUpdatePower(batVoltage, batPerc, powerStage, CurBat, CurConsumer, ConsumerOn);
+		ui_ScrFLUpdatePower(batVoltage, batPerc, batFullCap, powerStage, CurBat, CurConsumer, ConsumerOn);
 		//ui_ScrMainUpdatePower(batVoltage, batPerc, powerStage, CurBat, CurConsumer, ConsumerOn);
 		updatePower = false;updateDone = true;
 	}
@@ -53,9 +53,10 @@ void UiFLModel::updateFLState(FLClassicParser::EFLConnState _cstate, uint32_t _f
 	updateState = true;
 }
 
-void UiFLModel::updateFLPower(uint16_t _batVoltage, uint8_t _batPerc, int8_t _powerStage, int16_t _CurBat, int16_t _CurConsumer, bool _ConsumerOn) {
+void UiFLModel::updateFLPower(uint16_t _batVoltage, uint8_t _batPerc, uint16_t _batFullCap, int8_t _powerStage, int16_t _CurBat, int16_t _CurConsumer, bool _ConsumerOn) {
 	batVoltage = _batVoltage;
 	batPerc = _batPerc;
+	batFullCap = _batFullCap;
 	powerStage = _powerStage;
 	CurBat = _CurBat;
 	CurConsumer = _CurConsumer;

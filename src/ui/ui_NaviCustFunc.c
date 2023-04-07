@@ -25,6 +25,10 @@ void ui_ScrNaviUpdateHR(int16_t hr) {
 void ui_ScrNaviUpdateNav(const char* navStr, uint32_t dist, uint8_t dirCode) {
 	lv_bar_set_value(ui_SNavBarNavDist, dist, LV_ANIM_OFF);
 	lv_label_set_text(ui_SNavLabelStreet, navStr);
-	lv_label_set_text_fmt(ui_SNavLabelNavDist, "%d m", dist);
+	ui_ScrNaviUpdateNavDist(dist);
 	if (dirCode < 32) lv_img_set_src(ui_SNavImgNav, NavImgTable[dirCode]);		// FIXME: Inefficient to set it always
+}
+
+void ui_ScrNaviUpdateNavDist(uint32_t dist) {
+	lv_label_set_text_fmt(ui_SNavLabelNavDist, "%d m", dist);
 }

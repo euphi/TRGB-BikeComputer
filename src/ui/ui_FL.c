@@ -72,7 +72,7 @@ void updateBool(lv_obj_t* obj, bool b) {
 }
 
 
-void ui_ScrFLUpdatePower(uint16_t batVoltage, uint8_t batPerc, int8_t powerStage, int16_t CurBat, int16_t CurConsumer, bool ConsumerOn) {
+void ui_ScrFLUpdatePower(uint16_t batVoltage, uint8_t batPerc, uint16_t batFullCap, int8_t powerStage, int16_t CurBat, int16_t CurConsumer, bool ConsumerOn) {
 	// Label5: Dynamo-Leistung Pos_mitte: (-50,135);
 	// Label2: Verbraucher-Leistung Pos_mitte: (7,-135);
 	// Label1: Batterie-Strom Pos_mitte: (59,135);
@@ -88,6 +88,15 @@ void ui_ScrFLUpdatePower(uint16_t batVoltage, uint8_t batPerc, int8_t powerStage
 	snprintf(txtBuffer, 31, "%.01f W", dynPow);
 	lv_label_set_text(ui_ScreenFL_Label5, txtBuffer);
     lv_bar_set_value(ui_ScreenFL_Bar1, (int16_t) (dynPow*1000), LV_ANIM_ON);
+    lv_bar_set_value(ui_S1BarPowerMode, powerStage, LV_ANIM_ON);
+    if (powerStage < 0 ) {
+        lv_obj_add_state(ui_S1BarPowerMode, LV_STATE_DISABLED);       /// States
+    	powerStage = 0;
+    } else {
+        lv_obj_clear_state(ui_S1BarPowerMode, LV_STATE_DISABLED);       /// States
+    }
+
+
 
 	//Verbraucher
 	float consPow = CurConsumer / 1000.0 * (batVoltage/1000.0);
@@ -100,7 +109,7 @@ void ui_ScrFLUpdatePower(uint16_t batVoltage, uint8_t batPerc, int8_t powerStage
     lv_label_set_text(ui_ScreenFL_Label1, txtBuffer);
     lv_bar_set_value(ui_ScreenFL_Bar3, CurBat, LV_ANIM_ON);
     lv_bar_set_value(ui_Screen1_Bar1, batPerc, LV_ANIM_ON);
-	snprintf(txtBuffer, 31, "%d%%", batPerc);
+	snprintf(txtBuffer, 31, "%d%% of %d mAh", batPerc, batFullCap);
     lv_label_set_text(ui_Screen1_Label4, txtBuffer);
 }
 
