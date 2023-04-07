@@ -45,10 +45,9 @@ void BLEDevices::setup() {
 	  restoreAdresses();
 }
 
-
 void BLEDevices::restoreAdresses() {
-	for (uint16_t c = 0; c < DEV_COUNT; c++) {
-		StatPreferences.begin("BLEConn");
+	StatPreferences.begin("BLEConn");
+	for (uint16_t c = 0; c < DEV_KOMOOT; c++) {
 		uint8_t bit128[16];
 		if (StatPreferences.getBytes(DEV_STRING[c], &bit128, 16) > 0) {
 			pStoredAddress[c] = new BLEAddress(bit128);
@@ -56,17 +55,18 @@ void BLEDevices::restoreAdresses() {
 		} else {
 			bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "Can't read pref %s\n", DEV_STRING[c]);
 		}
-		StatPreferences.end();
 	}
+	StatPreferences.remove(DEV_STRING[DEV_KOMOOT]);
+	StatPreferences.end();
 }
 
-void BLEDevices::storeAdress(EDevType type, BLEAddress& addr) {
-		StatPreferences.begin("BLEConn");
-		size_t rc = StatPreferences.putBytes(DEV_STRING[type], addr.getNative(), 16);
-		bclog.logf(rc > 0 ? BCLogger::Log_Debug : BCLogger::Log_Error, BCLogger::TAG_BLE, "Stored %d bytes to pref %s: %s\n", rc, DEV_STRING[type], addr.toString().c_str());
-		StatPreferences.end();
+void BLEDevices::storeAdress(EDevType type, BLEAddress &addr) {
+	if (type == DEV_KOMOOT) return;	// komoot uses random address
+	StatPreferences.begin("BLEConn");
+	size_t rc = StatPreferences.putBytes(DEV_STRING[type], addr.getNative(), 16);
+	bclog.logf(rc > 0 ? BCLogger::Log_Debug : BCLogger::Log_Error, BCLogger::TAG_BLE, "Stored %d bytes to pref %s: %s\n", rc, DEV_STRING[type],	addr.toString().c_str());
+	StatPreferences.end();
 }
-
 
 void BLEDevices::onResult(BLEAdvertisedDevice advertisedDevice) {
 	if (advertisedDevice.getServiceUUID().equals(serviceUUIDExposure)) {
@@ -124,19 +124,20 @@ void BLEDevices::onResult(BLEAdvertisedDevice advertisedDevice) {
 			} else {
 				bclog.log(BCLogger::Log_Warn, BCLogger::TAG_BLE, "\t❤️ no new connection to HRM allowed");
 				delete pServerAddress[DEV_HRM];
+				pServerAddress[DEV_HRM] = nullptr;
 			}
-
 		}
 		if (uuid.equals(serviceUUID[DEV_KOMOOT])) {
 			bclog.log(BCLogger::Log_Info, BCLogger::TAG_BLE, "\t🧭 Found Komoot App");
 			if (connState[DEV_KOMOOT] != CONN_CONNECTED) {
+				pServerAddress[DEV_KOMOOT] = new BLEAddress(advertisedDevice.getAddress());
 				if (connectUnknown || (pStoredAddress[DEV_KOMOOT] != nullptr && pServerAddress[DEV_KOMOOT]->equals(*pStoredAddress[DEV_KOMOOT])) ) {
-					pServerAddress[DEV_KOMOOT] = new BLEAddress(advertisedDevice.getAddress());
 					doConnect[DEV_KOMOOT] = true;
 					connState[DEV_KOMOOT] = CONN_ADVERTISED;
 				} else {
-					bclog.log(BCLogger::Log_Warn, BCLogger::TAG_BLE, "\t🧭 no new connection to komoot allowed");
 					delete pServerAddress[DEV_KOMOOT];
+					pServerAddress[DEV_KOMOOT] = nullptr;
+					bclog.log(BCLogger::Log_Warn, BCLogger::TAG_BLE, "\t🧭 no new connection to komoot allowed");
 				}
 			}
 		}
@@ -151,6 +152,7 @@ void BLEDevices::onResult(BLEAdvertisedDevice advertisedDevice) {
 		} else {
 			bclog.log(BCLogger::Log_Warn, BCLogger::TAG_BLE, "\t⚡ no new connection to FL allowed");
 			delete pServerAddress[DEV_FL];
+			pServerAddress[DEV_FL] = nullptr;
 
 		}
 	}
@@ -194,7 +196,6 @@ bool BLEDevices::connectToServer(EDevType ctype) {
 		bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_BLE, "🔵⚠️ Cannot connect %s to %s", DEV_EMOJI[ctype], pServerAddress[ctype]->toString().c_str());
 		return false;
 	}
-
 	BLEUUID uuid = serviceUUID[ctype];
 	BLERemoteService* pRemoteService = pClient[ctype]->getService(uuid);
 	if (pRemoteService == nullptr) {
@@ -255,10 +256,8 @@ void BLEDevices::startBLEScan() {
 //		scanCB(result);
 //	});
 	pBLEScan->start(scanTime, [](BLEScanResults result) {scanCB(result);});  // non-blocking
-
 	scanning = true;
 }
-
 
 void BLEDevices::notifyCallbackCSC(BLERemoteCharacteristic *pBLERemoteCharacteristic, uint8_t *pData, size_t length, bool isNotify, EDevType ctype) {
 	uint16_t crank_rev, crank_time, speed_time, hr,  delta;
@@ -386,7 +385,6 @@ void BLEDevices::komootLoop() {
 
 void BLEDevices::connCheckLoop() {
 	if (millis() < 6000) return;
-
 	if (!scanning) reconnCount++;
 	for (uint16_t c = 0; c < DEV_COUNT; c++) {
 		if (doConnect[c]) connectToServer(static_cast<EDevType>(c));		// check if new connection shall be established
@@ -426,6 +424,4 @@ void BLEDevices::batCheckLoop() {
 			//FIXME: Implement
 		}
 	}
-
 }
-
