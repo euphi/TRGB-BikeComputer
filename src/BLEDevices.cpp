@@ -118,7 +118,7 @@ void BLEDevices::onResult(BLEAdvertisedDevice advertisedDevice) {
 		if (uuid.equals(serviceUUID[DEV_HRM])) {
 			bclog.log(BCLogger::Log_Info, BCLogger::TAG_BLE, "\t❤️ Found HRM Device");
 			pServerAddress[DEV_HRM] = new BLEAddress(advertisedDevice.getAddress());
-			if (connectUnknown || (pStoredAddress[DEV_HRM] != nullptr && pServerAddress[DEV_HRM]->equals(*pStoredAddress[DEV_HRM])) ) {
+			if (connectUnknown || pStoredAddress[DEV_HRM] == nullptr  || pServerAddress[DEV_HRM]->equals(*pStoredAddress[DEV_HRM]) ) {
 				doConnect[DEV_HRM] = true;
 				connState[DEV_HRM] = CONN_ADVERTISED;
 			} else {
@@ -131,7 +131,7 @@ void BLEDevices::onResult(BLEAdvertisedDevice advertisedDevice) {
 			bclog.log(BCLogger::Log_Info, BCLogger::TAG_BLE, "\t🧭 Found Komoot App");
 			if (connState[DEV_KOMOOT] != CONN_CONNECTED) {
 				pServerAddress[DEV_KOMOOT] = new BLEAddress(advertisedDevice.getAddress());
-				if (connectUnknown || (pStoredAddress[DEV_KOMOOT] != nullptr && pServerAddress[DEV_KOMOOT]->equals(*pStoredAddress[DEV_KOMOOT])) ) {
+				if ( connectUnknown || pStoredAddress[DEV_KOMOOT] == nullptr || pServerAddress[DEV_KOMOOT]->equals(*pStoredAddress[DEV_KOMOOT]) ) {
 					doConnect[DEV_KOMOOT] = true;
 					connState[DEV_KOMOOT] = CONN_ADVERTISED;
 				} else {
@@ -146,7 +146,7 @@ void BLEDevices::onResult(BLEAdvertisedDevice advertisedDevice) {
 	if (advertisedDevice.getName().find("ForumsLader") != std::string::npos) {
 		bclog.log(BCLogger::Log_Info, BCLogger::TAG_BLE, "\t⚡ Found FL Device");
 		pServerAddress[DEV_FL] = new BLEAddress(advertisedDevice.getAddress());
-		if (connectUnknown || (pStoredAddress[DEV_FL] != nullptr && pServerAddress[DEV_FL]->equals(*pStoredAddress[DEV_FL])) ) {
+		if (connectUnknown || pStoredAddress[DEV_FL] == nullptr || pServerAddress[DEV_FL]->equals(*pStoredAddress[DEV_FL]) ) {
 			doConnect[DEV_FL] = true;
 			connState[DEV_FL] = CONN_ADVERTISED;
 		} else {
