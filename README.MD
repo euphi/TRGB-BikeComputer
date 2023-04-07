@@ -1,3 +1,6 @@
+
+
+
 # T-RGB Bike Computer
 
 A bike computer based on [LilyGO T-RGB](https://www.lilygo.cc/products/t-rgb):
@@ -6,6 +9,8 @@ A bike computer based on [LilyGO T-RGB](https://www.lilygo.cc/products/t-rgb):
 - ESP32-S3 microcontroller with Bluetooth LE and WiFi
 - SD Card
 - Battery connector incl. charging logic
+
+![Photo of T-RGB Bike Computer with active navigation](/doc/IMG20230406075242-cropped.jpg)
 
 ## Build
 
