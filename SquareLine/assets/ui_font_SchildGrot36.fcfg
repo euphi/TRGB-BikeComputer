@@ -1,0 +1,16 @@
+{
+  "codename": "SchildGrot36",
+  "ttf_path": "/assets/schilder.ttf",
+  "bin_path": "/assets/ui_font_SchildGrot36.bin",
+  "c_path": "/assets/ui_font_SchildGrot36.c",
+  "cfg_path": "/assets/ui_font_SchildGrot36.fcfg",
+  "size": 36,
+  "bpp": 1,
+  "letters": 0,
+  "ranges": [
+    "0x20-0x7f"
+  ],
+  "symbols": "üöäÜÖÄß€µ",
+  "customparams": "--no-compress --no-prefilter",
+  "uploaded": false
+}
