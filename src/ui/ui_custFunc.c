@@ -25,16 +25,21 @@ void ui_ScrMainUpdateFast(float speed, float grad) {
 	lv_label_set_text_fmt(ui_S1PStatLGradientVar, "%.1f", grad);
 }
 
+void ui_ScrMainUpdateTimeMode(const char* tmStr) {
+	lv_label_set_text(ui_S1PStatLTime, tmStr);
+}
+
+
 void ui_ScrMainUpdateStats(const char* modeStr, float avgSpd, float maxSpd, uint32_t dist, uint32_t timeInS) {
 	lv_label_set_text(ui_S1PStatLTitle, modeStr);
 	lv_label_set_text_fmt(ui_S1PStatLspdMaxVar, "%.1f", maxSpd);
 	lv_label_set_text_fmt(ui_S1PStatLAvgVar, "%.1f", avgSpd);
 	lv_label_set_text_fmt(ui_S1PStatLDistVar, "%.1f", dist/1000.0);
-	lv_label_set_text_fmt(ui_S1PStatLTimeVar, "%02d:%02d:%02", timeInS / 3600, timeInS % 3600, timeInS % 60);
+	lv_label_set_text_fmt(ui_S1PStatLTimeVar, "%02d:%02d:%02d", timeInS / 3600, (timeInS / 60) % 60, timeInS % 60);
 }
 
 void ui_ScrMainUpdateCadence(int16_t cadence) {
-	lv_label_set_text_fmt(ui_Label2, (cadence >= 0) ? "%d rpm" : "-/-", cadence);
+	lv_label_set_text_fmt(ui_S1LabelCad, (cadence >= 0) ? "%d rpm" : "-/-", cadence);
 	lv_arc_set_value(ui_S1ArcCadence, cadence);
 }
 

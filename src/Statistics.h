@@ -100,6 +100,7 @@ public:
 	uint32_t getDistance(ESummaryType type) const;
 
 	static const char* PREF_TIME_STRING[Statistics::EDrivingStateMax];
+	static const char* AVG_TYPE_STRING[Statistics::EAvgTypeMax];
 	static const char* SUM_TYPE_STRING[Statistics::ESummaryTypeMax];
 
 	static EAvgType getNextTimeMode(EAvgType type, bool dir) {

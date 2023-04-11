@@ -80,6 +80,7 @@ void FLClassicParser::updateFromString(const String &flStr) {
 			if (envCB) {
 				envCB(temperature, pressure, height, gradient);
 			}
+			stats.addGradient(gradient, height);
 			//Serial.printf("[%x] Temp: %.02f\tPressure: %.01f\tHeight: %.01f\tGradient: %d\n", scanCt, temperature/10.0, pressure/100.0, height/10.0, gradient);
 			break;
 		case 'C':

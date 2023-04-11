@@ -381,7 +381,8 @@ void BLEDevices::komootLoop() {
 				bclog.log(BCLogger::Log_Error, BCLogger::TAG_BLE, "Less than 10 byte received from komoot");
 			}
 		} else {
-			int32_t d = (stats.getDistance(Statistics::SUM_ESP_START) - nav_distance_int);
+			//last known dist to target - (   distance driven since last update )
+			int32_t d = nav_distance - (stats.getDistance(Statistics::SUM_ESP_START) - nav_distance_int);
 			if (d < 0) d = 0;
 			ui.updateNaviDist(d);
 		}

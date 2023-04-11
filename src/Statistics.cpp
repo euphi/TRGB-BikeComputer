@@ -26,7 +26,11 @@ const char* Statistics::SUM_TYPE_STRING[Statistics::ESummaryTypeMax] = {
 		"ST_FL_TRIP",
 };
 
-
+const char* Statistics::AVG_TYPE_STRING[Statistics::EAvgTypeMax] = {
+		"Zeit kompl",
+		"Zeit fahrend",
+		"Zeit m. Stops"
+};
 
 Statistics::Statistics() {
 	timestamp_last = millis();
@@ -182,6 +186,7 @@ void Statistics::setCurDriveState(EDrivingState _curDriveState) {
 }
 
 uint32_t Statistics::getTime(ESummaryType type, EAvgType avgtype) const {
+	//TODO: uint32_t is too short for time in msec (roll-over every 7 weeks)
 	uint32_t relevantTime = time_in[DS_DRIVE_COASTING][type] + time_in[DS_DRIVE_POWER][type];
 	switch (avgtype) {
 	case AVG_ALL:
@@ -190,15 +195,15 @@ uint32_t Statistics::getTime(ESummaryType type, EAvgType avgtype) const {
 	case AVG_NOBREAK:
 		relevantTime += time_in[DS_STOP][type];
 	}
-	return relevantTime;
+	return relevantTime/1000;		//msec to sec
 }
 
 float Statistics::getAvg(ESummaryType type, EAvgType avgtype) const {
 	//FIXME: avg does not take into account distance in no connection. There should be at least a mechanism to compensate distance in NO_CONN
 	//TRACE: Serial.print(getDistance(type)); Serial.print('\t');Serial.println(relevantTime);
 
-	//        .. in m         / msec          / msec/sec  * 3.6 km/h / m/s..
-	return (getDistance(type) / (getTime(type, avgtype) / 1000.0)) * 3.6;
+	//        .. in m         / sec                     * 3.6 km/h / m/s..
+	return (getDistance(type) / static_cast<float>(getTime(type, avgtype))) * 3.6;
 
 }
 
@@ -206,8 +211,8 @@ float Statistics::getAvgCadence(EAvgType avgtype) const {
 	//FIXME: avg does not take into account distance in no connection. There should be at least a mechanism to compensate distance in NO_CONN
 	//TRACE: Serial.print(getDistance(type)); Serial.print('\t');Serial.println(relevantTime);
 
-	//        .. in m         / msec          / msec/sec  * 3.6 km/h / m/s..
-		return (cadence_tot / (getTime(SUM_ESP_START, avgtype) / 1000.0)) * 3.6;
+	//        .. in m         / sec                             * 3.6 km/h / m/s..
+		return (cadence_tot / static_cast<float>(getTime(SUM_ESP_START, avgtype)) ) * 3.6;
 
 }
 

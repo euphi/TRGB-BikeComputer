@@ -141,8 +141,8 @@ void UIFacade::updateClock(const time_t now) {
 void UIFacade::updateStats() {
 	Statistics::ESummaryType t = statMode;
 
-	uint32_t timeTot = stats.getTime(t, Statistics::AVG_DRIVE);
-	ui_ScrMainUpdateStats(Statistics::SUM_TYPE_STRING[t] + 3, stats.getAvg(t, Statistics::AVG_DRIVE), stats.getSpeedMax(t), stats.getDistance(t), timeTot);
+	uint32_t timeTot = stats.getTime(t, statTimeMode);
+	ui_ScrMainUpdateStats(Statistics::SUM_TYPE_STRING[t] + 3, stats.getAvg(t, statTimeMode), stats.getSpeedMax(t), stats.getDistance(t), timeTot);
 }
 
 void UIFacade::updateIntBatteryInt() {
@@ -209,7 +209,6 @@ void UIFacade::updateNavi(const String& navStr, uint32_t dist, uint8_t dirCode) 
 	} else {
 		bclog.log(BCLogger::Log_Error, BCLogger::TAG_OP, "Nav blocked by mutex");
 	}
-
 }
 
 void UIFacade::updateNaviDist(uint32_t dist) {

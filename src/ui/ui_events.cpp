@@ -7,6 +7,7 @@
 #include "ui_Settings.h"
 #include "Singletons.h"
 #include "Statistics.h"
+#include "ui_custFunc.h"
 
 void chartModeHeartRate(lv_event_t * e)
 {
@@ -90,6 +91,8 @@ void resetStats(lv_event_t * e)
 
 void statsTimeMode(bool dir)
 {
-	ui.setStatTimeMode(dir);
+	Statistics::EAvgType statTimeMode = ui.getStatTimeMode();
+	ui.setStatTimeMode(Statistics::getNextTimeMode(statTimeMode, dir));
+	ui_ScrMainUpdateTimeMode(Statistics::AVG_TYPE_STRING[ui.getStatTimeMode()]);
 }
 

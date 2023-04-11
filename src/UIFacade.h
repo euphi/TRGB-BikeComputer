@@ -27,10 +27,6 @@ public:
 	void updateGrad(int16_t grad, int16_t height);	// grad(ient) in permille,
 
 	void setStatMode(Statistics::ESummaryType mode) {statMode = mode;}
-	void setStatTimeMode(bool dir) {statTimeMode = Statistics::getNextTimeMode(statTimeMode, dir);}
-
-
-
 	void updateFast() {xSemaphoreGive(xUpdateFast);}
 
 	void updateIP(const String& ipStr);
@@ -42,6 +38,10 @@ public:
 	float getBatIntVoltageAvg() const {return batIntVoltageAvg;}
 
 	Statistics::ESummaryType getStatMode() const {return statMode;}
+
+	Statistics::EAvgType getStatTimeMode() const {return statTimeMode;}
+	void setStatTimeMode(Statistics::EAvgType _statTimeMode) {statTimeMode = _statTimeMode;}
+
 
 private:
 	void updateData();

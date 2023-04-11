@@ -11,10 +11,6 @@
     #define LV_ATTRIBUTE_MEM_ALIGN
 #endif
 
-#ifndef LV_ATTRIBUTE_IMG_KREISEL_3_3
-#define LV_ATTRIBUTE_IMG_KREISEL_3_3
-#endif
-
 const lv_img_dsc_t* NavImgTable[32] = {
 	&nav_reserved,	// 0
 	&nav_straight,	// 1
@@ -261,24 +257,6 @@ const lv_img_dsc_t nav_finish = {
   .data_size = 4616,
   .data = nav_finish_map,
 };
-#ifdef __has_include
-    #if __has_include("lvgl.h")
-        #ifndef LV_LVGL_H_INCLUDE_SIMPLE
-            #define LV_LVGL_H_INCLUDE_SIMPLE
-        #endif
-    #endif
-#endif
-
-#if defined(LV_LVGL_H_INCLUDE_SIMPLE)
-    #include "lvgl.h"
-#else
-    #include "lvgl/lvgl.h"
-#endif
-
-
-#ifndef LV_ATTRIBUTE_MEM_ALIGN
-#define LV_ATTRIBUTE_MEM_ALIGN
-#endif
 
 #ifndef LV_ATTRIBUTE_IMG_NAV_FORK_L
 #define LV_ATTRIBUTE_IMG_NAV_FORK_L
@@ -491,24 +469,6 @@ const lv_img_dsc_t nav_fork_l = {
   .data_size = 4616,
   .data = nav_fork_l_map,
 };
-#ifdef __has_include
-    #if __has_include("lvgl.h")
-        #ifndef LV_LVGL_H_INCLUDE_SIMPLE
-            #define LV_LVGL_H_INCLUDE_SIMPLE
-        #endif
-    #endif
-#endif
-
-#if defined(LV_LVGL_H_INCLUDE_SIMPLE)
-    #include "lvgl.h"
-#else
-    #include "lvgl/lvgl.h"
-#endif
-
-
-#ifndef LV_ATTRIBUTE_MEM_ALIGN
-#define LV_ATTRIBUTE_MEM_ALIGN
-#endif
 
 #ifndef LV_ATTRIBUTE_IMG_NAV_FORK_R
 #define LV_ATTRIBUTE_IMG_NAV_FORK_R
@@ -721,24 +681,6 @@ const lv_img_dsc_t nav_fork_r = {
   .data_size = 4616,
   .data = nav_fork_r_map,
 };
-#ifdef __has_include
-    #if __has_include("lvgl.h")
-        #ifndef LV_LVGL_H_INCLUDE_SIMPLE
-            #define LV_LVGL_H_INCLUDE_SIMPLE
-        #endif
-    #endif
-#endif
-
-#if defined(LV_LVGL_H_INCLUDE_SIMPLE)
-    #include "lvgl.h"
-#else
-    #include "lvgl/lvgl.h"
-#endif
-
-
-#ifndef LV_ATTRIBUTE_MEM_ALIGN
-#define LV_ATTRIBUTE_MEM_ALIGN
-#endif
 
 #ifndef LV_ATTRIBUTE_IMG_NAV_LEFT135
 #define LV_ATTRIBUTE_IMG_NAV_LEFT135
@@ -951,24 +893,6 @@ const lv_img_dsc_t nav_left135 = {
   .data_size = 4616,
   .data = nav_left135_map,
 };
-#ifdef __has_include
-    #if __has_include("lvgl.h")
-        #ifndef LV_LVGL_H_INCLUDE_SIMPLE
-            #define LV_LVGL_H_INCLUDE_SIMPLE
-        #endif
-    #endif
-#endif
-
-#if defined(LV_LVGL_H_INCLUDE_SIMPLE)
-    #include "lvgl.h"
-#else
-    #include "lvgl/lvgl.h"
-#endif
-
-
-#ifndef LV_ATTRIBUTE_MEM_ALIGN
-#define LV_ATTRIBUTE_MEM_ALIGN
-#endif
 
 #ifndef LV_ATTRIBUTE_IMG_NAV_LEFT45
 #define LV_ATTRIBUTE_IMG_NAV_LEFT45
@@ -1181,24 +1105,6 @@ const lv_img_dsc_t nav_left45 = {
   .data_size = 4616,
   .data = nav_left45_map,
 };
-#ifdef __has_include
-    #if __has_include("lvgl.h")
-        #ifndef LV_LVGL_H_INCLUDE_SIMPLE
-            #define LV_LVGL_H_INCLUDE_SIMPLE
-        #endif
-    #endif
-#endif
-
-#if defined(LV_LVGL_H_INCLUDE_SIMPLE)
-    #include "lvgl.h"
-#else
-    #include "lvgl/lvgl.h"
-#endif
-
-
-#ifndef LV_ATTRIBUTE_MEM_ALIGN
-#define LV_ATTRIBUTE_MEM_ALIGN
-#endif
 
 #ifndef LV_ATTRIBUTE_IMG_NAV_LEFT90
 #define LV_ATTRIBUTE_IMG_NAV_LEFT90
@@ -1411,24 +1317,6 @@ const lv_img_dsc_t nav_left90 = {
   .data_size = 4616,
   .data = nav_left90_map,
 };
-#ifdef __has_include
-    #if __has_include("lvgl.h")
-        #ifndef LV_LVGL_H_INCLUDE_SIMPLE
-            #define LV_LVGL_H_INCLUDE_SIMPLE
-        #endif
-    #endif
-#endif
-
-#if defined(LV_LVGL_H_INCLUDE_SIMPLE)
-    #include "lvgl.h"
-#else
-    #include "lvgl/lvgl.h"
-#endif
-
-
-#ifndef LV_ATTRIBUTE_MEM_ALIGN
-#define LV_ATTRIBUTE_MEM_ALIGN
-#endif
 
 #ifndef LV_ATTRIBUTE_IMG_NAV_NONAV
 #define LV_ATTRIBUTE_IMG_NAV_NONAV
@@ -1641,24 +1529,6 @@ const lv_img_dsc_t nav_nonav = {
   .data_size = 4616,
   .data = nav_nonav_map,
 };
-#ifdef __has_include
-    #if __has_include("lvgl.h")
-        #ifndef LV_LVGL_H_INCLUDE_SIMPLE
-            #define LV_LVGL_H_INCLUDE_SIMPLE
-        #endif
-    #endif
-#endif
-
-#if defined(LV_LVGL_H_INCLUDE_SIMPLE)
-    #include "lvgl.h"
-#else
-    #include "lvgl/lvgl.h"
-#endif
-
-
-#ifndef LV_ATTRIBUTE_MEM_ALIGN
-#define LV_ATTRIBUTE_MEM_ALIGN
-#endif
 
 #ifndef LV_ATTRIBUTE_IMG_NAV_RESERVED
 #define LV_ATTRIBUTE_IMG_NAV_RESERVED
@@ -1871,24 +1741,6 @@ const lv_img_dsc_t nav_reserved = {
   .data_size = 4616,
   .data = nav_reserved_map,
 };
-#ifdef __has_include
-    #if __has_include("lvgl.h")
-        #ifndef LV_LVGL_H_INCLUDE_SIMPLE
-            #define LV_LVGL_H_INCLUDE_SIMPLE
-        #endif
-    #endif
-#endif
-
-#if defined(LV_LVGL_H_INCLUDE_SIMPLE)
-    #include "lvgl.h"
-#else
-    #include "lvgl/lvgl.h"
-#endif
-
-
-#ifndef LV_ATTRIBUTE_MEM_ALIGN
-#define LV_ATTRIBUTE_MEM_ALIGN
-#endif
 
 #ifndef LV_ATTRIBUTE_IMG_NAV_RIGHT135
 #define LV_ATTRIBUTE_IMG_NAV_RIGHT135
@@ -2101,24 +1953,6 @@ const lv_img_dsc_t nav_right135 = {
   .data_size = 4616,
   .data = nav_right135_map,
 };
-#ifdef __has_include
-    #if __has_include("lvgl.h")
-        #ifndef LV_LVGL_H_INCLUDE_SIMPLE
-            #define LV_LVGL_H_INCLUDE_SIMPLE
-        #endif
-    #endif
-#endif
-
-#if defined(LV_LVGL_H_INCLUDE_SIMPLE)
-    #include "lvgl.h"
-#else
-    #include "lvgl/lvgl.h"
-#endif
-
-
-#ifndef LV_ATTRIBUTE_MEM_ALIGN
-#define LV_ATTRIBUTE_MEM_ALIGN
-#endif
 
 #ifndef LV_ATTRIBUTE_IMG_NAV_RIGHT45
 #define LV_ATTRIBUTE_IMG_NAV_RIGHT45
@@ -2331,24 +2165,6 @@ const lv_img_dsc_t nav_right45 = {
   .data_size = 4616,
   .data = nav_right45_map,
 };
-#ifdef __has_include
-    #if __has_include("lvgl.h")
-        #ifndef LV_LVGL_H_INCLUDE_SIMPLE
-            #define LV_LVGL_H_INCLUDE_SIMPLE
-        #endif
-    #endif
-#endif
-
-#if defined(LV_LVGL_H_INCLUDE_SIMPLE)
-    #include "lvgl.h"
-#else
-    #include "lvgl/lvgl.h"
-#endif
-
-
-#ifndef LV_ATTRIBUTE_MEM_ALIGN
-#define LV_ATTRIBUTE_MEM_ALIGN
-#endif
 
 #ifndef LV_ATTRIBUTE_IMG_NAV_RIGHT90
 #define LV_ATTRIBUTE_IMG_NAV_RIGHT90
@@ -2561,24 +2377,6 @@ const lv_img_dsc_t nav_right90 = {
   .data_size = 4616,
   .data = nav_right90_map,
 };
-#ifdef __has_include
-    #if __has_include("lvgl.h")
-        #ifndef LV_LVGL_H_INCLUDE_SIMPLE
-            #define LV_LVGL_H_INCLUDE_SIMPLE
-        #endif
-    #endif
-#endif
-
-#if defined(LV_LVGL_H_INCLUDE_SIMPLE)
-    #include "lvgl.h"
-#else
-    #include "lvgl/lvgl.h"
-#endif
-
-
-#ifndef LV_ATTRIBUTE_MEM_ALIGN
-#define LV_ATTRIBUTE_MEM_ALIGN
-#endif
 
 #ifndef LV_ATTRIBUTE_IMG_NAV_START
 #define LV_ATTRIBUTE_IMG_NAV_START
@@ -2791,24 +2589,6 @@ const lv_img_dsc_t nav_start = {
   .data_size = 4616,
   .data = nav_start_map,
 };
-#ifdef __has_include
-    #if __has_include("lvgl.h")
-        #ifndef LV_LVGL_H_INCLUDE_SIMPLE
-            #define LV_LVGL_H_INCLUDE_SIMPLE
-        #endif
-    #endif
-#endif
-
-#if defined(LV_LVGL_H_INCLUDE_SIMPLE)
-    #include "lvgl.h"
-#else
-    #include "lvgl/lvgl.h"
-#endif
-
-
-#ifndef LV_ATTRIBUTE_MEM_ALIGN
-#define LV_ATTRIBUTE_MEM_ALIGN
-#endif
 
 #ifndef LV_ATTRIBUTE_IMG_NAV_STRAIGHT
 #define LV_ATTRIBUTE_IMG_NAV_STRAIGHT
@@ -3021,24 +2801,6 @@ const lv_img_dsc_t nav_straight = {
   .data_size = 4616,
   .data = nav_straight_map,
 };
-#ifdef __has_include
-    #if __has_include("lvgl.h")
-        #ifndef LV_LVGL_H_INCLUDE_SIMPLE
-            #define LV_LVGL_H_INCLUDE_SIMPLE
-        #endif
-    #endif
-#endif
-
-#if defined(LV_LVGL_H_INCLUDE_SIMPLE)
-    #include "lvgl.h"
-#else
-    #include "lvgl/lvgl.h"
-#endif
-
-
-#ifndef LV_ATTRIBUTE_MEM_ALIGN
-#define LV_ATTRIBUTE_MEM_ALIGN
-#endif
 
 #ifndef LV_ATTRIBUTE_IMG_NAV_UTURN
 #define LV_ATTRIBUTE_IMG_NAV_UTURN
@@ -3252,6 +3014,10 @@ const lv_img_dsc_t nav_uturn = {
   .data = nav_uturn_map,
 };
 
+#ifndef LV_ATTRIBUTE_IMG_KREISEL_3_3
+#define LV_ATTRIBUTE_IMG_KREISEL_3_3
+#endif
+
 
 const LV_ATTRIBUTE_MEM_ALIGN LV_ATTRIBUTE_LARGE_CONST LV_ATTRIBUTE_IMG_KREISEL_3_3 uint8_t nav_Kreisel_3_3_map[] = {
   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -3457,6 +3223,7 @@ const lv_img_dsc_t nav_Kreisel_3_3 = {
   .data_size = 4608,
   .data = nav_Kreisel_3_3_map,
 };
+
 
 
 
