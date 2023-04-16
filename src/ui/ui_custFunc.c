@@ -34,6 +34,7 @@ void ui_ScrMainUpdateStats(const char* modeStr, float avgSpd, float maxSpd, uint
 	lv_label_set_text(ui_S1PStatLTitle, modeStr);
 	lv_label_set_text_fmt(ui_S1PStatLspdMaxVar, "%.1f", maxSpd);
 	lv_label_set_text_fmt(ui_S1PStatLAvgVar, "%.1f", avgSpd);
+	lv_arc_set_value(ui_S1ArcAvg, (int16_t)(avgSpd * 10));
 	lv_label_set_text_fmt(ui_S1PStatLDistVar, "%.1f", dist/1000.0);
 	lv_label_set_text_fmt(ui_S1PStatLTimeVar, "%02d:%02d:%02d", timeInS / 3600, (timeInS / 60) % 60, timeInS % 60);
 }

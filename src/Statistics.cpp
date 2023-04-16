@@ -27,9 +27,9 @@ const char* Statistics::SUM_TYPE_STRING[Statistics::ESummaryTypeMax] = {
 };
 
 const char* Statistics::AVG_TYPE_STRING[Statistics::EAvgTypeMax] = {
-		"Zeit kompl",
-		"Zeit fahrend",
-		"Zeit m. Stops"
+		"⏱ kompl",
+		"⏱ fahrend",
+		"⏱ Stops"
 };
 
 Statistics::Statistics() {

@@ -32,6 +32,8 @@ void BrightChanged(lv_event_t * e)
 
 	bclog.logf( BCLogger::Log_Info, BCLogger::TAG_OP, "New brightness value %d.\n", sliderValue);
 	if (sliderValue > 250) {
+		analogWrite(EXAMPLE_PIN_NUM_BK_LIGHT, 255);
+		delay(5);
 		digitalWrite(EXAMPLE_PIN_NUM_BK_LIGHT, EXAMPLE_LCD_BK_LIGHT_ON_LEVEL);
 	} else {
 		analogWrite(EXAMPLE_PIN_NUM_BK_LIGHT, sliderValue);

@@ -77,6 +77,7 @@ LV_IMG_DECLARE(nav_64_finish);
 
 LV_FONT_DECLARE(ui_font_by75_96);
 LV_FONT_DECLARE(ui_font_SchildGrot24);
+LV_FONT_DECLARE(TimeFont24);
 
 void ui_S1Main_screen_init();
 void ui_ScreenWifi_screen_init();

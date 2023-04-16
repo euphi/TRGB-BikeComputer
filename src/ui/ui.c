@@ -128,11 +128,9 @@ void ui_event_S1PanelStat(lv_event_t * e)
         resetStats(e);
     }
     if(event_code == LV_EVENT_GESTURE &&  lv_indev_get_gesture_dir(lv_indev_get_act()) == LV_DIR_TOP) {
-    	printf("up %d\n", event_code);
         statsTimeMode(true);
     }
     if(event_code == LV_EVENT_GESTURE &&  lv_indev_get_gesture_dir(lv_indev_get_act()) == LV_DIR_BOTTOM) {
-    	printf("down %d\n",event_code);
         statsTimeMode(false);
     }
 }
@@ -205,6 +203,7 @@ void ui_S1Main_screen_init(void)
     lv_obj_set_x(ui_S1PanelNav, 170);
     lv_obj_set_y(ui_S1PanelNav, -51);
     lv_obj_set_align(ui_S1PanelNav, LV_ALIGN_CENTER);
+    lv_obj_add_flag(ui_S1PanelNav, LV_OBJ_FLAG_HIDDEN);     /// Flags
     lv_obj_clear_flag(ui_S1PanelNav, LV_OBJ_FLAG_SCROLLABLE);      /// Flags
 
     ui_S1LabelNav = lv_label_create(ui_S1PanelNav);
@@ -214,12 +213,12 @@ void ui_S1Main_screen_init(void)
     lv_obj_set_y(ui_S1LabelNav, -34);
     lv_obj_set_align(ui_S1LabelNav, LV_ALIGN_CENTER);
     lv_label_set_long_mode(ui_S1LabelNav, LV_LABEL_LONG_SCROLL_CIRCULAR);
-    lv_label_set_text(ui_S1LabelNav, "5858,8km");
+    lv_label_set_text(ui_S1LabelNav, "? m");
     lv_obj_set_style_text_align(ui_S1LabelNav, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_font(ui_S1LabelNav, &ui_font_SchildGrot24, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     ui_S1ImgNav = lv_img_create(ui_S1PanelNav);
-    lv_img_set_src(ui_S1ImgNav, &nav_64_finish);
+    lv_img_set_src(ui_S1ImgNav, &nav_64_reserved);
     lv_obj_set_width(ui_S1ImgNav, 64);
     lv_obj_set_height(ui_S1ImgNav, 64);
     lv_obj_set_x(ui_S1ImgNav, -6);
@@ -234,7 +233,7 @@ void ui_S1Main_screen_init(void)
     lv_obj_set_style_img_recolor_opa(ui_S1ImgNav, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     ui_S1BarNavDist = lv_bar_create(ui_S1PanelNav);
-    lv_bar_set_range(ui_S1BarNavDist, 0, 100);
+    lv_bar_set_range(ui_S1BarNavDist, 0, 250);
     lv_obj_set_width(ui_S1BarNavDist, 10);
     lv_obj_set_height(ui_S1BarNavDist, 64);
     lv_obj_set_x(ui_S1BarNavDist, 33);
@@ -283,7 +282,7 @@ void ui_S1Main_screen_init(void)
     lv_obj_set_align(ui_S1ArcCadence, LV_ALIGN_CENTER);
     lv_obj_clear_flag(ui_S1ArcCadence, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_PRESS_LOCK | LV_OBJ_FLAG_CLICK_FOCUSABLE |
                       LV_OBJ_FLAG_SNAPPABLE | LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_SCROLL_ELASTIC);     /// Flags
-    lv_arc_set_range(ui_S1ArcCadence, 0, 200);
+    lv_arc_set_range(ui_S1ArcCadence, 0, 140);
     lv_obj_set_style_arc_width(ui_S1ArcCadence, 1, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     lv_obj_set_style_arc_color(ui_S1ArcCadence, lv_color_hex(0xE2FF00), LV_PART_INDICATOR | LV_STATE_DEFAULT);
@@ -505,9 +504,9 @@ void ui_S1Main_screen_init(void)
     lv_obj_set_height(ui_S1PStatLTime, LV_SIZE_CONTENT);    /// 1
     lv_obj_set_x(ui_S1PStatLTime, lv_pct(-5));
     lv_obj_set_y(ui_S1PStatLTime, lv_pct(90));
-    lv_label_set_text(ui_S1PStatLTime, "Time");
+    lv_label_set_text(ui_S1PStatLTime, "⏱ gesamt");
     lv_obj_set_style_text_align(ui_S1PStatLTime, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_text_font(ui_S1PStatLTime, &lv_font_montserrat_24, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(ui_S1PStatLTime, &TimeFont24, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     ui_S1PStatLTimeVar = lv_label_create(ui_S1PanelStat);
     lv_obj_set_width(ui_S1PStatLTimeVar, 113);
