@@ -143,7 +143,7 @@ void Statistics::addDistance(uint16_t dist, ESummaryType type) {
 	start_distance[type] = dist;
 }
 
-void Statistics::updateDistance(uint16_t _dist) {
+void Statistics::updateDistance(uint32_t _dist) {
 	distance = _dist;
 	if (start_distance[SUM_ESP_START] == 0) addDistance(distance, SUM_ESP_START);
 }

@@ -83,7 +83,7 @@ public:
 	void addSpeed(float speed);  // in 0,1km/h
 	void addDistance(uint16_t dist, ESummaryType type = SUM_ESP_TOUR);
 	void reset(ESummaryType type);
-	void updateDistance(uint16_t dist);
+	void updateDistance(uint32_t dist);
 	void addHR(int16_t heartrate);
 	void addCadence(int16_t cadence, int16_t total);
 	void setConnected(bool connected);
