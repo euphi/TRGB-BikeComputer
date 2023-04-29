@@ -139,7 +139,7 @@ void Statistics::addSpeed(float _speed) {
 
 }
 
-void Statistics::addDistance(uint16_t dist, ESummaryType type) {
+void Statistics::addDistance(uint32_t dist, ESummaryType type) {
 	start_distance[type] = dist;
 }
 
