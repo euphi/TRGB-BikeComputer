@@ -76,10 +76,10 @@ void UIFacade::updateData() {
  * 		   - this redraws all quickly changing data like speed, cadence, heart rate
  *
  * "slow"  - signaled by binary semaphore xUpdateSlow.
- *         - it isn't that slow: a time is used to give the semaphore every 250ms (4 Hz)
+ *         - it isn't that slow: a timer is used to give the semaphore every 250ms (4 Hz)
  *         - here, data that slowly changes is polled from data model. (`Statistics stats`)
  *
- * "direct" - data that is rarely updated may directly update lvgl objects. This MUST be not done during refresh, so a mutex (xUIDrawMutex) is used to protect refresh.
+ * "direct" - data that is rarely updated may directly update lvgl objects. This MUST not be done during refresh, so a mutex (xUIDrawMutex) is used to protect refresh.
  *          - this may block refreshing and thus may lead to less smooth display animations or even some flickering. So use only for rarely updated labels (like IP adress).
  */
 void UIFacade::updateHandler() {

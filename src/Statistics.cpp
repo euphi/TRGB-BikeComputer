@@ -74,6 +74,7 @@ void Statistics::cycle() {
 	time_t time_now = millis();
 	uint32_t delta = time_now - timestamp_last;
 	timestamp_last = time_now;
+	time_t time_in_break = time_now - timestamp_stop;
 	for (uint_fast8_t c = SUM_ESP_TOTAL; c <= SUM_ESP_START; c++) {
 		time_in[curDriveState][c] += delta;
 	}
@@ -81,9 +82,15 @@ void Statistics::cycle() {
 	// Driving state fsm (Connected sub-state)
 	switch (curDriveState) {
 	case DS_STOP:
-		if (time_now - timestamp_stop > 120000) {
+		if ( time_in_break > 120000) {
 			for (uint_fast8_t c = SUM_ESP_TOTAL; c <= SUM_ESP_START; c++) {
-				if (time_in[DS_STOP][c] > 120000) time_in[DS_STOP][c] -= 120000; else time_in[DS_STOP][c] = 0;
+				if (time_in[DS_STOP][c] >= time_in_break) {
+					time_in[DS_STOP][c] -= time_in_break;
+				} else { // else path can happen after data reset
+					time_in_break = time_in[DS_STOP][c];
+					time_in[DS_STOP][c] = 0;
+				}
+				time_in[DS_BREAK][c] += time_in_break;
 			}
 			setCurDriveState(DS_BREAK);
 		}
@@ -111,8 +118,12 @@ void Statistics::cycle() {
 }
 
 void Statistics::setConnected(bool connected) {
-	if (connected && (curDriveState == DS_NO_CONN)) setCurDriveState(histDriveState);
+	if (connected && (curDriveState == DS_NO_CONN)) {
+		setCurDriveState(histDriveState);
+		bclog.log(BCLogger::Log_Info, BCLogger::TAG_STAT, "Connected to speed sensor - counting time");
+	}
 	if (!connected && curDriveState != DS_NO_CONN) {
+		bclog.log(BCLogger::Log_Info, BCLogger::TAG_STAT, "Disconnected from speed sensor - stop time counters");
 		histDriveState = curDriveState;
 		setCurDriveState(DS_NO_CONN);
 	}

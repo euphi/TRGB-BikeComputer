@@ -219,7 +219,7 @@ bool BLEDevices::connectToServer(EDevType ctype) {
 		pKomootRemoteCharacteristic = pRemoteCharacteristic;
 		bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "🔵%s Setup handler for komoot\n", DEV_EMOJI[ctype]);
 	} else if (ctype == DEV_FL) {
-		stats.setConnected(true);
+		stats.setConnected(true);  // "Connected" for Stats means that a speed sensor is connected (used for avg calculation). For CSC sensors this is done in the NotifyCallback, because here it is not yet known if sensor is speed or cadence
 	}
 	pRemoteCharacteristic->registerForNotify([&, ctype](BLERemoteCharacteristic* pBLERemoteCharacteristic, uint8_t* pData, size_t length, bool isNotify) {notifyCallbackCSC(pBLERemoteCharacteristic, pData, length, isNotify, ctype);});
 	bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "🔵%s Notify registered\n", DEV_EMOJI[ctype]);
@@ -290,6 +290,7 @@ void BLEDevices::notifyCallbackCSC(BLERemoteCharacteristic *pBLERemoteCharacteri
 		}
 		if (isSpeed) {
 			cscIsSpeed[ctype==DEV_CSC_1?1:2] = true;
+			stats.setConnected(true);  // "Connected" for Stats means that a speed sensor is connected (used for avg calculation)
 			uint32_t speed_rev = (pData[4] << 24) + (pData[3] << 16) + (pData[2] << 8) + pData[1];		// LSB first
 			speed_time = (pData[6] << 8) + pData[5];	// LSB first
 			delta = speed_time - speed_time_last;
@@ -298,7 +299,9 @@ void BLEDevices::notifyCallbackCSC(BLERemoteCharacteristic *pBLERemoteCharacteri
 			if (delta > 0) {
 				uint32_t speed_delta = (speed_rev - speed_rev_last);
 				// km/h     1           m  * tick/s * (km/h / m/s)  / tick
-				speed = (speed_delta * 2.155 * 1024 * 3.6 ) / delta;		// TODO: Make circummeter configurable
+				//TODO: Make circummeter configurable
+				//speed = (speed_delta * 2.155 * 1024 * 3.6 ) / delta;		// 28-622
+				speed = (speed_delta * 2.220 * 1024 * 3.6 ) / delta;		// 40-622
 				speed_time_last_received = millis();
 				speed_time_last = speed_time;
 			} else {
@@ -311,8 +314,10 @@ void BLEDevices::notifyCallbackCSC(BLERemoteCharacteristic *pBLERemoteCharacteri
 			speed_rev_last = speed_rev;
 			bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "Speed %.2f km/h", speed);
 			stats.addSpeed(speed);
-			stats.updateDistance((speed_rev * 2155)/1000);
-			stats.addDistance((speed_rev * 2155)/1000, Statistics::SUM_FL_TOTAL);
+//			stats.updateDistance((speed_rev * 2155)/1000);
+//			stats.addDistance((speed_rev * 2155)/1000, Statistics::SUM_FL_TOTAL);
+			stats.updateDistance((speed_rev * 2220)/1000);		//FIXME: Dist is stored in m already, but transmitted in pulses. So this will result in wronng distance if circummeter changes
+			stats.addDistance((speed_rev * 2220)/1000, Statistics::SUM_FL_TOTAL);
 		} else {
 			cscIsSpeed[ctype==DEV_CSC_1?1:2] = false;
 			crank_rev = (pData[2] << 8) + pData[1];		// LSB first
@@ -405,10 +410,11 @@ void BLEDevices::connCheckLoop() {
 			case DEV_HRM:
 				stats.addHR(-1);
 				break;
-			case DEV_CSC_1:		//FIXME: distinguish beetween speed and cadence
+			case DEV_CSC_1:
 			case DEV_CSC_2:
 				if (cscIsSpeed[c==DEV_CSC_1?1:2]) {
 					stats.addSpeed(NAN);
+					stats.setConnected(false);
 				} else {
 					stats.addCadence(-1, 0);
 				}
