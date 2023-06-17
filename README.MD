@@ -33,7 +33,7 @@ Compile and upload with platformio.
 - [X] Write raw forumslader data to logfiles
 - [X] Replay FL log file
 - [X] User Interface for replay
-- [ ] Write summary in binary logfile (not yet integrated, to be merged from [ESP32_BTTacho](https://github.com/euphi/ESP32_BTTacho)
+- [X] Write summary in binary logfile (not yet integrated, to be merged from [ESP32_BTTacho](https://github.com/euphi/ESP32_BTTacho)
 
 #### Console
 
@@ -54,7 +54,7 @@ Compile and upload with platformio.
 - [X] Add Navigation Screen
 - [ ] **WIP:** Implement all navigation items (roundabouts are still missing, all others ok)
 - [ ] **WIP:** Show basic statistics
-- [ ] Add very simple screen
+- [X] Add very simple screen (in bright theme for better readability in direct sunlight)
 - [ ] Add screen for more detailed information
 - [ ] Show connection information on screeen
 
@@ -62,7 +62,7 @@ Compile and upload with platformio.
 
 - [X] Create case model for 3D-printer (done for standard handlebar incl. space for 2 USB-A sockets ("Forumslader variant")
 - [X] Create mount for trekking handle bar
-- [ ] Create mount for Canyon double decker bar
+- [ ] WIP: Create mount for Canyon double decker bar
 
 
 ### Prio 1 Features -- Help wanted
@@ -72,9 +72,10 @@ Compile and upload with platformio.
 - [ ] better User Interface
 - [ ] Animations on display (e.g driving state, heart rate)
 - [ ] Configuration via Display (wheel diameter etc.)
-- [ ] manage BLE devices via display
-- [ ] improve handling of CSC devices: "Lock" connected devices and only allow adding new devices on demand. Also check if max 1 speed and max 1 cadence is connected
-- [ ] **WIP:** read battery state of BLE devices (works fine, but no UI yet)
+- [X] manage BLE devices via Webserver (show connection state, batterie level, delete connection)
+- [X] improve handling of CSC devices: "Lock" connected devices and only allow adding new devices on demand. Also check if max 1 speed and max 1 cadence is connected
+- [X] read battery state of BLE devices (works fine, but no UI yet)
+- [ ] manage BLE devices and show info via display
 - [ ] add additional sensors (barometer/temperature, gyro/inertial)
 
 
