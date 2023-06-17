@@ -7,6 +7,8 @@
 #include "ui_helpers.h"
 #include "ui.h"
 
+#include <version.h>
+
 ///////////////////// VARIABLES ////////////////////
 void ui_event_ScrSettings(lv_event_t * e);
 lv_obj_t * ui_ScrSettings;
@@ -119,7 +121,7 @@ void ui_ScrSettings_screen_init(void)
     lv_obj_set_x(ui_ScrSettLabelVersion, 0);
     lv_obj_set_y(ui_ScrSettLabelVersion, -100);
     lv_obj_set_align(ui_ScrSettLabelVersion, LV_ALIGN_CENTER);
-    lv_label_set_text(ui_ScrSettLabelVersion, "TRGB-Bikecomputer\nV0.0.1");
+    lv_label_set_text(ui_ScrSettLabelVersion, "TRGB-Bikecomputer\n" VERSION_SHORT "\n" VERSION);
     lv_obj_set_style_text_align(ui_ScrSettLabelVersion, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_font(ui_ScrSettLabelVersion, &lv_font_montserrat_24, LV_PART_MAIN | LV_STATE_DEFAULT);
 
