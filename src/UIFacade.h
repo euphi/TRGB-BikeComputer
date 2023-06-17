@@ -33,6 +33,7 @@ public:
 		if (mode < Statistics::SUM_ESP_TOTAL) mode = Statistics::SUM_ESP_START;
 		if (mode > Statistics::SUM_ESP_START) mode = Statistics::SUM_ESP_TOTAL;
 		statMode = static_cast<Statistics::ESummaryType>(mode);
+		updateData();
 	}
 	void updateFast() {xSemaphoreGive(xUpdateFast);}
 
@@ -47,7 +48,7 @@ public:
 	Statistics::ESummaryType getStatMode() const {return statMode;}
 
 	Statistics::EAvgType getStatTimeMode() const {return statTimeMode;}
-	void setStatTimeMode(Statistics::EAvgType _statTimeMode) {statTimeMode = _statTimeMode;}
+	void setStatTimeMode(Statistics::EAvgType _statTimeMode) {statTimeMode = _statTimeMode;updateData();}
 
 
 private:
