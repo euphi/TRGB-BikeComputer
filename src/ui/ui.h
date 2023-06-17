@@ -67,18 +67,6 @@ extern lv_chart_series_t* ui_ScreenChart_Chart1_series_v;
 extern lv_chart_series_t* ui_ScreenChart_Chart1_series_perc_per_minute;
 extern lv_chart_series_t* ui_ScreenChart_Chart1_ser_v_per_minute;
 
-
-LV_IMG_DECLARE(ui_img_bt_png);    // assets/bt.png
-LV_IMG_DECLARE(ui_img_heartrate_png);    // assets/heartrate.png
-LV_IMG_DECLARE(ui_img_wlan_png);    // assets/wlan.png
-LV_IMG_DECLARE(ui_img_kmh_xs_png);    // assets/kmh_XS.png
-
-LV_IMG_DECLARE(nav_64_finish);
-
-LV_FONT_DECLARE(ui_font_by75_96);
-LV_FONT_DECLARE(ui_font_SchildGrot24);
-LV_FONT_DECLARE(TimeFont24);
-
 void ui_S1Main_screen_init();
 void ui_ScreenWifi_screen_init();
 void ui_ScreenChart_screen_init();
@@ -90,6 +78,7 @@ void chart_up(lv_event_t * e);
 void chart_dn(lv_event_t * e);
 
 void statModeChanged(uint8_t mode);
+void statModeNext(bool dir);
 
 void resetStats(lv_event_t * e);
 void statsTimeMode(bool dir);

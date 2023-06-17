@@ -4,7 +4,7 @@
  * Opts: 
  ******************************************************************************/
 
-#include "ui.h"
+#include <lvgl.h>
 
 #ifndef TIMEFONT24
 #define TIMEFONT24 1

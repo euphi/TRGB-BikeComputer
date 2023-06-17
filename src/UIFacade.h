@@ -27,6 +27,13 @@ public:
 	void updateGrad(int16_t grad, int16_t height);	// grad(ient) in permille,
 
 	void setStatMode(Statistics::ESummaryType mode) {statMode = mode;}
+	void setStatMode(bool dir) {
+		int32_t mode = statMode;
+		mode += dir ? 1 : -1;
+		if (mode < Statistics::SUM_ESP_TOTAL) mode = Statistics::SUM_ESP_START;
+		if (mode > Statistics::SUM_ESP_START) mode = Statistics::SUM_ESP_TOTAL;
+		statMode = static_cast<Statistics::ESummaryType>(mode);
+	}
 	void updateFast() {xSemaphoreGive(xUpdateFast);}
 
 	void updateIP(const String& ipStr);

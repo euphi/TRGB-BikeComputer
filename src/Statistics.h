@@ -56,8 +56,6 @@ private:
 	uint32_t time_in[EDrivingStateMax][ESummaryTypeMax];
 	time_t timestamp_stop;
 
-	//uint32_t timestamp_last;
-
 	// use int instead of uint, so -1 can be used as "invalid".
 	int16_t hr;
 	int16_t cadence, cadence_tot;
@@ -70,10 +68,13 @@ private:
 
 	Ticker statCycle;
 	Ticker statStore;
+	Ticker statDataStore;
 	Preferences StatPreferences[SUM_ESP_START];
 
 	void cycle();			// 500ms ticker
 	void autoStore();		// 5s ticker
+	void dataStore();		// 5s ticker
+
 	void restoreStats();
 	void setCurDriveState(EDrivingState curDriveState);
 

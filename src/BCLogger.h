@@ -88,6 +88,9 @@ public:
 
 	void setLogLevel(LogType type, LogTag tag, bool file, bool serial);
 
+	// DataLogger
+	void appendDataLog(float speed, float temp, float gradient, uint32_t distance, float height, uint8_t hr);
+
 	int16_t listDir(const String& dirname, uint8_t levels) const;
 
 	void handleCommand(const Command& cmd);

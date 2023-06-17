@@ -10,7 +10,8 @@
 extern "C" {
 #endif
 
-#include "lvgl.h"
+#include <lvgl.h>
+#include "font/font.h"
 
 void ui_event_SNavi(lv_event_t * e);
 extern lv_obj_t * ui_SNavi;
@@ -25,6 +26,8 @@ extern lv_obj_t * ui_SNavBarHR;
 extern lv_obj_t * ui_SNavLabenHR;
 extern lv_obj_t * ui_SNavLabelCad;
 extern lv_obj_t * ui_SNavBarBat;
+
+extern lv_obj_t * ui_SNavi_SBack;
 
 extern const lv_img_dsc_t* NavImgTable[];
 extern const lv_img_dsc_t* Nav64ImgTable[];
@@ -64,8 +67,6 @@ LV_IMG_DECLARE(nav_64_uturn )
 LV_IMG_DECLARE(nav_64_Kreisel_3_3 )
 LV_IMG_DECLARE(nav_64_nonav )
 
-
-LV_FONT_DECLARE(ui_font_SchildGrot36);
 
 
 #ifdef __cplusplus

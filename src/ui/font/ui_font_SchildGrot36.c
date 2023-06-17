@@ -4,7 +4,7 @@
  * Opts: --bpp 1 --size 36 --font /home/ian/Coding/Bike/TRGB-BikeComputer/SquareLine/assets/schilder.ttf -o /home/ian/Coding/Bike/TRGB-BikeComputer/SquareLine/assets/ui_font_SchildGrot36.c --format lvgl -r 0x20-0x7f --symbols üöäÜÖÄß€µ --no-compress --no-prefilter
  ******************************************************************************/
 
-#include "ui.h"
+#include <lvgl.h>
 
 #ifndef UI_FONT_SCHILDGROT36
 #define UI_FONT_SCHILDGROT36 1

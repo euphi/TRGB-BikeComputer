@@ -30,8 +30,6 @@ void BrightChanged(lv_event_t * e);
 void ui_ScrSettings_screen_init(void);
 
 
-
-
 #ifdef __cplusplus
 } /*extern "C"*/
 #endif

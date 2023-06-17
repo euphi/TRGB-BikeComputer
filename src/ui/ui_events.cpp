@@ -9,6 +9,9 @@
 #include "Statistics.h"
 #include "ui_custFunc.h"
 
+
+#include <Arduino.h>
+
 void chartModeHeartRate(lv_event_t * e)
 {
 	// Your code here
@@ -86,13 +89,20 @@ Selected Mode 6: FL-Tot
 
 }
 
+void statModeNext(bool dir) {
+	Serial.println("UI Event: Stats mode next");
+	ui.setStatMode(dir);
+}
+
 void resetStats(lv_event_t * e)
 {
+	Serial.println("UI Event: Reset stats");
 	stats.reset(ui.getStatMode());
 }
 
 void statsTimeMode(bool dir)
 {
+	Serial.println("UI Event: Change time mode");
 	Statistics::EAvgType statTimeMode = ui.getStatTimeMode();
 	ui.setStatTimeMode(Statistics::getNextTimeMode(statTimeMode, dir));
 	ui_ScrMainUpdateTimeMode(Statistics::AVG_TYPE_STRING[ui.getStatTimeMode()]);

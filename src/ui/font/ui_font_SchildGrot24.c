@@ -4,13 +4,13 @@
  * Opts: --bpp 1 --size 24 --font /home/ian/Coding/Bike/T-RGB-Experiments/SquareLine/assets/schilder.ttf -o /home/ian/Coding/Bike/T-RGB-Experiments/SquareLine/assets/ui_font_SchildGrot24.c --format lvgl -r 0x20-0x7f --symbols üöäÜÖÄß€µ --no-compress --no-prefilter
  ******************************************************************************/
 
-#include "ui.h"
-
 #ifndef UI_FONT_SCHILDGROT24
 #define UI_FONT_SCHILDGROT24 1
 #endif
 
 #if UI_FONT_SCHILDGROT24
+
+#include <lvgl.h>
 
 /*-----------------
  *    BITMAPS
@@ -834,7 +834,5 @@ lv_font_t ui_font_SchildGrot24 = {
     .dsc = &font_dsc           /*The custom font data. Will be accessed by `get_glyph_bitmap/dsc` */
 };
 
-
-
-#endif /*#if UI_FONT_SCHILDGROT24*/
+#endif
 

@@ -11,12 +11,15 @@
 extern "C" {
 #endif
 
+#include <lvgl.h>
+
+
 void ui_ScrNaviUpdateSpeed(float speed);
 void ui_ScrNaviUpdateCadence(int16_t cadence);
 void ui_ScrNaviUpdateHR(int16_t hr);
 void ui_ScrNaviUpdateNav(const char* navStr, uint32_t dist, uint8_t dirCode);
 void ui_ScrNaviUpdateNavDist(uint32_t dist);
-
+void ui_ScrNaviSetBackScreen(const lv_obj_t* screenBack);
 
 #ifdef __cplusplus
 } /*extern "C"*/

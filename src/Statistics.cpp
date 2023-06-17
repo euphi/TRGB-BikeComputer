@@ -39,6 +39,7 @@ Statistics::Statistics() {
 void Statistics::setup() {
 	// What kind of sorcery is this?  --> See https://stackoverflow.com/questions/60985496/arduino-esp8266-esp32-ticker-callback-class-member-function
 	statCycle.attach_ms(500, +[](Statistics* thisInstance) { thisInstance->cycle(); }, this);
+	statDataStore.attach(5, +[](Statistics* thisInstance) { thisInstance->dataStore(); }, this);
 	statStore.attach(5, +[](Statistics* thisInstance) { thisInstance->autoStore(); }, this);
 	restoreStats();
 }
@@ -68,6 +69,10 @@ void Statistics::autoStore() {
 			}
 		}
 	}
+}
+
+void Statistics::dataStore() {
+	bclog.appendDataLog(speed, NAN, grad, distance, height * 1.0, hr);
 }
 
 void Statistics::cycle() {
@@ -193,6 +198,7 @@ void Statistics::reset(ESummaryType type) {
 
 void Statistics::setCurDriveState(EDrivingState _curDriveState) {
 	curDriveState = _curDriveState;
+	if (_curDriveState == DS_STOP) timestamp_stop = millis();
 	bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Driving state changed to %s", (PREF_TIME_STRING[curDriveState]+8));
 }
 

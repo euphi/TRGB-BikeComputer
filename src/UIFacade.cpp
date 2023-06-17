@@ -7,11 +7,20 @@
 
 #include <UIFacade.h>
 #include "Singletons.h"
+
+
+// Screens
 #include "ui/ui_WLAN.h"
+
 #include "ui/ui_Navi.h"
 #include "ui/ui_NaviCustFunc.h"
+
 #include "ui/ui_Settings.h"
-#include "ui/ui.h"
+
+#include "ui/Screens/MainNoFL/ui_MainNoFL.h"
+#include "ui/Screens/MainNoFL/ui_MainNoFL_CustFunc.h"
+
+#include "ui/ui.h"  // FL main and chart screen
 #include "ui/ui_custFunc.h"
 
 #include <DateTime.h>
@@ -37,16 +46,21 @@ void UIFacade::initDisplay() {
     // 2. Init all screens
     ui_S1Main_screen_init();
     ui_ScreenChart_screen_init();
+
+    ui_SMainNoFL_screen_init();
     ui_SWLAN_screen_init();
     ui_SWLAN_extra_init(); // QR Code
     ui_SNavi_screen_init();
+    ui_ScrNaviSetBackScreen(ui_SMainNoFL);
+
     ui_ScrSettings_screen_init();
     // .. add init of new screens here
 
-    uifl.init();
+    uifl.init();		// FL data model
 
     // 4. Load initial screen
-    lv_disp_load_scr(ui_S1Main);
+    //lv_disp_load_scr(ui_S1Main);
+    lv_disp_load_scr(ui_SMainNoFL);
 
     // 5. Start fast update Thread
     xTaskCreate(startTaskUiUpdate, "UI Task", 4096, NULL, 20, &uiTaskHandle);	// High priority task for smooth display updates
@@ -90,10 +104,13 @@ void UIFacade::updateHandler() {
 			ui_ScrMainUpdateFast(speed, grad / 10.0);
 			ui_ScrNaviUpdateSpeed(speed);
 			ui_ScrChartUpdateSpeed(speed);
+			ui_SMainNoFLUpdateSpeed(speed);
 			ui_ScrMainUpdateCadence(cad);
 			ui_ScrNaviUpdateCadence(cad);
+			ui_SMainNoFLUpdateCadence(cad);
 			ui_ScrMainUpdateHR(hr);
 			ui_ScrNaviUpdateHR(hr);
+			ui_SMainNoFLUpdateHR(hr);
 		}
 
 		int32_t next_ms = 20; // wait 20ms if Mutex can't be taken within 100ms (this should never happen)
@@ -143,11 +160,13 @@ void UIFacade::updateStats() {
 
 	uint32_t timeTot = stats.getTime(t, statTimeMode);
 	ui_ScrMainUpdateStats(Statistics::SUM_TYPE_STRING[t] + 3, stats.getAvg(t, statTimeMode), stats.getSpeedMax(t), stats.getDistance(t), timeTot);
+	ui_SMainNoFLUpdateStats(Statistics::SUM_TYPE_STRING[t] + 3, Statistics::AVG_TYPE_STRING[statTimeMode] + 3, stats.getAvg(t, statTimeMode), stats.getSpeedMax(t), stats.getDistance(t), timeTot);
 }
 
 void UIFacade::updateIntBatteryInt() {
 	char batStr[32];
 	snprintf(batStr, 31, "Volt: %.02fV - %d%% %s", batIntVoltage, batIntPerc, batIntCharging?"- C": "");
+	ui_SMainNoFLUpdateIntBatPerc(batIntPerc);
 	float avg = ui_ScrChartUpdateBat(batIntVoltage, batIntPerc, batStr);
 	if (! isnan(avg)) batIntVoltageAvg = avg;
 }
@@ -205,6 +224,7 @@ void UIFacade::updateNavi(const String& navStr, uint32_t dist, uint8_t dirCode) 
 	if (xSemaphoreTake(xUIDrawMutex, 50 / portTICK_PERIOD_MS) == pdTRUE) {
 		if (loadScreen)	lv_disp_load_scr(ui_SNavi);
 		ui_ScrNaviUpdateNav(navStr.c_str(), dist, dirCode);
+		ui_SMainNoFLUpdateNav(navStr.c_str(), dist, dirCode);
 		xSemaphoreGive(xUIDrawMutex);
 	} else {
 		bclog.log(BCLogger::Log_Error, BCLogger::TAG_OP, "Nav blocked by mutex");
@@ -214,6 +234,7 @@ void UIFacade::updateNavi(const String& navStr, uint32_t dist, uint8_t dirCode) 
 void UIFacade::updateNaviDist(uint32_t dist) {
 	if (xSemaphoreTake(xUIDrawMutex, 50 / portTICK_PERIOD_MS) == pdTRUE) {
 		ui_ScrNaviUpdateNavDist(dist);
+		ui_SMainNoFLUpdateNavDist(dist);
 		xSemaphoreGive(xUIDrawMutex);
 	} else {
 		bclog.log(BCLogger::Log_Error, BCLogger::TAG_OP, "Nav blocked by mutex");

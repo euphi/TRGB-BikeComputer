@@ -103,6 +103,8 @@ void BCLogger::flushAllFiles() {  // Ticker all 5 seconds
 		yield();
 		if (fdata) fdata.flush();
 		vTaskDelay(5000 / portTICK_PERIOD_MS);
+
+
 	} while (true);
 }
 
@@ -254,6 +256,27 @@ void BCLogger::logf(LogType type, LogTag tag, const char *format, ...) const {
 	}
 	va_end(arg);
 	log(type, tag, String(temp));
+}
+
+
+void BCLogger::appendDataLog(float speed, float temp, float gradient, uint32_t distance, float height, uint8_t hr) {
+	LogData b;
+	time_t now;
+	time(&now);
+
+	b.timestamp = now;
+	b.speed = speed;
+	b.temp = temp;
+	b.grad = gradient;
+	b.dist_m = distance;
+	b.height = height;
+	b.hr = hr;
+
+	if (!fdata) {
+		log(Log_Warn, TAG_SD, "Data file not open");
+		return;
+	}
+	fdata.write((byte*) &b, sizeof(b));
 }
 
 int16_t BCLogger::listDir(const String &dirname, uint8_t levels) const {

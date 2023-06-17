@@ -4,6 +4,7 @@
 // Project name: SquareLine_Project
 
 #include "ui.h"
+#include "img/img.h"
 #include "ui_FL.h"
 #include "ui_WLAN.h"
 #include "ui_Navi.h"

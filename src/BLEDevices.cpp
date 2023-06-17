@@ -362,9 +362,22 @@ void BLEDevices::notifyCallbackCSC(BLERemoteCharacteristic *pBLERemoteCharacteri
 void BLEDevices::komootLoop() {
 	static uint8_t kCounter = 0;
 	if (millis() < 6000) return; // no display update in first 6 seconds - (safe value that is much longer than display init but shorter than connection to komoot BLE service)
-	bool readValue = false;
+
+	//                  every 4 sec      OR
+
+
+	//last known dist to target - (   distance driven since last update )
+	int32_t d = nav_distance - (stats.getDistance(Statistics::SUM_ESP_START) - nav_distance_int);
+
+	uint_fast8_t updateTime = 40; // default 4 sec
+	if (d < 0) {
+		updateTime = 4;			// 0,4s if distance is exceeded
+		d = 0;
+	} else if (d < 50) {
+		updateTime = 10;
+	}
 	if (pKomootRemoteCharacteristic) {
-		if (++kCounter >= 40 || readValue) {		// at least every 4 seconds
+		if (++kCounter >= updateTime) {		// at least every 4 seconds
 			kCounter = 0;
 			std::string value = pKomootRemoteCharacteristic->readValue();
 			bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "Read komoot string with %d bytes", value.length());
@@ -386,9 +399,6 @@ void BLEDevices::komootLoop() {
 				bclog.log(BCLogger::Log_Error, BCLogger::TAG_BLE, "Less than 10 byte received from komoot");
 			}
 		} else {
-			//last known dist to target - (   distance driven since last update )
-			int32_t d = nav_distance - (stats.getDistance(Statistics::SUM_ESP_START) - nav_distance_int);
-			if (d < 0) d = 0;
 			ui.updateNaviDist(d);
 		}
 	}

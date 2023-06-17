@@ -8,6 +8,10 @@
 #include "ui_Navi.h"
 #include "ui.h"
 
+void ui_ScrNaviSetBackScreen(const lv_obj_t* screenBack) {
+	ui_SNavi_SBack = screenBack;
+}
+
 void ui_ScrNaviUpdateSpeed(float speed) {
 	lv_label_set_text_fmt(ui_SNavLabelSpeed, "%.1f", speed);
 	lv_arc_set_value(ui_SNavArcSpeed, (uint16_t)(speed*10.0));
