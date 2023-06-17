@@ -71,11 +71,10 @@ void ui_SMainNoFLUpdateIntBatPerc(uint8_t perc) {
 	lv_bar_set_value(ui_BarBatt, perc, LV_ANIM_OFF);
 }
 
-
 void ui_SMainNoFLUpdateStats(const char* modeStr, const char* avgStr, float avgSpd, float maxSpd, uint32_t dist, uint32_t timeInS) {
 	lv_label_set_text_fmt(ui_LabelClockMode, "%s - %s", modeStr, avgStr);
 	//lv_label_set_text_fmt(ui_S1PStatLspdMaxVar, "%.1f", maxSpd);
-	//lv_label_set_text_fmt(ui_S1PStatLAvgVar, "%.1f", avgSpd);
+	lv_label_set_text_fmt(ui_LabelSpdAvg, "%.1fkm/h", avgSpd);
 	lv_arc_set_value(ui_ArcAvg, (int16_t)(avgSpd * 10));
 	lv_label_set_text_fmt(ui_LabelDist, "%.1fkm", dist/1000.0);
 	lv_label_set_text_fmt(ui_LabelClock, "%02d:%02d:%02d", timeInS / 3600, (timeInS / 60) % 60, timeInS % 60);

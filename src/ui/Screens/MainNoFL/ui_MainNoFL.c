@@ -36,6 +36,7 @@ void ui_event_ImgWifi(lv_event_t * e);
 lv_obj_t * ui_ImgWifi;
 void ui_event_ImgSettings(lv_event_t * e);
 lv_obj_t * ui_ImgSettings;
+lv_obj_t * ui_LabelSpdAvg;
 
 ///////////////////// TEST LVGL SETTINGS ////////////////////
 #if LV_COLOR_DEPTH != 16
@@ -330,6 +331,17 @@ void ui_SMainNoFL_screen_init(void)
     lv_obj_set_align(ui_ImgSettings, LV_ALIGN_CENTER);
     lv_obj_add_flag(ui_ImgSettings, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_ADV_HITTEST);     /// Flags
     lv_obj_clear_flag(ui_ImgSettings, LV_OBJ_FLAG_SCROLLABLE);      /// Flags
+
+    ui_LabelSpdAvg = lv_label_create(ui_SMainNoFL);
+    lv_obj_set_width(ui_LabelSpdAvg, LV_SIZE_CONTENT);   /// 1
+    lv_obj_set_height(ui_LabelSpdAvg, LV_SIZE_CONTENT);    /// 1
+    lv_obj_set_x(ui_LabelSpdAvg, -111);
+    lv_obj_set_y(ui_LabelSpdAvg, -127);
+    lv_obj_set_align(ui_LabelSpdAvg, LV_ALIGN_CENTER);
+    lv_label_set_text(ui_LabelSpdAvg, "--,-km/h");
+    lv_obj_set_style_text_color(ui_LabelSpdAvg, lv_color_hex(0x000000), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_opa(ui_LabelSpdAvg, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(ui_LabelSpdAvg, &lv_font_montserrat_24, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     lv_obj_add_event_cb(ui_PanelNav, ui_event_PanelNav, LV_EVENT_ALL, NULL);
     lv_obj_add_event_cb(ui_PanelClock, ui_event_PanelClock, LV_EVENT_ALL, NULL);

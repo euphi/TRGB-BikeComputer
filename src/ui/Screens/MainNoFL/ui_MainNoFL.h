@@ -40,8 +40,7 @@ void ui_event_ImgWifi(lv_event_t * e);
 extern lv_obj_t * ui_ImgWifi;
 void ui_event_ImgSettings(lv_event_t * e);
 extern lv_obj_t * ui_ImgSettings;
-
-void EvClockMode(lv_event_t * e);
+extern lv_obj_t * ui_LabelSpdAvg;
 
 #ifdef __cplusplus
 } /*extern "C"*/
