@@ -8,7 +8,7 @@
 #include "ui_FL.h"
 #include "ui_WLAN.h"
 #include "ui_Navi.h"
-#include "ui_Settings.h"
+#include "Screens/Settings/ui_Settings.h"
 #include "ui_helpers.h"
 
 ///////////////////// VARIABLES ////////////////////

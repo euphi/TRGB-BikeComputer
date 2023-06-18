@@ -6,7 +6,7 @@
 #include "ui_MainNoFL.h"
 
 #include "ui/ui_WLAN.h"
-#include "ui/ui_Settings.h"
+#include "ui/Screens/Settings/ui_Settings.h"
 
 #include "ui/ui_Navi.h"
 

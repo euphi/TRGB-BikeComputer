@@ -4,7 +4,7 @@
 // PROJECT: SquareLine_Project
 
 #include "ui.h"
-#include "ui_Settings.h"
+#include "Screens/Settings/ui_Settings.h"
 #include "Singletons.h"
 #include "Statistics.h"
 #include "ui_custFunc.h"
@@ -25,6 +25,11 @@ void chartModeBatterie(lv_event_t * e)
 void EvDeepSleep(lv_event_t * e)
 {
 	trgb.deepSleep();
+}
+
+void EvRestart(lv_event_t * e)
+{
+	trgb.restart();
 }
 
 void BrightChanged(lv_event_t * e)

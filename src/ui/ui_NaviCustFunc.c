@@ -8,7 +8,7 @@
 #include "ui_Navi.h"
 #include "ui.h"
 
-void ui_ScrNaviSetBackScreen(const lv_obj_t* screenBack) {
+void ui_ScrNaviSetBackScreen(lv_obj_t* const screenBack) {
 	ui_SNavi_SBack = screenBack;
 }
 

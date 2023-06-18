@@ -6,3 +6,5 @@ SquareLine/exported_files/
 SquareLine/backup/
 # CMakeLists auto-generated from platformio if buildig for IDF
 CMakeLists.txt
+/versioning
+include/version.h
