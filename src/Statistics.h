@@ -64,12 +64,14 @@ private:
 	int16_t grad = 0, height = 0;
 
 	uint32_t start_distance[ESummaryTypeMax];   // start_distance: For locally stored distances, this is the distance the counter was reset. For extern stored (FL) distance this is the actual distance
+	uint32_t lost_distance[ESummaryTypeMax];   // start_distance: For locally stored distances, this is the distance the counter was reset. For extern stored (FL) distance this is the actual distance
 	uint32_t distance;							// current distance counter
+	bool distance_start = false;
 
 	Ticker statCycle;
 	Ticker statStore;
 	Ticker statDataStore;
-	Preferences StatPreferences[SUM_ESP_START];
+	Preferences StatPreferences[SUM_ESP_START + 1]; // FL values are not stored (because they are stored in FL). SUM_ESP_START value stores last know value
 
 	void cycle();			// 500ms ticker
 	void autoStore();		// 5s ticker
@@ -77,6 +79,8 @@ private:
 
 	void restoreStats();
 	void setCurDriveState(EDrivingState curDriveState);
+
+	void updateLostDistance(uint32_t _dist_lost);
 
 public:
 	Statistics();
@@ -98,7 +102,7 @@ public:
 	const float getSpeedMax(ESummaryType type) const {
 		return speed_max[type];
 	}
-	uint32_t getDistance(ESummaryType type) const;
+	uint32_t getDistance(ESummaryType type, bool includeLost = true) const;
 
 	static const char* PREF_TIME_STRING[Statistics::EDrivingStateMax];
 	static const char* AVG_TYPE_STRING[Statistics::EAvgTypeMax];

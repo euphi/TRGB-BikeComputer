@@ -48,12 +48,18 @@ void Statistics::restoreStats() {
 	for (uint_fast8_t c = 0 ; c < SUM_ESP_START; c++) {
 		StatPreferences[c].begin(SUM_TYPE_STRING[c]);
 		start_distance[c] = StatPreferences[c].getLong("START_DISTANCE", 0);
+		lost_distance[c]  = StatPreferences[c].getLong("LOST_DISTANCE",  0);
+		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Loaded distance %d (lost: %d) from preferences: %s", start_distance[c], lost_distance[c], SUM_TYPE_STRING[c]);
 		for (uint_fast8_t d = 0 ; d < EDrivingStateMax ; d++) {
 			time_in[d][c] = StatPreferences[c].getLong(PREF_TIME_STRING[d], 0);
-			bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_STAT, "Loaded time in %s for %s from preferences: %d", PREF_TIME_STRING[d], SUM_TYPE_STRING[c], time_in[d][c]);
+			bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Loaded time in %s for %s from preferences: %d", PREF_TIME_STRING[d], SUM_TYPE_STRING[c], time_in[d][c]);
 		}
 		//StatPreferences[c].end();
 	}
+	StatPreferences[SUM_ESP_START].begin(SUM_TYPE_STRING[SUM_ESP_START]);
+	start_distance[SUM_ESP_START] =StatPreferences[SUM_ESP_START].getLong("START_DISTANCE", 0);
+	bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Loaded start distance %d from preferences.", start_distance[SUM_ESP_START]);
+	distance = start_distance[SUM_ESP_START];
 }
 
 void Statistics::autoStore() {
@@ -63,12 +69,19 @@ void Statistics::autoStore() {
 		if (!StatPreferences[c].putLong("START_DISTANCE", start_distance[c])) {
 			bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_STAT, "Can't save distance %s to preferences", SUM_TYPE_STRING[c]);
 		}
+		if (!StatPreferences[c].putLong("LOST_DISTANCE", lost_distance[c])) {
+			bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_STAT, "Can't save lost distance %s to preferences", SUM_TYPE_STRING[c]);
+		}
 		for (uint_fast8_t d = 0 ; d < EDrivingStateMax ; d++) {
 			if (!StatPreferences[c].putLong(PREF_TIME_STRING[d], time_in[d][c])) {
 				bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_STAT, "Can't save time in %s for %s to preferences", PREF_TIME_STRING[d], SUM_TYPE_STRING[c]);
 			}
 		}
 	}
+	if (!StatPreferences[SUM_ESP_START].putLong("START_DISTANCE", distance)) {
+		bclog.log(BCLogger::Log_Warn, BCLogger::TAG_STAT, "Can't save current distance (SUM_ESP_START) to preferences");
+	}
+
 }
 
 void Statistics::dataStore() {
@@ -101,8 +114,8 @@ void Statistics::cycle() {
 		}
 		//no break
 	case DS_BREAK:
-		if (speed > 2.5) {
-			setCurDriveState(DS_DRIVE_POWER);
+		if (speed > 5.5) {
+			setCurDriveState(cadence < 40  ? DS_DRIVE_COASTING : DS_DRIVE_POWER);
 		}
 		break;
 	// state DRIVING
@@ -131,6 +144,7 @@ void Statistics::setConnected(bool connected) {
 		bclog.log(BCLogger::Log_Info, BCLogger::TAG_STAT, "Disconnected from speed sensor - stop time counters");
 		histDriveState = curDriveState;
 		setCurDriveState(DS_NO_CONN);
+		distance_start = false;
 	}
 }
 
@@ -160,8 +174,25 @@ void Statistics::addDistance(uint32_t dist, ESummaryType type) {
 }
 
 void Statistics::updateDistance(uint32_t _dist) {
+	if (curDriveState == DS_NO_CONN) {
+		uint32_t dist_lost_new = _dist - distance;
+		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Lost %d pulses of distance.", dist_lost_new);
+		updateLostDistance(dist_lost_new);
+	}
 	distance = _dist;
-	if (start_distance[SUM_ESP_START] == 0) addDistance(distance, SUM_ESP_START);
+	if (!distance_start) {
+		distance_start = true;
+		addDistance(_dist, SUM_ESP_START);
+		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Initial distance: %d pulses.", _dist);
+	}
+}
+
+void Statistics::updateLostDistance(uint32_t _dist_lost) {
+	// distance_start == true --> initial start. Don't set lost_distance for SUM_ESP_START then.
+	for (uint_fast8_t i = 0; i <= (distance_start ? SUM_ESP_START : SUM_ESP_TRIP); i++) {
+		lost_distance[i] += _dist_lost;
+		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Lost distance for %s now %d pulses", SUM_TYPE_STRING[i], lost_distance[i]);
+	}
 }
 
 void Statistics::addGradient(int16_t _grad, int16_t _height) {
@@ -170,13 +201,13 @@ void Statistics::addGradient(int16_t _grad, int16_t _height) {
 	ui.updateGrad(grad, height);
 }
 
-uint32_t Statistics::getDistance(ESummaryType type) const {
+uint32_t Statistics::getDistance(ESummaryType type, bool includeLost) const {
 	switch (type) {
 	case SUM_ESP_TOTAL:
 	case SUM_ESP_TOUR:
 	case SUM_ESP_TRIP:
 	case SUM_ESP_START:
-		return distance-start_distance[type];
+		return distance - start_distance[type] - (includeLost ? 0 : lost_distance[type]);
 	case SUM_FL_TRIP:
 	case SUM_FL_TOUR:
 		return start_distance[type];
@@ -190,6 +221,7 @@ void Statistics::reset(ESummaryType type) {
 	if (type==SUM_ESP_TOUR || type == SUM_ESP_TRIP) {
 		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Reset statistic for %s.", SUM_TYPE_STRING[type]);
 		start_distance[type] = distance;
+		lost_distance[type] = 0;
 		for (uint_fast8_t d = 0 ; d < EDrivingStateMax ; d++) {
 			time_in[d][type] = 0;
 		}
@@ -220,7 +252,7 @@ float Statistics::getAvg(ESummaryType type, EAvgType avgtype) const {
 	//TRACE: Serial.print(getDistance(type)); Serial.print('\t');Serial.println(relevantTime);
 
 	//        .. in m         / sec                     * 3.6 km/h / m/s..
-	return (getDistance(type) / static_cast<float>(getTime(type, avgtype))) * 3.6;
+	return (getDistance(type, false) / static_cast<float>(getTime(type, avgtype))) * 3.6;
 
 }
 

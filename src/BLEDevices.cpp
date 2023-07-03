@@ -53,7 +53,7 @@ void BLEDevices::restoreAdresses() {
 			pStoredAddress[c] = new BLEAddress(bit128);
 			bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "Addr of %s: %s\n", DEV_STRING[c], pStoredAddress[c]->toString().c_str());
 		} else {
-			bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "Can't read pref %s\n", DEV_STRING[c]);
+			bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "No BLE address stored in preferences for %s\n", DEV_STRING[c]);
 		}
 	}
 	StatPreferences.remove(DEV_STRING[DEV_KOMOOT]);
@@ -290,7 +290,6 @@ void BLEDevices::notifyCallbackCSC(BLERemoteCharacteristic *pBLERemoteCharacteri
 		}
 		if (isSpeed) {
 			cscIsSpeed[ctype==DEV_CSC_1?1:2] = true;
-			stats.setConnected(true);  // "Connected" for Stats means that a speed sensor is connected (used for avg calculation)
 			uint32_t speed_rev = (pData[4] << 24) + (pData[3] << 16) + (pData[2] << 8) + pData[1];		// LSB first
 			speed_time = (pData[6] << 8) + pData[5];	// LSB first
 			delta = speed_time - speed_time_last;
@@ -317,7 +316,9 @@ void BLEDevices::notifyCallbackCSC(BLERemoteCharacteristic *pBLERemoteCharacteri
 //			stats.updateDistance((speed_rev * 2155)/1000);
 //			stats.addDistance((speed_rev * 2155)/1000, Statistics::SUM_FL_TOTAL);
 			stats.updateDistance((speed_rev * 2220)/1000);		//FIXME: Dist is stored in m already, but transmitted in pulses. So this will result in wronng distance if circummeter changes
-			stats.addDistance((speed_rev * 2220)/1000, Statistics::SUM_FL_TOTAL);
+			//stats.addDistance((speed_rev * 2220)/1000, Statistics::SUM_FL_TOTAL);
+			//TODO: setConnected() must be called after updateDistance, so updateDistance is still in disconnected state and can calculate lost distance. This relies on a side-effect/internal state and should be implemented cleaner.
+			stats.setConnected(true);  // "Connected" for Stats means that a speed sensor is connected (used for avg calculation)
 		} else {
 			cscIsSpeed[ctype==DEV_CSC_1?1:2] = false;
 			crank_rev = (pData[2] << 8) + pData[1];		// LSB first
