@@ -281,7 +281,7 @@ void BCLogger::appendDataLog(float speed, float temp, float gradient, uint32_t d
 
 int16_t BCLogger::listDir(const String &dirname, uint8_t levels) const {
 	int16_t max_number = 0;
-	logf(Log_Debug, TAG_SD, "📁 Listing directory: %s\n", dirname);
+	logf(Log_Debug, TAG_SD, "📁 Listing directory: %s", dirname);
 
 	File root = SD_MMC.open(dirname);
 	if (!root) {

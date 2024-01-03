@@ -12,6 +12,7 @@
 #include "ui_helpers.h"
 
 ///////////////////// VARIABLES ////////////////////
+lv_obj_t * ui_MainScreen;
 lv_obj_t * ui_S1Main;
 lv_obj_t * ui_S1LabelTitle;
 void ui_event_S1RollerStatMode(lv_event_t * e);

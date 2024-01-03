@@ -28,17 +28,17 @@ public:
 private:
 
 	bool updatePower = false;
-	uint16_t batVoltage, batFullCap;
-	uint8_t batPerc;
-	int8_t powerStage;
-	int16_t CurBat;
-	int16_t CurConsumer;
-	bool ConsumerOn;
+	uint16_t batVoltage, batFullCap = 0;
+	uint8_t batPerc = 0;
+	int8_t powerStage = -1;
+	int16_t CurBat = 0;
+	int16_t CurConsumer = 0;
+	bool ConsumerOn = false;
 
 	bool updateState = false;
-	FLClassicParser::EFLConnState cstate;
-	uint32_t flags;
-	int16_t timeout;
+	FLClassicParser::EFLConnState cstate = FLClassicParser::FL_STATE_UNKNOWN;
+	uint32_t flags = 0;
+	int16_t timeout = -1;
 
 };
 

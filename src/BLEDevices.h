@@ -62,7 +62,7 @@ private:
 	uint16_t crank_rev_last, crank_time_last, speed_time_last = 0;
 	time_t crank_time_last_received, speed_time_last_received = 0;
 	uint16_t cadence = 0;
-	float speed;
+	float speed = NAN;
 	bool cscIsSpeed[2] = {false, false};
 
 	bool connectUnknown = false;		// if true, connect to unknown device. If false connect only known devices or for device types that have no known address yet (auto-learn)

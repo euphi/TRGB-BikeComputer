@@ -51,11 +51,15 @@ void UIFacade::initDisplay() {
     ui_SWLAN_screen_init();
     ui_SWLAN_extra_init(); // QR Code
     ui_SNavi_screen_init();
-    ui_ScrNaviSetBackScreen(ui_SMainNoFL);
-
     ui_ScrSettings_screen_init();
     // .. add init of new screens here
 
+    // 3. set main screen
+    ui_MainScreen = ui_SMainNoFL;
+    ui_ScrNaviSetBackScreen(ui_MainScreen);
+
+
+    // init data model
     uifl.init();		// FL data model
 
     // 4. Load initial screen

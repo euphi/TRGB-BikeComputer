@@ -64,8 +64,8 @@ private:
 	Ticker dataTicker;
 
 	//TODO: Use notify/poll mechanism instead of storing data
-	int16_t hr, cad, grad, height;
-	float speed;
+	int16_t hr, cad, grad, height = -1;
+	float speed = NAN;
 
 	Statistics::ESummaryType statMode = Statistics::SUM_ESP_START;
 	Statistics::EAvgType     statTimeMode = Statistics::AVG_ALL;

@@ -51,9 +51,9 @@ void BLEDevices::restoreAdresses() {
 		uint8_t bit128[16];
 		if (StatPreferences.getBytes(DEV_STRING[c], &bit128, 16) > 0) {
 			pStoredAddress[c] = new BLEAddress(bit128);
-			bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "Addr of %s: %s\n", DEV_STRING[c], pStoredAddress[c]->toString().c_str());
+			bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "Addr of %s: %s", DEV_STRING[c], pStoredAddress[c]->toString().c_str());
 		} else {
-			bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "No BLE address stored in preferences for %s\n", DEV_STRING[c]);
+			bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "No BLE address stored in preferences for %s", DEV_STRING[c]);
 		}
 	}
 	StatPreferences.remove(DEV_STRING[DEV_KOMOOT]);
@@ -64,14 +64,14 @@ void BLEDevices::storeAdress(EDevType type, BLEAddress &addr) {
 	if (type == DEV_KOMOOT) return;	// komoot uses random address
 	StatPreferences.begin("BLEConn");
 	size_t rc = StatPreferences.putBytes(DEV_STRING[type], addr.getNative(), 16);
-	bclog.logf(rc > 0 ? BCLogger::Log_Debug : BCLogger::Log_Error, BCLogger::TAG_BLE, "Stored %d bytes to pref %s: %s\n", rc, DEV_STRING[type],	addr.toString().c_str());
+	bclog.logf(rc > 0 ? BCLogger::Log_Debug : BCLogger::Log_Error, BCLogger::TAG_BLE, "Stored %d bytes to pref %s: %s", rc, DEV_STRING[type],	addr.toString().c_str());
 	StatPreferences.end();
 }
 
 void BLEDevices::resetAdress(EDevType type) {
 	StatPreferences.begin("BLEConn");
 	bool succ = StatPreferences.remove(DEV_STRING[type]);
-	bclog.logf(succ ? BCLogger::Log_Debug : BCLogger::Log_Warn, BCLogger::TAG_BLE, "Removed stored address for pref %s: %s\n", DEV_STRING[type], succ ? "OK":"FAILED");
+	bclog.logf(succ ? BCLogger::Log_Debug : BCLogger::Log_Warn, BCLogger::TAG_BLE, "Removed stored address for pref %s: %s", DEV_STRING[type], succ ? "OK":"FAILED");
 	if (succ) {pStoredAddress[type] = nullptr;}
 	StatPreferences.end();
 }
@@ -452,16 +452,18 @@ void BLEDevices::batCheckLoop() {
 uint16_t BLEDevices::getHTMLPage(String &htmlresponse) {
 	uint16_t rc = 200;
 	htmlresponse += "<html><head><title>BLE Devices</title><link rel=\"stylesheet\" href=\"/stylesheet.css\"></head><body>\n<h1>BLE Devices</h1>\n\n<table>\n";
-	htmlresponse += "<thead><tr><td>Devices</td><td>Stored Address</td><td>State</td><td>Address</td><td>Battery</td><td>Action</td></tr></thead>\n<tbody>\n";
+	htmlresponse += "<thead><tr><td>Devices</td><td>Stored Address</td><td>State</td><td>Address</td><td>Tech Info</td><td>Raw Data</td><td>Battery</td><td>Action</td></tr></thead>\n<tbody>\n";
 	for (uint16_t c = 0; c < DEV_COUNT; c++) {
 		char buffer[255];
 		char buffer_short[32];
 		snprintf(buffer_short, 31, "<a href=\"reset?dev=%d\">Del stored Addr</a>", c);
-		snprintf(buffer, 254, "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%d%%</td><td>%s</td></tr>\n",
+		snprintf(buffer, 254, "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%d</td><td>%d%%</td><td>%s</td></tr>\n",
 				DEV_STRING[c],
 				pStoredAddress[c] ? pStoredAddress[c]->toString().c_str() : "-empty-",
 				CONN_STRING[connState[c]],
 				pServerAddress[c] ? pServerAddress[c]->toString().c_str() : "-n/a-",
+				(c == DEV_CSC_1 || c == DEV_CSC_2) ?  (cscIsSpeed[c] ? "Speed" : "Cadence" ) : "-n/a-",
+				(c == DEV_CSC_1 || c == DEV_CSC_2) ?  (cscIsSpeed[c] ? speed_rev_last : crank_rev_last ) : -1,
 				batLevel[c],
 				pStoredAddress[c] ? buffer_short :"-");
 		htmlresponse += buffer;
@@ -480,7 +482,11 @@ uint16_t BLEDevices::procHTMLCmd(String& htmlresponse, const String& cmd, const 
 		resetAdress(static_cast<EDevType>(devNum));
 		htmlresponse += "OK - deleted address";
 		return 200;
+	} else if (cmd.equals("reset")) {
+		htmlresponse += "OK - accepting CSC connections from unkown devices";
+	} else {
+		htmlresponse += "Not implemented (yet)\n";
+		return 501;
 	}
-	htmlresponse += "Not implemented (yet)\n";
-	return 501;
+	return 500;
 }

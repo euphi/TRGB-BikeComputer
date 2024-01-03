@@ -117,6 +117,10 @@ void Statistics::cycle() {
 		if (speed > 5.5) {
 			setCurDriveState(cadence < 40  ? DS_DRIVE_COASTING : DS_DRIVE_POWER);
 		}
+		if (time_in_break > (5 * 60000)) {		// switch off after 5 minutes
+			// TODO: Add warning on display before switch-off and add button to override
+			trgb.deepSleep();
+		}
 		break;
 	// state DRIVING
 	case DS_DRIVE_COASTING:

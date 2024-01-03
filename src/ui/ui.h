@@ -12,6 +12,7 @@ extern "C" {
 
 #include "lvgl.h"
 
+extern lv_obj_t * ui_MainScreen;	// pointer to actual main screen
 extern lv_obj_t * ui_S1Main;
 extern lv_obj_t * ui_S1LabelTitle;
 void ui_event_S1RollerStatMode(lv_event_t * e);
