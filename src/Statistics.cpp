@@ -177,7 +177,7 @@ void Statistics::addDistance(uint32_t dist, ESummaryType type) {
 	start_distance[type] = dist;
 }
 
-void Statistics::updateDistance(uint32_t _dist) {
+void Statistics::updateDistance(uint32_t _dist, uint32_t _revs) {
 	if (curDriveState == DS_NO_CONN) {
 		uint32_t dist_lost_new = _dist - distance;
 		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Lost %d pulses of distance.", dist_lost_new);
@@ -187,8 +187,26 @@ void Statistics::updateDistance(uint32_t _dist) {
 	if (!distance_start) {
 		distance_start = true;
 		addDistance(_dist, SUM_ESP_START);
-		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Initial distance: %d pulses.", _dist);
+		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Initial distance: %d meter.", _dist);
 	}
+
+/* Don't compile own gradient calculation if an external gradient calculation is done (like in Forumslader) */
+#if !BC_FL_SUPPORT
+	// Get Height information, so it's synchronized with distance update (improves accuracy)
+	float height = sensors.getHeight();
+	time_t time_now = millis();
+	uint32_t delta = time_now - gradient_timestamp;
+	int32_t revs_since_last = _revs - gradient_revs ;
+	float delta_height = height - gradient_height;
+	if (revs_since_last >= 3 || delta >= 2500 || delta_height > 0.5 ) {
+		bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_STAT, "Update gradient with deltas time: %dms, revs: %d, height: %.2fm", delta, revs_since_last, delta_height);
+		gradient_timestamp = time_now;
+		gradient_revs = _revs;
+		gradient_height = height;
+		gradient = delta_height / (revs_since_last * 2.22);
+		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Gradient: %.2f", gradient);
+	}
+#endif
 }
 
 void Statistics::updateLostDistance(uint32_t _dist_lost) {

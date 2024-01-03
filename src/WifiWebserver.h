@@ -23,6 +23,10 @@ public:
 	void checkLoop();
 	bool addHandler(const char* uri, ArRequestHandlerFunction onRequest);
 
+	AsyncWebServer& getServer() {
+		return server;
+	}
+
 private:
 	void setupWebserver();
 	Ticker wifiCheckTicker;

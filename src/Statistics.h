@@ -56,6 +56,13 @@ private:
 	uint32_t time_in[EDrivingStateMax][ESummaryTypeMax];
 	time_t timestamp_stop;
 
+#if !BC_FL_SUPPORT
+	time_t gradient_timestamp;			//Timestamp of last gradient calculation
+	uint32_t gradient_revs = 0;		//Distance of last gradient calculation
+	float gradient_height = NAN;		//Height of last gradient calculation
+	float gradient = 0.0;				//calculated gradient
+#endif
+
 	// use int instead of uint, so -1 can be used as "invalid".
 	int16_t hr;
 	int16_t cadence, cadence_tot;
@@ -88,7 +95,7 @@ public:
 	void addSpeed(float speed);  // in 0,1km/h
 	void addDistance(uint32_t dist, ESummaryType type = SUM_ESP_TOUR);
 	void reset(ESummaryType type);
-	void updateDistance(uint32_t dist);
+	void updateDistance(uint32_t dist, uint32_t revs);
 	void addHR(int16_t heartrate);
 	void addCadence(int16_t cadence, int16_t total);
 	void setConnected(bool connected);

@@ -315,7 +315,7 @@ void BLEDevices::notifyCallbackCSC(BLERemoteCharacteristic *pBLERemoteCharacteri
 			stats.addSpeed(speed);
 //			stats.updateDistance((speed_rev * 2155)/1000);
 //			stats.addDistance((speed_rev * 2155)/1000, Statistics::SUM_FL_TOTAL);
-			stats.updateDistance((speed_rev * 2220)/1000);		//FIXME: Dist is stored in m already, but transmitted in pulses. So this will result in wronng distance if circummeter changes
+			stats.updateDistance((speed_rev * 2220)/1000, speed_rev);		//FIXME: Dist is stored in m already, but transmitted in pulses. So this will result in wronng distance if circummeter changes
 			//stats.addDistance((speed_rev * 2220)/1000, Statistics::SUM_FL_TOTAL);
 			//TODO: setConnected() must be called after updateDistance, so updateDistance is still in disconnected state and can calculate lost distance. This relies on a side-effect/internal state and should be implemented cleaner.
 			stats.setConnected(true);  // "Connected" for Stats means that a speed sensor is connected (used for avg calculation)
@@ -451,12 +451,13 @@ void BLEDevices::batCheckLoop() {
 
 uint16_t BLEDevices::getHTMLPage(String &htmlresponse) {
 	uint16_t rc = 200;
-	htmlresponse += "<html><head><title>BLE Devices</title><link rel=\"stylesheet\" href=\"/stylesheet.css\"></head><body>\n<h1>BLE Devices</h1>\n\n<table>\n";
-	htmlresponse += "<thead><tr><td>Devices</td><td>Stored Address</td><td>State</td><td>Address</td><td>Tech Info</td><td>Raw Data</td><td>Battery</td><td>Action</td></tr></thead>\n<tbody>\n";
+	htmlresponse += "<!DOCTYPE html><html lang=\"en\">\n<head>\n  <meta charset=\"UTF-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n  <title>Connected Devices</title>\n  <link rel=\"stylesheet\" href=\"/stylesheet.css\">\n</head>\n<body>  <h2>Connected Devices</h2>";
+	htmlresponse += " <table>\n    <thead>\n      <tr><th>Device Type</th><th>Stored Address</th><th>Connection State</th><th>Current Address</th><th>Additional Data 1</th><th>Additional Data 2</th><th>Battery Level</th><th>Reconnect</th></tr></thead>\n    <tbody>\n";
 	for (uint16_t c = 0; c < DEV_COUNT; c++) {
 		char buffer[255];
-		char buffer_short[32];
-		snprintf(buffer_short, 31, "<a href=\"reset?dev=%d\">Del stored Addr</a>", c);
+		char buffer_short[64];
+		snprintf(buffer_short, 63, "<a  class=\"reconnect-link\" href=\"reset?dev=%d\">↻</a>", c);
+
 		snprintf(buffer, 254, "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%d</td><td>%d%%</td><td>%s</td></tr>\n",
 				DEV_STRING[c],
 				pStoredAddress[c] ? pStoredAddress[c]->toString().c_str() : "-empty-",

@@ -8,6 +8,7 @@
 #include <FLClassicParser.h>
 #include "Singletons.h"
 
+
 FLClassicParser::FLClassicParser(uint8_t polePair, uint16_t circum_mm):
 dist_m_per_pulse((float)circum_mm/(float)polePair / 1000.0),
 kmh_per_pulse_per_s(dist_m_per_pulse * 3600 / 1000.0),
@@ -23,6 +24,7 @@ void FLClassicParser::setConnState(EFLConnState state) {
 
 
 void FLClassicParser::updateFromString(const String &flStr) {
+#if BC_FL_SUPPORT
 	lastUpdate = millis();
 	bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_FL, "Rvcd string: %s", flStr.c_str());
 
@@ -70,7 +72,7 @@ void FLClassicParser::updateFromString(const String &flStr) {
 			speed_f = pulses_per_s * kmh_per_pulse_per_s;
 			dist_total = ceil((pulsecounter * 4096 + micropulsecounter) * dist_m_per_pulse);
 			stats.addSpeed(speed_f);
-			stats.updateDistance(dist_total);
+			stats.updateDistance(dist_total, pulsecounter * 4096 + micropulsecounter);
 			stats.addDistance(dist_total, Statistics::SUM_FL_TOTAL);
 			if (speedCB) speedCB(speed_f, dist_total);
 			break;
@@ -120,4 +122,5 @@ void FLClassicParser::updateFromString(const String &flStr) {
 	} else {
 		Serial.println("❌ Unknown String identifier");
 	}
+#endif
 }

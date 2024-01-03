@@ -16,4 +16,5 @@ UIFacade ui;
 //TRGBSuppport trgb;
 WifiWebserver webserver;
 BLEDevices bleDevs;
+I2CSensors sensors;
 

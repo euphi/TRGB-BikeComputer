@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sensor Information</title>
+  <link rel="stylesheet" href="/stylesheet.css">
+</head>
+<body>
+  <div class="container">
+    <h2>Sensor Information</h2>
+
+    <!-- BME280 Sensor Data -->
+    <div class="sensor-box">
+      <h3>BME280 Sensor</h3>
+      <p>Temperature: <span id="bmeTemperature">%bmeTemperature%</span> °C</p>
+      <p>Humidity: %bmeHumidity% relH</p>
+      <p>Pressure: %bmePressure% hPa</p>
+      <p>Current Height: %currentHeight% meters</p>
+      <p>Reference Pressure: %referencePressure% hPa</p>
+      <p><form action='/sensor/submit' method='post'>Calibrate to known actual height: <input type='text' name='height'><input type='submit' value='Submit'></form></p>"
+    </div>
+
+    <!-- BMI160 Sensor Data -->
+    <div class="sensor-box">
+      <h3>BMI160 Sensor</h3>
+      <p>Acceleration X: <span id="bmiAccX">%bmiAccX%</span> m/s²</p>
+      <p>Acceleration Y: <span id="bmiAccY">%bmiAccY%</span> m/s²</p>
+      <p>Acceleration Z: <span id="bmiAccZ">%bmiAccZ%</span> m/s²</p>
+      <p>Gyroscope X: <span id="bmiGyroX">%bmiGyroX%</span> rad/s</p>
+      <p>Gyroscope Y: <span id="bmiGyroY">%bmiGyroY%</span> rad/s</p>
+      <p>Gyroscope Z: <span id="bmiGyroZ">%bmiGyroZ%</span> rad/s</p>
+    </div>
+    <!-- Dark Mode Toggle Button -->
+    <button id="darkModeToggle" onclick="toggleDarkMode()">Toggle Dark Mode</button>
+  </div>
+
+  <script>
+    // Dark Mode Toggle Script
+    function toggleDarkMode() {
+      const body = document.body;
+      body.classList.toggle('dark-mode');
+
+      // Save the user's preference to local storage
+      const darkModeEnabled = body.classList.contains('dark-mode');
+      localStorage.setItem('darkModeEnabled', darkModeEnabled);
+    }
+
+    // Check if the user has a preference for dark mode
+    const darkModePreference = localStorage.getItem('darkModeEnabled');
+    if (darkModePreference === 'true') {
+      document.body.classList.add('dark-mode');
+    }
+  </script>
+</body>
+</html>

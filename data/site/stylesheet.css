@@ -1,12 +1,92 @@
+/* Common Styles */
 body {
-    background: white url("photos/bg_TdF1b.jpg") 
-                round
-                center;
-  }
-
-table {
-    border-collapse: collapse;
+  margin: 0;
+  padding: 0;
+  font-family: Arial, sans-serif;
+  background-image: url('/photos/bg_TdF1b.jpg');
 }
+
+/* Dashboard Page Styles */
+.container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  //height: 100vh;
+  margin: 10px;
+  padding: 20px;
+  border-radius: 15px; 
+  background-color: rgba(40, 40, 80, 0.6); 
+  color: #fff; /* Light text color */
+}
+
+.sensor-box {
+	background-color: rgba(15, 15, 50, 0.7);
+	marting: 10px;
+	padding: 20px; 
+	border-radius: 5px;
+}
+
+.link-box {
+  margin: 10px;
+  padding: 20px;
+  background-color: #333; /* Dark box color */
+  border-radius: 10px;
+  text-align: center;
+  font-size: 20px;
+  text-decoration: none;
+  color: #fff; /* Light text color */
+}
+
+.link-box:hover {
+  background-color: #555; /* Darker box color on hover */
+}
+
+
+/* BLE Device Page Styles */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 20px;
+  color: #fff; /* Light text color */
+}
+
+th, td {
+  border: 1px solid #555; /* Darker border color */
+  padding: 12px;
+  text-align: left;
+}
+
 td {
-    border: 2px solid #000;
+	background-color: #337;
+}
+
+th {
+  background-color: #333; /* Dark header background color */
+}
+
+.reconnect-link {
+  text-decoration: none;
+  color: #3498db;
+  font-weight: bold;
+}
+
+/* Dark Mode Styles */
+.dark-mode {
+  background-color: #111; /* Very dark background color */
+  color: #fff; /* Light text color */
+}
+
+/* Dark Mode Toggle Button Styles */
+#darkModeToggle {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  font-size: 18px;
+  padding: 10px;
+  background-color: #333; /* Dark box color */
+  border: none;
+  border-radius: 5px;
+  color: #fff; /* Light text color */
+  cursor: pointer;
 }

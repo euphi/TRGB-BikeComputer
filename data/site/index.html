@@ -1,14 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
 <head>
-<title>T-RGB Bike Computer</title>
-<link rel="stylesheet" href="/stylesheet.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>T-RGB BikeComputer Dashboard</title>
+  <link rel="stylesheet" href="/stylesheet.css">
 </head>
 <body>
-<h1>T-RGB Bike Computer</h1>
-<p>Welcome!</p>
+  <div class="container">
+    <a class="link-box" href="/logfiles/">Logfiles</a>
+    <a class="link-box" href="/cleanup">Cleanup logfiles</a> (delete empty and very small ones)
+    <a class="link-box" href="/update">Update</a>
+    <a class="link-box" href="/dev/">BLE Devices</a>
+    <a class="link-box" href="/sensor/">Sensors (I2C)</a> 
 
-<p><a href="/logfiles/">Logfiles</a></p>
-<p><a href="/cleanup">Cleanup logfiles</a> (delete empty and very small ones)</p>
-<p><a href="/update">Update</a></p>
-<p><a href="/dev/">BLE Devices</a></p>
+    <!-- Dark Mode Toggle Button -->
+    <button id="darkModeToggle" onclick="toggleDarkMode()">Toggle Dark Mode</button>
+  </div>
+
+  <script>
+    // Dark Mode Toggle Script
+    function toggleDarkMode() {
+      const body = document.body;
+      body.classList.toggle('dark-mode');
+
+      // Save the user's preference to local storage
+      const darkModeEnabled = body.classList.contains('dark-mode');
+      localStorage.setItem('darkModeEnabled', darkModeEnabled);
+    }
+
+    // Check if the user has a preference for dark mode
+    const darkModePreference = localStorage.getItem('darkModeEnabled');
+    if (darkModePreference === 'true') {
+      document.body.classList.add('dark-mode');
+    }
+  </script>
 </body>
 </html>

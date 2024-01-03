@@ -140,6 +140,33 @@ void WifiWebserver::setupWebserver() {
 		}
 	});
 
+	server.on("/sensor/", HTTP_GET,  [this](AsyncWebServerRequest *request) {
+		htmlresponse.clear();
+		sensors.getHTMLPage(htmlresponse);
+		request->send(200, "text/html", htmlresponse.c_str());
+	});
+
+	server.on("/sensor/submit", HTTP_POST,	[this](AsyncWebServerRequest *request) {
+		String height = request->arg("height");
+		double heightValue = height.toDouble();
+		htmlresponse.clear();
+		int16_t code = sensors.procHTMLHeight(htmlresponse, heightValue);
+		request->send(200, "text/html", htmlresponse);
+	});
+
+
+//	server.on("^\\/sensor\\/([A-Za-z0-9]+)$", HTTP_GET, [this] (AsyncWebServerRequest *request) {
+//		htmlresponse.clear();
+//		const AsyncWebParameter* para = request->getParam(0);
+//		bclog.logf(BCLogger::Log_Info, TAG, "💻 Request on /sensor/: %s\n\tPath-Arg: %s - %s", request->url().c_str(), request->pathArg(0).c_str(), para ? para->value().c_str() : "n/a");
+//		if (!para) {
+//			request->send(400, "text/plain", "Missing parameter");
+//		} else {
+//			int16_t code = sensors.procHTMLCmd(htmlresponse, request->pathArg(0), para->value());
+//			request->send(code, "text/plain", htmlresponse.c_str());
+//		}
+//	});
+
 	// -- Allow OTA via Web ("ElegantOTA" library)
 	AsyncElegantOTA.begin(&server); // Start ElegantOTA - it listens on "/update/"
 
