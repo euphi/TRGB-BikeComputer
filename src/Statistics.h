@@ -56,19 +56,23 @@ private:
 	uint32_t time_in[EDrivingStateMax][ESummaryTypeMax];
 	time_t timestamp_stop;
 
+	// Variables to calculate gradient (Forumslader calculates gradient on its own)
 #if !BC_FL_SUPPORT
 	time_t gradient_timestamp;			//Timestamp of last gradient calculation
 	uint32_t gradient_revs = 0;		//Distance of last gradient calculation
 	float gradient_height = NAN;		//Height of last gradient calculation
-	float gradient = 0.0;				//calculated gradient
 #endif
+
+	float gradient = 0.0;				//calculated gradient
+	float height = NAN;
+	float temperature = NAN;
 
 	// use int instead of uint, so -1 can be used as "invalid".
 	int16_t hr;
 	int16_t cadence, cadence_tot;
 	float speed=0.0;
 
-	int16_t grad = 0, height = 0;
+	//int16_t grad = 0, height = 0;
 
 	uint32_t start_distance[ESummaryTypeMax];   // start_distance: For locally stored distances, this is the distance the counter was reset. For extern stored (FL) distance this is the actual distance
 	uint32_t lost_distance[ESummaryTypeMax];   // start_distance: For locally stored distances, this is the distance the counter was reset. For extern stored (FL) distance this is the actual distance
@@ -99,7 +103,7 @@ public:
 	void addHR(int16_t heartrate);
 	void addCadence(int16_t cadence, int16_t total);
 	void setConnected(bool connected);
-	void addGradient(int16_t grad, int16_t height);
+	void addGradientFL(int16_t grad, int16_t height, int16_t temp);
 
 	uint32_t getTime(ESummaryType type, EAvgType avgtype) const;
 
@@ -109,6 +113,7 @@ public:
 	const float getSpeedMax(ESummaryType type) const {
 		return speed_max[type];
 	}
+	float getTemperature() const {return temperature;}
 	uint32_t getDistance(ESummaryType type, bool includeLost = true) const;
 
 	static const char* PREF_TIME_STRING[Statistics::EDrivingStateMax];
@@ -123,5 +128,6 @@ public:
 		return static_cast<EAvgType>(rc);
 
 	}
+
 };
 

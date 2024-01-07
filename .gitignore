@@ -8,3 +8,10 @@ SquareLine/backup/
 CMakeLists.txt
 /versioning
 include/version.h
+
+# Output files of binary log converter
+out.csv
+
+# Autosave and Backup of SquareLineStudio
+autosave/
+backup/

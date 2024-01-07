@@ -105,7 +105,7 @@ void UIFacade::updateHandler() {
 	while (true) {
 		// Fast update - use this only for data that should be shown with no (further) delay
 		if (xSemaphoreTake(xUpdateFast, static_cast<TickType_t>(0) ) == pdTRUE) {		// Semaphore is used for message "please update" only. So there is no reason to wait.
-			ui_ScrMainUpdateFast(speed, grad / 10.0);
+			ui_ScrMainUpdateFast(speed, grad);
 			ui_ScrNaviUpdateSpeed(speed);
 			ui_ScrChartUpdateSpeed(speed);
 			ui_SMainNoFLUpdateSpeed(speed);
@@ -115,6 +115,8 @@ void UIFacade::updateHandler() {
 			ui_ScrMainUpdateHR(hr);
 			ui_ScrNaviUpdateHR(hr);
 			ui_SMainNoFLUpdateHR(hr);
+			ui_SMainNoFLUpdateGrad(grad, height);
+
 		}
 
 		int32_t next_ms = 20; // wait 20ms if Mutex can't be taken within 100ms (this should never happen)
@@ -164,7 +166,7 @@ void UIFacade::updateStats() {
 
 	uint32_t timeTot = stats.getTime(t, statTimeMode);
 	ui_ScrMainUpdateStats(Statistics::SUM_TYPE_STRING[t] + 3, stats.getAvg(t, statTimeMode), stats.getSpeedMax(t), stats.getDistance(t), timeTot);
-	ui_SMainNoFLUpdateStats(Statistics::SUM_TYPE_STRING[t] + 3, Statistics::AVG_TYPE_STRING[statTimeMode] + 3, stats.getAvg(t, statTimeMode), stats.getSpeedMax(t), stats.getDistance(t), timeTot);
+	ui_SMainNoFLUpdateStats(Statistics::SUM_TYPE_STRING[t] + 3, Statistics::AVG_TYPE_STRING[statTimeMode] + 3, stats.getAvg(t, statTimeMode), stats.getSpeedMax(t), stats.getTemperature(), stats.getDistance(t), timeTot);
 }
 
 void UIFacade::updateIntBatteryInt() {
@@ -193,11 +195,10 @@ void UIFacade::updateHR(uint16_t _hr) {
 	xSemaphoreGive(xUpdateFast);
 }
 
-void UIFacade::updateGrad(int16_t _grad, int16_t _height) {
+void UIFacade::updateGrad(float _grad, float _height) {
 	height = _height;
 	grad   = _grad;
 	xSemaphoreGive(xUpdateFast);
-
 }
 
 
@@ -225,7 +226,7 @@ void UIFacade::updateNavi(const String& navStr, uint32_t dist, uint8_t dirCode) 
 	if (distAnn && dist > 250) {
 		distAnn = false;
 	}
-	if (xSemaphoreTake(xUIDrawMutex, 50 / portTICK_PERIOD_MS) == pdTRUE) {
+	if (xSemaphoreTake(xUIDrawMutex, 150 / portTICK_PERIOD_MS) == pdTRUE) {
 		if (loadScreen)	lv_disp_load_scr(ui_SNavi);
 		ui_ScrNaviUpdateNav(navStr.c_str(), dist, dirCode);
 		ui_SMainNoFLUpdateNav(navStr.c_str(), dist, dirCode);
@@ -241,7 +242,7 @@ void UIFacade::updateNaviDist(uint32_t dist) {
 		ui_SMainNoFLUpdateNavDist(dist);
 		xSemaphoreGive(xUIDrawMutex);
 	} else {
-		bclog.log(BCLogger::Log_Error, BCLogger::TAG_OP, "Nav blocked by mutex");
+		bclog.log(BCLogger::Log_Error, BCLogger::TAG_OP, "Nav dist blocked by mutex");
 	}
 }
 

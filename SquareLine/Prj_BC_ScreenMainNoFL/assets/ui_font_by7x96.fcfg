@@ -1,0 +1,16 @@
+{
+  "codename": "by7x96",
+  "ttf_path": "/assets/5by7.ttf",
+  "bin_path": "/assets/ui_font_by7x96.bin",
+  "c_path": "/assets/ui_font_by7x96.c",
+  "cfg_path": "/assets/ui_font_by7x96.fcfg",
+  "size": 96,
+  "bpp": 1,
+  "letters": 0,
+  "ranges": [
+    "0x2B-0x39"
+  ],
+  "symbols": "",
+  "customparams": "--no-compress --no-prefilter",
+  "uploaded": false
+}

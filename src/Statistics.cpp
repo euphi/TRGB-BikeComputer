@@ -85,7 +85,7 @@ void Statistics::autoStore() {
 }
 
 void Statistics::dataStore() {
-	bclog.appendDataLog(speed, NAN, grad, distance, height * 1.0, hr);
+	bclog.appendDataLog(speed, temperature, gradient, distance, height, hr);
 }
 
 void Statistics::cycle() {
@@ -193,7 +193,9 @@ void Statistics::updateDistance(uint32_t _dist, uint32_t _revs) {
 /* Don't compile own gradient calculation if an external gradient calculation is done (like in Forumslader) */
 #if !BC_FL_SUPPORT
 	// Get Height information, so it's synchronized with distance update (improves accuracy)
-	float height = sensors.getHeight();
+	sensors.readBME280();
+	height = sensors.getHeight();
+	temperature = sensors.getTemp();
 	time_t time_now = millis();
 	uint32_t delta = time_now - gradient_timestamp;
 	int32_t revs_since_last = _revs - gradient_revs ;
@@ -203,9 +205,10 @@ void Statistics::updateDistance(uint32_t _dist, uint32_t _revs) {
 		gradient_timestamp = time_now;
 		gradient_revs = _revs;
 		gradient_height = height;
-		gradient = delta_height / (revs_since_last * 2.22);
+		gradient = delta_height / (revs_since_last * 2.22);	//FIXME: Handle distances correctly. (Only one place to convert pulses to distance etc.)
 		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Gradient: %.2f", gradient);
 	}
+	ui.updateGrad(gradient, height);
 #endif
 }
 
@@ -217,10 +220,12 @@ void Statistics::updateLostDistance(uint32_t _dist_lost) {
 	}
 }
 
-void Statistics::addGradient(int16_t _grad, int16_t _height) {
-	height = _height;
-	grad = _grad;
-	ui.updateGrad(grad, height);
+void Statistics::addGradientFL(int16_t _grad, int16_t _height, int16_t _temp) {
+	// Convert to float
+	height = _height * 1.0;
+	gradient = _grad / 10.0;
+	temperature = _temp / 10.0;
+	ui.updateGrad(gradient, height);
 }
 
 uint32_t Statistics::getDistance(ESummaryType type, bool includeLost) const {
@@ -279,7 +284,9 @@ float Statistics::getAvg(ESummaryType type, EAvgType avgtype) const {
 }
 
 float Statistics::getAvgCadence(EAvgType avgtype) const {
-	//FIXME: avg does not take into account distance in no connection. There should be at least a mechanism to compensate distance in NO_CONN
+	//FIXME: Calculation is totally wrong...
+	//			Start total cadence needs to be stored per summary type.
+	//			Time: Depends, but cadence sensors counts even if disconnected, so it should be accurate to use. Meaningful is value only during driving (including and excluding coasting).
 	//TRACE: Serial.print(getDistance(type)); Serial.print('\t');Serial.println(relevantTime);
 
 	//        .. in m         / sec                             * 3.6 km/h / m/s..

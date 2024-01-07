@@ -24,7 +24,7 @@ public:
 	void updateSpeed(float speed);		// speed in km/h as float
 	void updateCadence(uint16_t cad);	// cadence in revs per min
 	void updateHR(uint16_t hr);       	// heartbet in beats per min
-	void updateGrad(int16_t grad, int16_t height);	// grad(ient) in permille,
+	void updateGrad(float grad, float height);	// grad(ient) in permille,
 
 	void setStatMode(Statistics::ESummaryType mode) {statMode = mode;}
 	void setStatMode(bool dir) {
@@ -64,8 +64,8 @@ private:
 	Ticker dataTicker;
 
 	//TODO: Use notify/poll mechanism instead of storing data
-	int16_t hr, cad, grad, height = -1;
-	float speed = NAN;
+	int16_t hr, cad = -1;
+	float grad, height, speed = NAN;
 
 	Statistics::ESummaryType statMode = Statistics::SUM_ESP_START;
 	Statistics::EAvgType     statTimeMode = Statistics::AVG_ALL;

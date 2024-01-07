@@ -1,16 +1,16 @@
 /*******************************************************************************
  * Size: 96 px
  * Bpp: 1
- * Opts: --bpp 1 --size 96 --font /home/ian/Coding/Bike/T-RGB-Experiments/SquareLine/assets/5by7.ttf -o /home/ian/Coding/Bike/T-RGB-Experiments/SquareLine/assets/ui_font_by75_96.c --format lvgl -r 0x2B-0x39 --no-compress --no-prefilter
+ * Opts: --bpp 1 --size 96 --font /home/ian/SquareLine/assets/5by7.ttf -o /home/ian/SquareLine/assets/ui_font_by7x96.c --format lvgl -r 0x2B-0x39 --no-compress --no-prefilter
  ******************************************************************************/
 
-//#pragma once
+#include "../ui.h"
 
-#include <lvgl.h>
-
-#ifndef UI_FONT_BY75_96
-#define UI_FONT_BY75_96 1
+#ifndef UI_FONT_BY7X96
+#define UI_FONT_BY7X96 1
 #endif
+
+#if UI_FONT_BY7X96
 
 /*-----------------
  *    BITMAPS
@@ -721,9 +721,9 @@ static lv_font_fmt_txt_dsc_t font_dsc = {
 
 /*Initialize a public general font descriptor*/
 #if LV_VERSION_CHECK(8, 0, 0)
-const lv_font_t ui_font_by75_96 = {
+const lv_font_t ui_font_by7x96 = {
 #else
-lv_font_t ui_font_by75_96 = {
+lv_font_t ui_font_by7x96 = {
 #endif
     .get_glyph_dsc = lv_font_get_glyph_dsc_fmt_txt,    /*Function pointer to get glyph's data*/
     .get_glyph_bitmap = lv_font_get_bitmap_fmt_txt,    /*Function pointer to get glyph's bitmap*/
@@ -738,3 +738,8 @@ lv_font_t ui_font_by75_96 = {
 #endif
     .dsc = &font_dsc           /*The custom font data. Will be accessed by `get_glyph_bitmap/dsc` */
 };
+
+
+
+#endif /*#if UI_FONT_BY7X96*/
+

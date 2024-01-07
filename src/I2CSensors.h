@@ -9,13 +9,17 @@
 
 #include "SparkFunBME280.h"
 
+#include <SPI.h>        // needed so that pio can find the SPI include in BMI160 library
+#include <BMI160Gen.h>
+#include <Ticker.h>
 
 class I2CSensors {
 public:
 	I2CSensors();
 
 	void setup() {
-		InitBME280();
+		initBME280();
+		initBMI160();
 	}
 
 
@@ -25,6 +29,7 @@ public:
 	//uint16_t procHTMLCmd(String& htmlresponse, const String& cmd, const String& arg);
 
 	void readBME280();
+	void readBMI160();
 
 	float getHeight() const {return height;}
 	float getHumid() const {return humid;}
@@ -33,7 +38,8 @@ public:
 
 private:
 	BME280 bme280;
-	void InitBME280();
+	void initBME280();
+	void initBMI160();
 
 	float press, humid, temp, height = NAN;
 
@@ -51,5 +57,17 @@ private:
 	double calculateReferencePressure(double h, double P) {
 	    return P * exp((G * M * h) / (R * T0));
 	}
+
+	float convertRawGyro(int gRaw) {
+	  // since we are using 250 degrees/seconds range
+	  // -250 maps to a raw value of -32768
+	  // +250 maps to a raw value of 32767
+	  return (gRaw * 250.0) / 32768.0;
+	}
+
+	Ticker bme280Cycle;
+
+
+
 
 };

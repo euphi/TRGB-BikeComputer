@@ -54,8 +54,8 @@ uint16_t I2CSensors::procHTMLHeight(String& htmlresponse, const float actHeight)
 //	return 501;
 //}
 
-void I2CSensors::InitBME280() {
-	bme280.settings.commInterface = I2C_MODE;
+void I2CSensors::initBME280() {
+	bme280.settings.commInterface = BME280::I2C_MODE;
 	bme280.settings.I2CAddress = 0x76;
 
 	//  0, Sleep mode
@@ -118,6 +118,8 @@ void I2CSensors::InitBME280() {
 			return String("-/-");
 		});
 	});
+
+	bme280Cycle.attach_ms(1000, +[](I2CSensors* thisInstance) { thisInstance->readBME280(); }, this);
 }
 
 void I2CSensors::readBME280() {
@@ -127,4 +129,57 @@ void I2CSensors::readBME280() {
 	temp  = bme280.readTempC();
 	height = bme280.readFloatAltitudeMeters();
 	Serial.printf("BME280: %.2f mbar, %.2f rel%%, %.2f °C, %.2f m NN\n", press, humid, temp, height);
+}
+
+void I2CSensors::readBMI160() {
+	int gxRaw, gyRaw, gzRaw;         // raw gyro values
+	int axRaw, ayRaw, azRaw;         // raw gyro values
+	float gx, gy, gz;
+	float ax, ay, az;
+
+	// read raw gyro measurements from device
+	//BMI160.readGyro(gxRaw, gyRaw, gzRaw);
+	BMI160.readMotionSensor(axRaw, ayRaw, azRaw, gxRaw, gyRaw, gzRaw);
+
+
+	// convert the raw gyro data to degrees/second
+	gx = convertRawGyro(gxRaw);
+	gy = convertRawGyro(gyRaw);
+	gz = convertRawGyro(gzRaw);
+
+	ax = axRaw / 8192.0;
+	ay = ayRaw / 8192.0;
+	az = azRaw / 8192.0;
+
+	// display tab-separated gyro x/y/z values
+	Serial.print("g:\t");
+	Serial.print(gx);
+	Serial.print("\t");
+	Serial.print(gy);
+	Serial.print("\t");
+	Serial.print(gz);
+	Serial.println();
+
+	Serial.print("a:\t");
+	Serial.print(ax);
+	Serial.print("\t");
+	Serial.print(ay);
+	Serial.print("\t");
+	Serial.print(az);
+	Serial.println();
+
+
+}
+
+void I2CSensors::initBMI160() {
+    BMI160.begin(BMI160GenClass::I2C_MODE, 0x68, -1);
+    Serial.println("Now getting device ID");
+    uint8_t dev_id = BMI160.getDeviceID();
+    Serial.print("DEVICE ID: ");
+    Serial.println(dev_id, HEX);
+
+    // Calibrate - must be standstill! //FIXME: Its better to trigger this manually - use menu or webserver
+    BMI160.autoCalibrateGyroOffset();
+    BMI160.setGyroOffsetEnabled(true);
+
 }

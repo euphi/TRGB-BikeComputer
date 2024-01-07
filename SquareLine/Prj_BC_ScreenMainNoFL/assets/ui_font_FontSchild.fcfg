@@ -1,0 +1,16 @@
+{
+  "codename": "FontSchild",
+  "ttf_path": "/assets/schilder.ttf",
+  "bin_path": "/assets/ui_font_FontSchild.bin",
+  "c_path": "/assets/ui_font_FontSchild.c",
+  "cfg_path": "/assets/ui_font_FontSchild.fcfg",
+  "size": 64,
+  "bpp": 1,
+  "letters": 0,
+  "ranges": [
+    "0x20-0x7f"
+  ],
+  "symbols": "",
+  "customparams": "--no-compress --no-prefilter",
+  "uploaded": false
+}

@@ -172,7 +172,7 @@ void WifiWebserver::setupWebserver() {
 
 	// -- download Binary Logfile
 	server.serveStatic("/log/", SD_MMC, "/BIKECOMP/");
-	server.serveStatic("/", LittleFS, "/site/").setDefaultFile("index.html");
+	server.serveStatic("/", LittleFS, "/site/").setCacheControl("max-age=31536000").setDefaultFile("index.html");
 
 	// URI not found
 	server.onNotFound([](AsyncWebServerRequest *request) {
