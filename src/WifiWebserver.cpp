@@ -9,6 +9,7 @@
 #include <Singletons.h>
 #include <SD_MMC.h>
 #include <LittleFS.h>
+#include <FS.h>
 #include <AsyncElegantOTA.h>
 
 //TODO: Read this from preferences
@@ -120,6 +121,34 @@ void WifiWebserver::setupWebserver() {
 		request->send(200, "text/plain", "Crash for coredump");
 		delay(1000);
 		abort();
+	});
+
+	  // Serve the system resources page
+	server.on("/system", HTTP_GET, [](AsyncWebServerRequest *request) {
+	    String html = "<html><head><link rel='stylesheet' type='text/css' href='/stylesheet.css'></head>\n<body>\n<div class='container'>\n<h1>ESP32 System Resources</h1>";
+
+		// Get free heap memory
+		html += "<p>Free Heap : " + String(ESP.getFreeHeap() / 1024 ) + " kilobytes</p>";
+		html += "<p>Free PSRAM: " + String(ESP.getFreePsram() / 1024 ) + " kilobytes</p>";
+
+		// Calculate free space on LittleFS
+		size_t totalBytes = LittleFS.totalBytes();
+		size_t usedBytes = LittleFS.usedBytes();
+		html += "<p>Used space on LitteFS: " + String(usedBytes / (1024) ) + " kB of " + String(totalBytes / (1024)) + " kB.</p>";
+
+
+	// Check if an SD card is present
+		sdcard_type_t ctype = SD_MMC.cardType();
+		if (ctype != CARD_UNKNOWN && ctype != CARD_NONE) {
+			// Get free space on the SD card
+			uint64_t cardSize = SD_MMC.cardSize() / (1024 * 1024);
+			uint64_t totalSpace = SD_MMC.usedBytes() / (1024 * 1024);
+			html += "<p>Used space on SD card: " + String(totalSpace) + " MB of " + String(cardSize) + " MB.</p>";
+		} else {
+			html += "<p>No SD card detected</p>";
+		}
+		html += "</div></body></html>";
+		request->send(200, "text/html", html);
 	});
 
 	server.on("/dev/", HTTP_GET,  [this](AsyncWebServerRequest *request) {
