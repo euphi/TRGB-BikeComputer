@@ -20,6 +20,9 @@
 #include "ui/Screens/MainNoFL/ui_MainNoFL.h"
 #include "ui/Screens/MainNoFL/ui_MainNoFL_CustFunc.h"
 
+#include "ui/Screens/Chart/ui.h"
+#include "ui/Screens/Chart/ui_Chart_CustFunc.h"
+
 #include "ui/ui.h"  // FL main and chart screen
 #include "ui/ui_custFunc.h"
 
@@ -45,7 +48,8 @@ void UIFacade::initDisplay() {
 
     // 2. Init all screens
     ui_S1Main_screen_init();
-    ui_ScreenChart_screen_init();
+    ui_ScreenChart_screen_init();		// old chart (included in SQS main screen project)
+    ui_SChart_screen_init();			// new chart (own SQS project)
 
     ui_SMainNoFL_screen_init();
     ui_SWLAN_screen_init();
@@ -55,16 +59,28 @@ void UIFacade::initDisplay() {
     // .. add init of new screens here
 
     // 3. set main screen
+#if BC_FL_SUPPORT
+    ui_MainScreen = ui_S1Main;
+#else
     ui_MainScreen = ui_SMainNoFL;
-    ui_ScrNaviSetBackScreen(ui_MainScreen);
+#endif
 
+    ui_ScrNaviSetBackScreen(ui_MainScreen);
+    ui_ScrChartSetBackScreen(ui_MainScreen);
+    static uint16_t a[] = {101, 40, 240, 320, 10};
+    static uint16_t b[] = {1, 400, 2, 350, 143};
+    static uint16_t c[] = {49, 44, 21, 32, 19};
+    static uint16_t d[] = {1, 40, 22, 32, 12};
+    ui_ScrChartSetExtArray1(a, 0, 5);
+    ui_ScrChartSetExtArray1(b, 1, 5);
+    ui_ScrChartSetExtArray1(c, 2, 5);
+    ui_ScrChartSetExtArray1(d, 3, 5);
 
     // init data model
     uifl.init();		// FL data model
 
     // 4. Load initial screen
-    //lv_disp_load_scr(ui_S1Main);
-    lv_disp_load_scr(ui_SMainNoFL);
+    lv_disp_load_scr(ui_MainScreen);
 
     // 5. Start fast update Thread
     xTaskCreate(startTaskUiUpdate, "UI Task", 4096, NULL, 20, &uiTaskHandle);	// High priority task for smooth display updates
@@ -80,7 +96,6 @@ void UIFacade::initDisplay() {
 void UIFacade::updateData() {
 	xSemaphoreGive(xUpdateSlow);
 }
-
 
 // Internal task handler
 
@@ -116,7 +131,6 @@ void UIFacade::updateHandler() {
 			ui_ScrNaviUpdateHR(hr);
 			ui_SMainNoFLUpdateHR(hr);
 			ui_SMainNoFLUpdateGrad(grad, height);
-
 		}
 
 		int32_t next_ms = 20; // wait 20ms if Mutex can't be taken within 100ms (this should never happen)
@@ -151,14 +165,12 @@ void UIFacade::updateHandler() {
 
 
 // ---------------- Internal (private) data updater ----------------
-
 void UIFacade::updateClock(const time_t now) {
 	String strClock = DateFormatter::format(DateFormatter::TIME_ONLY,now);
 	String strDate = DateFormatter::format(DateFormatter::DATE_ONLY,now);
 
 	ui_ScrMainUpdateClock(strClock.c_str(), strDate.c_str());
 	uifl.updateClock(strClock, strDate);
-
 }
 
 void UIFacade::updateStats() {

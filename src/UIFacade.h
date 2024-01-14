@@ -64,7 +64,7 @@ private:
 	Ticker dataTicker;
 
 	//TODO: Use notify/poll mechanism instead of storing data
-	int16_t hr, cad = -1;
+	int16_t hr = -1, cad = -1;
 	float grad, height, speed = NAN;
 
 	Statistics::ESummaryType statMode = Statistics::SUM_ESP_START;
