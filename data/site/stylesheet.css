@@ -12,17 +12,18 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  //height: 100vh;
-  margin: 10px;
+  /* height: 100vh; */  
+  margin: auto;
   padding: 20px;
   border-radius: 15px; 
   background-color: rgba(40, 40, 80, 0.6); 
   color: #fff; /* Light text color */
+  width: fit-content;
 }
 
 .sensor-box {
 	background-color: rgba(15, 15, 50, 0.7);
-	marting: 10px;
+	margin: 10px;
 	padding: 20px; 
 	border-radius: 5px;
 }
@@ -45,9 +46,9 @@ body {
 
 /* BLE Device Page Styles */
 table {
-  width: 100%;
+  width: auto;
   border-collapse: collapse;
-  margin-top: 20px;
+  margin-top: 10px;
   color: #fff; /* Light text color */
 }
 

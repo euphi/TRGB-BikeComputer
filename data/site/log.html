@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Set Log Levels</title>
+  <link rel="stylesheet" href="/stylesheet.css">
+  
+  <script>
+    function setLogLevels() {
+      // Get values from the input fields
+      var tag = document.getElementById("tagSelect").value;
+      var level = document.getElementById("levelSelect").value;
+
+      // Make a GET request to set log levels
+      var xhr = new XMLHttpRequest();
+      xhr.onreadystatechange = function() {
+        if (xhr.readyState === XMLHttpRequest.DONE) {
+          if (xhr.status === 200) {
+            // Display success message
+            getLogLevels();
+            alert(xhr.responseText);
+          } else {
+            // Display error message
+            getLogLevels();
+            alert('Error: ' + xhr.status);
+          }
+        }
+      };
+
+      // Replace 'your-device-ip' with the actual IP address of your device
+      xhr.open('GET', '/log/set?tag=' + tag + '&level=' + level, true);
+
+      xhr.send();
+    }
+    function getLogLevels() {
+        // Make a GET request to retrieve current log levels
+        var xhr = new XMLHttpRequest();
+        xhr.onreadystatechange = function() {
+          if (xhr.readyState === XMLHttpRequest.DONE) {
+            if (xhr.status === 200) {
+              // Parse the JSON response
+              var logLevels = JSON.parse(xhr.responseText);
+              // Update the log levels table
+              updateLogLevelsTable(logLevels);
+            } else {
+              // Display error message
+              alert('Error: ' + xhr.status);
+            }
+          }
+        };
+
+        // Replace 'your-device-ip' with the actual IP address of your device
+        xhr.open('GET', '/log/get', true);
+        xhr.send();
+      }
+
+      function updateLogLevelsTable(logLevels) {
+        // Get the table body element
+        var tableBody = document.getElementById("logLevelsTableBody");
+        // Clear existing rows
+        tableBody.innerHTML = "";
+
+        // Iterate through logLevels and add rows to the table
+        for (var tag in logLevels) {
+          var row = tableBody.insertRow();
+          var cellTag = row.insertCell(0);
+          var cellLevel = row.insertCell(1);
+          cellTag.innerHTML = tag;
+          cellLevel.innerHTML = logLevels[tag];
+        }
+      }
+
+      function goBack() {
+        // Go back to the previous page in the browser's history
+        window.history.back();
+      }
+
+      // Initial call to get current log levels when the page loads
+      getLogLevels();
+    
+  </script>
+</head>
+<body>
+  <div class="container">
+   <!-- Table to display current log levels -->
+  <h2>Current Log Levels</h2>
+  <table border="1">
+    <thead>
+      <tr>
+        <th>Tag</th>
+        <th>Level</th>
+      </tr>
+    </thead>
+    <tbody id="logLevelsTableBody"></tbody>
+  </table>
+  <h2>Set Log Levels</h2>
+  <label for="tagSelect">Tag:</label>
+  <select id="tagSelect">
+    <option value="RAW">RAW</option>
+    <option value="FL">FL</option>
+    <option value="BLE">BLE</option>
+    <option value="STAT">STAT</option>
+    <option value="WIFI">WIFI</option>
+    <option value="SD">SD</option>
+    <option value="OP">OP</option>
+    <option value="CLI">CLI</option>
+  </select><br>
+  <label for="levelSelect">Level:</label>
+  <select id="levelSelect">
+    <option value="DEBUG">DEBUG</option>
+    <option value="INFO">INFO</option>
+    <option value="WARN">WARN</option>
+    <option value="ERROR">ERROR</option>
+  </select><br>
+  <button onclick="setLogLevels()">Set Log Levels</button>
+  <button onclick="goBack()">Back</button>
+  </div>
+</body>
+</html>

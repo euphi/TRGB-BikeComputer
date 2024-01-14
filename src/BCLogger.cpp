@@ -79,7 +79,12 @@ void BCLogger::setup() {
 		String dirName = LOGDIR + "/NO_TIME";
 		SD_MMC.mkdir(dirName);
 	    char fnumber[24];
-	    snprintf(fnumber, sizeof(fnumber), "%04u", listDir(dirName, 0));
+	    //snprintf(fnumber, sizeof(fnumber), "%04u", listDir(dirName, 0)); --> use this line to calculate first available number
+	    noTimeCounter.begin("NoTimeCounter");
+	    uint16_t c = noTimeCounter.getShort("Counter", 40);
+	    snprintf(fnumber, sizeof(fnumber), "%04u", c++);
+	    noTimeCounter.putShort("Counter", c);
+	    noTimeCounter.end();
 		file_data = dirName + "/L" + fnumber + ".bin";
 		file_debuglog = dirName + "/D" + fnumber + ".log";
 		file_nmealog = dirName + "/N" + fnumber + ".log";
@@ -208,6 +213,16 @@ void BCLogger::setLogLevel(LogType level, LogTag tag, bool file, bool serial) {
 		loglevel[OUT_Serial][tag] = level;
 	storeLoglevel(level, tag, file, serial);
 }
+
+
+BCLogger::LogType BCLogger::getLogLevel(LogTag tag, bool serial) {
+	if (tag >= LogTagMax || tag < 0) {
+		logf(Log_Error, TAG_OP, "getLogLevel for wrong log-tag %d", tag);
+		return BCLogger::Log_Error;
+	}
+	return loglevel[serial?OUT_Serial:OUT_File][tag];
+}
+
 
 void BCLogger::log(LogType type, LogTag tag, const String& str) const {
 	bool write_file = checkLogLevel(type, tag, true) && !file_debuglog.isEmpty();  // empty during init

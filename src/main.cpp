@@ -27,8 +27,7 @@ int8_t batLevel = -1;
 void batCheck() {
 	bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_OP, "Battery:  %d%% [%d mV]- charging [%c]", batt.level(), batt.voltage(), batt.voltage() > 4150 ? 'x' : ' ');
 	ui.updateBatInt(batt.voltage() / 1000.0, batt.level(uint16_t (ui.getBatIntVoltageAvg()*1000)), batt.voltage() > 4150);
-	sensors.readBME280();  //FIXME
-	sensors.readBMI160();  // FIXME too
+	sensors.readBMI160();  // FIXME read sensor in another functions
 }
 
 void setup() {

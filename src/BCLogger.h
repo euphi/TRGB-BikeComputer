@@ -58,6 +58,7 @@ private:
 
 
 	Preferences logPrefs[LogOutputMax];
+	Preferences noTimeCounter;
 
 	String file_data, file_nmealog, file_debuglog;		// Filename for logfiles
 	File fdata, fnmea, fdebug;
@@ -86,7 +87,8 @@ public:
 	void logf(LogType type, LogTag tag, const char* format, ...) const;
 	inline bool checkLogLevel(LogType type, LogTag tag, bool write_file = false) const {return loglevel[write_file?OUT_File:OUT_Serial][tag] <= type;}
 
-	void setLogLevel(LogType type, LogTag tag, bool file, bool serial);
+	void setLogLevel(LogType type, LogTag tag, bool file, bool serial );
+	LogType getLogLevel(LogTag tag, bool serial = false);
 
 	// DataLogger
 	void appendDataLog(float speed, float temp, float gradient, uint32_t distance, float height, uint8_t hr);

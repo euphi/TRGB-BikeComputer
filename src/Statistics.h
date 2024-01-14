@@ -56,10 +56,69 @@ private:
 	uint32_t time_in[EDrivingStateMax][ESummaryTypeMax];
 	time_t timestamp_stop;
 
+
+	struct S_DataPoint {
+		float min;
+		float avg;
+		float max;
+	};
+
+	// Data storage per distance
+	struct S_distanceData {	 // 64 Byte
+		time_t	timestamp;		//   4 Byte
+		S_DataPoint speed; 		//  12 Byte
+		S_DataPoint cadence;	// +12 Byte
+		S_DataPoint gradient;	// +12 Byte
+		S_DataPoint height;	    // +12 Byte
+		S_DataPoint hr;			// +12 Byte
+		uint8_t coastShare;		//  +1 Byte + 3Byte alignment
+	};
+	static void addFloatToDatapoint(S_DataPoint& data, const float val);
+	static float setDatapointAvg(S_DataPoint& data, uint8_t& count);
+
+	struct S_distanceComplete {		// >20856 Byte
+		uint32_t startDistance = 0;
+		S_distanceData distanceData[480];				// per 100m -> 48km
+		S_distanceData currentMinMax;
+		uint32_t curDistance = 0;
+		uint16_t index = 0;
+		uint8_t curCountSpeed;
+		uint8_t curCountCadence;
+		uint8_t curCountHr;
+		uint8_t curCountGradHeight;
+
+	};
+
+	S_distanceComplete distanceData;
+
+
+	// Data storage per time
+	struct S_timeData {	// 48 Byte
+		uint32_t distance;		//   4 Byte
+		S_DataPoint speed;
+		S_DataPoint cadence;
+		S_DataPoint hr;
+		uint8_t coastShare:8;
+		uint8_t pauseShare:8;
+
+	};
+
+	struct S_timeComplete {		// 19252 Byte
+		time_t startTime;
+		S_timeData distanceData[400];
+		S_timeData currentMinMax;
+		uint16_t index = 0;
+		uint8_t curCountSpeed;
+		uint8_t curCountCadence;
+		uint8_t curCountHr;
+	};
+
+	S_timeComplete timeData;
+
 	// Variables to calculate gradient (Forumslader calculates gradient on its own)
 #if !BC_FL_SUPPORT
-	time_t gradient_timestamp;			//Timestamp of last gradient calculation
-	uint32_t gradient_revs = 0;		//Distance of last gradient calculation
+	time_t gradient_timestamp = 0;		//Timestamp of last gradient calculation
+	uint32_t gradient_revs = 0;			//Distance of last gradient calculation
 	float gradient_height = NAN;		//Height of last gradient calculation
 #endif
 
@@ -68,8 +127,8 @@ private:
 	float temperature = NAN;
 
 	// use int instead of uint, so -1 can be used as "invalid".
-	int16_t hr;
-	int16_t cadence, cadence_tot;
+	int16_t hr = -1;
+	int16_t cadence, cadence_tot = -1;
 	float speed=0.0;
 
 	//int16_t grad = 0, height = 0;
@@ -92,6 +151,10 @@ private:
 	void setCurDriveState(EDrivingState curDriveState);
 
 	void updateLostDistance(uint32_t _dist_lost);
+	void updateDistanceSeries();
+	void updateTimeSeries();
+	void calculateGradient(uint32_t _revs);
+
 
 public:
 	Statistics();
@@ -104,6 +167,7 @@ public:
 	void addCadence(int16_t cadence, int16_t total);
 	void setConnected(bool connected);
 	void addGradientFL(int16_t grad, int16_t height, int16_t temp);
+	void addGradientHeight(float _grad, float _height);
 
 	uint32_t getTime(ESummaryType type, EAvgType avgtype) const;
 

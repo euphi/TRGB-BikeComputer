@@ -12,6 +12,7 @@
 #include <SPI.h>        // needed so that pio can find the SPI include in BMI160 library
 #include <BMI160Gen.h>
 #include <Ticker.h>
+#include <Preferences.h>
 
 class I2CSensors {
 public:
@@ -66,8 +67,6 @@ private:
 	}
 
 	Ticker bme280Cycle;
-
-
-
+	Preferences sensorPreferences;
 
 };

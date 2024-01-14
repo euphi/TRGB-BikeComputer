@@ -33,6 +33,10 @@ uint16_t I2CSensors::getHTMLPage(String &htmlresponse) {
 uint16_t I2CSensors::procHTMLHeight(String& htmlresponse, const float actHeight) {
 	float newRefPress = calculateReferencePressure(actHeight, press) * 100;
 	bme280.setReferencePressure(newRefPress);
+	sensorPreferences.begin("Sensors");
+	sensorPreferences.putFloat("RefPressure", newRefPress);
+	sensorPreferences.end();
+
 	htmlresponse += "<html><body>";
 	char buffer[255];
 	snprintf(buffer, 254, "Ok - new pressure %.2f mbar for height %.2f.<br /><button onclick=\"window.history.back()\">Go Back</button>", newRefPress, actHeight);
@@ -72,7 +76,7 @@ void I2CSensors::initBME280() {
 	//  5, 1000ms
 	//  6, 10ms
 	//  7, 20ms
-	bme280.settings.tStandby = 1;
+	bme280.settings.tStandby = 2;
 
 	//filter can be off or number of FIR coefficients to use:
 	//  0, filter off
@@ -80,7 +84,7 @@ void I2CSensors::initBME280() {
 	//  2, coefficients = 4
 	//  3, coefficients = 8
 	//  4, coefficients = 16
-	bme280.settings.filter = 3;
+	bme280.settings.filter = 4;
 
 	//tempOverSample can be:
 	//  0, skipped
@@ -98,13 +102,15 @@ void I2CSensors::initBME280() {
 	bme280.settings.humidOverSample = 4;
 
 	bme280.begin();
-	bme280.setReferencePressure(100184.0);		// TODO: Adapt
+	sensorPreferences.begin("Sensors");
+	float  refPres = sensorPreferences.getFloat("RefPressure", 101300.0);
+	bme280.setReferencePressure(refPres);
+	sensorPreferences.end();
 
-		//       Idea is to use the template processor, however the processor gets confused and cannot handle more than the first two variables.
 	webserver.getServer().on("/sensor_t/", HTTP_GET, [this](AsyncWebServerRequest *request) {
 		Serial.println("Request for /sensor_t/");
 		request->send(LittleFS, "/site/sensor/index.html", String(), false, [](const String &var) -> String {
-			//FIXME: We need to capture the outer this, but this crashes?
+			//FIXME: We need to capture the outer this, but this crashes? For now, don't use this function, as it inserts demo values only.
 			if (var == "bmeTemperature") {
 				return (String("22") /*String(temp)*/);
 			} else if (var == "bmeHumidity") {
@@ -128,7 +134,7 @@ void I2CSensors::readBME280() {
 	humid = bme280.readFloatHumidity();
 	temp  = bme280.readTempC();
 	height = bme280.readFloatAltitudeMeters();
-	Serial.printf("BME280: %.2f mbar, %.2f rel%%, %.2f °C, %.2f m NN\n", press, humid, temp, height);
+	bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_OP, "BME280: %.2f mbar, %.2f rel%%, %.2f °C, %.2f m NN", press, humid, temp, height);
 }
 
 void I2CSensors::readBMI160() {

@@ -5,6 +5,26 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>T-RGB BikeComputer Dashboard</title>
   <link rel="stylesheet" href="/stylesheet.css">
+  <script>
+    function cleanupLogfiles() {
+      var xhr = new XMLHttpRequest();
+      xhr.onreadystatechange = function() {
+        if (xhr.readyState === XMLHttpRequest.DONE) {
+          if (xhr.status === 200) {
+            // Display the response message in a message box
+            alert(xhr.responseText);
+          } else {
+            // Handle any error that occurred during the cleanup
+            alert('Cleanup failed. Please try again.\n' + xhr.responseText);
+          }
+        }
+      };
+      
+      // Replace 'your_cleanup_url' with the actual URL for cleaning up logfiles
+      xhr.open('GET', '/cleanup', true);
+      xhr.send();
+    }
+  </script>
 </head>
 <body>
   <div class="container">

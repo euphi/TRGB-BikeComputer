@@ -152,15 +152,46 @@ void Statistics::setConnected(bool connected) {
 	}
 }
 
+// ******************** Helper functions (static) ********************
+//static
+void Statistics::addFloatToDatapoint(S_DataPoint& data, const float val) {
+	// Use negated comparison, so statement is true if stored value is NAN
+	if (! data.min < val) data.min = val;
+	if (! data.max > val) data.max = val;
+	if (isnan(data.avg)) data.avg = 0;
+	data.avg += val;
+}
+
+//static
+float Statistics::setDatapointAvg(S_DataPoint &data, uint8_t& count) {
+	data.avg = data.avg / count;
+	count = 0;
+	return data.avg;
+}
+
+// ******************** Add data to statistics ********************
 void Statistics::addCadence(int16_t _cadence, int16_t _total) {
 	cadence = _cadence;
 	cadence_tot = _total;
+
+	addFloatToDatapoint(distanceData.currentMinMax.cadence, (cadence * 1.0));
+	distanceData.curCountCadence++;
+
+	addFloatToDatapoint(timeData.currentMinMax.cadence, (cadence * 1.0));
+	timeData.curCountCadence++;
+
 	ui.updateCadence(cadence);
 }
 
 void Statistics::addHR(int16_t _hr) {
 	hr = _hr;
-	//TODO: add HR
+
+	addFloatToDatapoint(distanceData.currentMinMax.hr, (hr * 1.0));
+	distanceData.curCountHr++;
+
+	addFloatToDatapoint(timeData.currentMinMax.hr, (hr * 1.0));
+	timeData.curCountHr++;
+
 	ui.updateHR(hr);
 }
 
@@ -169,10 +200,109 @@ void Statistics::addSpeed(float _speed) {
 	for (uint_fast8_t i = 0; i<= SUM_ESP_START; i++) {
 		if (speed_max[i] < speed) speed_max[i] = speed;
 	}
-	ui.updateSpeed(speed);
 
+	addFloatToDatapoint(distanceData.currentMinMax.speed, speed);
+	distanceData.curCountSpeed++;
+
+	addFloatToDatapoint(timeData.currentMinMax.speed, speed);
+	timeData.curCountSpeed++;
+
+	ui.updateSpeed(speed);
 }
 
+void Statistics::addGradientHeight(float _grad, float _height) {
+	gradient = _grad;
+	addFloatToDatapoint(distanceData.currentMinMax.gradient, gradient);
+	height = _height;
+	addFloatToDatapoint(distanceData.currentMinMax.height, height);
+	distanceData.curCountGradHeight++;
+
+	ui.updateGrad(gradient, height);
+}
+
+void Statistics::updateDistanceSeries() {
+	if ( (distance - distanceData.curDistance) >= 100) {		// every 100m
+		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "100m step - distance: %d", distance);
+		distanceData.curDistance = distance;
+
+		setDatapointAvg(distanceData.currentMinMax.cadence, distanceData.curCountCadence);
+		setDatapointAvg(distanceData.currentMinMax.gradient, distanceData.curCountGradHeight);
+		setDatapointAvg(distanceData.currentMinMax.height, distanceData.curCountGradHeight);  //FIMXE
+		setDatapointAvg(distanceData.currentMinMax.hr, distanceData.curCountHr);
+		setDatapointAvg(distanceData.currentMinMax.speed, distanceData.curCountSpeed);
+		time(&distanceData.currentMinMax.timestamp);	// --> write timestamp
+
+		distanceData.distanceData[distanceData.index++] = distanceData.currentMinMax;
+		if (distanceData.index > 400) {
+			bclog.log(BCLogger::Log_Warn, BCLogger::TAG_STAT, "Statistics DistanceData overflow - resetting index to 0");
+			distanceData.index = 0;
+		}
+		distanceData.currentMinMax.cadence.min = NAN;
+		distanceData.currentMinMax.cadence.avg = NAN;
+		distanceData.currentMinMax.cadence.max = NAN;
+		distanceData.curCountCadence = 0;
+
+		distanceData.currentMinMax.gradient.min = NAN;
+		distanceData.currentMinMax.gradient.avg = NAN;
+		distanceData.currentMinMax.gradient.max = NAN;
+		distanceData.currentMinMax.height.min = NAN;
+		distanceData.currentMinMax.height.avg = NAN;
+		distanceData.currentMinMax.height.max = NAN;
+		distanceData.curCountGradHeight = 0;
+
+		distanceData.currentMinMax.hr.min = NAN;
+		distanceData.currentMinMax.hr.avg = NAN;
+		distanceData.currentMinMax.hr.max = NAN;
+		distanceData.curCountHr = 0;
+
+		distanceData.currentMinMax.speed.min = NAN;
+		distanceData.currentMinMax.speed.avg = NAN;
+		distanceData.currentMinMax.speed.max = NAN;
+		distanceData.curCountSpeed = 0;
+	}
+}
+
+void Statistics::updateTimeSeries() {
+	time_t now;
+	time(&now);
+	if ( (now - timeData.startTime) >= 100) {		// every 100m
+		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "10s step @ %d", now);
+		timeData.startTime = now;
+
+		setDatapointAvg(timeData.currentMinMax.cadence, timeData.curCountCadence);
+		setDatapointAvg(timeData.currentMinMax.hr, timeData.curCountHr);
+		setDatapointAvg(timeData.currentMinMax.speed, timeData.curCountSpeed);
+		timeData.currentMinMax.distance = distance;	// --> write distance
+
+		timeData.distanceData[timeData.index++] = timeData.currentMinMax;
+		if (timeData.index > 400) {
+			bclog.log(BCLogger::Log_Warn, BCLogger::TAG_STAT, "Statistics TimeData overflow - resetting index to 0");
+			timeData.index = 0;
+		}
+		timeData.currentMinMax.cadence.min = NAN;
+		timeData.currentMinMax.cadence.avg = NAN;
+		timeData.currentMinMax.cadence.max = NAN;
+		timeData.curCountCadence = 0;
+
+		timeData.currentMinMax.hr.min = NAN;
+		timeData.currentMinMax.hr.avg = NAN;
+		timeData.currentMinMax.hr.max = NAN;
+		timeData.curCountHr = 0;
+
+		timeData.currentMinMax.speed.min = NAN;
+		timeData.currentMinMax.speed.avg = NAN;
+		timeData.currentMinMax.speed.max = NAN;
+		timeData.curCountSpeed = 0;
+	}
+}
+
+/* ******************** handle distance ********************
+    handling distance is more special than other data because it is (in parallel to time) a clock for data handling
+    Also, storing total distance is part of the Statistics class
+   TODO: Distance handling is not clean yet:
+       * Single point to handle wheel diameter
+       * Keep track of distance over wheel diameter changes
+*/
 void Statistics::addDistance(uint32_t dist, ESummaryType type) {
 	start_distance[type] = dist;
 }
@@ -186,30 +316,14 @@ void Statistics::updateDistance(uint32_t _dist, uint32_t _revs) {
 	distance = _dist;
 	if (!distance_start) {
 		distance_start = true;
-		addDistance(_dist, SUM_ESP_START);
-		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Initial distance: %d meter.", _dist);
+		addDistance(distance, SUM_ESP_START);
+		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Initial distance: %d meter.", distance);
+		distanceData.startDistance = distance;
+		distanceData.curDistance = distance;
+		distanceData.index = 0;		// FIXME: Handle reconnect case better
 	}
-
-/* Don't compile own gradient calculation if an external gradient calculation is done (like in Forumslader) */
-#if !BC_FL_SUPPORT
-	// Get Height information, so it's synchronized with distance update (improves accuracy)
-	sensors.readBME280();
-	height = sensors.getHeight();
-	temperature = sensors.getTemp();
-	time_t time_now = millis();
-	uint32_t delta = time_now - gradient_timestamp;
-	int32_t revs_since_last = _revs - gradient_revs ;
-	float delta_height = height - gradient_height;
-	if (revs_since_last >= 3 || delta >= 2500 || delta_height > 0.5 ) {
-		bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_STAT, "Update gradient with deltas time: %dms, revs: %d, height: %.2fm", delta, revs_since_last, delta_height);
-		gradient_timestamp = time_now;
-		gradient_revs = _revs;
-		gradient_height = height;
-		gradient = delta_height / (revs_since_last * 2.22);	//FIXME: Handle distances correctly. (Only one place to convert pulses to distance etc.)
-		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Gradient: %.2f", gradient);
-	}
-	ui.updateGrad(gradient, height);
-#endif
+	calculateGradient(_revs);
+	updateDistanceSeries();
 }
 
 void Statistics::updateLostDistance(uint32_t _dist_lost) {
@@ -220,6 +334,31 @@ void Statistics::updateLostDistance(uint32_t _dist_lost) {
 	}
 }
 
+// ******************** internal calculations ********************
+
+void Statistics::calculateGradient(uint32_t _revs) {
+/* Don't compile own gradient calculation if an external gradient calculation is done (like in Forumslader) */
+#if !BC_FL_SUPPORT
+	// Get Height information, so it's synchronized with distance update (improves accuracy)
+	sensors.readBME280();
+	height = sensors.getHeight();		// [m]
+	temperature = sensors.getTemp();
+	time_t time_now = millis();
+	uint32_t delta = time_now - gradient_timestamp;  // [msec]
+	int32_t revs_since_last = _revs - gradient_revs ;   // [Pulses]
+	float delta_height = height - gradient_height;
+	if (revs_since_last >= 4 || delta >= 5000 /*|| delta_height > 0.5*/ ) {   // Using delta_height seems to cause more harm than good
+		bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_STAT, "Update gradient with deltas time: %dms, revs: %d, height: %.2fm", delta, revs_since_last, delta_height);
+		gradient_timestamp = time_now;
+		gradient_revs = _revs;
+		gradient_height = height;
+		gradient = delta_height / (revs_since_last * 2.22) * 100;	//FIXME: Handle distances correctly. (Only one place to convert pulses to distance etc.)
+		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Gradient: %.2f", gradient);
+		ui.updateGrad(gradient, height);
+	}
+#endif
+}
+
 void Statistics::addGradientFL(int16_t _grad, int16_t _height, int16_t _temp) {
 	// Convert to float
 	height = _height * 1.0;
@@ -227,6 +366,7 @@ void Statistics::addGradientFL(int16_t _grad, int16_t _height, int16_t _temp) {
 	temperature = _temp / 10.0;
 	ui.updateGrad(gradient, height);
 }
+
 
 uint32_t Statistics::getDistance(ESummaryType type, bool includeLost) const {
 	switch (type) {

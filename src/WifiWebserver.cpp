@@ -11,6 +11,9 @@
 #include <LittleFS.h>
 #include <FS.h>
 #include <AsyncElegantOTA.h>
+#include <ArduinoJson.h>
+#include <version.h>
+
 
 //TODO: Read this from preferences
 const char* ntpServer = "pool.ntp.org";
@@ -147,6 +150,7 @@ void WifiWebserver::setupWebserver() {
 		} else {
 			html += "<p>No SD card detected</p>";
 		}
+		html += "<p>Version: " VERSION "</p>";
 		html += "</div></body></html>";
 		request->send(200, "text/html", html);
 	});
@@ -181,6 +185,65 @@ void WifiWebserver::setupWebserver() {
 		htmlresponse.clear();
 		int16_t code = sensors.procHTMLHeight(htmlresponse, heightValue);
 		request->send(200, "text/html", htmlresponse);
+	});
+
+	 server.on("/log/set", HTTP_GET, [](AsyncWebServerRequest *request) {
+		String tag = request->getParam("tag")->value();
+		String level = request->getParam("level")->value();
+
+		// Validate tag and level values
+		if (tag.length() > 0 && level.length() > 0) {
+			// Set the log level for the specified tag
+			// You can implement your own logic to set the log level based on the parameters
+			// For example, you can use conditional statements or a mapping structure.
+
+			// Replace the following line with your actual logic
+			// setLogLevel(tag, level);
+
+			// Respond with a success message
+			uint16_t t = BCLogger::TAG_RAW_NMEA;
+			for (; t < BCLogger::LogTagMax; t++) {
+				if (tag.equalsIgnoreCase(BCLogger::TAG_STRING[t]))
+					break;
+			}
+			if (t == BCLogger::LogTagMax) {
+				bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_OP, "Invalid log tag %s", tag.c_str());
+				request->send(400, "text/plain", "Invalid tag.");
+				return;
+			}
+			uint16_t l = BCLogger::Log_Debug;
+			for (; l < BCLogger::LogTypeMax; l++) {
+				if (level.equalsIgnoreCase(BCLogger::LEVEL_STRING[l]))
+					break;
+			}
+			if (l == BCLogger::LogTypeMax) {
+				bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_OP, "Invalid log level %s", level.c_str());
+				request->send(400, "text/plain", "Invalid level.");
+				return;
+			}
+			bclog.setLogLevel(static_cast<BCLogger::LogType>(l), static_cast<BCLogger::LogTag>(t), true, false);
+			request->send(200, "text/plain", "Log level set successfully.");
+		} else {
+			// Respond with an error message for invalid parameters
+			request->send(400, "text/plain", "Invalid parameters.");
+		}
+	});
+
+	server.on("/log/get", HTTP_GET, [](AsyncWebServerRequest *request) {
+		// Create a JSON document
+		//DynamicJsonDocument doc(1024);  // deprecated
+		JsonDocument doc;
+
+		for (uint16_t t = BCLogger::TAG_RAW_NMEA; t < BCLogger::LogTagMax; t++) {
+			BCLogger::LogType ll = bclog.getLogLevel(static_cast<BCLogger::LogTag>(t));
+			doc[BCLogger::TAG_STRING[t]] = BCLogger::LEVEL_STRING[ll];
+		}
+		// Serialize JSON document to a string
+		String jsonString;
+		serializeJson(doc, jsonString);
+
+		// Respond with the JSON string
+		request->send(200, "application/json", jsonString);
 	});
 
 
