@@ -118,7 +118,7 @@ private:
 	// Variables to calculate gradient (Forumslader calculates gradient on its own)
 #if !BC_FL_SUPPORT
 	time_t gradient_timestamp = 0;		//Timestamp of last gradient calculation
-	uint32_t gradient_revs = 0;			//Distance of last gradient calculation
+	int32_t gradient_revs = 0;			//Distance of last gradient calculation
 	float gradient_height = NAN;		//Height of last gradient calculation
 #endif
 
@@ -153,7 +153,22 @@ private:
 	void updateLostDistance(uint32_t _dist_lost);
 	void updateDistanceSeries();
 	void updateTimeSeries();
-	void calculateGradient(uint32_t _revs);
+	String generateJSONArray();
+
+	void calculateGradient(int32_t _revs);
+
+
+	int16_t height_array[400] = {};
+	uint16_t height_array_idx = 0;
+
+	int16_t hr_array[400] = {};
+	uint16_t hr_array_idx = 0;
+
+	int16_t speed_array[400] = {};
+	uint16_t speed_array_idx = 0;
+
+	int16_t speed2_array[400] = {};
+	uint16_t speed2_array_idx = 0;
 
 
 public:
@@ -192,6 +207,8 @@ public:
 		return static_cast<EAvgType>(rc);
 
 	}
+
+	void createChartArray();
 
 };
 

@@ -38,10 +38,87 @@ Statistics::Statistics() {
 
 void Statistics::setup() {
 	// What kind of sorcery is this?  --> See https://stackoverflow.com/questions/60985496/arduino-esp8266-esp32-ticker-callback-class-member-function
-	statCycle.attach_ms(500, +[](Statistics* thisInstance) { thisInstance->cycle(); }, this);
-	statDataStore.attach(5, +[](Statistics* thisInstance) { thisInstance->dataStore(); }, this);
-	statStore.attach(5, +[](Statistics* thisInstance) { thisInstance->autoStore(); }, this);
+	statCycle.attach_ms(500, +[](Statistics *thisInstance) {thisInstance->cycle();}, this);
+	statDataStore.attach(5, +[](Statistics *thisInstance) {thisInstance->dataStore();}, this);
+	statStore.attach(5, +[](Statistics *thisInstance) {thisInstance->autoStore();}, this);
 	restoreStats();
+	ui.setChartArray(height_array, 0, 400);
+	ui.setChartArray(hr_array, 1, 400);
+	ui.setChartArray(speed_array, 2, 400);
+	ui.setChartArray(speed2_array, 3, 400);
+
+	// Serve the HTML page
+	webserver.getServer().on("/stat/debugarray", HTTP_GET, [this](AsyncWebServerRequest *request) {
+		String htmlPage = "<!DOCTYPE html>\n";
+		htmlPage += "<html lang=\"en\">\n";
+		htmlPage += "<head>\n";
+		htmlPage += "  <meta charset=\"UTF-8\">\n";
+		htmlPage += "  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n";
+		htmlPage += "  <title>Array Viewer</title>\n";
+		htmlPage += "</head>\n";
+		htmlPage += "<body>\n";
+		htmlPage += "  <h1>Array Viewer</h1>\n";
+
+		htmlPage += "  <table>\n";
+		htmlPage += "    <tr>\n";
+		htmlPage += "      <th>Index</th>\n";
+		htmlPage += "      <th>DataArray</th>\n";
+		htmlPage += "      <th>Min</th>\n";
+		htmlPage += "      <th>Avg</th>\n";
+		htmlPage += "      <th>Max</th>\n";
+		htmlPage += "    </tr>\n";
+
+		htmlPage += "    <tr>\n";
+		htmlPage += "      <td>Current</td>\n";
+		htmlPage += "      <td>Count: " + String(timeData.curCountHr) + "</td>\n";
+		htmlPage += "      <td>" + String(timeData.currentMinMax.hr.min) + "</td>\n";
+		htmlPage += "      <td>" + String(timeData.currentMinMax.hr.avg) + "</td>\n";
+		htmlPage += "      <td>" + String(timeData.currentMinMax.hr.max) + "</td>\n";
+		htmlPage += "    </tr>\n";
+
+		for (int i = 0; i < sizeof(this->hr_array) / sizeof(this->hr_array[0]); i++) {
+			S_DataPoint data = timeData.distanceData[i].hr;
+			htmlPage += "    <tr>\n";
+			htmlPage += "      <td>" + ((hr_array_idx == i) ? String("-->") : String("")) + String(i) + "</td>\n";
+			htmlPage += "      <td>" + String(hr_array[i]) + "</td>\n";
+			htmlPage += "      <td>" + String(data.min) + "</td>\n";
+			htmlPage += "      <td>" + String(data.avg) + "</td>\n";
+			htmlPage += "      <td>" + String(data.max) + "</td>\n";
+			htmlPage += "    </tr>\n";
+		}
+		htmlPage += "</body>\n";
+		htmlPage += "</html>\n";
+
+		request->send(200, "text/html", htmlPage);
+	});
+
+	// Serve the array data as JSON
+	webserver.getServer().on("/stat/data", HTTP_GET, [this](AsyncWebServerRequest *request) {
+		String jsonArray = this->generateJSONArray();
+		request->send(200, "application/json", jsonArray);
+	});
+
+}
+
+
+// Helper function to generate a JSON array from a float array
+String Statistics::generateJSONArray() {
+	time_t timenow;
+	time(&timenow);		// TODO: timestamp is a bit off.
+	String jsonArray = "[[";
+	for (size_t i = 0; i < 400; i++) {
+		jsonArray += String(timenow - (400-i) * 5);
+		if (i < 399) jsonArray += ",";
+	}
+	jsonArray += "],[";
+	for (size_t i = 0; i < 400; i++) {
+		int16_t value = hr_array[(i+hr_array_idx) % 400];
+		if (value == INT16_MAX) value = 0;
+		jsonArray += String(value);
+		if (i < 399) jsonArray += ",";
+	}
+	jsonArray += "]]";
+	return jsonArray;
 }
 
 void Statistics::restoreStats() {
@@ -82,9 +159,14 @@ void Statistics::autoStore() {
 		bclog.log(BCLogger::Log_Warn, BCLogger::TAG_STAT, "Can't save current distance (SUM_ESP_START) to preferences");
 	}
 
+	updateTimeSeries();		// FIMXE: test only
+	createChartArray();		// FIXME: test only
+
+
 }
 
 void Statistics::dataStore() {
+	calculateGradient(-1);	// FIXME: Distance handling wrong here (old value for _revs)
 	bclog.appendDataLog(speed, temperature, gradient, distance, height, hr);
 }
 
@@ -156,8 +238,8 @@ void Statistics::setConnected(bool connected) {
 //static
 void Statistics::addFloatToDatapoint(S_DataPoint& data, const float val) {
 	// Use negated comparison, so statement is true if stored value is NAN
-	if (! data.min < val) data.min = val;
-	if (! data.max > val) data.max = val;
+	if (! (data.min < val)) data.min = val;
+	if (! (data.max > val)) data.max = val;
 	if (isnan(data.avg)) data.avg = 0;
 	data.avg += val;
 }
@@ -186,10 +268,12 @@ void Statistics::addCadence(int16_t _cadence, int16_t _total) {
 void Statistics::addHR(int16_t _hr) {
 	hr = _hr;
 
-	addFloatToDatapoint(distanceData.currentMinMax.hr, (hr * 1.0));
+	float hr_float = hr > 0 ? hr * 1.0 : NAN;
+
+	addFloatToDatapoint(distanceData.currentMinMax.hr, hr_float );
 	distanceData.curCountHr++;
 
-	addFloatToDatapoint(timeData.currentMinMax.hr, (hr * 1.0));
+	addFloatToDatapoint(timeData.currentMinMax.hr, hr_float);
 	timeData.curCountHr++;
 
 	ui.updateHR(hr);
@@ -214,10 +298,13 @@ void Statistics::addGradientHeight(float _grad, float _height) {
 	gradient = _grad;
 	addFloatToDatapoint(distanceData.currentMinMax.gradient, gradient);
 	height = _height;
+	height_array[height_array_idx++] = height;
+	if (height_array_idx > 400) height_array_idx = 0;
 	addFloatToDatapoint(distanceData.currentMinMax.height, height);
 	distanceData.curCountGradHeight++;
 
 	ui.updateGrad(gradient, height);
+	ui.updateChart();
 }
 
 void Statistics::updateDistanceSeries() {
@@ -265,7 +352,7 @@ void Statistics::updateDistanceSeries() {
 void Statistics::updateTimeSeries() {
 	time_t now;
 	time(&now);
-	if ( (now - timeData.startTime) >= 100) {		// every 100m
+	//if ( (now - timeData.startTime) >= 5000) {		// every 100m
 		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "10s step @ %d", now);
 		timeData.startTime = now;
 
@@ -275,7 +362,7 @@ void Statistics::updateTimeSeries() {
 		timeData.currentMinMax.distance = distance;	// --> write distance
 
 		timeData.distanceData[timeData.index++] = timeData.currentMinMax;
-		if (timeData.index > 400) {
+		if (timeData.index >= 400) {
 			bclog.log(BCLogger::Log_Warn, BCLogger::TAG_STAT, "Statistics TimeData overflow - resetting index to 0");
 			timeData.index = 0;
 		}
@@ -293,11 +380,46 @@ void Statistics::updateTimeSeries() {
 		timeData.currentMinMax.speed.avg = NAN;
 		timeData.currentMinMax.speed.max = NAN;
 		timeData.curCountSpeed = 0;
+//	}
+}
+
+void Statistics::createChartArray() {
+	bool modeTime = true; // true: X axis is time, false: X axis is distance
+	uint8_t idx = 1;
+	enum DataClass {SPEED = 0, HR, HEIGHT, GRADIENT, TEMPERATURE};
+
+	float scale = 1.0;
+	DataClass c = HR;
+
+	// timeData.index is always the last written position + 1 - so the next value to be written. And thus it's also the first value to be shown in chart, if the newest point is the most right one.
+	hr_array_idx = timeData.index;
+
+	for (uint16_t point = 0 ; point < 400 ; point ++) {
+		bool useMax = (point > 0 && timeData.distanceData[point].hr.max > timeData.distanceData[point-1].hr.max) && (point < 399 && timeData.distanceData[point].hr.max > timeData.distanceData[point+1].hr.max);
+		bool useMin = (point > 0 && timeData.distanceData[point].hr.min < timeData.distanceData[point-1].hr.min) && (point < 399 && timeData.distanceData[point].hr.min < timeData.distanceData[point+1].hr.min);
+		if (useMax && useMin) {
+			useMax = false;
+			useMin = false;
+		}
+		S_DataPoint lp =  timeData.distanceData[point].hr;
+		float val = (useMax ? lp.max : ( useMin ? lp.min : lp.avg) ) * scale;
+		hr_array[point] = isnan(val) ? INT16_MAX : static_cast<int16_t>(round(val));
 	}
+
+	ui.setChartPosFirst(hr_array_idx, 1); 	// IDX 1 is HR series. FIXME: Make more generic
+
+
+//
+//	switch (c) {
+//	case SPEED:
+//	case HR:
+//	default:
+//
+//	}
 }
 
 /* ******************** handle distance ********************
-    handling distance is more special than other data because it is (in parallel to time) a clock for data handling
+    handling distance is more special than other data becauseTh it is (in parallel to time) a clock for data handling
     Also, storing total distance is part of the Statistics class
    TODO: Distance handling is not clean yet:
        * Single point to handle wheel diameter
@@ -336,25 +458,27 @@ void Statistics::updateLostDistance(uint32_t _dist_lost) {
 
 // ******************** internal calculations ********************
 
-void Statistics::calculateGradient(uint32_t _revs) {
+void Statistics::calculateGradient(int32_t _revs) {
 /* Don't compile own gradient calculation if an external gradient calculation is done (like in Forumslader) */
 #if !BC_FL_SUPPORT
 	// Get Height information, so it's synchronized with distance update (improves accuracy)
-	sensors.readBME280();
-	height = sensors.getHeight();		// [m]
-	temperature = sensors.getTemp();
+	if (_revs == -1) _revs = gradient_revs;
+	int32_t revs_since_last = _revs - gradient_revs ;   // [Pulses]
 	time_t time_now = millis();
 	uint32_t delta = time_now - gradient_timestamp;  // [msec]
-	int32_t revs_since_last = _revs - gradient_revs ;   // [Pulses]
-	float delta_height = height - gradient_height;
 	if (revs_since_last >= 4 || delta >= 5000 /*|| delta_height > 0.5*/ ) {   // Using delta_height seems to cause more harm than good
+		sensors.readBME280();
+		height = sensors.getHeight();		// [m]
+		temperature = sensors.getTemp();
+		float delta_height = height - gradient_height;
 		bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_STAT, "Update gradient with deltas time: %dms, revs: %d, height: %.2fm", delta, revs_since_last, delta_height);
 		gradient_timestamp = time_now;
 		gradient_revs = _revs;
 		gradient_height = height;
 		gradient = delta_height / (revs_since_last * 2.22) * 100;	//FIXME: Handle distances correctly. (Only one place to convert pulses to distance etc.)
 		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Gradient: %.2f", gradient);
-		ui.updateGrad(gradient, height);
+		addGradientHeight(gradient, height);  //FIXME: also copies gradient to gradient again (and height to height)
+		//ui.updateGrad(gradient, height);
 	}
 #endif
 }
@@ -433,4 +557,5 @@ float Statistics::getAvgCadence(EAvgType avgtype) const {
 		return (cadence_tot / static_cast<float>(getTime(SUM_ESP_START, avgtype)) ) * 3.6;
 
 }
+
 

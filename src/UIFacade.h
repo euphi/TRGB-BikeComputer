@@ -50,6 +50,10 @@ public:
 	Statistics::EAvgType getStatTimeMode() const {return statTimeMode;}
 	void setStatTimeMode(Statistics::EAvgType _statTimeMode) {statTimeMode = _statTimeMode;updateData();}
 
+	void setChartArray(int16_t a[], uint8_t idx, uint16_t size);
+	void setChartPosFirst(uint16_t pos, uint8_t idx);
+	void updateChart();
+
 
 private:
 	void updateData();

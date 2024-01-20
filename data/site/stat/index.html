@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Time Series Viewer</title>
+<script src="/js/uPlot.iife.min.js"></script>
+<link rel="stylesheet" href="/css/uPlot.min.css">
+</head>
+<body>
+	<h1>Time Series Viewer</h1>
+	<div id="chart"></div>
+
+	<script>
+		// Create uPlot chart
+		var opts = {
+			title : 'Time Series Chart',
+			width : 800,
+			height : 600,
+			series : [ {}, {
+				show : true,
+				stroke : "red",
+				width : 1
+			} ],
+		};
+		var data = [ [], [] ]
+		var uplot = new uPlot(opts, data, document.getElementById('chart'));
+		// Fetch data asynchronously and update the chart
+		async function fetchData() {
+			const response = await
+			fetch('/stat/data');
+			const newData = await
+			response.json();
+			uplot.setData(newData);
+		}
+		// Update the chart every 5 seconds (adjust as needed)
+		setInterval(fetchData, 5000);
+		fetchData();
+	</script>
+</body>
+</html>

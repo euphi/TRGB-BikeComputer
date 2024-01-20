@@ -67,14 +67,6 @@ void UIFacade::initDisplay() {
 
     ui_ScrNaviSetBackScreen(ui_MainScreen);
     ui_ScrChartSetBackScreen(ui_MainScreen);
-    static uint16_t a[] = {101, 40, 240, 320, 10};
-    static uint16_t b[] = {1, 400, 2, 350, 143};
-    static uint16_t c[] = {49, 44, 21, 32, 19};
-    static uint16_t d[] = {1, 40, 22, 32, 12};
-    ui_ScrChartSetExtArray1(a, 0, 5);
-    ui_ScrChartSetExtArray1(b, 1, 5);
-    ui_ScrChartSetExtArray1(c, 2, 5);
-    ui_ScrChartSetExtArray1(d, 3, 5);
 
     // init data model
     uifl.init();		// FL data model
@@ -263,3 +255,20 @@ void UIFacade::updateBatInt(float voltage, uint8_t batPerc, bool charging) {
 	batIntPerc = batPerc;
 	batIntCharging = charging;
 }
+
+void UIFacade::setChartArray(int16_t a[], uint8_t idx, uint16_t size) {
+	if (idx>4) {
+		bclog.log(BCLogger::Log_Error, BCLogger::TAG_OP, "Invalid chart series index");
+		return;
+	}
+	ui_ScrChartSetExtArray1(a, idx, size);
+}
+
+void UIFacade::setChartPosFirst(uint16_t pos, uint8_t idx) {
+	ui_ScrChartSetPostFirst(pos, idx);
+
+}
+void UIFacade::updateChart() {
+	ui_ScrChartRefresh();
+}
+
