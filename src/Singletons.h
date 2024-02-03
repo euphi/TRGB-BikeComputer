@@ -14,7 +14,7 @@ extern SimpleCLI cli;
 #include "BCLogger.h"
 extern BCLogger bclog;
 
-#include "Statistics.h"
+#include "Stats/Statistics.h"
 extern Statistics stats;
 
 #include "FLClassicParser.h"

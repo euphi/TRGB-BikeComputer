@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Debug Log</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+    }
+
+    #logContainer {
+      max-height: 80vh; /* Maximum height of the container */
+      overflow: auto;   /* Make the container scrollable */
+      margin: 10px;
+      padding: 10px;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+    }
+
+    pre {
+      white-space: pre-wrap;
+      margin: 0; /* Remove default margin of the <pre> element */
+    }
+  </style>
+  
+</head>
+<body>
+
+<h1>Debug Log</h1>
+<div id="logContainer">
+  <pre id="logOutput">
+Welcome to TRGV-Bikecomputer Logger
+
+Test
+
+  </pre>
+</div>
+
+<script>
+  // Create an EventSource object for the 'debug/log' endpoint
+  const eventSource = new EventSource('/debug/logevent');
+
+  // Function to handle incoming log messages
+  eventSource.onmessage = function(event) {
+    // Prepend the log message to the logOutput element
+    console.error("Test receive");
+    console.info(event.data);
+    document.getElementById('logOutput').innerHTML = event.data + '\n' + document.getElementById('logOutput').innerHTML;
+  };
+
+  // Function to handle errors
+  eventSource.onerror = function(error) {
+    console.error('EventSource failed:', error);
+    // Attempt to reconnect after a short delay
+    setTimeout(function() {
+      eventSource.close();
+      eventSource = new EventSource('/debug/logevent');
+    }, 3000);
+  };
+</script>
+
+</body>
+</html>

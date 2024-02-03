@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Simple Distance</title>
+  <link rel="stylesheet" href="/stylesheet.css">
+</head>
+<body>
+  <div class="container">
+    <h2>Simple Distance</h2>
+    <table id="simpleDistanceTable">
+      <thead>
+        <tr>
+          <th>Measurement</th>
+          <th>Actual Distance (meters)</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody id="simpleDistanceBody"></tbody>
+    </table>
+
+    <script>
+      // Function to load simple distance information asynchronously
+      function loadDistance() {
+        fetch('/stat/getDistance')
+          .then(response => response.json())
+          .then(data => {
+            // Update the HTML table with the received data
+            document.getElementById('simpleDistanceBody').innerHTML = `
+              <tr>
+                <td>Total</td>
+                <td>${data.TOTAL.actualDistance}</td>
+                <td></td>
+              </tr>
+              <tr>
+                <td>Tour</td>
+                <td>${data.TOUR.actualDistance}</td>
+                <td><button onclick="resetDistance('TOUR')">↺</button></td>
+              </tr>
+              <tr>
+                <td>Trip</td>
+                <td>${data.TRIP.actualDistance}</td>
+                <td><button onclick="resetDistance('TRIP')">↺</button></td>
+              </tr>
+            `;
+          });
+      }
+
+      // Call the function initially
+      loadDistance();
+      setInterval(loadDistance, 2000);
+
+      // Function to reset distance for TOUR or TRIP
+      function resetDistance(mode) {
+        // Make a request to the server to reset the distance for the specified mode
+        fetch(`/stat/resetDistance?mode=${mode}`)
+          .then(response => {
+            // Reload the simple distance information after resetting
+            loadDistance();
+          });
+      }
+    </script>
+  </div>
+</body>
+</html>

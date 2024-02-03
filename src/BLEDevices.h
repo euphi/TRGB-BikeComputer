@@ -58,11 +58,10 @@ private:
 	String bufferFL;
 
     // CSC related
-	uint32_t speed_rev_last = 0;
-	uint16_t crank_rev_last, crank_time_last, speed_time_last = 0;
-	time_t crank_time_last_received, speed_time_last_received = 0;
+	uint32_t speed_rev = 0;
+	uint16_t crank_rev_last = 0, crank_time_last=0;
+	time_t crank_time_last_received = 0;
 	uint16_t cadence = 0;
-	float speed = NAN;
 	bool cscIsSpeed[2] = {false, false};
 
 	bool connectUnknown = false;		// if true, connect to unknown device. If false connect only known devices or for device types that have no known address yet (auto-learn)

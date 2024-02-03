@@ -256,12 +256,12 @@ void UIFacade::updateBatInt(float voltage, uint8_t batPerc, bool charging) {
 	batIntCharging = charging;
 }
 
-void UIFacade::setChartArray(int16_t a[], uint8_t idx, uint16_t size) {
+void UIFacade::setChartArray(int16_t a[], uint8_t idx) {
 	if (idx>4) {
 		bclog.log(BCLogger::Log_Error, BCLogger::TAG_OP, "Invalid chart series index");
 		return;
 	}
-	ui_ScrChartSetExtArray1(a, idx, size);
+	ui_ScrChartSetExtArray1(a, idx);
 }
 
 void UIFacade::setChartPosFirst(uint16_t pos, uint8_t idx) {

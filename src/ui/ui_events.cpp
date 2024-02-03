@@ -6,7 +6,8 @@
 #include "ui.h"
 #include "Screens/Settings/ui_Settings.h"
 #include "Singletons.h"
-#include "Statistics.h"
+#include "Stats/Statistics.h"
+#include "Stats/Distance.h"
 #include "ui_custFunc.h"
 
 
@@ -102,7 +103,7 @@ void statModeNext(bool dir) {
 void resetStats(lv_event_t * e)
 {
 	Serial.println("UI Event: Reset stats");
-	stats.reset(ui.getStatMode());
+	stats.getDistHandler().resetDistToZero(ui.getStatMode());
 }
 
 void statsTimeMode(bool dir)

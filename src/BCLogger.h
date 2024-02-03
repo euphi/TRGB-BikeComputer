@@ -11,6 +11,7 @@
 #include <SimpleCLI.h>
 #include <FS.h>
 #include <Ticker.h>
+#include <AsyncEventSource.h>
 
 class BCLogger {
 public:
@@ -83,8 +84,8 @@ private:
 public:
 	BCLogger();
 	void setup();
-	void log(LogType type, LogTag tag, const String& str) const;
-	void logf(LogType type, LogTag tag, const char* format, ...) const;
+	void log(LogType type, LogTag tag, const String& str);
+	void logf(LogType type, LogTag tag, const char* format, ...);
 	inline bool checkLogLevel(LogType type, LogTag tag, bool write_file = false) const {return loglevel[write_file?OUT_File:OUT_Serial][tag] <= type;}
 
 	void setLogLevel(LogType type, LogTag tag, bool file, bool serial );
@@ -93,7 +94,7 @@ public:
 	// DataLogger
 	void appendDataLog(float speed, float temp, float gradient, uint32_t distance, float height, uint8_t hr);
 
-	int16_t listDir(const String& dirname, uint8_t levels) const;
+	int16_t listDir(const String& dirname, uint8_t levels);
 
 	void handleCommand(const Command& cmd);
 	void flushAllFiles();
@@ -105,7 +106,7 @@ public:
 	static const String LEVEL_SYMBOL[LogTypeMax];
 	static const String LOGDIR;
 
-	uint16_t getAllFileLinks(String &rc) const;
+	uint16_t getAllFileLinks(String &rc);
 	bool deleteFile(const String& path);
 	void autoCleanUp(const char* root_name);
 
@@ -115,8 +116,10 @@ public:
 
 
 private:
-	void getFileHTML(String &rc, File &root, uint8_t strip_front) const;
+	void getFileHTML(String &rc, File &root, uint8_t strip_front);
 	bool cleanUp(File& root, uint32_t minsize);
 	void replayNextLine();
 
+	AsyncEventSource logevents;
+	void sendLogEvent(const String& logMessage, const String& tag);
 };

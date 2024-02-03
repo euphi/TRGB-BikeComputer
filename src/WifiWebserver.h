@@ -33,7 +33,11 @@ private:
 	bool wifiWasConnected = false;
 	AsyncWebServer server;
 
-	String htmlresponse; // Reserve buffer for HTML response
+	String htmlresponse;
+
+#ifdef DEBUG_APP
+	void setupNvsDebug();
+#endif
 
 };
 

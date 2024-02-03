@@ -13,6 +13,7 @@
 #include <AsyncElegantOTA.h>
 #include <ArduinoJson.h>
 #include <version.h>
+#include <nvs.h>
 
 
 //TODO: Read this from preferences
@@ -245,6 +246,9 @@ void WifiWebserver::setupWebserver() {
 		// Respond with the JSON string
 		request->send(200, "application/json", jsonString);
 	});
+#ifdef DEBUG_APP
+	setupNvsDebug();
+#endif
 
 
 //	server.on("^\\/sensor\\/([A-Za-z0-9]+)$", HTTP_GET, [this] (AsyncWebServerRequest *request) {
@@ -276,3 +280,61 @@ void WifiWebserver::setupWebserver() {
 	bclog.logf(BCLogger::Log_Debug, TAG, "💻 HTTP server started at %s.\n", WiFi.localIP().toString().c_str());
 }
 
+
+
+#ifdef DEBUG_APP
+
+typedef struct {
+    nvs_type_t type;
+    const char *str;
+} type_str_pair_t;
+
+static const type_str_pair_t type_str_pair[] = {
+    { NVS_TYPE_I8, "i8" },
+    { NVS_TYPE_U8, "u8" },
+    { NVS_TYPE_U16, "u16" },
+    { NVS_TYPE_I16, "i16" },
+    { NVS_TYPE_U32, "u32" },
+    { NVS_TYPE_I32, "i32" },
+    { NVS_TYPE_U64, "u64" },
+    { NVS_TYPE_I64, "i64" },
+    { NVS_TYPE_STR, "str" },
+    { NVS_TYPE_BLOB, "blob" },
+    { NVS_TYPE_ANY, "any" },
+};
+
+static const size_t TYPE_STR_PAIR_SIZE = sizeof(type_str_pair) / sizeof(type_str_pair[0]);
+
+static const char *type_to_str(nvs_type_t type)
+{
+    for (int i = 0; i < TYPE_STR_PAIR_SIZE; i++) {
+        const type_str_pair_t *p = &type_str_pair[i];
+        if (p->type == type) {
+            return  p->str;
+        }
+    }
+    return "Unknown";
+}
+
+void WifiWebserver::setupNvsDebug() {
+	server.on("/debug/nvs", HTTP_GET, [](AsyncWebServerRequest *request) {
+		String respString("NVS Iterator\n\n");
+		nvs_iterator_t it = nvs_entry_find("nvs", NULL, NVS_TYPE_ANY);
+		if (it == NULL) {
+			bclog.log(BCLogger::Log_Warn, TAG, "Can't iterate over NVS");
+			request->send(500, "text/plain", "Can't iterate over NVS");
+			return;
+		}
+		do {
+			nvs_entry_info_t info;
+			nvs_entry_info(it, &info);
+			it = nvs_entry_next(it);
+			char buffer[400];
+			snprintf(buffer, sizeof(buffer) - 1, "namespace '%s', key '%s', type '%s' \n", info.namespace_name, info.key, type_to_str(info.type));
+			respString += buffer;
+		} while (it != NULL);
+		request->send(200, "text/plain", respString);
+	});
+}
+
+#endif

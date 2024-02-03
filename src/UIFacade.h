@@ -12,7 +12,7 @@
 #include "freertos/semphr.h"
 
 #include "ui/uiFLmodel.h"
-#include <Statistics.h>
+#include <Stats/Statistics.h>		//TODO: Move statistics data types to separate class
 
 class UIFacade {
 public:
@@ -50,7 +50,7 @@ public:
 	Statistics::EAvgType getStatTimeMode() const {return statTimeMode;}
 	void setStatTimeMode(Statistics::EAvgType _statTimeMode) {statTimeMode = _statTimeMode;updateData();}
 
-	void setChartArray(int16_t a[], uint8_t idx, uint16_t size);
+	void setChartArray(int16_t a[], uint8_t idx);
 	void setChartPosFirst(uint16_t pos, uint8_t idx);
 	void updateChart();
 

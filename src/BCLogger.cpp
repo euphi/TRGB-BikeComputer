@@ -24,7 +24,10 @@ void cmdCB(cmd *c) {
 	bclog.handleCommand(cmd);
 }
 
-BCLogger::BCLogger() {
+BCLogger::BCLogger():
+		logevents("/debug/logevent")
+{
+
 }
 
 void BCLogger::setup() {
@@ -82,7 +85,7 @@ void BCLogger::setup() {
 	    //snprintf(fnumber, sizeof(fnumber), "%04u", listDir(dirName, 0)); --> use this line to calculate first available number
 	    noTimeCounter.begin("NoTimeCounter");
 	    uint16_t c = noTimeCounter.getShort("Counter", 40);
-	    snprintf(fnumber, sizeof(fnumber), "%04u", c++);
+	    snprintf(fnumber, sizeof(fnumber)-1, "%04u", c++);
 	    noTimeCounter.putShort("Counter", c);
 	    noTimeCounter.end();
 		file_data = dirName + "/L" + fnumber + ".bin";
@@ -97,7 +100,16 @@ void BCLogger::setup() {
 
 
 	xTaskCreate(+[](void* thisInstance){((BCLogger*)thisInstance)->flushAllFiles();}, "FlusherTask", 3072, this, 5, &flushTaskHandle);
+
+	webserver.getServer().addHandler(&logevents);
 }
+
+// Method to send log messages as events
+void BCLogger::sendLogEvent(const String& logMessage, const String& tag) {
+  //logevents.send(logMessage.c_str(), tag.c_str(), millis());
+  logevents.send(logMessage.c_str(), "message", millis());
+}
+
 
 void BCLogger::flushAllFiles() {  // Ticker all 5 seconds
 	do {  // FlusherTask, Prio 5
@@ -224,7 +236,7 @@ BCLogger::LogType BCLogger::getLogLevel(LogTag tag, bool serial) {
 }
 
 
-void BCLogger::log(LogType type, LogTag tag, const String& str) const {
+void BCLogger::log(LogType type, LogTag tag, const String& str) {
 	bool write_file = checkLogLevel(type, tag, true) && !file_debuglog.isEmpty();  // empty during init
 	bool write_serial = checkLogLevel(type, tag, false);
 	if (!(write_file || write_serial))
@@ -256,10 +268,11 @@ void BCLogger::log(LogType type, LogTag tag, const String& str) const {
 		Serial.print(symbolStr);
 		Serial.print(timeStr);
 		Serial.println(str);
+		sendLogEvent(str, symbolStr);
 	}
 }
 
-void BCLogger::logf(LogType type, LogTag tag, const char *format, ...) const {
+void BCLogger::logf(LogType type, LogTag tag, const char *format, ...) {
 	if (!(checkLogLevel(type, tag, true) || checkLogLevel(type, tag, false))) return;
 	va_list arg;
 	va_start(arg, format);
@@ -294,7 +307,7 @@ void BCLogger::appendDataLog(float speed, float temp, float gradient, uint32_t d
 	fdata.write((byte*) &b, sizeof(b));
 }
 
-int16_t BCLogger::listDir(const String &dirname, uint8_t levels) const {
+int16_t BCLogger::listDir(const String &dirname, uint8_t levels) {
 	int16_t max_number = 0;
 	logf(Log_Debug, TAG_SD, "📁 Listing directory: %s", dirname);
 
@@ -334,7 +347,7 @@ int16_t BCLogger::listDir(const String &dirname, uint8_t levels) const {
 }
 
 
-uint16_t BCLogger::getAllFileLinks(String &rc) const {
+uint16_t BCLogger::getAllFileLinks(String &rc) {
 	rc += "<html><body><h1>Logfiles</h1>\n<p>\n";
 	File root = SD_MMC.open(LOGDIR);
 
@@ -356,7 +369,7 @@ uint16_t BCLogger::getAllFileLinks(String &rc) const {
 	return 200;
 }
 
-void BCLogger::getFileHTML(String &rc, File &root, uint8_t strip_front) const {
+void BCLogger::getFileHTML(String &rc, File &root, uint8_t strip_front) {
     File file = root.openNextFile();  // First file in root-DIR
 	while (file) {
 		esp_task_wdt_reset();
@@ -473,4 +486,3 @@ bool BCLogger::cleanUp(File& root, uint32_t minsize) {
 	}
 	return allFileDeleted;
 }
-

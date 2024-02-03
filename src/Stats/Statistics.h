@@ -9,6 +9,8 @@
 #include <Arduino.h>
 #include <Ticker.h>
 #include <Preferences.h>
+//#include <Stats/Distance.h>
+class Distance;
 
 class Statistics {
 public:
@@ -78,7 +80,7 @@ private:
 
 	struct S_distanceComplete {		// >20856 Byte
 		uint32_t startDistance = 0;
-		S_distanceData distanceData[480];				// per 100m -> 48km
+		S_distanceData data[480];				// per 100m -> 48km
 		S_distanceData currentMinMax;
 		uint32_t curDistance = 0;
 		uint16_t index = 0;
@@ -105,7 +107,7 @@ private:
 
 	struct S_timeComplete {		// 19252 Byte
 		time_t startTime;
-		S_timeData distanceData[400];
+		S_timeData data[400];
 		S_timeData currentMinMax;
 		uint16_t index = 0;
 		uint8_t curCountSpeed;
@@ -120,6 +122,7 @@ private:
 	time_t gradient_timestamp = 0;		//Timestamp of last gradient calculation
 	int32_t gradient_revs = 0;			//Distance of last gradient calculation
 	float gradient_height = NAN;		//Height of last gradient calculation
+	Distance& distHandler;				// also the distance handler is only used without Forumslader because FL calculates distance (partly) on its own.
 #endif
 
 	float gradient = 0.0;				//calculated gradient
@@ -128,7 +131,7 @@ private:
 
 	// use int instead of uint, so -1 can be used as "invalid".
 	int16_t hr = -1;
-	int16_t cadence, cadence_tot = -1;
+	int16_t cadence = 0, cadence_tot = -1;
 	float speed=0.0;
 
 	//int16_t grad = 0, height = 0;
@@ -150,25 +153,30 @@ private:
 	void restoreStats();
 	void setCurDriveState(EDrivingState curDriveState);
 
-	void updateLostDistance(uint32_t _dist_lost);
 	void updateDistanceSeries();
 	void updateTimeSeries();
 	String generateJSONArray();
+public:
+	void calculateGradient(int32_t _revs);		//FIXME: Use notify mechanism (about updated distance)
+private:
+	//TODO: Move into separate class
+	enum DataClass {SPEED = 0, HR, HEIGHT, GRADIENT, TEMPERATURE};
+	static const uint8_t chart_array_count = 4;
+	int16_t chart_array[chart_array_count][400];
+	uint16_t chart_array_startPos[chart_array_count];
+	DataClass chart_array_type[chart_array_count] = {SPEED, HR, HEIGHT, GRADIENT};
 
-	void calculateGradient(int32_t _revs);
-
-
-	int16_t height_array[400] = {};
-	uint16_t height_array_idx = 0;
-
-	int16_t hr_array[400] = {};
-	uint16_t hr_array_idx = 0;
-
-	int16_t speed_array[400] = {};
-	uint16_t speed_array_idx = 0;
-
-	int16_t speed2_array[400] = {};
-	uint16_t speed2_array_idx = 0;
+//	int16_t height_array[400] = {};
+//	uint16_t height_array_idx = 0;
+//
+//	int16_t hr_array[400] = {};
+//	uint16_t hr_array_idx = 0;
+//
+//	int16_t speed_array[400] = {};
+//	uint16_t speed_array_idx = 0;
+//
+//	int16_t speed2_array[400] = {};
+//	uint16_t speed2_array_idx = 0;
 
 
 public:
@@ -176,6 +184,8 @@ public:
 	void setup();
 	void addSpeed(float speed);  // in 0,1km/h
 	void addDistance(uint32_t dist, ESummaryType type = SUM_ESP_TOUR);
+	bool isConnected() {return (curDriveState == DS_NO_CONN);}
+
 	void reset(ESummaryType type);
 	void updateDistance(uint32_t dist, uint32_t revs);
 	void addHR(int16_t heartrate);
@@ -189,9 +199,7 @@ public:
 	float getAvg(ESummaryType type, EAvgType avgtype) const;
 	float getAvgCadence(EAvgType avgtype) const;
 	int16_t getHr() const {return hr;}
-	const float getSpeedMax(ESummaryType type) const {
-		return speed_max[type];
-	}
+	const float getSpeedMax(ESummaryType type) const {return speed_max[type];}
 	float getTemperature() const {return temperature;}
 	uint32_t getDistance(ESummaryType type, bool includeLost = true) const;
 
@@ -205,10 +213,10 @@ public:
 		if (rc < Statistics::AVG_ALL) rc = Statistics::AVG_NOBREAK;
 		if (rc >= Statistics::EAvgTypeMax) rc = Statistics::AVG_ALL;
 		return static_cast<EAvgType>(rc);
-
 	}
 
-	void createChartArray();
+	void createChartArray(uint8_t idx);
 
+	Distance& getDistHandler() {return distHandler;}
 };
 

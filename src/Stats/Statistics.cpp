@@ -7,6 +7,7 @@
 
 #include "Statistics.h"
 #include "Singletons.h"
+#include "Distance.h"
 
 const char* Statistics::PREF_TIME_STRING[Statistics::EDrivingStateMax] = {
 		"TIME_IN_NOCONN",	//		DS_NO_CONN,
@@ -21,9 +22,11 @@ const char* Statistics::SUM_TYPE_STRING[Statistics::ESummaryTypeMax] = {
 		"ST_TOUR",
 		"ST_TRIP",
 		"ST_START",
+#if defined BC_FL_SUPPORT
 		"ST_FL_TOTAL",
 		"ST_FL_TOUR",
 		"ST_FL_TRIP",
+#endif
 };
 
 const char* Statistics::AVG_TYPE_STRING[Statistics::EAvgTypeMax] = {
@@ -32,8 +35,10 @@ const char* Statistics::AVG_TYPE_STRING[Statistics::EAvgTypeMax] = {
 		"⏱ Stops"
 };
 
-Statistics::Statistics() {
+Statistics::Statistics(): distHandler(* new Distance())  {
 	timestamp_last = millis();
+	timestamp_stop = timestamp_last;
+
 }
 
 void Statistics::setup() {
@@ -42,10 +47,11 @@ void Statistics::setup() {
 	statDataStore.attach(5, +[](Statistics *thisInstance) {thisInstance->dataStore();}, this);
 	statStore.attach(5, +[](Statistics *thisInstance) {thisInstance->autoStore();}, this);
 	restoreStats();
-	ui.setChartArray(height_array, 0, 400);
-	ui.setChartArray(hr_array, 1, 400);
-	ui.setChartArray(speed_array, 2, 400);
-	ui.setChartArray(speed2_array, 3, 400);
+	distHandler.setup();
+
+	for (uint_fast8_t i = 0 ; i < chart_array_count ; i++) {
+		ui.setChartArray(chart_array[i], i);
+	}
 
 	// Serve the HTML page
 	webserver.getServer().on("/stat/debugarray", HTTP_GET, [this](AsyncWebServerRequest *request) {
@@ -76,11 +82,11 @@ void Statistics::setup() {
 		htmlPage += "      <td>" + String(timeData.currentMinMax.hr.max) + "</td>\n";
 		htmlPage += "    </tr>\n";
 
-		for (int i = 0; i < sizeof(this->hr_array) / sizeof(this->hr_array[0]); i++) {
-			S_DataPoint data = timeData.distanceData[i].hr;
+		for (int i = 0; i < sizeof(this->chart_array[1]) / sizeof(this->chart_array[1][0]); i++) {
+			S_DataPoint data = timeData.data[i].hr;
 			htmlPage += "    <tr>\n";
-			htmlPage += "      <td>" + ((hr_array_idx == i) ? String("-->") : String("")) + String(i) + "</td>\n";
-			htmlPage += "      <td>" + String(hr_array[i]) + "</td>\n";
+			htmlPage += "      <td>" + ((chart_array_startPos[1] == i) ? String("-->") : String("")) + String(i) + "</td>\n";
+			htmlPage += "      <td>" + String(chart_array[1][i]) + "</td>\n";
 			htmlPage += "      <td>" + String(data.min) + "</td>\n";
 			htmlPage += "      <td>" + String(data.avg) + "</td>\n";
 			htmlPage += "      <td>" + String(data.max) + "</td>\n";
@@ -98,8 +104,25 @@ void Statistics::setup() {
 		request->send(200, "application/json", jsonArray);
 	});
 
+	  // Handler for updating total distance and wheel data
+	webserver.getServer().on("/stat/updateData", HTTP_GET, [](AsyncWebServerRequest *request) {
+		if (request->hasParam("type") && request->hasParam("value")) {
+			String dataType = request->getParam("type")->value();
+			float dataValue = request->getParam("value")->value().toFloat();
+			if (dataType == "totalDistance") {
+				bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Received new total distance: %.3f km", dataValue / 1000.0);
+				request->send(200, "text/plain", "Total distance updated");
+			} else if (dataType == "wheelData") {
+				bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Received new wheel circumference: %d mm", static_cast<uint32_t>(round(dataValue)));
+				request->send(200, "text/plain", "Wheel data updated");
+			} else {
+				request->send(400, "text/plain", "Invalid data type");
+			}
+		} else {
+			request->send(400, "text/plain", "Invalid request");
+		}
+	});
 }
-
 
 // Helper function to generate a JSON array from a float array
 String Statistics::generateJSONArray() {
@@ -112,7 +135,7 @@ String Statistics::generateJSONArray() {
 	}
 	jsonArray += "],[";
 	for (size_t i = 0; i < 400; i++) {
-		int16_t value = hr_array[(i+hr_array_idx) % 400];
+		int16_t value = chart_array[1][(i+chart_array_startPos[1]) % 400];	//FIXME: idx 1 defaults to HR but may be changed
 		if (value == INT16_MAX) value = 0;
 		jsonArray += String(value);
 		if (i < 399) jsonArray += ",";
@@ -160,7 +183,7 @@ void Statistics::autoStore() {
 	}
 
 	updateTimeSeries();		// FIMXE: test only
-	createChartArray();		// FIXME: test only
+	createChartArray(1);		// FIXME: test only
 
 
 }
@@ -298,11 +321,8 @@ void Statistics::addGradientHeight(float _grad, float _height) {
 	gradient = _grad;
 	addFloatToDatapoint(distanceData.currentMinMax.gradient, gradient);
 	height = _height;
-	height_array[height_array_idx++] = height;
-	if (height_array_idx > 400) height_array_idx = 0;
 	addFloatToDatapoint(distanceData.currentMinMax.height, height);
 	distanceData.curCountGradHeight++;
-
 	ui.updateGrad(gradient, height);
 	ui.updateChart();
 }
@@ -319,7 +339,7 @@ void Statistics::updateDistanceSeries() {
 		setDatapointAvg(distanceData.currentMinMax.speed, distanceData.curCountSpeed);
 		time(&distanceData.currentMinMax.timestamp);	// --> write timestamp
 
-		distanceData.distanceData[distanceData.index++] = distanceData.currentMinMax;
+		distanceData.data[distanceData.index++] = distanceData.currentMinMax;
 		if (distanceData.index > 400) {
 			bclog.log(BCLogger::Log_Warn, BCLogger::TAG_STAT, "Statistics DistanceData overflow - resetting index to 0");
 			distanceData.index = 0;
@@ -361,7 +381,7 @@ void Statistics::updateTimeSeries() {
 		setDatapointAvg(timeData.currentMinMax.speed, timeData.curCountSpeed);
 		timeData.currentMinMax.distance = distance;	// --> write distance
 
-		timeData.distanceData[timeData.index++] = timeData.currentMinMax;
+		timeData.data[timeData.index++] = timeData.currentMinMax;
 		if (timeData.index >= 400) {
 			bclog.log(BCLogger::Log_Warn, BCLogger::TAG_STAT, "Statistics TimeData overflow - resetting index to 0");
 			timeData.index = 0;
@@ -383,31 +403,30 @@ void Statistics::updateTimeSeries() {
 //	}
 }
 
-void Statistics::createChartArray() {
+void Statistics::createChartArray(uint8_t idx) {
+	uint32_t startcount = xthal_get_ccount();
 	bool modeTime = true; // true: X axis is time, false: X axis is distance
-	uint8_t idx = 1;
-	enum DataClass {SPEED = 0, HR, HEIGHT, GRADIENT, TEMPERATURE};
-
 	float scale = 1.0;
-	DataClass c = HR;
+	DataClass c = chart_array_type[idx];
 
 	// timeData.index is always the last written position + 1 - so the next value to be written. And thus it's also the first value to be shown in chart, if the newest point is the most right one.
-	hr_array_idx = timeData.index;
+	chart_array_startPos[idx] = timeData.index;
 
 	for (uint16_t point = 0 ; point < 400 ; point ++) {
-		bool useMax = (point > 0 && timeData.distanceData[point].hr.max > timeData.distanceData[point-1].hr.max) && (point < 399 && timeData.distanceData[point].hr.max > timeData.distanceData[point+1].hr.max);
-		bool useMin = (point > 0 && timeData.distanceData[point].hr.min < timeData.distanceData[point-1].hr.min) && (point < 399 && timeData.distanceData[point].hr.min < timeData.distanceData[point+1].hr.min);
+		bool useMax = (point > 0 && timeData.data[point].hr.max > timeData.data[point-1].hr.max) && (point < 399 && timeData.data[point].hr.max > timeData.data[point+1].hr.max);
+		bool useMin = (point > 0 && timeData.data[point].hr.min < timeData.data[point-1].hr.min) && (point < 399 && timeData.data[point].hr.min < timeData.data[point+1].hr.min);
 		if (useMax && useMin) {
 			useMax = false;
 			useMin = false;
 		}
-		S_DataPoint lp =  timeData.distanceData[point].hr;
+		S_DataPoint lp =  timeData.data[point].hr;
 		float val = (useMax ? lp.max : ( useMin ? lp.min : lp.avg) ) * scale;
-		hr_array[point] = isnan(val) ? INT16_MAX : static_cast<int16_t>(round(val));
+		chart_array[idx][point] = isnan(val) ? INT16_MAX : static_cast<int16_t>(round(val));
 	}
 
-	ui.setChartPosFirst(hr_array_idx, 1); 	// IDX 1 is HR series. FIXME: Make more generic
-
+	ui.setChartPosFirst(chart_array_startPos[idx], idx);
+	uint32_t endcount = xthal_get_ccount();
+	bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_STAT, "Took %d cycles to update chart", endcount - startcount);
 
 //
 //	switch (c) {
@@ -419,26 +438,22 @@ void Statistics::createChartArray() {
 }
 
 /* ******************** handle distance ********************
-    handling distance is more special than other data becauseTh it is (in parallel to time) a clock for data handling
+    handling distance is more special than other data because it is (in parallel to time) a clock for data handling
     Also, storing total distance is part of the Statistics class
    TODO: Distance handling is not clean yet:
        * Single point to handle wheel diameter
        * Keep track of distance over wheel diameter changes
 */
-void Statistics::addDistance(uint32_t dist, ESummaryType type) {
-	start_distance[type] = dist;
-}
+//void Statistics::addDistance(uint32_t dist, ESummaryType type) {
+//
+//}
 
 void Statistics::updateDistance(uint32_t _dist, uint32_t _revs) {
-	if (curDriveState == DS_NO_CONN) {
-		uint32_t dist_lost_new = _dist - distance;
-		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Lost %d pulses of distance.", dist_lost_new);
-		updateLostDistance(dist_lost_new);
-	}
 	distance = _dist;
 	if (!distance_start) {
 		distance_start = true;
-		addDistance(distance, SUM_ESP_START);
+		//addDistance(distance, SUM_ESP_START); //FIXME: Replaced by following line. Test it and if ok, delete this line here
+		start_distance[SUM_ESP_START] = distance;
 		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Initial distance: %d meter.", distance);
 		distanceData.startDistance = distance;
 		distanceData.curDistance = distance;
@@ -448,34 +463,30 @@ void Statistics::updateDistance(uint32_t _dist, uint32_t _revs) {
 	updateDistanceSeries();
 }
 
-void Statistics::updateLostDistance(uint32_t _dist_lost) {
-	// distance_start == true --> initial start. Don't set lost_distance for SUM_ESP_START then.
-	for (uint_fast8_t i = 0; i <= (distance_start ? SUM_ESP_START : SUM_ESP_TRIP); i++) {
-		lost_distance[i] += _dist_lost;
-		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Lost distance for %s now %d pulses", SUM_TYPE_STRING[i], lost_distance[i]);
-	}
-}
-
 // ******************** internal calculations ********************
 
 void Statistics::calculateGradient(int32_t _revs) {
 /* Don't compile own gradient calculation if an external gradient calculation is done (like in Forumslader) */
 #if !BC_FL_SUPPORT
-	// Get Height information, so it's synchronized with distance update (improves accuracy)
 	if (_revs == -1) _revs = gradient_revs;
 	int32_t revs_since_last = _revs - gradient_revs ;   // [Pulses]
 	time_t time_now = millis();
 	uint32_t delta = time_now - gradient_timestamp;  // [msec]
-	if (revs_since_last >= 4 || delta >= 5000 /*|| delta_height > 0.5*/ ) {   // Using delta_height seems to cause more harm than good
+	if ( ( revs_since_last >= 4 && delta > 2500) || delta >= 5000 || _revs == -1 /*|| delta_height > 0.5*/ ) {   // Using delta_height seems to cause more harm than good
+		// Get Height information, so it's synchronized with distance update (improves accuracy)
 		sensors.readBME280();
 		height = sensors.getHeight();		// [m]
 		temperature = sensors.getTemp();
 		float delta_height = height - gradient_height;
+		gradient_height = height;
 		bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_STAT, "Update gradient with deltas time: %dms, revs: %d, height: %.2fm", delta, revs_since_last, delta_height);
 		gradient_timestamp = time_now;
-		gradient_revs = _revs;
-		gradient_height = height;
-		gradient = delta_height / (revs_since_last * 2.22) * 100;	//FIXME: Handle distances correctly. (Only one place to convert pulses to distance etc.)
+		if (revs_since_last > 0) {
+			gradient_revs = _revs;
+			gradient = delta_height / (revs_since_last * 2.22) * 100;	//FIXME: Handle distances correctly. (Only one place to convert pulses to distance etc.)
+		} else {
+			gradient = NAN;		// in this case, division by 0 should not lead not +Inf or -Inf, because delta_height is close to zero. Ideally it would be zero, so 0/0 --> NAN.
+		}
 		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Gradient: %.2f", gradient);
 		addGradientHeight(gradient, height);  //FIXME: also copies gradient to gradient again (and height to height)
 		//ui.updateGrad(gradient, height);
@@ -498,24 +509,22 @@ uint32_t Statistics::getDistance(ESummaryType type, bool includeLost) const {
 	case SUM_ESP_TOUR:
 	case SUM_ESP_TRIP:
 	case SUM_ESP_START:
-		return distance - start_distance[type] - (includeLost ? 0 : lost_distance[type]);
+		return distance - start_distance[type] - (includeLost ? 0 : lost_distance[type]);  //old
+		return distHandler.getDistance(type);
+#if defined BC_FL_SUPPORT
 	case SUM_FL_TRIP:
 	case SUM_FL_TOUR:
 		return start_distance[type];
 	case SUM_FL_TOTAL:
 		return distance;
+#endif
 	}
 	return 0;
 }
 
-void Statistics::reset(ESummaryType type) {
-	if (type==SUM_ESP_TOUR || type == SUM_ESP_TRIP) {
-		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Reset statistic for %s.", SUM_TYPE_STRING[type]);
-		start_distance[type] = distance;
-		lost_distance[type] = 0;
-		for (uint_fast8_t d = 0 ; d < EDrivingStateMax ; d++) {
-			time_in[d][type] = 0;
-		}
+void Statistics::reset(ESummaryType type) {	//TODO: Move to DistanceHandler
+	for (uint_fast8_t d = 0; d < EDrivingStateMax; d++) {
+		time_in[d][type] = 0;
 	}
 }
 

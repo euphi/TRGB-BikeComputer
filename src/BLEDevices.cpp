@@ -11,6 +11,7 @@
 #include <Arduino.h>
 
 #include "Singletons.h"
+#include "Stats/Distance.h"
 
 // HRM, CSC, FL, KomootApp
 const BLEUUID BLEDevices::serviceUUID[DEV_COUNT] = { BLEUUID((uint16_t)0x180D), BLEUUID((uint16_t)0x1816), BLEUUID((uint16_t)0x1816), BLEUUID("e62efa94-afa8-11ed-afa1-0242ac120002"), BLEUUID("71C1E128-D92F-4FA8-A2B2-0F171DB3436C")};
@@ -290,35 +291,9 @@ void BLEDevices::notifyCallbackCSC(BLERemoteCharacteristic *pBLERemoteCharacteri
 		}
 		if (isSpeed) {
 			cscIsSpeed[ctype==DEV_CSC_1?1:2] = true;
-			uint32_t speed_rev = (pData[4] << 24) + (pData[3] << 16) + (pData[2] << 8) + pData[1];		// LSB first
+			speed_rev = (pData[4] << 24) + (pData[3] << 16) + (pData[2] << 8) + pData[1];		// LSB first
 			speed_time = (pData[6] << 8) + pData[5];	// LSB first
-			delta = speed_time - speed_time_last;
-			if (speed_rev_last == 0) speed_rev_last = speed_rev;		// if this is the first received message, set the "last known" value to current value -> speed = 0.0.
-			bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "%d revs at %d. Delta: %d at %d", speed_rev, speed_time, (speed_rev - speed_rev_last), delta);
-			if (delta > 0) {
-				uint32_t speed_delta = (speed_rev - speed_rev_last);
-				// km/h     1           m  * tick/s * (km/h / m/s)  / tick
-				//TODO: Make circummeter configurable
-				//speed = (speed_delta * 2.155 * 1024 * 3.6 ) / delta;		// 28-622
-				speed = (speed_delta * 2.220 * 1024 * 3.6 ) / delta;		// 40-622
-				speed_time_last_received = millis();
-				speed_time_last = speed_time;
-			} else {
-				if (millis() - speed_time_last_received > 1200) {
-					speed = 0.0;
-				} else {
-					bclog.log(BCLogger::Log_Info, BCLogger::TAG_BLE, "Ignore 0 revolutions (speed) since last update is less than 1200ms");
-				}
-			}
-			speed_rev_last = speed_rev;
-			bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "Speed %.2f km/h", speed);
-			stats.addSpeed(speed);
-//			stats.updateDistance((speed_rev * 2155)/1000);
-//			stats.addDistance((speed_rev * 2155)/1000, Statistics::SUM_FL_TOTAL);
-			stats.updateDistance((speed_rev * 2220)/1000, speed_rev);		//FIXME: Dist is stored in m already, but transmitted in pulses. So this will result in wronng distance if circummeter changes
-			//stats.addDistance((speed_rev * 2220)/1000, Statistics::SUM_FL_TOTAL);
-			//TODO: setConnected() must be called after updateDistance, so updateDistance is still in disconnected state and can calculate lost distance. This relies on a side-effect/internal state and should be implemented cleaner.
-			stats.setConnected(true);  // "Connected" for Stats means that a speed sensor is connected (used for avg calculation)
+			stats.getDistHandler().updateRevs(speed_rev, speed_time);
 		} else {
 			cscIsSpeed[ctype==DEV_CSC_1?1:2] = false;
 			crank_rev = (pData[2] << 8) + pData[1];		// LSB first
@@ -464,7 +439,7 @@ uint16_t BLEDevices::getHTMLPage(String &htmlresponse) {
 				CONN_STRING[connState[c]],
 				pServerAddress[c] ? pServerAddress[c]->toString().c_str() : "-n/a-",
 				(c == DEV_CSC_1 || c == DEV_CSC_2) ?  (cscIsSpeed[c] ? "Speed" : "Cadence" ) : "-n/a-",
-				(c == DEV_CSC_1 || c == DEV_CSC_2) ?  (cscIsSpeed[c] ? speed_rev_last : crank_rev_last ) : -1,
+				(c == DEV_CSC_1 || c == DEV_CSC_2) ?  (cscIsSpeed[c] ? speed_rev : crank_rev_last ) : -1,
 				batLevel[c],
 				pStoredAddress[c] ? buffer_short :"-");
 		htmlresponse += buffer;

@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BikeComputer - Distance Statistics</title>
+  <link rel="stylesheet" href="/stylesheet.css">
+</head>
+<body>
+  <div class="container">
+    <h1>Distance Statistics</h1>
+    
+    <!-- Input fields and buttons for distance and wheel diameter -->
+    <label for="totalDistance">Total Distance (km):</label>
+    <input type="number" id="totalDistance" step="0.01" placeholder="Enter total distance [m]">
+    <button onclick="updateTotalDistance()">Update</button>
+
+    <label for="wheelDiameter">Wheel Diameter (mm):</label>
+    <input type="number" id="wheelDiameter" step="1" placeholder="Enter wheel diameter [m]">
+    <button onclick="updateWheelDiameter()">Update</button>
+
+		<!-- Table with typical tire circumferences for road/gravel bikes -->
+		<table>
+			<tr>
+				<th>Tire Size</th>
+				<th>Tire Circumference (mm)</th>
+			</tr>
+			<tr>
+				<td>28-622 (700x28c)</td>
+				<td>2136</td>
+			</tr>
+			<tr>
+				<td>32-622 (700x32c)</td>
+				<td>2155</td>
+			</tr>
+			<tr>
+				<td>35-622 (700x35c)</td>
+				<td>2174</td>
+			</tr>
+			<tr>
+				<td>40-622 (700x40c)</td>
+				<td>2200</td>
+			</tr>
+			<tr>
+				<td>45-622 (700x45c)</td>
+				<td>2223</td>
+			</tr>
+			<!-- Add more rows as needed -->
+		</table>
+
+		<!-- Display distance statistics -->
+    <h2>Statistics</h2>
+    <p>Total Distance: <span id="totalDistance">-/-</span> m</p>
+    <p>Average Speed (Complete): <span id="displayAvgSpeedComplete">0</span> km/h</p>
+    <p>Average Speed (With Stops): <span id="displayAvgSpeedWithStops">0</span> km/h</p>
+    <p>Average Speed (Driving Only): <span id="displayAvgSpeedDriving">0</span> km/h</p>
+    <p>Maximum Speed: <span id="displayMaxSpeed">0</span> km/h</p>
+    <p>Minimum Gradient: <span id="displayMinGradient">0</span>%</p>
+    <p>Maximum Gradient: <span id="displayMaxGradient">0</span>%</p>
+
+  </div>
+
+  <script>
+    // JavaScript functions to handle updates
+    function updateTotalDistance() {    
+    	    // Ask for confirmation
+    	    var confirmed = confirm("Are you sure you want to update the total distance?");
+    	    
+    	    if (confirmed) {
+    	      // User confirmed, proceed with the update
+    	      fetch('/stat/updateTotalDistance')
+    	        .then(response => response.json())
+    	        .then(data => {
+    	          // Update the displayed total distance
+    	          document.getElementById('totalDistance').innerText = data.totalDistance;
+    	        });
+    	    }
+   	  }
+
+    function updateWheelDiameter() {
+      const wheelDiameter = parseInt(document.getElementById('wheelDiameter').value);
+      if (!isNaN(wheelDiameter)) {
+        // You can perform further calculations or send data to the server as needed
+      }
+    }
+  </script>
+
+</body>
+</html>

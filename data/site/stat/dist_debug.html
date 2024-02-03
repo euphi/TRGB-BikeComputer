@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Distance Information</title>
+  <link rel="stylesheet" href="/stylesheet.css">
+</head>
+<body>
+  <div class="container">
+    <h2>Distance Information</h2>
+    <p id="overall"></p>
+    <table id="distanceTable">
+      <thead>
+        <tr>
+          <th>Measurement</th>          
+          <th>Stored Distance (meters)</th>
+          <th>Stored Distance (revs)</th>
+          <th>Loaded Distance (meters)</th>
+          <th>Delta Revolutions Since</th>
+          <th>Actual Distance (meters)</th>
+        </tr>
+      </thead>
+      <tbody id="distanceBody"></tbody>
+    </table>
+
+    <script>
+      // Function to load distance information asynchronously
+      function loadDistanceInfo() {
+        fetch('/stat/getDistanceInfo')
+          .then(response => response.json())
+          .then(data => {
+            // Update the HTML table with the received data
+            document.getElementById('distanceBody').innerHTML = `
+              <tr>
+                <td>Total</td>                
+                <td>${data.TOTAL.storedTotal}</td>
+                <td>${data.TOTAL.storedRevs}</td>
+                <td>${data.TOTAL.totalDistance}</td>
+                <td>${data.TOTAL.deltaRevs}</td>
+                <td>${data.TOTAL.actualDistance}</td>
+              </tr>
+              <tr>
+                <td>Tour</td>
+                <td>${data.TOUR.storedTotal}</td>
+                <td>${data.TOUR.storedRevs}</td>               
+                <td>${data.TOUR.totalDistance}</td>
+                <td>${data.TOUR.deltaRevs}</td>
+                <td>${data.TOUR.actualDistance}</td>
+              </tr>
+              <tr>
+                <td>Trip</td>
+                <td>${data.TRIP.storedTotal}</td>
+                <td>${data.TRIP.storedRevs}</td>               
+                <td>${data.TRIP.totalDistance}</td>
+                <td>${data.TRIP.deltaRevs}</td>
+                <td>${data.TRIP.actualDistance}</td>
+              </tr>
+              <tr>
+                <td>Since Start</td>
+                <td>${data.START.storedTotal}</td>
+                <td>${data.START.storedRevs}</td>                
+                <td>${data.START.totalDistance}</td>
+                <td>${data.START.deltaRevs}</td>
+                <td>${data.START.actualDistance}</td>
+              </tr>
+            `;
+            document.getElementById('overall').innerHTML = `Overall Revolutions: ${data.overall.revs}`;
+          });
+      }
+
+      // Call the function initially
+      loadDistanceInfo();
+
+      // Refresh the values every 2 seconds
+      setInterval(loadDistanceInfo, 2000);
+    </script>
+  </div>
+</body>
+</html>
