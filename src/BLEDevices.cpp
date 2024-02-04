@@ -399,7 +399,6 @@ void BLEDevices::connCheckLoop() {
 			case DEV_CSC_1:
 			case DEV_CSC_2:
 				if (cscIsSpeed[c==DEV_CSC_1?1:2]) {
-					stats.addSpeed(NAN);
 					stats.setConnected(false);
 				} else {
 					stats.addCadence(-1, 0);

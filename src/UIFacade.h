@@ -69,13 +69,13 @@ private:
 
 	//TODO: Use notify/poll mechanism instead of storing data
 	int16_t hr = -1, cad = -1;
-	float grad, height, speed = NAN;
+	float grad = NAN, height = NAN, speed = NAN;
 
 	Statistics::ESummaryType statMode = Statistics::SUM_ESP_START;
 	Statistics::EAvgType     statTimeMode = Statistics::AVG_ALL;
 
 	// Model for TRGB specific data
-	float batIntVoltage, batIntVoltageAvg = NAN;
+	float batIntVoltage = NAN, batIntVoltageAvg = NAN;
 	int8_t batIntPerc = -1;
 	bool batIntCharging = false;
 

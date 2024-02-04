@@ -82,7 +82,7 @@ private:
 		uint32_t startDistance = 0;
 		S_distanceData data[480];				// per 100m -> 48km
 		S_distanceData currentMinMax;
-		uint32_t curDistance = 0;
+		float curDistance = 0;
 		uint16_t index = 0;
 		uint8_t curCountSpeed;
 		uint8_t curCountCadence;
@@ -96,7 +96,7 @@ private:
 
 	// Data storage per time
 	struct S_timeData {	// 48 Byte
-		uint32_t distance;		//   4 Byte
+		float distance;		//   4 Byte
 		S_DataPoint speed;
 		S_DataPoint cadence;
 		S_DataPoint hr;
@@ -120,7 +120,7 @@ private:
 	// Variables to calculate gradient (Forumslader calculates gradient on its own)
 #if !BC_FL_SUPPORT
 	time_t gradient_timestamp = 0;		//Timestamp of last gradient calculation
-	int32_t gradient_revs = 0;			//Distance of last gradient calculation
+	float gradient_dist = 0;			//Distance of last gradient calculation
 	float gradient_height = NAN;		//Height of last gradient calculation
 	Distance& distHandler;				// also the distance handler is only used without Forumslader because FL calculates distance (partly) on its own.
 #endif
@@ -136,10 +136,10 @@ private:
 
 	//int16_t grad = 0, height = 0;
 
-	uint32_t start_distance[ESummaryTypeMax];   // start_distance: For locally stored distances, this is the distance the counter was reset. For extern stored (FL) distance this is the actual distance
+//	uint32_t start_distance[ESummaryTypeMax];   // start_distance: For locally stored distances, this is the distance the counter was reset. For extern stored (FL) distance this is the actual distance
 	uint32_t lost_distance[ESummaryTypeMax];   // start_distance: For locally stored distances, this is the distance the counter was reset. For extern stored (FL) distance this is the actual distance
-	uint32_t distance;							// current distance counter
-	bool distance_start = false;
+//	uint32_t distance;							// current distance counter
+//	bool distance_start = false;
 
 	Ticker statCycle;
 	Ticker statStore;
@@ -157,7 +157,7 @@ private:
 	void updateTimeSeries();
 	String generateJSONArray();
 public:
-	void calculateGradient(int32_t _revs);		//FIXME: Use notify mechanism (about updated distance)
+	void calculateGradient(float newDist);		//FIXME: Use notify mechanism (about updated distance)
 private:
 	//TODO: Move into separate class
 	enum DataClass {SPEED = 0, HR, HEIGHT, GRADIENT, TEMPERATURE};

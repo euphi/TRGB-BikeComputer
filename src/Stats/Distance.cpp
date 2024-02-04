@@ -30,7 +30,8 @@ Distance::Distance() {
 void Distance::setup() {
 	loadDistanceForBikeIdx(0);
 	distanceStore.attach(60, +[](Distance *thisInstance) {thisInstance->store();}, this);
-	bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "setup DistanceHandler with stored values: Total distance: %.2fm\tRevs: %d\tCircumference: %.4fm", distanceFromNVS, revsFromNVS, wheel_c);
+	bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "setup DistanceHandler with stored values: Total distance: %.2fm\tRevs: %d\tCircumference: %.04fm",
+			distanceFromNVS[Statistics::SUM_ESP_TOTAL], revsFromNVS[Statistics::SUM_ESP_TOTAL], wheel_c);
 	setupWebserver();
 }
 
@@ -46,6 +47,7 @@ void Distance::loadDistanceForBikeIdx(uint8_t idx) {
 	String idx_str(idx);
 	params.begin((String("DIST_PARAMS_") + idx_str).c_str(), true);
 	wheel_c = params.getFloat("wheel_circ", 2.220);
+	bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Loaded wheel circumference from NVS: %.04fm", wheel_c);
 	params.end();
 	for (uint_fast8_t j=0; j <= Statistics::SUM_ESP_TRIP; j++) {
 		String prefString = String("DIST_") + idx_str + String("_") + String(Statistics::SUM_TYPE_STRING[j]+3);
@@ -96,8 +98,8 @@ void Distance::updateRevs(uint32_t revs, uint16_t timestamp) {
 		bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_STAT, "Received revs %d smaller than stored (%d). New CSC sensor?", revs, lastRevs);
 		// My cheap CYCPLUS CSC sensor does not store cumulative wheel revs. Every reconnect it starts with 0.. To mitigate impact, store the distance and ignore the update.
 		// Note: The Magene CSC sensors (that cost a little bit more, but are still quite cheap) do not show this behaviour.
-		storeDistanceAndResetRevs(true);
 		lastRevs = revs;
+		storeDistanceAndResetRevs(true);
 		//TODO: Show message box and let user decide if to update
 	}
 	// Scenario 2 a & b (in case of b, lastrevs is already set to revs, so delta is 0.
@@ -135,8 +137,7 @@ void Distance::updateRevs(uint32_t revs, uint16_t timestamp) {
 	}
 
 	//stats.updateDistance(revs, revs-lastRevs); //FIXME: Refactor
-	stats.calculateGradient(revs-lastRevs);
-
+	stats.calculateGradient(curTotalDistance[Statistics::SUM_ESP_START]);
 	lastTimestamp = timestamp;
 	lastRevs = revs;
 }
@@ -218,8 +219,11 @@ void Distance::storeDistanceAndResetRevs(bool resetRevs) {
 		}
 		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "%s: Stored total distance %.2fm at %d revs", Statistics::SUM_TYPE_STRING[j], curTotalDistance[j], lastRevs);
 	}
+	if (resetRevs) {
+		bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_STAT, "%s: Reset revs", Statistics::SUM_TYPE_STRING[Statistics::SUM_ESP_START]);
+		revsFromNVS[Statistics::SUM_ESP_START] = lastRevs;
+	}
 }
-
 
 void Distance::setupWebserver() {
 	webserver.getServer().on("/stat/getDistanceInfo", HTTP_GET, [this](AsyncWebServerRequest *request) {

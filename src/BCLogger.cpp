@@ -287,7 +287,7 @@ void BCLogger::logf(LogType type, LogTag tag, const char *format, ...) {
 }
 
 
-void BCLogger::appendDataLog(float speed, float temp, float gradient, uint32_t distance, float height, uint8_t hr) {
+void BCLogger::appendDataLog(float speed, float temp, float gradient, float distance, float height, uint8_t hr) {
 	LogData b;
 	time_t now;
 	time(&now);

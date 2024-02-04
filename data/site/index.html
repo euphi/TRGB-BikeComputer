@@ -19,8 +19,6 @@
           }
         }
       };
-      
-      // Replace 'your_cleanup_url' with the actual URL for cleaning up logfiles
       xhr.open('GET', '/cleanup', true);
       xhr.send();
     }
@@ -30,18 +28,17 @@
   <div class="container">
     <a class="link-box" href="/logfiles/">Logfiles</a>
     <a class="link-box" href="/log.html">Log Settings</a>
-    <a class="link-box" href="/cleanup">Cleanup logfiles</a> (delete empty and very small ones)
     <a class="link-box" href="/update">Update</a>
     <a class="link-box" href="/dev/">BLE Devices</a>
     <a class="link-box" href="/sensor/">Sensors (I2C)</a>
     <a class="link-box" href="/stat/index.html">Charts</a>
     <a class="link-box" href="/system/">Systeminfo</a>
     
-
     <!-- Dark Mode Toggle Button -->
-    <button id="darkModeToggle" onclick="toggleDarkMode()">Toggle Dark Mode</button>
+    <!-- <button id="darkModeToggle" onclick="toggleDarkMode()">Toggle Dark Mode</button>  -->
   </div>
 
+<!-- 
   <script>
     // Dark Mode Toggle Script
     function toggleDarkMode() {
@@ -59,5 +56,7 @@
       document.body.classList.add('dark-mode');
     }
   </script>
+-->
+
 </body>
 </html>

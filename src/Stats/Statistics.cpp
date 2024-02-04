@@ -45,7 +45,7 @@ void Statistics::setup() {
 	// What kind of sorcery is this?  --> See https://stackoverflow.com/questions/60985496/arduino-esp8266-esp32-ticker-callback-class-member-function
 	statCycle.attach_ms(500, +[](Statistics *thisInstance) {thisInstance->cycle();}, this);
 	statDataStore.attach(5, +[](Statistics *thisInstance) {thisInstance->dataStore();}, this);
-	statStore.attach(5, +[](Statistics *thisInstance) {thisInstance->autoStore();}, this);
+	statStore.attach(15, +[](Statistics *thisInstance) {thisInstance->autoStore();}, this);
 	restoreStats();
 	distHandler.setup();
 
@@ -147,9 +147,9 @@ String Statistics::generateJSONArray() {
 void Statistics::restoreStats() {
 	for (uint_fast8_t c = 0 ; c < SUM_ESP_START; c++) {
 		StatPreferences[c].begin(SUM_TYPE_STRING[c]);
-		start_distance[c] = StatPreferences[c].getLong("START_DISTANCE", 0);
+//		start_distance[c] = StatPreferences[c].getLong("START_DISTANCE", 0);
 		lost_distance[c]  = StatPreferences[c].getLong("LOST_DISTANCE",  0);
-		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Loaded distance %d (lost: %d) from preferences: %s", start_distance[c], lost_distance[c], SUM_TYPE_STRING[c]);
+		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Loaded lost distance %d) from preferences: %s", lost_distance[c], SUM_TYPE_STRING[c]);
 		for (uint_fast8_t d = 0 ; d < EDrivingStateMax ; d++) {
 			time_in[d][c] = StatPreferences[c].getLong(PREF_TIME_STRING[d], 0);
 			bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Loaded time in %s for %s from preferences: %d", PREF_TIME_STRING[d], SUM_TYPE_STRING[c], time_in[d][c]);
@@ -157,40 +157,37 @@ void Statistics::restoreStats() {
 		//StatPreferences[c].end();
 	}
 	StatPreferences[SUM_ESP_START].begin(SUM_TYPE_STRING[SUM_ESP_START]);
-	start_distance[SUM_ESP_START] =StatPreferences[SUM_ESP_START].getLong("START_DISTANCE", 0);
-	bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Loaded start distance %d from preferences.", start_distance[SUM_ESP_START]);
-	distance = start_distance[SUM_ESP_START];
+//	start_distance[SUM_ESP_START] =StatPreferences[SUM_ESP_START].getLong("START_DISTANCE", 0);
+//	bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Loaded start distance %d from preferences.", start_distance[SUM_ESP_START]);
+//	distance = start_distance[SUM_ESP_START];
 }
 
 void Statistics::autoStore() {
-	bclog.log(BCLogger::Log_Debug, BCLogger::TAG_STAT, "Store distance to preferences");
+	bclog.log(BCLogger::Log_Debug, BCLogger::TAG_STAT, "Store distance and time to preferences");
 	for (uint_fast8_t c = 0 ; c < SUM_ESP_START; c++) {
-		bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_STAT, "Store distance to preferences %s", SUM_TYPE_STRING[c]);
-		if (!StatPreferences[c].putLong("START_DISTANCE", start_distance[c])) {
-			bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_STAT, "Can't save distance %s to preferences", SUM_TYPE_STRING[c]);
-		}
-		if (!StatPreferences[c].putLong("LOST_DISTANCE", lost_distance[c])) {
-			bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_STAT, "Can't save lost distance %s to preferences", SUM_TYPE_STRING[c]);
-		}
+//		bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_STAT, "Store distance to preferences %s", SUM_TYPE_STRING[c]);
+//		if (!StatPreferences[c].putLong("START_DISTANCE", start_distance[c])) {
+//			bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_STAT, "Can't save distance %s to preferences", SUM_TYPE_STRING[c]);
+//		}
+//		if (!StatPreferences[c].putLong("LOST_DISTANCE", lost_distance[c])) {
+//			bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_STAT, "Can't save lost distance %s to preferences", SUM_TYPE_STRING[c]);
+//		}
 		for (uint_fast8_t d = 0 ; d < EDrivingStateMax ; d++) {
 			if (!StatPreferences[c].putLong(PREF_TIME_STRING[d], time_in[d][c])) {
 				bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_STAT, "Can't save time in %s for %s to preferences", PREF_TIME_STRING[d], SUM_TYPE_STRING[c]);
 			}
 		}
 	}
-	if (!StatPreferences[SUM_ESP_START].putLong("START_DISTANCE", distance)) {
-		bclog.log(BCLogger::Log_Warn, BCLogger::TAG_STAT, "Can't save current distance (SUM_ESP_START) to preferences");
-	}
+//	if (!StatPreferences[SUM_ESP_START].putLong("START_DISTANCE", distance)) {
+//		bclog.log(BCLogger::Log_Warn, BCLogger::TAG_STAT, "Can't save current distance (SUM_ESP_START) to preferences");
+//	}
 
 	updateTimeSeries();		// FIMXE: test only
 	createChartArray(1);		// FIXME: test only
-
-
 }
 
 void Statistics::dataStore() {
-	calculateGradient(-1);	// FIXME: Distance handling wrong here (old value for _revs)
-	bclog.appendDataLog(speed, temperature, gradient, distance, height, hr);
+	bclog.appendDataLog(speed, temperature, gradient, distHandler.getDistance(), height, hr);
 }
 
 void Statistics::cycle() {
@@ -250,10 +247,10 @@ void Statistics::setConnected(bool connected) {
 		bclog.log(BCLogger::Log_Info, BCLogger::TAG_STAT, "Connected to speed sensor - counting time");
 	}
 	if (!connected && curDriveState != DS_NO_CONN) {
+		addSpeed(NAN);
 		bclog.log(BCLogger::Log_Info, BCLogger::TAG_STAT, "Disconnected from speed sensor - stop time counters");
 		histDriveState = curDriveState;
 		setCurDriveState(DS_NO_CONN);
-		distance_start = false;
 	}
 }
 
@@ -290,7 +287,6 @@ void Statistics::addCadence(int16_t _cadence, int16_t _total) {
 
 void Statistics::addHR(int16_t _hr) {
 	hr = _hr;
-
 	float hr_float = hr > 0 ? hr * 1.0 : NAN;
 
 	addFloatToDatapoint(distanceData.currentMinMax.hr, hr_float );
@@ -328,8 +324,9 @@ void Statistics::addGradientHeight(float _grad, float _height) {
 }
 
 void Statistics::updateDistanceSeries() {
+	float distance = distHandler.getDistance();
 	if ( (distance - distanceData.curDistance) >= 100) {		// every 100m
-		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "100m step - distance: %d", distance);
+		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "100m step - distance: %.1fm", distance);
 		distanceData.curDistance = distance;
 
 		setDatapointAvg(distanceData.currentMinMax.cadence, distanceData.curCountCadence);
@@ -372,14 +369,14 @@ void Statistics::updateDistanceSeries() {
 void Statistics::updateTimeSeries() {
 	time_t now;
 	time(&now);
-	//if ( (now - timeData.startTime) >= 5000) {		// every 100m
+	//if ( (now - timeData.startTime) >= 5000) {
 		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "10s step @ %d", now);
 		timeData.startTime = now;
 
 		setDatapointAvg(timeData.currentMinMax.cadence, timeData.curCountCadence);
 		setDatapointAvg(timeData.currentMinMax.hr, timeData.curCountHr);
 		setDatapointAvg(timeData.currentMinMax.speed, timeData.curCountSpeed);
-		timeData.currentMinMax.distance = distance;	// --> write distance
+		timeData.currentMinMax.distance = distHandler.getDistance();
 
 		timeData.data[timeData.index++] = timeData.currentMinMax;
 		if (timeData.index >= 400) {
@@ -449,43 +446,50 @@ void Statistics::createChartArray(uint8_t idx) {
 //}
 
 void Statistics::updateDistance(uint32_t _dist, uint32_t _revs) {
-	distance = _dist;
-	if (!distance_start) {
-		distance_start = true;
-		//addDistance(distance, SUM_ESP_START); //FIXME: Replaced by following line. Test it and if ok, delete this line here
-		start_distance[SUM_ESP_START] = distance;
-		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Initial distance: %d meter.", distance);
-		distanceData.startDistance = distance;
-		distanceData.curDistance = distance;
-		distanceData.index = 0;		// FIXME: Handle reconnect case better
-	}
+//	distance = _dist;
+//	if (!distance_start) {
+//		distance_start = true;
+//		//addDistance(distance, SUM_ESP_START); //FIXME: Replaced by following line. Test it and if ok, delete this line here
+//		start_distance[SUM_ESP_START] = distance;
+//		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Initial distance: %d meter.", distance);
+//		distanceData.startDistance = distance;
+//		distanceData.curDistance = distance;
+//		distanceData.index = 0;		// FIXME: Handle reconnect case better
+//	}
 	calculateGradient(_revs);
 	updateDistanceSeries();
 }
 
 // ******************** internal calculations ********************
 
-void Statistics::calculateGradient(int32_t _revs) {
+void Statistics::calculateGradient(float newDist) {
 /* Don't compile own gradient calculation if an external gradient calculation is done (like in Forumslader) */
-#if !BC_FL_SUPPORT
-	if (_revs == -1) _revs = gradient_revs;
-	int32_t revs_since_last = _revs - gradient_revs ;   // [Pulses]
+#if !defined BC_FL_SUPPORT
 	time_t time_now = millis();
 	uint32_t delta = time_now - gradient_timestamp;  // [msec]
-	if ( ( revs_since_last >= 4 && delta > 2500) || delta >= 5000 || _revs == -1 /*|| delta_height > 0.5*/ ) {   // Using delta_height seems to cause more harm than good
+	float delta_dist = newDist - gradient_dist;
+	if ( ( delta_dist >= 8 && delta > 2500) || delta >= 5000 /*|| delta_height > 0.5*/ ) {   // Using delta_height seems to cause more harm than good
 		// Get Height information, so it's synchronized with distance update (improves accuracy)
 		sensors.readBME280();
 		height = sensors.getHeight();		// [m]
 		temperature = sensors.getTemp();
 		float delta_height = height - gradient_height;
+		if (delta_dist < 0 || delta_dist > 200) {
+			bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_STAT, "Gradient calculation: New distance %.2fm implausible (delta: %.2fm) ", newDist, delta_dist);
+			delta_dist = NAN;
+		}
 		gradient_height = height;
-		bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_STAT, "Update gradient with deltas time: %dms, revs: %d, height: %.2fm", delta, revs_since_last, delta_height);
+		bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_STAT, "Update gradient with deltas time: %dms, distance: %.2fm, height: %.2fm", delta, delta_dist, delta_height);
 		gradient_timestamp = time_now;
-		if (revs_since_last > 0) {
-			gradient_revs = _revs;
-			gradient = delta_height / (revs_since_last * 2.22) * 100;	//FIXME: Handle distances correctly. (Only one place to convert pulses to distance etc.)
+
+		//Note: Keep it outside the next if. Otherwise large delta in height will result in extreme spikes in gradient. ("Elevator case").
+		//      It does not make sense to do a calculation for this, because it will be wrong in many cases anyhow.
+		gradient_dist = newDist;
+
+		if (delta_dist > 0.2) {
+			gradient = delta_height / (delta_dist) * 100.0;		// simplified gradient calculation. Accurate enough for smaller gradients.
 		} else {
-			gradient = NAN;		// in this case, division by 0 should not lead not +Inf or -Inf, because delta_height is close to zero. Ideally it would be zero, so 0/0 --> NAN.
+			gradient = NAN;		// in this case, division by 0 should not lead not +Inf or -Inf, because delta_height is also close to zero. Ideally it would be zero, so 0/0 --> NAN.
 		}
 		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Gradient: %.2f", gradient);
 		addGradientHeight(gradient, height);  //FIXME: also copies gradient to gradient again (and height to height)
@@ -495,11 +499,13 @@ void Statistics::calculateGradient(int32_t _revs) {
 }
 
 void Statistics::addGradientFL(int16_t _grad, int16_t _height, int16_t _temp) {
+#if defined BC_FL_SUPPORT
 	// Convert to float
 	height = _height * 1.0;
 	gradient = _grad / 10.0;
 	temperature = _temp / 10.0;
 	ui.updateGrad(gradient, height);
+#endif
 }
 
 
@@ -509,7 +515,7 @@ uint32_t Statistics::getDistance(ESummaryType type, bool includeLost) const {
 	case SUM_ESP_TOUR:
 	case SUM_ESP_TRIP:
 	case SUM_ESP_START:
-		return distance - start_distance[type] - (includeLost ? 0 : lost_distance[type]);  //old
+		//return distance - start_distance[type] - (includeLost ? 0 : lost_distance[type]);  //old
 		return distHandler.getDistance(type);
 #if defined BC_FL_SUPPORT
 	case SUM_FL_TRIP:

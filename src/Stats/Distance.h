@@ -12,6 +12,7 @@
 #include <global_settings.h>
 #include <Ticker.h>
 #include <Stats/Statistics.h>
+
 class Distance {
 public:
 	Distance();
@@ -23,7 +24,7 @@ public:
 	void resetDistToZero(Statistics::ESummaryType);
 
 	float revsToDistance(uint32_t revs) {return revs * wheel_c;}
-	const float getDistance(Statistics::ESummaryType t) const {return curTotalDistance[t];}
+	const float getDistance(Statistics::ESummaryType t = Statistics::SUM_ESP_START) const {return curTotalDistance[t];}
 
 private:
 	float wheel_c = NAN;											// wheel_c as loaded from NVS

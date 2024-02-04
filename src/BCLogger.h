@@ -41,7 +41,7 @@ private:
 		float temp;  						// + 4 = 12
 		float grad;							// + 4 = 16
 		float height;						// + 4 = 20
-		uint32_t dist_m;					// + 4 = 24
+		float dist_m;						// + 4 = 24
 		uint8_t hr : 8;						// + 1 = 25
 		uint8_t cadence: 8;  				// + 1 = 26
 	};
@@ -92,7 +92,7 @@ public:
 	LogType getLogLevel(LogTag tag, bool serial = false);
 
 	// DataLogger
-	void appendDataLog(float speed, float temp, float gradient, uint32_t distance, float height, uint8_t hr);
+	void appendDataLog(float speed, float temp, float gradient, float distance, float height, uint8_t hr);
 
 	int16_t listDir(const String& dirname, uint8_t levels);
 
