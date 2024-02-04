@@ -147,7 +147,6 @@ String Statistics::generateJSONArray() {
 void Statistics::restoreStats() {
 	for (uint_fast8_t c = 0 ; c < SUM_ESP_START; c++) {
 		StatPreferences[c].begin(SUM_TYPE_STRING[c]);
-//		start_distance[c] = StatPreferences[c].getLong("START_DISTANCE", 0);
 		lost_distance[c]  = StatPreferences[c].getLong("LOST_DISTANCE",  0);
 		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Loaded lost distance %d) from preferences: %s", lost_distance[c], SUM_TYPE_STRING[c]);
 		for (uint_fast8_t d = 0 ; d < EDrivingStateMax ; d++) {
@@ -156,31 +155,17 @@ void Statistics::restoreStats() {
 		}
 		//StatPreferences[c].end();
 	}
-	StatPreferences[SUM_ESP_START].begin(SUM_TYPE_STRING[SUM_ESP_START]);
-//	start_distance[SUM_ESP_START] =StatPreferences[SUM_ESP_START].getLong("START_DISTANCE", 0);
-//	bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Loaded start distance %d from preferences.", start_distance[SUM_ESP_START]);
-//	distance = start_distance[SUM_ESP_START];
 }
 
 void Statistics::autoStore() {
 	bclog.log(BCLogger::Log_Debug, BCLogger::TAG_STAT, "Store distance and time to preferences");
 	for (uint_fast8_t c = 0 ; c < SUM_ESP_START; c++) {
-//		bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_STAT, "Store distance to preferences %s", SUM_TYPE_STRING[c]);
-//		if (!StatPreferences[c].putLong("START_DISTANCE", start_distance[c])) {
-//			bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_STAT, "Can't save distance %s to preferences", SUM_TYPE_STRING[c]);
-//		}
-//		if (!StatPreferences[c].putLong("LOST_DISTANCE", lost_distance[c])) {
-//			bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_STAT, "Can't save lost distance %s to preferences", SUM_TYPE_STRING[c]);
-//		}
 		for (uint_fast8_t d = 0 ; d < EDrivingStateMax ; d++) {
 			if (!StatPreferences[c].putLong(PREF_TIME_STRING[d], time_in[d][c])) {
 				bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_STAT, "Can't save time in %s for %s to preferences", PREF_TIME_STRING[d], SUM_TYPE_STRING[c]);
 			}
 		}
 	}
-//	if (!StatPreferences[SUM_ESP_START].putLong("START_DISTANCE", distance)) {
-//		bclog.log(BCLogger::Log_Warn, BCLogger::TAG_STAT, "Can't save current distance (SUM_ESP_START) to preferences");
-//	}
 
 	updateTimeSeries();		// FIMXE: test only
 	createChartArray(1);		// FIXME: test only

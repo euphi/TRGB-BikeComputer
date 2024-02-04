@@ -184,7 +184,7 @@ public:
 	void setup();
 	void addSpeed(float speed);  // in 0,1km/h
 	void addDistance(uint32_t dist, ESummaryType type = SUM_ESP_TOUR);
-	bool isConnected() {return (curDriveState == DS_NO_CONN);}
+	bool isConnected() {return (curDriveState != DS_NO_CONN);}
 
 	void reset(ESummaryType type);
 	void updateDistance(uint32_t dist, uint32_t revs);
