@@ -17,7 +17,6 @@
 
 #include "ui/Screens/Settings/ui_Settings.h"
 
-#include "ui/Screens/MainNoFL/ui_MainNoFL.h"
 #include "ui/Screens/MainNoFL/ui_MainNoFL_CustFunc.h"
 
 #include "ui/Screens/Chart/ui.h"
@@ -27,6 +26,7 @@
 #include "ui/ui_custFunc.h"
 
 #include <DateTime.h>
+#include <ui/Screens/MainNoFL/ui.h>
 
 void startTaskUiUpdate(void*) {
 	ui.updateHandler();

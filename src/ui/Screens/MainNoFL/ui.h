@@ -45,6 +45,8 @@ extern lv_obj_t * ui_contHeight;
 extern lv_obj_t * ui_LabelHeight;
 extern lv_obj_t * ui_LabelGradient;
 extern lv_obj_t * ui_LabelTemp;
+void ui_event_ImgState(lv_event_t * e);
+extern lv_obj_t * ui_ImgState;
 
 #ifdef __cplusplus
 } /*extern "C"*/

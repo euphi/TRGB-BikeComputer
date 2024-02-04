@@ -119,8 +119,6 @@ void Distance::updateRevs(uint32_t revs, uint16_t timestamp) {
 //		}
 //	}
 
-
-
 	/* Scenario
 	 * 3. Normal Update
 	 */
@@ -144,24 +142,26 @@ void Distance::updateRevs(uint32_t revs, uint16_t timestamp) {
 
 void Distance::store() {
 	bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_STAT, "Ticker: Store in Preferences: %d revs.", lastRevs);
-	storeDistanceAndResetRevs();		//TODO: This will be inaccurate over time (if total distance is in a range that float is to inaccurate for small additions)
+	// To minimize added up floating point error, just store, but continue to use values as loaded at startup.
+	//    --> Error only adds up once per restart. Error is smaller than half wheel_c till approx 6500km total distance.
+	storeDistanceAndResetRevs(false);
 }
 
 float Distance::calculateSpeed(uint32_t revs, uint16_t duration) {
-		if (revs > 0) {
-			last_speedUpdate = millis();
-			bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_STAT, "Calculate new speed: %d * %.4f * 1024 * 3.6 / %d", revs, wheel_c, duration);
-			//Timestamp (duration) is 1024 Ticks per sec
-			// km/h     1        m  * tick/s * (km/h / m/s)  / tick
-			return (revs * wheel_c * 1024 * 3.6 ) / duration;
+	if (revs > 0) {
+		last_speedUpdate = millis();
+		bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_STAT, "Calculate new speed: %d * %.4f * 1024 * 3.6 / %d", revs, wheel_c, duration);
+		//Timestamp (duration) is 1024 Ticks per sec
+		// km/h     1        m  * tick/s * (km/h / m/s)  / tick
+		return (revs * wheel_c * 1024 * 3.6) / duration;
+	} else {
+		if (millis() - last_speedUpdate > 1200) {
+			return 0.0;
 		} else {
-			if (millis() - last_speedUpdate > 1200) {
-				return 0.0;
-			} else {
-				bclog.log(BCLogger::Log_Info, BCLogger::TAG_STAT, "Ignore 0 revolutions (speed) since last update is less than 1200ms");
-				return NAN;
-			}
+			bclog.log(BCLogger::Log_Info, BCLogger::TAG_STAT, "Ignore 0 revolutions (speed) since last update is less than 1200ms");
+			return NAN;
 		}
+	}
 }
 
 bool Distance::updateWheelCirc(float circ_in_m) {
@@ -173,7 +173,7 @@ bool Distance::updateWheelCirc(float circ_in_m) {
 	wheel_c = circ_in_m;
 	Preferences params;											// wheel circumference (other params could be added later)
 	String idx_str(currentBikeIdx);
-	params.begin((String("DIST_PARAMS_") + idx_str).c_str(), true);
+	params.begin((String("DIST_PARAMS_") + idx_str).c_str(), false);
 	bool ok = true;
 	if (params.putFloat("wheel_circ", wheel_c) < 4) {
 		bclog.logf(BCLogger::Log_Error, BCLogger::TAG_STAT, "Cannot write to NVS to store wheel circ for %s", idx_str.c_str());
@@ -245,7 +245,6 @@ void Distance::setupWebserver() {
 		}
 		String jsonData;
 		serializeJson(jsonDoc, jsonData);
-		// Send the JSON data as the response
 		request->send(200, "application/json", jsonData);
 	});
 	// Endpoint for getting distance
@@ -257,7 +256,6 @@ void Distance::setupWebserver() {
 		}
 		String jsonData;
 		serializeJson(jsonDoc, jsonData);
-		// Send the JSON data as the response
 		request->send(200, "application/json", jsonData);
 	});
 	// Endpoint for resetting distance
@@ -271,7 +269,32 @@ void Distance::setupWebserver() {
 		} else if (mode=="TOTAL") {
 			resetDistToZero(Statistics::SUM_ESP_TOTAL);
 #endif
+		} else {
+			request->send(400, "text/plain", "Unknown distance type");
+			return;
 		}
 		request->send(200, "text/plain", "Distance reset successful");
 	});
+	  // Handler for updating total distance and wheel data
+	webserver.getServer().on("/stat/setDistanceData", HTTP_GET, [this](AsyncWebServerRequest *request) {
+		if (request->hasParam("type") && request->hasParam("value")) {
+			String dataType = request->getParam("type")->value();
+			float dataValue = request->getParam("value")->value().toFloat();
+			if (dataType == "totalDistance") {
+				bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Received new total distance: %.3f km", dataValue / 1000.0);
+				curTotalDistance[Statistics::SUM_ESP_TOTAL] = dataValue;
+				storeDistanceAndResetRevs(true);
+				request->send(200, "text/plain", "Total distance updated");
+			} else if (dataType == "wheelData") {
+				bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Received new wheel circumference: %f mm", dataValue);
+				updateWheelCirc(dataValue);
+				request->send(200, "text/plain", "Wheel data updated");
+			} else {
+				request->send(400, "text/plain", "Invalid data type");
+			}
+		} else {
+			request->send(400, "text/plain", "Invalid request");
+		}
+	});
+
 }

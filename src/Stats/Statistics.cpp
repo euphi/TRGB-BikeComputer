@@ -103,25 +103,6 @@ void Statistics::setup() {
 		String jsonArray = this->generateJSONArray();
 		request->send(200, "application/json", jsonArray);
 	});
-
-	  // Handler for updating total distance and wheel data
-	webserver.getServer().on("/stat/updateData", HTTP_GET, [](AsyncWebServerRequest *request) {
-		if (request->hasParam("type") && request->hasParam("value")) {
-			String dataType = request->getParam("type")->value();
-			float dataValue = request->getParam("value")->value().toFloat();
-			if (dataType == "totalDistance") {
-				bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Received new total distance: %.3f km", dataValue / 1000.0);
-				request->send(200, "text/plain", "Total distance updated");
-			} else if (dataType == "wheelData") {
-				bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Received new wheel circumference: %d mm", static_cast<uint32_t>(round(dataValue)));
-				request->send(200, "text/plain", "Wheel data updated");
-			} else {
-				request->send(400, "text/plain", "Invalid data type");
-			}
-		} else {
-			request->send(400, "text/plain", "Invalid request");
-		}
-	});
 }
 
 // Helper function to generate a JSON array from a float array
@@ -203,8 +184,11 @@ void Statistics::cycle() {
 	case DS_BREAK:
 		if (speed > 5.5) {
 			setCurDriveState(cadence < 40  ? DS_DRIVE_COASTING : DS_DRIVE_POWER);
+			offAfterMinutes = 5;
 		}
-		if (time_in_break > (5 * 60000)) {		// switch off after 5 minutes
+		// no break - also switch off in NO_CONN
+	case DS_NO_CONN:
+		if (time_in_break > (offAfterMinutes * 60000)) {		// switch off after 5 minutes
 			// TODO: Add warning on display before switch-off and add button to override
 			trgb.deepSleep();
 		}

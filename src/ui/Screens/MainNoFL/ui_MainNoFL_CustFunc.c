@@ -6,8 +6,7 @@
  */
 
 
-#include "ui_MainNoFL.h"
-
+#include <ui/Screens/MainNoFL/ui.h>
 #include "ui_MainNoFL_CustFunc.h"
 
 #include "ui/ui_Navi.h"  // for nav images

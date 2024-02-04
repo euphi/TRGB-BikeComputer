@@ -11,13 +11,13 @@
     <h1>Distance Statistics</h1>
     
     <!-- Input fields and buttons for distance and wheel diameter -->
-    <label for="totalDistance">Total Distance (km):</label>
-    <input type="number" id="totalDistance" step="0.01" placeholder="Enter total distance [m]">
-    <button onclick="updateTotalDistance()">Update</button>
-
-    <label for="wheelDiameter">Wheel Diameter (mm):</label>
-    <input type="number" id="wheelDiameter" step="1" placeholder="Enter wheel diameter [m]">
-    <button onclick="updateWheelDiameter()">Update</button>
+   	<label for="totalDistance">Total Distance (km):</label>
+	<input type="number" id="totalDistance" step="0.01" placeholder="Enter total distance">
+	<button onclick="updateData('totalDistance')">Update Total Distance</button>
+   
+    <label for="wheelData">Wheel Circumference (mm):</label>
+	<input type="number" id="wheelData" step="1" placeholder="Enter wheel circumference">
+	<button onclick="updateData('wheelData')">Update Wheel Data</button>
 
 		<!-- Table with typical tire circumferences for road/gravel bikes -->
 		<table>
@@ -61,28 +61,16 @@
   </div>
 
   <script>
-    // JavaScript functions to handle updates
-    function updateTotalDistance() {    
-    	    // Ask for confirmation
-    	    var confirmed = confirm("Are you sure you want to update the total distance?");
-    	    
-    	    if (confirmed) {
-    	      // User confirmed, proceed with the update
-    	      fetch('/stat/updateTotalDistance')
-    	        .then(response => response.json())
-    	        .then(data => {
-    	          // Update the displayed total distance
-    	          document.getElementById('totalDistance').innerText = data.totalDistance;
-    	        });
-    	    }
-   	  }
-
-    function updateWheelDiameter() {
-      const wheelDiameter = parseInt(document.getElementById('wheelDiameter').value);
-      if (!isNaN(wheelDiameter)) {
-        // You can perform further calculations or send data to the server as needed
-      }
-    }
+  
+  function updateData(dataType) {
+	    const inputValue = parseInt(document.getElementById(dataType).value);
+	    if (!isNaN(inputValue)) {
+	      // Send the value to the server
+	      fetch(`/stat/setDistanceData?type=${dataType}&value=${inputValue}`)
+	        .then(response => response.text())
+	        .then(data => console.log(data)); // Log the server's response (you can handle it as needed)
+	    }
+	  }
   </script>
 
 </body>

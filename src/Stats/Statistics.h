@@ -134,6 +134,8 @@ private:
 	int16_t cadence = 0, cadence_tot = -1;
 	float speed=0.0;
 
+	uint8_t offAfterMinutes = 5;
+
 	//int16_t grad = 0, height = 0;
 
 //	uint32_t start_distance[ESummaryTypeMax];   // start_distance: For locally stored distances, this is the distance the counter was reset. For extern stored (FL) distance this is the actual distance
