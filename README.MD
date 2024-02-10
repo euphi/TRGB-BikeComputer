@@ -106,3 +106,13 @@ If you use the komoot App on your mobile and start following a route (load prepl
 - if you are off your route, komoot often asks to confirm new route on mobile even if route recalculation is switched on.
 - You must stop and store the route to finish navigation, otherwise your mobile keeps sending navigation instructions.
 - the instructions to connect device to komoot may be misleading. You don't need to manually connect, but you need to activate routing support and then load a route. (To see if komoot advertise its navigation service, use another mobile with a BLE scanner).
+
+
+
+### Licences and Attributions
+
+#### Images
+[Cycling icons created by Futuer - Flaticon]("https://www.flaticon.com/free-icons/cycling")
+[Parked bicycles - Icon von Prashanth Rapolu 15](https://de.freepik.com/icon/fahrrad_7764338#fromView=resource_detail&position=7)
+
+

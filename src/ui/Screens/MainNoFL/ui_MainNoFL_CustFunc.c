@@ -87,3 +87,8 @@ void ui_SMainNoFLUpdateStats(const char* modeStr, const char* avgStr, float avgS
 	lv_label_set_text_fmt(ui_LabelTemp, "%.1f", temperature);
 }
 
+void ui_SMainNoFLUpdateStateIcon(const lv_img_dsc_t * pStateIcon, lv_color_t color) {
+	lv_img_set_src(ui_ImgState, pStateIcon);
+	lv_obj_set_style_img_recolor(ui_ImgState, color, LV_PART_MAIN | LV_STATE_DEFAULT);
+}
+

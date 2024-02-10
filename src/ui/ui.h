@@ -3,8 +3,7 @@
 // LVGL version: 8.2.0
 // Project name: SquareLine_Project
 
-#ifndef _SQUARELINE_PROJECT_UI_H
-#define _SQUARELINE_PROJECT_UI_H
+#pragma once
 
 #ifdef __cplusplus
 extern "C" {
@@ -84,9 +83,12 @@ void statModeNext(bool dir);
 void resetStats(lv_event_t * e);
 void statsTimeMode(bool dir);
 
+//enum UIDriveStateEvent {
+	static const uint8_t DSE_delayStandby = 1;
+	static const uint8_t DSE_switchOff = 2;
+//};
+void driveStateUpdate(const uint8_t op);
 
 #ifdef __cplusplus
 } /*extern "C"*/
-#endif
-
 #endif

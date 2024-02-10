@@ -12,6 +12,8 @@
 
 #include "ui/ui_helpers.h"
 
+#include <lvgl.h>
+
 ///////////////////// VARIABLES ////////////////////
 lv_obj_t * ui_SMainNoFL;
 void ui_event_PanelNav(lv_event_t * e);
@@ -109,6 +111,7 @@ void ui_event_ImgState(lv_event_t * e)
     lv_event_code_t event_code = lv_event_get_code(e);
     lv_obj_t * target = lv_event_get_target(e);
     if(event_code == LV_EVENT_CLICKED) {
-        _ui_screen_change(ui_SChart, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 500, 0);
+        driveStateUpdate(DSE_delayStandby);
     }
 }
+

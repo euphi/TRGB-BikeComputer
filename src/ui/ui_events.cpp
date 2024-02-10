@@ -114,3 +114,16 @@ void statsTimeMode(bool dir)
 	ui_ScrMainUpdateTimeMode(Statistics::AVG_TYPE_STRING[ui.getStatTimeMode()]);
 }
 
+
+void driveStateUpdate(const uint8_t op)
+{
+	switch (op) {
+	case DSE_delayStandby:
+		stats.delayStandby();
+		break;
+	default:
+		break;
+	}
+}
+
+

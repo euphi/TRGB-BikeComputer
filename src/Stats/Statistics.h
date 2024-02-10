@@ -30,7 +30,6 @@ public:
 		AVG_NOBREAK,   // but Pause/Stop
 		EAvgTypeMax
 	};
-private:
 	enum EDrivingState {	// Various driving states
 		DS_NO_CONN,
 		DS_BREAK,
@@ -40,6 +39,7 @@ private:
 		EDrivingStateMax
 	};
 
+private:
 
 	enum EStatDataType {
 		DT_SPEED,
@@ -187,6 +187,7 @@ public:
 	void addSpeed(float speed);  // in 0,1km/h
 	void addDistance(uint32_t dist, ESummaryType type = SUM_ESP_TOUR);
 	bool isConnected() {return (curDriveState != DS_NO_CONN);}
+	void delayStandby();
 
 	void reset(ESummaryType type);
 	void updateDistance(uint32_t dist, uint32_t revs);
@@ -220,5 +221,7 @@ public:
 	void createChartArray(uint8_t idx);
 
 	Distance& getDistHandler() {return distHandler;}
+
+	EDrivingState getCurDriveState() const {return curDriveState;}
 };
 

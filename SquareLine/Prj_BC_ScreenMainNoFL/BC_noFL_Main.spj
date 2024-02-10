@@ -8139,7 +8139,27 @@
               },
               {
                 "part": "lv.PART.MAIN",
-                "childs": [],
+                "childs": [
+                  {
+                    "nid": -289442081,
+                    "strtype": "_style/StyleState",
+                    "strval": "DEFAULT",
+                    "childs": [
+                      {
+                        "nid": 976030432,
+                        "strtype": "_style/Image_reColor",
+                        "intarray": [
+                          0,
+                          0,
+                          255,
+                          255
+                        ],
+                        "InheritedType": 7
+                      }
+                    ],
+                    "InheritedType": 1
+                  }
+                ],
                 "nid": -248292251,
                 "strtype": "IMAGE/Style_main",
                 "strval": "lv.PART.MAIN, Rectangle, Image",
@@ -8154,7 +8174,7 @@
                   {
                     "nid": -1273065060,
                     "strtype": "_custom/name",
-                    "strval": "EvWifi",
+                    "strval": "EvStateIcon",
                     "InheritedType": 10
                   },
                   {
@@ -8170,50 +8190,39 @@
                     "InheritedType": 10
                   },
                   {
-                    "nid": -940278401,
+                    "nid": -1030261271,
                     "strtype": "_event/action",
-                    "strval": "CHANGE SCREEN",
+                    "strval": "CALL FUNCTION",
                     "childs": [
                       {
-                        "nid": -166612543,
-                        "strtype": "CHANGE SCREEN/Name",
-                        "strval": "CHANGE SCREEN",
+                        "nid": -682871507,
+                        "strtype": "CALL FUNCTION/Name",
+                        "strval": "CALL FUNCTION",
                         "InheritedType": 10
                       },
                       {
-                        "nid": 1860668207,
-                        "strtype": "CHANGE SCREEN/Call",
-                        "strval": "ChangeScreen( <{Screen_to}>, lv.SCR_LOAD_ANIM.<{Fade_mode}>, <{Speed}>, <{Delay}>)",
+                        "nid": -613583432,
+                        "strtype": "CALL FUNCTION/Call",
+                        "strval": "<{Function_name}>( event_struct )",
                         "InheritedType": 10
                       },
                       {
-                        "nid": 222681018,
-                        "strtype": "CHANGE SCREEN/CallC",
-                        "strval": "_ui_screen_change( &<{Screen_to}>, LV_SCR_LOAD_ANIM_<{Fade_mode}>, <{Speed}>, <{Delay}>, &<{Screen_to}>_screen_init);",
+                        "nid": -755714954,
+                        "strtype": "CALL FUNCTION/CallC",
+                        "strval": "<{Function_name}>( e );",
                         "InheritedType": 10
                       },
                       {
-                        "nid": 1293709008,
-                        "strtype": "CHANGE SCREEN/Screen_to",
-                        "strval": "GUID7263531-768085S8942168",
-                        "InheritedType": 9
+                        "nid": -1581701333,
+                        "strtype": "CALL FUNCTION/Function_name",
+                        "strval": "driveStateUpdate",
+                        "InheritedType": 10
                       },
                       {
-                        "nid": -2115968311,
-                        "strtype": "CHANGE SCREEN/Fade_mode",
-                        "strval": "MOVE_RIGHT",
-                        "InheritedType": 3
-                      },
-                      {
-                        "nid": -566192164,
-                        "strtype": "CHANGE SCREEN/Speed",
-                        "integer": 500,
-                        "InheritedType": 6
-                      },
-                      {
-                        "nid": 852867075,
-                        "strtype": "CHANGE SCREEN/Delay",
-                        "InheritedType": 6
+                        "nid": 866145260,
+                        "strtype": "CALL FUNCTION/Dont_export_function",
+                        "strval": "False",
+                        "InheritedType": 2
                       }
                     ],
                     "InheritedType": 10
@@ -8495,7 +8504,7 @@
     "theme_color2": 0,
     "uiExportFolderPath": "/home/ian/Coding/Bike/TRGB-BikeComputer/SquareLine/exported_files/SMainNoFl",
     "projectExportFolderPath": "",
-    "backup_cnt": 31,
+    "backup_cnt": 43,
     "autosave_cnt": 0,
     "lvgl_version": "8.3.4",
     "callfuncsexport": "CPP_FILE",

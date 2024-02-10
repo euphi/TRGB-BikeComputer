@@ -25,6 +25,9 @@ void ui_SMainNoFLUpdateStats(const char* typeStr, const char* avgStr, float spee
 
 void ui_SMainNoFLUpdateClock(uint32_t dist);
 
+void ui_SMainNoFLUpdateStateIcon(const lv_img_dsc_t * pStateIcon, lv_color_t color);
+
+
 
 #ifdef __cplusplus
 } /*extern "C"*/

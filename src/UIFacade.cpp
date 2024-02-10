@@ -15,6 +15,8 @@
 #include "ui/ui_Navi.h"
 #include "ui/ui_NaviCustFunc.h"
 
+#include "ui/img/state-icons.h"
+
 #include "ui/Screens/Settings/ui_Settings.h"
 
 #include "ui/Screens/MainNoFL/ui_MainNoFL_CustFunc.h"
@@ -214,6 +216,45 @@ void UIFacade::updateIP(const String& ipStr) {
 		bclog.log(BCLogger::Log_Error, BCLogger::TAG_OP, "Update IP blocked by mutex");
 	}
 }
+
+void UIFacade::updateStateIcon(Statistics::EDrivingState state, UIColor col) {
+	const lv_img_dsc_t *pCurStateIcon = NULL;
+	switch (state) {
+	case Statistics::DS_DRIVE_COASTING:
+	case Statistics::DS_DRIVE_POWER:
+		pCurStateIcon = &stateCyclePower;
+		break;
+	case Statistics::DS_BREAK:
+	case Statistics::DS_STOP:
+		pCurStateIcon = &stateStop;
+		break;
+	case Statistics::DS_NO_CONN:
+	default:
+		pCurStateIcon = &nav_64_nonav;
+	}
+
+	lv_color_t lvcol = lv_color_hex(0x000000);
+
+	switch (col) {
+	case UI_ColorWarn:
+		lvcol = lv_color_hex(0x807000);
+		break;
+	case UI_ColorCrit:
+		lvcol = lv_color_hex(0xFF3000);
+		break;
+	case UI_ColorOK:
+		lvcol = lv_color_hex(0x000080);
+		break;
+	}
+
+	if (xSemaphoreTake(xUIDrawMutex, 50 / portTICK_PERIOD_MS) == pdTRUE) {
+		ui_SMainNoFLUpdateStateIcon(pCurStateIcon, lvcol);
+		xSemaphoreGive(xUIDrawMutex);
+	} else {
+		bclog.log(BCLogger::Log_Error, BCLogger::TAG_OP, "Update IP blocked by mutex");
+	}
+}
+
 
 void UIFacade::updateNavi(const String& navStr, uint32_t dist, uint8_t dirCode) {
 	static uint8_t oldDirCode = 0;

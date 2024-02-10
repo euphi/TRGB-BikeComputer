@@ -188,9 +188,11 @@ void Statistics::cycle() {
 		}
 		// no break - also switch off in NO_CONN
 	case DS_NO_CONN:
-		if (time_in_break > (offAfterMinutes * 60000)) {		// switch off after 5 minutes
-			// TODO: Add warning on display before switch-off and add button to override
+		if (time_in_break > (offAfterMinutes * 60000)) {		// auto-switch off  (default 50min, can be delayed)
 			trgb.deepSleep();
+		} else if ((offAfterMinutes * 60000 - time_in_break ) < 60000 ) {
+			bool blink = ((time_in_break / 1000) % 2 ) == 1;
+			ui.updateStateIcon(curDriveState, blink ? UIFacade::UI_ColorWarn : UIFacade::UI_ColorNeutral);
 		}
 		break;
 	// state DRIVING
@@ -207,6 +209,14 @@ void Statistics::cycle() {
 				setCurDriveState(DS_DRIVE_POWER);
 			}
 		}
+	}
+}
+
+void Statistics::delayStandby() {
+	time_t time_in_break = millis() - timestamp_stop;
+	if ((offAfterMinutes * 60000 - time_in_break ) < 60000 ) {
+		offAfterMinutes++;
+		ui.updateStateIcon(curDriveState, UIFacade::UI_ColorOK);
 	}
 }
 
@@ -507,6 +517,7 @@ void Statistics::setCurDriveState(EDrivingState _curDriveState) {
 	curDriveState = _curDriveState;
 	if (_curDriveState == DS_STOP) timestamp_stop = millis();
 	bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Driving state changed to %s", (PREF_TIME_STRING[curDriveState]+8));
+	ui.updateStateIcon(curDriveState, UIFacade::UI_ColorNeutral);
 }
 
 uint32_t Statistics::getTime(ESummaryType type, EAvgType avgtype) const {

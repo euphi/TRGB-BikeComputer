@@ -54,6 +54,15 @@ public:
 	void setChartPosFirst(uint16_t pos, uint8_t idx);
 	void updateChart();
 
+	enum UIColor {
+		UI_ColorNeutral,
+		UI_ColorOK,
+		UI_ColorWarn,
+		UI_ColorCrit
+	};
+
+	void updateStateIcon(Statistics::EDrivingState state, UIColor col);
+
 
 private:
 	void updateData();
