@@ -83,11 +83,12 @@ void statModeNext(bool dir);
 void resetStats(lv_event_t * e);
 void statsTimeMode(bool dir);
 
-//enum UIDriveStateEvent {
-	static const uint8_t DSE_delayStandby = 1;
-	static const uint8_t DSE_switchOff = 2;
-//};
-void driveStateUpdate(const uint8_t op);
+typedef enum {
+	DSE_delayStandby = 1,
+	DSE_toggleStandbyMode,
+	DSE_switchOff
+} UIDriveStateEvent;
+void driveStateUpdate(const UIDriveStateEvent op);
 
 #ifdef __cplusplus
 } /*extern "C"*/

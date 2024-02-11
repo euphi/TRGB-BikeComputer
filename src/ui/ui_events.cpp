@@ -115,11 +115,14 @@ void statsTimeMode(bool dir)
 }
 
 
-void driveStateUpdate(const uint8_t op)
+void driveStateUpdate(const UIDriveStateEvent op)
 {
 	switch (op) {
 	case DSE_delayStandby:
 		stats.delayStandby();
+		break;
+	case DSE_toggleStandbyMode:
+		stats.toggleStandbyMode();
 		break;
 	default:
 		break;

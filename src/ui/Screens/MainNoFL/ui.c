@@ -112,6 +112,8 @@ void ui_event_ImgState(lv_event_t * e)
     lv_obj_t * target = lv_event_get_target(e);
     if(event_code == LV_EVENT_CLICKED) {
         driveStateUpdate(DSE_delayStandby);
+    } else if (event_code == LV_EVENT_LONG_PRESSED) {
+    	driveStateUpdate(DSE_toggleStandbyMode);
     }
 }
 

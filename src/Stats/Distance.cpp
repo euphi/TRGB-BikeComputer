@@ -134,8 +134,7 @@ void Distance::updateRevs(uint32_t revs, uint16_t timestamp) {
 		stats.addSpeed(newSpeed);
 	}
 
-	//stats.updateDistance(revs, revs-lastRevs); //FIXME: Refactor
-	stats.calculateGradient(curTotalDistance[Statistics::SUM_ESP_START]);
+	stats.checkDistance(curTotalDistance[Statistics::SUM_ESP_START]);
 	lastTimestamp = timestamp;
 	lastRevs = revs;
 }

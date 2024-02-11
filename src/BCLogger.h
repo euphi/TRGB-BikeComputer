@@ -92,7 +92,7 @@ public:
 	LogType getLogLevel(LogTag tag, bool serial = false);
 
 	// DataLogger
-	void appendDataLog(float speed, float temp, float gradient, float distance, float height, uint8_t hr);
+	void appendDataLog(const float speed, const float temp, const float gradient, const float distance, const float height, const uint8_t hr, const uint8_t cadence);
 
 	int16_t listDir(const String& dirname, uint8_t levels);
 

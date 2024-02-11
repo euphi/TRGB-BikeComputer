@@ -233,17 +233,16 @@ void UIFacade::updateStateIcon(Statistics::EDrivingState state, UIColor col) {
 		pCurStateIcon = &nav_64_nonav;
 	}
 
-	lv_color_t lvcol = lv_color_hex(0x000000);
-
+	lv_color_t lvcol = lv_color_black();
 	switch (col) {
 	case UI_ColorWarn:
-		lvcol = lv_color_hex(0x807000);
+		lvcol = lv_palette_main(LV_PALETTE_AMBER);
 		break;
 	case UI_ColorCrit:
-		lvcol = lv_color_hex(0xFF3000);
+		lvcol = lv_palette_main(LV_PALETTE_RED);
 		break;
 	case UI_ColorOK:
-		lvcol = lv_color_hex(0x000080);
+		lvcol = lv_palette_main(LV_PALETTE_GREEN);
 		break;
 	}
 

@@ -42,86 +42,45 @@ Statistics::Statistics(): distHandler(* new Distance())  {
 }
 
 void Statistics::setup() {
+	restoreStats();
+	distHandler.setup();
 	// What kind of sorcery is this?  --> See https://stackoverflow.com/questions/60985496/arduino-esp8266-esp32-ticker-callback-class-member-function
 	statCycle.attach_ms(500, +[](Statistics *thisInstance) {thisInstance->cycle();}, this);
 	statDataStore.attach(5, +[](Statistics *thisInstance) {thisInstance->dataStore();}, this);
 	statStore.attach(15, +[](Statistics *thisInstance) {thisInstance->autoStore();}, this);
-	restoreStats();
-	distHandler.setup();
 
 	for (uint_fast8_t i = 0 ; i < chart_array_count ; i++) {
 		ui.setChartArray(chart_array[i], i);
 	}
-
-	// Serve the HTML page
-	webserver.getServer().on("/stat/debugarray", HTTP_GET, [this](AsyncWebServerRequest *request) {
-		String htmlPage = "<!DOCTYPE html>\n";
-		htmlPage += "<html lang=\"en\">\n";
-		htmlPage += "<head>\n";
-		htmlPage += "  <meta charset=\"UTF-8\">\n";
-		htmlPage += "  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n";
-		htmlPage += "  <title>Array Viewer</title>\n";
-		htmlPage += "</head>\n";
-		htmlPage += "<body>\n";
-		htmlPage += "  <h1>Array Viewer</h1>\n";
-
-		htmlPage += "  <table>\n";
-		htmlPage += "    <tr>\n";
-		htmlPage += "      <th>Index</th>\n";
-		htmlPage += "      <th>DataArray</th>\n";
-		htmlPage += "      <th>Min</th>\n";
-		htmlPage += "      <th>Avg</th>\n";
-		htmlPage += "      <th>Max</th>\n";
-		htmlPage += "    </tr>\n";
-
-		htmlPage += "    <tr>\n";
-		htmlPage += "      <td>Current</td>\n";
-		htmlPage += "      <td>Count: " + String(timeData.curCountHr) + "</td>\n";
-		htmlPage += "      <td>" + String(timeData.currentMinMax.hr.min) + "</td>\n";
-		htmlPage += "      <td>" + String(timeData.currentMinMax.hr.avg) + "</td>\n";
-		htmlPage += "      <td>" + String(timeData.currentMinMax.hr.max) + "</td>\n";
-		htmlPage += "    </tr>\n";
-
-		for (int i = 0; i < sizeof(this->chart_array[1]) / sizeof(this->chart_array[1][0]); i++) {
-			S_DataPoint data = timeData.data[i].hr;
-			htmlPage += "    <tr>\n";
-			htmlPage += "      <td>" + ((chart_array_startPos[1] == i) ? String("-->") : String("")) + String(i) + "</td>\n";
-			htmlPage += "      <td>" + String(chart_array[1][i]) + "</td>\n";
-			htmlPage += "      <td>" + String(data.min) + "</td>\n";
-			htmlPage += "      <td>" + String(data.avg) + "</td>\n";
-			htmlPage += "      <td>" + String(data.max) + "</td>\n";
-			htmlPage += "    </tr>\n";
-		}
-		htmlPage += "</body>\n";
-		htmlPage += "</html>\n";
-
-		request->send(200, "text/html", htmlPage);
-	});
-
 	// Serve the array data as JSON
 	webserver.getServer().on("/stat/data", HTTP_GET, [this](AsyncWebServerRequest *request) {
 		String jsonArray = this->generateJSONArray();
 		request->send(200, "application/json", jsonArray);
 	});
+	setupWebserverDebug();
 }
 
 // Helper function to generate a JSON array from a float array
 String Statistics::generateJSONArray() {
 	time_t timenow;
-	time(&timenow);		// TODO: timestamp is a bit off.
+	time(&timenow);		// TODO: timestamp is a bit off, because its not synced with data storage
 	String jsonArray = "[[";
 	for (size_t i = 0; i < 400; i++) {
 		jsonArray += String(timenow - (400-i) * 5);
 		if (i < 399) jsonArray += ",";
 	}
-	jsonArray += "],[";
-	for (size_t i = 0; i < 400; i++) {
-		int16_t value = chart_array[1][(i+chart_array_startPos[1]) % 400];	//FIXME: idx 1 defaults to HR but may be changed
-		if (value == INT16_MAX) value = 0;
-		jsonArray += String(value);
-		if (i < 399) jsonArray += ",";
+	jsonArray += ']';
+	for (uint_fast8_t j = 0; j < 4; j++) {
+		jsonArray += ",[";
+		for (size_t i = 0; i < 400; i++) {
+			int16_t value = chart_array[j][(i + chart_array_startPos[j]) % 400];
+			if (value == INT16_MAX) value = 0;
+			jsonArray += String(value);
+			if (i < 399) jsonArray += ",";
+		}
+		jsonArray +=']';
 	}
-	jsonArray += "]]";
+	jsonArray += ']';
 	return jsonArray;
 }
 
@@ -148,12 +107,14 @@ void Statistics::autoStore() {
 		}
 	}
 
-	updateTimeSeries();		// FIMXE: test only
-	createChartArray(1);		// FIXME: test only
+	updateTimeSeries();			// FIXME: test only
+	for (uint_fast8_t j=0; j < 4 ; j++) {
+		createChartArray(j);	// FIXME: test only
+	}
 }
 
 void Statistics::dataStore() {
-	bclog.appendDataLog(speed, temperature, gradient, distHandler.getDistance(), height, hr);
+	bclog.appendDataLog(speed, temperature, gradient, distHandler.getDistance(), height, hr, cadence);
 }
 
 void Statistics::cycle() {
@@ -190,14 +151,12 @@ void Statistics::cycle() {
 	case DS_NO_CONN:
 		if (time_in_break > (offAfterMinutes * 60000)) {		// auto-switch off  (default 50min, can be delayed)
 			trgb.deepSleep();
-		} else if ((offAfterMinutes * 60000 - time_in_break ) < 60000 ) {
-			bool blink = ((time_in_break / 1000) % 2 ) == 1;
-			ui.updateStateIcon(curDriveState, blink ? UIFacade::UI_ColorWarn : UIFacade::UI_ColorNeutral);
 		}
 		break;
 	// state DRIVING
 	case DS_DRIVE_COASTING:
 	case DS_DRIVE_POWER:
+		timestamp_stop = time_now;	// Continuously update timestamp_stop if not in break/stop/disconnected (necessary so that
 		if (speed < 0.3) {
 			setCurDriveState(DS_STOP);
 		} else {
@@ -210,14 +169,22 @@ void Statistics::cycle() {
 			}
 		}
 	}
+	updateStateIcon();				// Always update in cycle, to support blinking and missed changes/init.
+	sensors.readBME280();
 }
 
 void Statistics::delayStandby() {
 	time_t time_in_break = millis() - timestamp_stop;
 	if ((offAfterMinutes * 60000 - time_in_break ) < 60000 ) {
 		offAfterMinutes++;
-		ui.updateStateIcon(curDriveState, UIFacade::UI_ColorOK);
+		updateStateIcon();	// Immediate update (user feedback)
 	}
+}
+
+void Statistics::toggleStandbyMode() {
+	if (offAfterMinutes == 255)	offAfterMinutes = ((millis()-timestamp_stop)/60000) + 5;
+	else offAfterMinutes = 255;
+	updateStateIcon();	// Immediate update (user feedback)
 }
 
 void Statistics::setConnected(bool connected) {
@@ -231,6 +198,21 @@ void Statistics::setConnected(bool connected) {
 		histDriveState = curDriveState;
 		setCurDriveState(DS_NO_CONN);
 	}
+}
+
+void Statistics::updateStateIcon() {
+	UIFacade::UIColor color = UIFacade::UI_ColorNeutral;
+	if (curDriveState == DS_NO_CONN || curDriveState == DS_BREAK) {
+		if (offAfterMinutes == 255)	color = UIFacade::UI_ColorOK;
+		else {
+			time_t time_in_break = millis() - timestamp_stop;
+			time_t remaining = offAfterMinutes * 60000 - time_in_break ;
+			if (( remaining < 60000) && (((time_in_break / 1000) % 2) == 1)) { // part after '&&' enables blinking
+				color = (remaining < 10000) ? UIFacade::UI_ColorCrit : UIFacade::UI_ColorWarn;
+			}
+		}
+	}
+	ui.updateStateIcon(curDriveState, color);
 }
 
 // ******************** Helper functions (static) ********************
@@ -383,20 +365,46 @@ void Statistics::createChartArray(uint8_t idx) {
 	uint32_t startcount = xthal_get_ccount();
 	bool modeTime = true; // true: X axis is time, false: X axis is distance
 	float scale = 1.0;
-	DataClass c = chart_array_type[idx];
+	DataClass dc = chart_array_type[idx];
 
 	// timeData.index is always the last written position + 1 - so the next value to be written. And thus it's also the first value to be shown in chart, if the newest point is the most right one.
 	chart_array_startPos[idx] = timeData.index;
 
 	for (uint16_t point = 0 ; point < 400 ; point ++) {
-		bool useMax = (point > 0 && timeData.data[point].hr.max > timeData.data[point-1].hr.max) && (point < 399 && timeData.data[point].hr.max > timeData.data[point+1].hr.max);
-		bool useMin = (point > 0 && timeData.data[point].hr.min < timeData.data[point-1].hr.min) && (point < 399 && timeData.data[point].hr.min < timeData.data[point+1].hr.min);
-		if (useMax && useMin) {
-			useMax = false;
-			useMin = false;
+		S_DataPoint dp;
+		switch (dc) {
+		case SPEED:
+			dp = timeData.data[point].speed;
+			break;
+		case HR:
+			dp = timeData.data[point].hr;
+			break;
+		case CADENCE:
+			dp = timeData.data[point].cadence;
+			break;
+		case DISTANCE:
+			timeData.data[point].distance;
+			break;
+		case HEIGHT:
+		case GRADIENT:
+		case TEMPERATURE:
+			//FIXME: in distance only
+			break;
+		};
+		//FIXME: Finalize min/max evalution
+//		bool useMax = (point > 0 && dp.max > timeData.data[point-1].hr.max) && (point < 399 && dp.max > timeData.data[point+1].hr.max);
+//		bool useMin = (point > 0 && dp.min < timeData.data[point-1].hr.min) && (point < 399 && dp.min < timeData.data[point+1].hr.min);
+//		if (useMax && useMin) {
+//			useMax = false;
+//			useMin = false;
+//		}
+		float val = NAN;
+		if (dc == DISTANCE) {
+			val = timeData.data[point].distance;
+		} else {
+			//val = (useMax ? dp.max : ( useMin ? dp.min : dp.avg) ) * scale;
+			val = dp.avg * scale;
 		}
-		S_DataPoint lp =  timeData.data[point].hr;
-		float val = (useMax ? lp.max : ( useMin ? lp.min : lp.avg) ) * scale;
 		chart_array[idx][point] = isnan(val) ? INT16_MAX : static_cast<int16_t>(round(val));
 	}
 
@@ -424,20 +432,15 @@ void Statistics::createChartArray(uint8_t idx) {
 //
 //}
 
-void Statistics::updateDistance(uint32_t _dist, uint32_t _revs) {
-//	distance = _dist;
-//	if (!distance_start) {
-//		distance_start = true;
-//		//addDistance(distance, SUM_ESP_START); //FIXME: Replaced by following line. Test it and if ok, delete this line here
-//		start_distance[SUM_ESP_START] = distance;
-//		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Initial distance: %d meter.", distance);
-//		distanceData.startDistance = distance;
-//		distanceData.curDistance = distance;
-//		distanceData.index = 0;		// FIXME: Handle reconnect case better
-//	}
-	calculateGradient(_revs);
-	updateDistanceSeries();
+
+void Statistics::checkDistance(const float dist) {
+	if ( (dist - distSeries_last) > 500) {
+		distSeries_last = dist;
+		updateDistanceSeries();
+	}
+	calculateGradient(dist);
 }
+
 
 // ******************** internal calculations ********************
 
@@ -478,7 +481,7 @@ void Statistics::calculateGradient(float newDist) {
 }
 
 void Statistics::addGradientFL(int16_t _grad, int16_t _height, int16_t _temp) {
-#if defined BC_FL_SUPPORT
+#ifdef BC_FL_SUPPORT
 	// Convert to float
 	height = _height * 1.0;
 	gradient = _grad / 10.0;
@@ -517,7 +520,6 @@ void Statistics::setCurDriveState(EDrivingState _curDriveState) {
 	curDriveState = _curDriveState;
 	if (_curDriveState == DS_STOP) timestamp_stop = millis();
 	bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Driving state changed to %s", (PREF_TIME_STRING[curDriveState]+8));
-	ui.updateStateIcon(curDriveState, UIFacade::UI_ColorNeutral);
 }
 
 uint32_t Statistics::getTime(ESummaryType type, EAvgType avgtype) const {
@@ -551,6 +553,53 @@ float Statistics::getAvgCadence(EAvgType avgtype) const {
 	//        .. in m         / sec                             * 3.6 km/h / m/s..
 		return (cadence_tot / static_cast<float>(getTime(SUM_ESP_START, avgtype)) ) * 3.6;
 
+}
+
+
+void Statistics::setupWebserverDebug() {
+	webserver.getServer().on("/stat/debugarray", HTTP_GET, [this](AsyncWebServerRequest *request) {
+		String htmlPage = "<!DOCTYPE html>\n";
+		htmlPage += "<html lang=\"en\">\n";
+		htmlPage += "<head>\n";
+		htmlPage += "  <meta charset=\"UTF-8\">\n";
+		htmlPage += "  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n";
+		htmlPage += "  <title>Array Viewer</title>\n";
+		htmlPage += "</head>\n";
+		htmlPage += "<body>\n";
+		htmlPage += "  <h1>Array Viewer</h1>\n";
+
+		htmlPage += "  <table>\n";
+		htmlPage += "    <tr>\n";
+		htmlPage += "      <th>Index</th>\n";
+		htmlPage += "      <th>DataArray</th>\n";
+		htmlPage += "      <th>Min</th>\n";
+		htmlPage += "      <th>Avg</th>\n";
+		htmlPage += "      <th>Max</th>\n";
+		htmlPage += "    </tr>\n";
+
+		htmlPage += "    <tr>\n";
+		htmlPage += "      <td>Current</td>\n";
+		htmlPage += "      <td>Count: " + String(timeData.curCountHr) + "</td>\n";
+		htmlPage += "      <td>" + String(timeData.currentMinMax.hr.min) + "</td>\n";
+		htmlPage += "      <td>" + String(timeData.currentMinMax.hr.avg) + "</td>\n";
+		htmlPage += "      <td>" + String(timeData.currentMinMax.hr.max) + "</td>\n";
+		htmlPage += "    </tr>\n";
+
+		for (int i = 0; i < sizeof(this->chart_array[1]) / sizeof(this->chart_array[1][0]); i++) {
+			S_DataPoint data = timeData.data[i].hr;
+			htmlPage += "    <tr>\n";
+			htmlPage += "      <td>" + ((chart_array_startPos[1] == i) ? String("-->") : String("")) + String(i) + "</td>\n";
+			htmlPage += "      <td>" + String(chart_array[1][i]) + "</td>\n";
+			htmlPage += "      <td>" + String(data.min) + "</td>\n";
+			htmlPage += "      <td>" + String(data.avg) + "</td>\n";
+			htmlPage += "      <td>" + String(data.max) + "</td>\n";
+			htmlPage += "    </tr>\n";
+		}
+		htmlPage += "</body>\n";
+		htmlPage += "</html>\n";
+
+		request->send(200, "text/html", htmlPage);
+	});
 }
 
 

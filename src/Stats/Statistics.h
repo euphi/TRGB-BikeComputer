@@ -93,6 +93,7 @@ private:
 
 	S_distanceComplete distanceData;
 
+	float distSeries_last = 0.0;
 
 	// Data storage per time
 	struct S_timeData {	// 48 Byte
@@ -158,15 +159,15 @@ private:
 	void updateDistanceSeries();
 	void updateTimeSeries();
 	String generateJSONArray();
-public:
+	void setupWebserverDebug();
 	void calculateGradient(float newDist);		//FIXME: Use notify mechanism (about updated distance)
-private:
+
 	//TODO: Move into separate class
-	enum DataClass {SPEED = 0, HR, HEIGHT, GRADIENT, TEMPERATURE};
+	enum DataClass {SPEED = 0, HR, HEIGHT, GRADIENT, TEMPERATURE, CADENCE, DISTANCE};
 	static const uint8_t chart_array_count = 4;
 	int16_t chart_array[chart_array_count][400];
 	uint16_t chart_array_startPos[chart_array_count];
-	DataClass chart_array_type[chart_array_count] = {SPEED, HR, HEIGHT, GRADIENT};
+	DataClass chart_array_type[chart_array_count] = {SPEED, HR, CADENCE, DISTANCE};
 
 //	int16_t height_array[400] = {};
 //	uint16_t height_array_idx = 0;
@@ -188,9 +189,14 @@ public:
 	void addDistance(uint32_t dist, ESummaryType type = SUM_ESP_TOUR);
 	bool isConnected() {return (curDriveState != DS_NO_CONN);}
 	void delayStandby();
+	void toggleStandbyMode();
+private:
+	void updateStateIcon();
 
+public:
 	void reset(ESummaryType type);
-	void updateDistance(uint32_t dist, uint32_t revs);
+	//void updateDistance(uint32_t dist, uint32_t revs);
+	void checkDistance(const float dist);
 	void addHR(int16_t heartrate);
 	void addCadence(int16_t cadence, int16_t total);
 	void setConnected(bool connected);

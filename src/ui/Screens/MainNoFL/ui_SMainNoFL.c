@@ -273,7 +273,7 @@ void ui_SMainNoFL_screen_init(void)
     lv_obj_set_x(ui_LabelHeight, -105);
     lv_obj_set_y(ui_LabelHeight, -5);
     lv_obj_set_align(ui_LabelHeight, LV_ALIGN_TOP_RIGHT);
-    lv_label_set_text(ui_LabelHeight, "320m");
+    lv_label_set_text(ui_LabelHeight, "-/- m");
     lv_obj_set_style_text_color(ui_LabelHeight, lv_color_hex(0x000000), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_opa(ui_LabelHeight, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_font(ui_LabelHeight, &lv_font_montserrat_36, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -284,7 +284,7 @@ void ui_SMainNoFL_screen_init(void)
     lv_obj_set_x(ui_LabelGradient, -3);
     lv_obj_set_y(ui_LabelGradient, 0);
     lv_obj_set_align(ui_LabelGradient, LV_ALIGN_BOTTOM_RIGHT);
-    lv_label_set_text(ui_LabelGradient, "-1.2%");
+    lv_label_set_text(ui_LabelGradient, "-/- %");
     lv_obj_set_style_text_color(ui_LabelGradient, lv_color_hex(0x000000), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_opa(ui_LabelGradient, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_font(ui_LabelGradient, &lv_font_montserrat_36, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -295,7 +295,7 @@ void ui_SMainNoFL_screen_init(void)
     lv_obj_set_x(ui_LabelTemp, 109);
     lv_obj_set_y(ui_LabelTemp, -138);
     lv_obj_set_align(ui_LabelTemp, LV_ALIGN_CENTER);
-    lv_label_set_text(ui_LabelTemp, "23,5°C");
+    lv_label_set_text(ui_LabelTemp, "-/-°C");
     lv_obj_set_style_text_color(ui_LabelTemp, lv_color_hex(0x000000), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_opa(ui_LabelTemp, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_font(ui_LabelTemp, &lv_font_montserrat_36, LV_PART_MAIN | LV_STATE_DEFAULT);

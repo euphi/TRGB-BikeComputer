@@ -93,8 +93,8 @@ void BCLogger::setup() {
 		file_nmealog = dirName + "/N" + fnumber + ".log";
 	}
 	fdebug = SD_MMC.open(file_debuglog, FILE_APPEND, true);
-	fnmea  = SD_MMC.open(file_nmealog, FILE_APPEND, true);
 	fdata  = SD_MMC.open(file_data, FILE_APPEND, true);
+	fnmea  = SD_MMC.open(file_nmealog, FILE_APPEND, true);
 
 	logf(Log_Info, TAG_SD, "New file name: %s\n", file_data.c_str());
 
@@ -287,7 +287,7 @@ void BCLogger::logf(LogType type, LogTag tag, const char *format, ...) {
 }
 
 
-void BCLogger::appendDataLog(float speed, float temp, float gradient, float distance, float height, uint8_t hr) {
+void BCLogger::appendDataLog(float speed, float temp, float gradient, float distance, float height, uint8_t hr, uint8_t cadence) {
 	LogData b;
 	time_t now;
 	time(&now);
@@ -299,6 +299,7 @@ void BCLogger::appendDataLog(float speed, float temp, float gradient, float dist
 	b.dist_m = distance;
 	b.height = height;
 	b.hr = hr;
+	b.cadence = cadence;
 
 	if (!fdata) {
 		log(Log_Warn, TAG_SD, "Data file not open");
