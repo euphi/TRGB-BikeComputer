@@ -14,32 +14,43 @@
 
 ## Core Dump
 
+A core dump is a copy of stack and other memory in case of a crash, so it can later be used for investigation of the cause.
+
 By default, Arduino ESP32 is configured so that core dumps are written to flash memory.
-A core dump is a copy of stack and other memory, so it can later be used for crash investigation.
 
-### How to get coredump
-
-
+### How to get a coredump
 
 1. Install ESP32 IDF: https://docs.espressif.com/projects/esp-idf/en/stable/esp32/get-started/
 1. Activate IDF environment, in IDF install directory: (the leading dot is important - it means to execute the script and "sources" its output)
+
 `. export.sh `
+
+1. Connect your ESP32 to USB
 1. Call espcoredump Utility with the elf file of your binary
+
 `espcoredump.py  --port /dev/ttyACM0 info_corefile ~/Coding/Bike/TRGB-BikeComputer/.pio/build/trgb-esp32-s3/firmware.elf`
 
-This connects to the bike computer via USB, downloads the core file and analyses it using the debug info in the firmware.elf file.
-It is important that the elf file corresponds to your installed binary file.
+This downloads the core file via USB and analyses it using the firmware.elf file. The elf file is created with debug information, so you will see variable names, function names and references to source files.
 
-You can also use `debug_corefile` instead of `info_corefile` and open a debugger (gdb) instead of showing some info only. This is much more powerful, but needs experience with gdb.
+This it is mandatory that the elf file corresponds to your installed binary file.
+
+You can also use the command `debug_corefile` instead of `info_corefile`, which opens a debugger (gdb) instead of showing some info only. This is much more powerful, but needs experience with gdb. 
 
 
 ### Understand the core dump (Example)
 
-The most important information is, why and where the software crashed.
+The first information you get from a coredump is why and where the software crashed.
 
-Please be aware that the crash may be quite "far away" from the root cause. The ESP32 crashes only for illegal memory access, heap corruption and critical runtime errors (e. g. integer division by zero). 
+However, please be aware that the crash may be quite "far away" from the root cause. The ESP32 crashes only for illegal memory access, illegal instructions, critical runtime errors (e. g. integer division by zero) and if the software fails intentionally (`abort`), e.g. due to detected heap corruptions, stack overflow, sw watchdog or failed `assert()`.
 
-In the following example, a wrong array index leads to writing memory at illegal address:
+Invalid pointers can be carried other several function calls without memory access or memory corruptions can even occur in another thread.
+
+In the following example, a wrong array index leads for functions calls "below" to writing memory at illegal address
+
+
+The `info_corefile` output starts with output from accessing and downloading flash from the ESP32 and the with information about the current registers.
+
+Most important is the excause (0x1d StoreProhibitedCause - attempt to write to illegal memory adress) and the pc (adress of code where the illegal access is).
 
 ```
 
@@ -64,6 +75,12 @@ threadptr      <unavailable>
 
 a15            0x3fcafa00          1070266880
 
+```
+
+Next is the backtrace of the current stack of the thread where the crash occured. This gives valuable information which functions where called before the crash and the values of parameters:
+
+```
+
 ==================== CURRENT THREAD STACK =====================
 #0  lv_chart_set_x_start_point (obj=0x3d965540, ser=0x74, id=1) at .pio/libdeps/trgb-esp32-s3/lvgl/src/extra/widgets/chart/lv_chart.c:425
 #1  0x4200dd56 in ui_ScrChartSetPostFirst (pos=1, idx=<optimized out>) at src/ui/Screens/Chart/ui_Chart_CustFunc.c:19
@@ -75,6 +92,16 @@ a15            0x3fcafa00          1070266880
 #7  0x42086a11 in timer_process_alarm (dispatch_method=ESP_TIMER_TASK) at /Users/ficeto/Desktop/ESP32/ESP32S2/esp-idf-public/components/esp_timer/src/esp_timer.c:360
 #8  timer_task (arg=<optimized out>) at /Users/ficeto/Desktop/ESP32/ESP32S2/esp-idf-public/components/esp_timer/src/esp_timer.c:386
 
+
+```
+
+This is enough information to investigate the example.
+
+However, in other cases the following input may be relevant, too:
+
+Next there is information about the state and current adress of all threads. This can be an important information if you investigate why you SW "freezes". However, in this example you can see that it is normal that some Threads of the TRGB-Bikecomputer wait in user code (ID5 and ID7), so be careful with conclusions.
+
+```
 ======================== THREADS INFO =========================
   Id   Target Id          Frame 
 * 1    process 1070542680 lv_chart_set_x_start_point (obj=0x3d965540, ser=0x74, id=1) at .pio/libdeps/trgb-esp32-s3/lvgl/src/extra/widgets/chart/lv_chart.c:425
@@ -95,6 +122,11 @@ a15            0x3fcafa00          1070266880
   16   process 1070557508 0x40382a0e in vPortEnterCritical (mux=0x3fcf62ec) at /Users/ficeto/Desktop/ESP32/ESP32S2/esp-idf-public/components/freertos/port/xtensa/include/freertos/portmacro.h:578
   17   process 1070536780 0x40382b70 in vPortEnterCritical (mux=0x3fcf1424) at /Users/ficeto/Desktop/ESP32/ESP32S2/esp-idf-public/components/freertos/port/xtensa/include/freertos/portmacro.h:578
 
+```
+
+Next there is a long list with backtrace of all Threads. You can have a quick look to get an overview if something may be weired, but if you really need to investigate other threads, use `debug_corefile` instead.
+
+```
 ==================== THREAD 1 (TCB: 0x3fcf2f58, name: 'esp_timer') =====================
 #0  lv_chart_set_x_start_point (obj=0x3d965540, ser=0x74, id=1) at .pio/libdeps/trgb-esp32-s3/lvgl/src/extra/widgets/chart/lv_chart.c:425
 #1  0x4200dd56 in ui_ScrChartSetPostFirst (pos=1, idx=<optimized out>) at src/ui/Screens/Chart/ui_Chart_CustFunc.c:19
@@ -112,27 +144,36 @@ a15            0x3fcafa00          1070266880
 
 ```
 
-So, what you can see here? The lvgl library crashed due to a _StoreProhibitedCause_ (attempt to write at forbidden address). 
-However, it is important to understand that `ser->start_point = id;` cannot be the real cause. At a more detailed look, you may notice that `lv_chart_series_t* ser` has the value 0x74, which seems a strange value for a pointer, so look where it comes from:
+So, what you can see in the coredump? --> The lvgl library crashed due to a _StoreProhibitedCause_ (attempt to write at forbidden address). 
+
+However, it is important to understand that `ser->start_point = id;` cannot be the real cause. At a more detailed look, you may notice that `lv_chart_series_t* ser` has the value 0x74, which seems like a strange value for a pointer, so look where it comes from:
 `lv_chart_set_x_start_point(ui_Chart1, ui_Chart1_series[idx], pos);`
 
-So, it is the value of `ui_Chart1_series[idx]` - the array stores pointers to lv_chart_series_t, but is only of size 4. However, the coredump shows that idx is "optimized out". So have a look one level higher - there idx is '149' - so completely out of bounds.
+So, it is the value of `ui_Chart1_series[idx]` - the array stores pointers to lv_chart_series_t, but is only of size 4. However, the coredump shows that idx is "optimized out". So have a look one level higher - there idx is '149' - so completely out of bounds. Reading out of bounds is usually possible in C++ because you will access memory just behind the array where some other variables are stored and you will get the value of the other variable.
 
-To understand why this happens, we need to go up one more level:
+To understand why we read out of bounds, we need to go up one more level:
+
 `#3  0x4200a6e7 in Statistics::createChartArray (this=0x3fca1800 <stats>, idx=149 '\\225') at src/Stats/Statistics.cpp:411`
-This function also took idx as parameter, so go up even more:
+
+This function also got idx as parameter and just passes it through, so we need to go up even more:
+
 `#4  0x4200a7b9 in Statistics::autoStore (this=0x3fca1800 <stats>) at src/Stats/Statistics.cpp:112`
 
 There the idx is taken from an for-loop counter:
 
 ```C++
 for (uint_fast8_t j; j < 4 ; j++) {
-		createChartArray(j);
+	createChartArray(j);
 }
 ```
 
-Do you notice the error? Yep - j is not initialized and thus has a random value. To fix it, change the for to:
+Do you notice the bug?
+
+Yep - `j` is not initialized and thus has an arbitrary value. To fix it, change the for-loop to:
+
 `for (uint_fast8_t j=0; j < 4 ; j++) {`
+
+
 
 
 

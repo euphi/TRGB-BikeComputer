@@ -2,7 +2,7 @@
 
 __version__ = 0.1
 __date__ = '2022-11-21'
-__updated__ = '2022-11-21'
+__updated__ = '2024-02-10'
 
 import struct
 import csv
@@ -18,8 +18,9 @@ def localize_floats(row):
         for key in row
     )
 
-format_struct="<LffffIBxxx"
-format_names=("Timestamp", "Speed", "Temperatur", "Gradient", "Höhe", "distance", "Puls")
+#format_struct="<LffffIBxxx"
+format_struct="<LfffffBBxx"
+format_names=("Timestamp", "Speed", "Temperatur", "Gradient", "Höhe", "distance", "Puls", "Cadence")
 print(str(struct.calcsize(format_struct)) + u" bytes needed per Set")
 
 
@@ -37,7 +38,9 @@ program_license = "Use it as it is"
 parser = OptionParser(version=program_version_string, epilog=program_longdesc, description=program_license)
 parser.add_option("-i", "--in", dest="infile", help="set input path [default: %default]", metavar="FILE")
 parser.add_option("-o", "--out", dest="outfile", help="set output path [default: %default]", metavar="FILE")
+parser.add_option("-t", "--timestamp", dest="starttime", help="set timestamp of first entry [default: use data timestamp]", type="int")
 parser.add_option("-v", "--verbose", dest="verbose", action="count", help="set verbosity level [default: %default]")
+parser.add_option("-a", "--add", action="store_true", dest="add_flag", default=False, help="Add timestamp instead of using it as first")
 
 # set defaults
 parser.set_defaults(outfile="./out.csv", infile="./LOG_0160.BIN", verbose=0)
@@ -53,7 +56,12 @@ if opts.infile:
     print("infile = %s" % opts.infile)
 if opts.outfile:
     print("outfile = %s" % opts.outfile)
+if opts.starttime:
+    print("starttime = %s" % opts.starttime)
+else:
+    opts.starttime=0
 
+start_timestamp=0
 
 fnameIn = opts.infile
 fnameOut = opts.outfile
@@ -65,5 +73,9 @@ with open(fnameIn,'rb') as file, open(fnameOut, 'w', newline='') as csvfile:
       pdata = array( 'B', file.read(struct.calcsize(format_struct)) )  # buffered read from input file
       print(struct.unpack(format_struct,pdata))
       tuple_dataset=dict(zip(format_names,struct.unpack(format_struct,pdata)))
+      if opts.starttime > 0:
+        if (start_timestamp == 0 and not opts.add_flag):
+            start_timestamp = tuple_dataset["Timestamp"]
+        tuple_dataset["Timestamp"] = opts.starttime + tuple_dataset["Timestamp"] - start_timestamp
       tuple_dataset["Timestamp"] = tuple_dataset["Timestamp"] / (60*60*24) + 25569  # Convert Unix Timestamp to Excel/Libreoffice Timestamp
       csvwriter.writerow(localize_floats(tuple_dataset)) # Change . to , in floats - based on https://stackoverflow.com/questions/39833555/how-to-write-a-csv-with-a-comma-as-the-decimal-separator and adapted for use with a dict 
