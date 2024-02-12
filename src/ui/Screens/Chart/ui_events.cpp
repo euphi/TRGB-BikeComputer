@@ -8,10 +8,10 @@
 
 void EvButton1(lv_event_t * e)
 {
-	Serial.println("Chart Button 1 pressed!"); //FIXME: Do something here
+	Serial.println("Chart Button 1 pressed!"); //TODO: Do something here
 }
 
 void EvButton2(lv_event_t * e)
 {
-	Serial.println("Chart Button 2 pressed!"); //FIXME: Do something here
+	Serial.println("Chart Button 2 pressed!"); //TODO: Do something here
 }

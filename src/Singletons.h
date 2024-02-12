@@ -17,8 +17,10 @@ extern BCLogger bclog;
 #include "Stats/Statistics.h"
 extern Statistics stats;
 
+#ifdef BC_FL_SUPPORT
 #include "FLClassicParser.h"
 extern FLClassicParser flparser;
+#endif
 
 #include "UIFacade.h"
 extern UIFacade ui;

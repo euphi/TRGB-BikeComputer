@@ -17,7 +17,8 @@ UiFLModel::UiFLModel() {
 
 void UiFLModel::init() {
 	ui_ScreenFL_screen_init();
-
+//TODO: Move whole class into #ifdef
+#ifdef BC_FL_SUPPORT
 	// Glue oberserver/listeners to data model
 	flparser.setBatCb([this](uint16_t batVoltage, uint8_t batPerc, uint16_t batFullCap, int8_t powerStage, int16_t CurBat, int16_t CurConsumer, bool ConsumerOn) {
 		updateFLPower(batVoltage, batPerc, batFullCap, powerStage, CurBat, CurConsumer, ConsumerOn);
@@ -25,6 +26,8 @@ void UiFLModel::init() {
 	flparser.setStateCb([this](FLClassicParser::EFLConnState cstate, uint32_t flag, int16_t timeout) {
 		updateFLState(cstate, flag, timeout);
 	});
+#endif
+
 }
 
 bool UiFLModel::redraw() {

@@ -445,11 +445,14 @@ void BCLogger::replayNextLine() {
 		timeLasteLine = timeNext;
 		if (next > 40) next -=40; //FIXME: Ugly workaround for 60seconds wrap
 		bclog.logf(Log_Debug, TAG_SD, "Replay Strings:\n\tWaste:\t%s\n\tData:\t%s\n\tTime:\t%s (%d -> next in %d sec))",wasteStr.c_str(), dataStr.c_str(), timeStr.c_str(), timeNext, next );
+#ifdef BC_FL_SUPPORT
 		flparser.updateFromString(dataStr);
+#endif
 	} while (!next);
 	replayTicker.once(next, +[](BCLogger* thisInstance){thisInstance->replayNextLine();}, this);
 }
 
+//TODO Also replay binary files
 bool BCLogger::replayFile(const String &path) {
 	if (fileReplay) {
 		logf(Log_Warn, TAG_SD, "ReplayFile %s already open - closing it.", path);

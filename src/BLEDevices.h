@@ -47,7 +47,7 @@ private:
 
 	bool scanning=false;
 	bool doConnect[DEV_COUNT] = {false, false, false, false, false};
-	bool hasBatService[DEV_COUNT] = {true, true, true, true, true};
+	bool hasBatService[DEV_COUNT] = {true, true, true, false, false};
 	int16_t batLevel[DEV_COUNT] = {-1, -1, -1, -1, -1};
 	EBLEConnState connState[DEV_COUNT] = {CONN_DEV_NOTFOUND, CONN_DEV_NOTFOUND, CONN_DEV_NOTFOUND, CONN_DEV_NOTFOUND, CONN_DEV_NOTFOUND};
 	Preferences StatPreferences;

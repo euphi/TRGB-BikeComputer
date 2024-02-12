@@ -14,6 +14,7 @@
 #include <ArduinoJson.h>
 #include <version.h>
 #include <nvs.h>
+#include <ESPmDNS.h>
 
 
 //TODO: Read this from preferences
@@ -54,6 +55,8 @@ void WifiWebserver::checkLoop() {
 			setupWebserver();
 			delay(1000);	//TODO: Wifi reconnection after reset can be very fast, so IP can be available BEFORE UI has been initialized. So wait a second...
 			ui.updateIP(WiFi.localIP().toString());
+			MDNS.begin("TRGB-BC");
+		    MDNS.addService("http", "tcp", 80);
 		} else if (millis() > 100000) { //disable Wifi if no connection was established during the first 10 seconds
 			wifiWasConnected = true;
 			bclog.log(BCLogger::Log_Warn, TAG, "Not connected to Wifi - disabling it");

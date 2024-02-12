@@ -226,16 +226,17 @@ bool BLEDevices::connectToServer(EDevType ctype) {
 	bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "🔵%s Notify registered\n", DEV_EMOJI[ctype]);
 	storeAdress(ctype, *pServerAddress[ctype]);
 
-	//TODO: Improve (hasBatService is unnecessary etc.)
 	if (hasBatService[ctype]) {
 		BLERemoteService *pRemoteServiceBat = pClient[ctype]->getService(serviceUUIDBat);
 		if (pRemoteServiceBat == nullptr) {
 			bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_BLE, "🔵⚠️ Cannot find battery remote service %s", DEV_EMOJI[ctype]);
+			hasBatService[ctype] = false;
 			return false;
 		}
 		BLERemoteCharacteristic *pRemoteCharacteristicBat = pRemoteServiceBat->getCharacteristic(charUUIDBat);
 		if (pRemoteCharacteristicBat == nullptr) {
 			bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_BLE, "🔵⚠️ Cannot find battery remote characteristics %s", DEV_EMOJI[ctype]);
+			hasBatService[ctype] = false;		//TODO set to high again for disconnect?
 			return false;
 		}
 		batLevel[ctype] = pRemoteCharacteristicBat->readUInt8();
@@ -270,6 +271,7 @@ void BLEDevices::notifyCallbackCSC(BLERemoteCharacteristic *pBLERemoteCharacteri
 	uint8_t flags;
 	bool isSpeed;
 	switch (ctype) {
+#ifdef BC_FL_SUPPORT
 	case DEV_FL:
 		bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_FL, "Received %d bytes:\n\t%s", length, pData);
 		bufferFL.concat(pData, length);
@@ -279,6 +281,7 @@ void BLEDevices::notifyCallbackCSC(BLERemoteCharacteristic *pBLERemoteCharacteri
 			bufferFL.clear();
 		}
 		break;
+#endif
 	case DEV_CSC_1:
 	case DEV_CSC_2:
 		bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "Received from CSC %d bytes", length);
@@ -389,10 +392,12 @@ void BLEDevices::connCheckLoop() {
 			connState[c] = CONN_LOST;
 			bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_BLE, "%s Lost connection.", DEV_EMOJI[c]);
 			switch (c) {
+#ifdef BC_FL_SUPPORT
 			case DEV_FL:
 				flparser.setConnState(FLClassicParser::FL_STATE_LOST);
 				stats.setConnected(false);
 				break;
+#endif
 			case DEV_HRM:
 				stats.addHR(-1);
 				break;
@@ -418,7 +423,7 @@ void BLEDevices::batCheckLoop() {
 	for (uint16_t c = 0; c < DEV_COUNT; c++) {
 		if (connState[c] == CONN_CONNECTED) {
 			bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "Read %s battery level", DEV_EMOJI[c]);
-			//FIXME: Implement
+			//TODO: Implement Bat check
 		}
 	}
 }

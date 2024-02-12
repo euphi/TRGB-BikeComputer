@@ -107,7 +107,7 @@ void Statistics::autoStore() {
 		}
 	}
 
-	updateTimeSeries();			// FIXME: test only
+	updateTimeSeries();			// FIXME: test only - there may be time or distance mode so maybe move it to cycle or updateRevs.
 	for (uint_fast8_t j=0; j < 4 ; j++) {
 		createChartArray(j);	// FIXME: test only
 	}
@@ -207,7 +207,7 @@ void Statistics::updateStateIcon() {
 		else {
 			time_t time_in_break = millis() - timestamp_stop;
 			time_t remaining = offAfterMinutes * 60000 - time_in_break ;
-			if (( remaining < 60000) && (((time_in_break / 1000) % 2) == 1)) { // part after '&&' enables blinking
+			if (( remaining < 60000) && (((time_in_break / 1000) % 2) == 1)) { // part after '&&' enables blinking - TODO: Have blink function(s) based on cycle() count
 				color = (remaining < 10000) ? UIFacade::UI_ColorCrit : UIFacade::UI_ColorWarn;
 			}
 		}
@@ -407,31 +407,10 @@ void Statistics::createChartArray(uint8_t idx) {
 		}
 		chart_array[idx][point] = isnan(val) ? INT16_MAX : static_cast<int16_t>(round(val));
 	}
-
 	ui.setChartPosFirst(chart_array_startPos[idx], idx);
 	uint32_t endcount = xthal_get_ccount();
 	bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_STAT, "Took %d cycles to update chart", endcount - startcount);
-
-//
-//	switch (c) {
-//	case SPEED:
-//	case HR:
-//	default:
-//
-//	}
 }
-
-/* ******************** handle distance ********************
-    handling distance is more special than other data because it is (in parallel to time) a clock for data handling
-    Also, storing total distance is part of the Statistics class
-   TODO: Distance handling is not clean yet:
-       * Single point to handle wheel diameter
-       * Keep track of distance over wheel diameter changes
-*/
-//void Statistics::addDistance(uint32_t dist, ESummaryType type) {
-//
-//}
-
 
 void Statistics::checkDistance(const float dist) {
 	if ( (dist - distSeries_last) > 500) {
@@ -441,26 +420,25 @@ void Statistics::checkDistance(const float dist) {
 	calculateGradient(dist);
 }
 
-
 // ******************** internal calculations ********************
 
 void Statistics::calculateGradient(float newDist) {
 /* Don't compile own gradient calculation if an external gradient calculation is done (like in Forumslader) */
-#if !defined BC_FL_SUPPORT
+#ifndef BC_FL_SUPPORT
 	time_t time_now = millis();
 	uint32_t delta = time_now - gradient_timestamp;  // [msec]
 	float delta_dist = newDist - gradient_dist;
 	if ( ( delta_dist >= 8 && delta > 2500) || delta >= 5000 /*|| delta_height > 0.5*/ ) {   // Using delta_height seems to cause more harm than good
 		// Get Height information, so it's synchronized with distance update (improves accuracy)
 		sensors.readBME280();
-		height = sensors.getHeight();		// [m]
+		float height_new = sensors.getHeight();		// [m]
 		temperature = sensors.getTemp();
-		float delta_height = height - gradient_height;
+		float delta_height = height_new - gradient_height;
 		if (delta_dist < 0 || delta_dist > 200) {
 			bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_STAT, "Gradient calculation: New distance %.2fm implausible (delta: %.2fm) ", newDist, delta_dist);
 			delta_dist = NAN;
 		}
-		gradient_height = height;
+		gradient_height = height_new;
 		bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_STAT, "Update gradient with deltas time: %dms, distance: %.2fm, height: %.2fm", delta, delta_dist, delta_height);
 		gradient_timestamp = time_now;
 
@@ -468,14 +446,12 @@ void Statistics::calculateGradient(float newDist) {
 		//      It does not make sense to do a calculation for this, because it will be wrong in many cases anyhow.
 		gradient_dist = newDist;
 
+		float gradient_new = NAN; // division by 0 should not lead not +Inf or -Inf, because delta_height is also close to zero. Ideally it would be zero, so 0/0 --> NAN.
 		if (delta_dist > 0.2) {
 			gradient = delta_height / (delta_dist) * 100.0;		// simplified gradient calculation. Accurate enough for smaller gradients.
-		} else {
-			gradient = NAN;		// in this case, division by 0 should not lead not +Inf or -Inf, because delta_height is also close to zero. Ideally it would be zero, so 0/0 --> NAN.
 		}
 		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Gradient: %.2f", gradient);
-		addGradientHeight(gradient, height);  //FIXME: also copies gradient to gradient again (and height to height)
-		//ui.updateGrad(gradient, height);
+		addGradientHeight(gradient_new, height_new);
 	}
 #endif
 }
@@ -490,7 +466,6 @@ void Statistics::addGradientFL(int16_t _grad, int16_t _height, int16_t _temp) {
 #endif
 }
 
-
 uint32_t Statistics::getDistance(ESummaryType type, bool includeLost) const {
 	switch (type) {
 	case SUM_ESP_TOTAL:
@@ -499,7 +474,7 @@ uint32_t Statistics::getDistance(ESummaryType type, bool includeLost) const {
 	case SUM_ESP_START:
 		//return distance - start_distance[type] - (includeLost ? 0 : lost_distance[type]);  //old
 		return distHandler.getDistance(type);
-#if defined BC_FL_SUPPORT
+#ifdef BC_FL_SUPPORT
 	case SUM_FL_TRIP:
 	case SUM_FL_TOUR:
 		return start_distance[type];
@@ -555,7 +530,6 @@ float Statistics::getAvgCadence(EAvgType avgtype) const {
 
 }
 
-
 void Statistics::setupWebserverDebug() {
 	webserver.getServer().on("/stat/debugarray", HTTP_GET, [this](AsyncWebServerRequest *request) {
 		String htmlPage = "<!DOCTYPE html>\n";
@@ -601,5 +575,4 @@ void Statistics::setupWebserverDebug() {
 		request->send(200, "text/html", htmlPage);
 	});
 }
-
 

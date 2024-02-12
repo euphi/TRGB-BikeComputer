@@ -160,7 +160,7 @@ private:
 	void updateTimeSeries();
 	String generateJSONArray();
 	void setupWebserverDebug();
-	void calculateGradient(float newDist);		//FIXME: Use notify mechanism (about updated distance)
+	void calculateGradient(float newDist);
 
 	//TODO: Move into separate class
 	enum DataClass {SPEED = 0, HR, HEIGHT, GRADIENT, TEMPERATURE, CADENCE, DISTANCE};
