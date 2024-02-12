@@ -1,6 +1,3 @@
-
-
-
 # T-RGB Bike Computer
 
 A bike computer based on [LilyGO T-RGB](https://www.lilygo.cc/products/t-rgb):
@@ -33,19 +30,22 @@ Compile and upload with platformio.
 - [X] Write raw forumslader data to logfiles
 - [X] Replay FL log file
 - [X] User Interface for replay
-- [X] Write summary in binary logfile (not yet integrated, to be merged from [ESP32_BTTacho](https://github.com/euphi/ESP32_BTTacho)
+- [X] Write summary in binary logfile
+- [X] Python Scripts to convert binary logfile to CSV and to LineProtocol (influxdb)
 
 #### Console
 
 - [X] Integrate SimpleCLI
 - [X] Set loglevel by console and store them
 - [ ] Configure WiFi from console
-- [ ] basic debug/monitoring support (free heap etc.)
+- [X] basic debug/monitoring support (free heap etc.)
 
 #### Webserver
 - [X] Connect to WiFi
 - [X] Give static overview and server logfiles
 - [X] Delete/Cleanup logfiles (integrated, but does not work yet)
+- [ ] WIP: Charts on Webserver
+- [X] Debug Information on Webserver
 
 #### User interface
 
@@ -62,8 +62,7 @@ Compile and upload with platformio.
 
 - [X] Create case model for 3D-printer (done for standard handlebar incl. space for 2 USB-A sockets ("Forumslader variant")
 - [X] Create mount for trekking handle bar
-- [ ] WIP: Create mount for Canyon double decker bar
-
+- [X] Create mount for Canyon double decker bar
 
 ### Prio 1 Features -- Help wanted
 
@@ -71,19 +70,23 @@ Compile and upload with platformio.
 - [ ] Improve statistics (e.g. graphs )
 - [ ] better User Interface
 - [ ] Animations on display (e.g driving state, heart rate)
+- [X] Configuration via Webserver (wheel diameter etc.)
 - [ ] Configuration via Display (wheel diameter etc.)
 - [X] manage BLE devices via Webserver (show connection state, batterie level, delete connection)
 - [X] improve handling of CSC devices: "Lock" connected devices and only allow adding new devices on demand. Also check if max 1 speed and max 1 cadence is connected
 - [X] read battery state of BLE devices (works fine, but no UI yet)
-- [ ] manage BLE devices and show info via display
-- [ ] add additional sensors (barometer/temperature, gyro/inertial)
+- [X] manage BLE devices and show info via webserver 
+- [X] add additional sensors (barometer/temperature, gyro/inertial)
+- [ ] use gyro/inertial sensor data
+- [ ] improve 3D-printable mounts 
 
 
 ### Prio 2 Features -- Help NEEDED (I don't have the time for them)
 
 - [ ] AP Mode for Wifi for first setup (simple AP mode for download may be prio 1)
 - [ ] even better User Interface
-
+- [ ] add better 3D-printable mounts, also for other handlebars
+- [ ] even better use of gyro/inertial sensor data
 
 ## Howto
 
@@ -102,17 +105,18 @@ If you use the komoot App on your mobile and start following a route (load prepl
 
 #### Limitations (of komoot):
 
-- komoot is not a good navigation system. It is great for planning routes, but it does not provide information about the turn after the next one and street names are often incomplete or misleading.
-- if you are off your route, komoot often asks to confirm new route on mobile even if route recalculation is switched on.
+- komoot is not a good navigation system.
+- It is great for planning routes, but it does not provide information about the turn after the next one and street names are often incomplete or misleading.
+- If you are off your route, komoot often asks to confirm new route on mobile even if route recalculation is switched on.
 - You must stop and store the route to finish navigation, otherwise your mobile keeps sending navigation instructions.
-- the instructions to connect device to komoot may be misleading. You don't need to manually connect, but you need to activate routing support and then load a route. (To see if komoot advertise its navigation service, use another mobile with a BLE scanner).
-
-
+- Even worse, in this case komoot often seems to freeze navigation information on old state
+- Even worse, a combination of the mentioned problems above often occur if you start a round-trip tour and komoot thinks you are already on your way back: Route is not updated or only to the short distance to destination, it takes a long time to restart and bluetooth navigation still shows old data.
+- The instructions to connect device to komoot may be misleading. You don't need to manually connect, but you need to activate routing support and then load a route. (To see if komoot advertise its navigation service, use another mobile with a BLE scanner).
 
 ### Licences and Attributions
 
 #### Images
-[Cycling icons created by Futuer - Flaticon]("https://www.flaticon.com/free-icons/cycling")
-[Parked bicycles - Icon von Prashanth Rapolu 15](https://de.freepik.com/icon/fahrrad_7764338#fromView=resource_detail&position=7)
 
+[Cycling icons created by Futuer - Flaticon]("https://www.flaticon.com/free-icons/cycling")
+[Parked bicycles - Icon von Prashanth Rapolu 15]("https://de.freepik.com/icon/fahrrad_7764338#fromView=resource_detail&position=7")
 
