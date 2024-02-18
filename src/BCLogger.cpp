@@ -11,10 +11,10 @@
 #include "Singletons.h"
 #include <esp_task_wdt.h>
 
-const char *BCLogger::TAG_STRING[LogTagMax] = { "RAW", "FL", "BLE", "STAT", "WIFI", "SD", "OP", "CLI" };
+const char *BCLogger::TAG_STRING[LogTagMax] = { "RAW", "FL", "BLE", "STAT", "WIFI", "SD", "OP", "CLI", "UI" };
 const char *BCLogger::LEVEL_STRING[LogTypeMax] = { "DEBUG", "INFO", "WARN", "ERROR" };
 
-const String BCLogger::TAG_SYMBOL[LogTagMax] = { String("📜"), String("📟"), String("🔵"), String("📊"), String("📶"), String("💾"), String("🎮"), String("⌨") };
+const String BCLogger::TAG_SYMBOL[LogTagMax] = { String("📜"), String("📟"), String("🔵"), String("📊"), String("📶"), String("💾"), String("🎮"), String("⌨"), String("🖥️") };
 const String BCLogger::LEVEL_SYMBOL[LogTypeMax] = { String("🐛"), String("ℹ️"), String("⚠️"), String("❌") };
 
 const String BCLogger::LOGDIR = "/BIKECOMP";

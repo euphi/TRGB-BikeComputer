@@ -16,11 +16,10 @@
 #include <nvs.h>
 #include <ESPmDNS.h>
 
-
 //TODO: Read this from preferences
 const char* ntpServer = "pool.ntp.org";
-const char* ssid = "IA216oT";
-const char* password = "SwieSecurity";
+//const char* ssid = "IA216oT";
+//const char* password = "SwieSecurity";
 
 static const BCLogger::LogTag TAG = BCLogger::TAG_WIFI;
 
@@ -31,23 +30,105 @@ WifiWebserver::WifiWebserver():
 }
 
 void WifiWebserver::setup() {
-	  WiFi.mode(WIFI_MODE_STA);
-	  WiFi.enableIpV6();
-	  WiFi.begin(ssid, password);
-	  bclog.log(BCLogger::Log_Info, TAG, "Connecting to WiFi and set timeserver");
-	  configTzTime("CET-1CEST,M3.5.0,M10.5.0/3", ntpServer);
-	  wifiCheckTicker.attach_ms(500, +[](WifiWebserver* thisInstance) {thisInstance->checkLoop();}, this);
-	  LittleFS.begin();
+	enableWifi();
+	bclog.log(BCLogger::Log_Info, TAG, "Connecting to WiFi and set timeserver");
+	configTzTime("CET-1CEST,M3.5.0,M10.5.0/3", ntpServer);
+	wifiCheckTicker.attach_ms(500, +[](WifiWebserver *thisInstance) {thisInstance->checkLoop();}, this);
+	LittleFS.begin();
+	WifiSettings.begin("WifiSettings", true);
+	for (uint_fast8_t i = 0; i < WifiAPCount; i++) {
+		String key = "SSID_" + i;
+		StrSSID[i] = WifiSettings.getString(key.c_str(), "");
+		key = "PW_" + i;
+		StrPW[i] = WifiSettings.getString(key.c_str(), "");
+		if (i == 0 && StrSSID[0] == "") {		//TODO: For testing only - remove
+			StrSSID[0] = "IA216oT";
+			StrPW[0] = "SwieSecurity";
+		}
+//		if (!StrSSID[i].equals("")) {
+//			bclog.logf(BCLogger::Log_Info, TAG, "Adding SSID %s to WiFiMult", StrSSID[i].c_str());
+//			wifiMulti.addAP(StrSSID[i].c_str(), StrPW[i].c_str());
+//		}
+	}
+	disableAPMode = WifiSettings.getBool("disApMode", false);
+	WifiSettings.end();
+	WiFi.begin(StrSSID[0].c_str(), StrPW[0].c_str());
+//	wifiMulti.addAP(ssid, password);
+//	wifiMulti.addAP("IA216", "xxxxx");
+	startScan();
+}
+
+void WifiWebserver::disableWifi() {
+	ui.updateIP(String("WiFi disabled"));
+	WiFi.setSleep(true);
+	WiFi.mode(WIFI_MODE_NULL);
+	wifiEnabled = false;
+}
+
+void WifiWebserver::enableWifi() {
+	ui.updateIP(String("Enabling WiFi .."));
+	WiFi.setSleep(true);
+	WiFi.mode(WIFI_MODE_STA);
+	WiFi.enableIpV6();
+	wifiEnabled = true;
+}
+
+void WifiWebserver::enableAPMode(bool enable) {
+	lostConnTimeStamp = millis();
+	if (enable) {
+		APModeActive = true;
+		//TODO: Check if necessary (may be better to keep old value to restore it automatically when AP mode is disabled again)
+		wifiEnabled = true;
+		WiFi.mode(WIFI_AP);
+		WiFi.softAP("TRGB-BC", "123456");
+		String ipStr = WiFi.softAPIP().toString();
+		ui.updateIP(ipStr);
+		bclog.logf(BCLogger::Log_Debug, TAG, "Enabled AP mode with IPv4: %s .", ipStr.c_str());
+	} else {
+		APModeActive = false;
+		ui.updateIP("Disabling AP...");
+		enableWifi();
+		WiFi.begin(StrSSID[0].c_str(), StrPW[0].c_str());
+	}
+}
+
+void WifiWebserver::startScan() {
+	bclog.log(BCLogger::Log_Debug, TAG, "Start scanning...");
+	if (!wifiEnabled) enableWifi();
+	WiFi.scanNetworks(true);
+	scanActive = true;
 }
 
 void WifiWebserver::checkLoop() {
+	if (scanActive) {
+		bclog.log(BCLogger::Log_Debug, TAG, "Wifi check loop - scan active");
+		uint16_t result = WiFi.scanComplete();
+		if (result > 0) {
+			String allSSID = "";
+			for (uint16_t i = 0 ; i < result ; i ++) {
+				allSSID += WiFi.SSID(i);
+				allSSID += "\n";
+			}
+			bclog.logf(BCLogger::Log_Debug, TAG, "Scan result: %s", allSSID.c_str());
+			ui.updateSSIDList(allSSID);
+			scanActive = false;
+		}
+	}
+	if (APModeActive) {
+		bclog.log(BCLogger::Log_Debug, TAG, "Wifi check loop - AP mode active");
+		uint8_t apStaCount = WiFi.softAPgetStationNum();
+		ui.updateWiFiState(wifiEnabled, APModeActive, disableAPMode, apStaCount);
+		return;
+	}
     // Handle WiFi - the current logic is:
 	// - immediately start a connection to a known Access point (from preferences)
 	// - if no connection is established within 10seconds, WiFi is disabled completely
 	// - if established connection  is lost, WiFi is disabled completely
 	// --> this is done to save power consumption of WiFi radio.
 	if (!wifiWasConnected) {
+		bclog.log(BCLogger::Log_Debug, TAG, "Wifi check loop - try to connect");
 		if (WiFi.status() == WL_CONNECTED) {
+//		if (WiFi.status() != WL_CONNECTED && wifiMulti.run(10000) == WL_CONNECTED) {
 			wifiWasConnected = true;
 			bclog.logf(BCLogger::Log_Info, TAG, "Wifi connected. IPv4: %s", WiFi.localIP().toString());
 			//bclog.logf(BCLogger::Log_Info, TAG, "Wifi connected. IPv4: %s IPv6: %s", WiFi.localIP().toString(), WiFi.localIPv6().toString());
@@ -57,24 +138,25 @@ void WifiWebserver::checkLoop() {
 			ui.updateIP(WiFi.localIP().toString());
 			MDNS.begin("TRGB-BC");
 		    MDNS.addService("http", "tcp", 80);
-		} else if (millis() > 100000) { //disable Wifi if no connection was established during the first 10 seconds
+		} else if (millis() - lostConnTimeStamp > 100000) { //disable Wifi if no connection was established during the first 10 seconds
 			wifiWasConnected = true;
 			bclog.log(BCLogger::Log_Warn, TAG, "Not connected to Wifi - disabling it");
-			//ui.updateIP(String("WiFi disabled"));
-			WiFi.mode(WIFI_MODE_NULL);
-			WiFi.setSleep(WIFI_PS_MAX_MODEM);
-			WiFi.setSleep(true);
+			disableWifi();
+		} else {
+			bclog.log(BCLogger::Log_Debug, TAG, "Wifi check loop - can't connect (yet)");
 		}
 	} else if (WiFi.status() == WL_CONNECTION_LOST) {
-		//ui.updateIP(String("connection lost"));
+		lostConnTimeStamp = millis();
+		ui.updateIP(String("connection lost"));
 		bclog.log(BCLogger::Log_Warn, TAG, "Wifi connection lost - disabling it to save power");
-		WiFi.mode(WIFI_MODE_NULL);
-		WiFi.setSleep(WIFI_PS_MAX_MODEM);
-		WiFi.setSleep(true);
+		disableWifi();
 	}
 }
 
-//
+void WifiWebserver::scanResult() {
+
+}
+
 void WifiWebserver::setupWebserver() {
 	// Enable file deletion
     // using DELETE method on the same URI as for "serveStatic" would be more elegant, but is not possible to create links that result in making the browser use DELETE method. So use special "del" uri
@@ -108,7 +190,6 @@ void WifiWebserver::setupWebserver() {
 		}
 		html_resp += "</body></html>";
 		request->send(http_code, "text/html", html_resp.c_str());
-
 	});
 
 	// -- generate Logfile Index
@@ -130,7 +211,7 @@ void WifiWebserver::setupWebserver() {
 		abort();
 	});
 
-	  // Serve the system resources page
+	// Serve the system resources page
 	server.on("/system", HTTP_GET, [](AsyncWebServerRequest *request) {
 	    String html = "<html><head><link rel='stylesheet' type='text/css' href='/stylesheet.css'></head>\n<body>\n<div class='container'>\n<h1>ESP32 System Resources</h1>";
 
@@ -144,7 +225,7 @@ void WifiWebserver::setupWebserver() {
 		html += "<p>Used space on LitteFS: " + String(usedBytes / (1024) ) + " kB of " + String(totalBytes / (1024)) + " kB.</p>";
 
 
-	// Check if an SD card is present
+		// Check if an SD card is present
 		sdcard_type_t ctype = SD_MMC.cardType();
 		if (ctype != CARD_UNKNOWN && ctype != CARD_NONE) {
 			// Get free space on the SD card
@@ -183,7 +264,7 @@ void WifiWebserver::setupWebserver() {
 		request->send(200, "text/html", htmlresponse.c_str());
 	});
 
-	server.on("/sensor/submit", HTTP_POST,	[this](AsyncWebServerRequest *request) {
+	server.on("/sensor/submit", HTTP_POST, [this](AsyncWebServerRequest *request) {
 		String height = request->arg("height");
 		double heightValue = height.toDouble();
 		htmlresponse.clear();
@@ -191,7 +272,7 @@ void WifiWebserver::setupWebserver() {
 		request->send(200, "text/html", htmlresponse);
 	});
 
-	 server.on("/log/set", HTTP_GET, [](AsyncWebServerRequest *request) {
+	server.on("/log/set", HTTP_GET, [](AsyncWebServerRequest *request) {
 		String tag = request->getParam("tag")->value();
 		String level = request->getParam("level")->value();
 
@@ -207,8 +288,7 @@ void WifiWebserver::setupWebserver() {
 			// Respond with a success message
 			uint16_t t = BCLogger::TAG_RAW_NMEA;
 			for (; t < BCLogger::LogTagMax; t++) {
-				if (tag.equalsIgnoreCase(BCLogger::TAG_STRING[t]))
-					break;
+				if (tag.equalsIgnoreCase(BCLogger::TAG_STRING[t])) break;
 			}
 			if (t == BCLogger::LogTagMax) {
 				bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_OP, "Invalid log tag %s", tag.c_str());
@@ -217,8 +297,7 @@ void WifiWebserver::setupWebserver() {
 			}
 			uint16_t l = BCLogger::Log_Debug;
 			for (; l < BCLogger::LogTypeMax; l++) {
-				if (level.equalsIgnoreCase(BCLogger::LEVEL_STRING[l]))
-					break;
+				if (level.equalsIgnoreCase(BCLogger::LEVEL_STRING[l])) break;
 			}
 			if (l == BCLogger::LogTypeMax) {
 				bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_OP, "Invalid log level %s", level.c_str());
@@ -253,18 +332,45 @@ void WifiWebserver::setupWebserver() {
 	setupNvsDebug();
 #endif
 
+	server.on("/wifi/connect", HTTP_GET, [this](AsyncWebServerRequest *request) {
+		if ((request->hasParam("ssid", true) || request->hasParam("manualSSID", true)) && request->hasParam("password", true)) {
+			if (request->hasParam("ssid", true)) {
+				StrSSID[0] = request->getParam("ssid", true)->value();
+			} else {
+				StrSSID[0] = request->getParam("manualSSID", true)->value();
+			}
+			StrPW[0] = request->getParam("password", true)->value();
+			WifiSettings.begin("WifiSettings", false);
+			WifiSettings.putString("SSID_0", StrSSID[0]);
+			WifiSettings.putString("PW_0", StrPW[0]);
+			//WifiSettings.putBool("disApMode", disableAPMode);
+			WifiSettings.end();
+			wifiWasConnected = false;
+			lostConnTimeStamp = millis();
+			request->send(200);
+		} else {
+			request->send(400);
+		}
+	});
 
-//	server.on("^\\/sensor\\/([A-Za-z0-9]+)$", HTTP_GET, [this] (AsyncWebServerRequest *request) {
-//		htmlresponse.clear();
-//		const AsyncWebParameter* para = request->getParam(0);
-//		bclog.logf(BCLogger::Log_Info, TAG, "💻 Request on /sensor/: %s\n\tPath-Arg: %s - %s", request->url().c_str(), request->pathArg(0).c_str(), para ? para->value().c_str() : "n/a");
-//		if (!para) {
-//			request->send(400, "text/plain", "Missing parameter");
-//		} else {
-//			int16_t code = sensors.procHTMLCmd(htmlresponse, request->pathArg(0), para->value());
-//			request->send(code, "text/plain", htmlresponse.c_str());
-//		}
-//	});
+	server.on("/wifi/ssids", HTTP_GET, [](AsyncWebServerRequest *request) {
+		int numNetworks = WiFi.scanNetworks();
+		String json = "[";
+		if (numNetworks > 0) {
+			for (int i = 0; i < numNetworks; i++) {
+				json += "\"" + WiFi.SSID(i) + "\"";
+				if (i < numNetworks - 1) {
+					json += ",";
+				}
+			}
+		}
+		json += "]";
+		request->send(200, "application/json", json);
+	});
+	server.on("/wifi/enableAP", HTTP_GET, [this](AsyncWebServerRequest *request) {
+		enableAPMode(true);
+		request->send(200);
+	});
 
 	// -- Allow OTA via Web ("ElegantOTA" library)
 	AsyncElegantOTA.begin(&server); // Start ElegantOTA - it listens on "/update/"
@@ -282,8 +388,6 @@ void WifiWebserver::setupWebserver() {
 	server.begin();
 	bclog.logf(BCLogger::Log_Debug, TAG, "💻 HTTP server started at %s.\n", WiFi.localIP().toString().c_str());
 }
-
-
 
 #ifdef DEBUG_APP
 

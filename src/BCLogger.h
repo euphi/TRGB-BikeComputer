@@ -32,6 +32,7 @@ public:
 		TAG_SD,
 		TAG_OP,
 		TAG_CLI,
+		TAG_UI,
 		LogTagMax
 	};
 private:
@@ -53,9 +54,9 @@ private:
 		LogOutputMax
 	};
 
-	//                                         TAG_RAW_NMEA TAG_FL    TAG_BLE   TAG_STAT  TAG_WIFI 	TAG_SD    TAG_OP,  TAG_CLI
-	LogType loglevel[LogOutputMax][LogTagMax] = {{Log_Info, Log_Info, Log_Info, Log_Info, Log_Info, Log_Info, Log_Debug, Log_Info},   // Terminal
-			                                     {Log_Info, Log_Info, Log_Info, Log_Info, Log_Info, Log_Info, Log_Info, Log_Error}};   // File
+	//                                         TAG_RAW_NMEA TAG_FL    TAG_BLE   TAG_STAT  TAG_WIFI 	TAG_SD    TAG_OP,    TAG_CLI,  TAG_UI
+	LogType loglevel[LogOutputMax][LogTagMax] = {{Log_Info, Log_Info, Log_Info, Log_Info, Log_Info, Log_Info, Log_Debug, Log_Info, Log_Info},   // Terminal
+			                                     {Log_Info, Log_Info, Log_Info, Log_Info, Log_Info, Log_Info, Log_Info, Log_Error, Log_Info}};   // File
 
 
 	Preferences logPrefs[LogOutputMax];
