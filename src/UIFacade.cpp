@@ -10,7 +10,6 @@
 
 
 // Screens
-#include "ui/ui_WLAN.h"
 
 #include "ui/ui_Navi.h"
 #include "ui/ui_NaviCustFunc.h"
@@ -19,16 +18,19 @@
 
 #include "ui/Screens/Settings/ui_Settings.h"
 
-#include "ui/Screens/MainNoFL/ui_MainNoFL_CustFunc.h"
+#include <ui/Screens/MainNoFL/ui.h>
+#include <ui/Screens/MainNoFL/ui_MainNoFL_CustFunc.h>
 
-#include "ui/Screens/Chart/ui.h"
-#include "ui/Screens/Chart/ui_Chart_CustFunc.h"
+#include <ui/Screens/SWLAN/ui.h>
+#include <ui/Screens/SWLAN/ui_SWLAN_CustFunc.h>
+
+#include <ui/Screens/Chart/ui.h>
+#include <ui/Screens/Chart/ui_Chart_CustFunc.h>
 
 #include "ui/ui.h"  // FL main and chart screen
 #include "ui/ui_custFunc.h"
 
 #include <DateTime.h>
-#include <ui/Screens/MainNoFL/ui.h>
 
 void startTaskUiUpdate(void*) {
 	ui.updateHandler();
@@ -38,6 +40,15 @@ UIFacade::UIFacade() {
     xUpdateFast = xSemaphoreCreateBinary();
 	xUpdateSlow = xSemaphoreCreateBinary();
 	xUIDrawMutex = xSemaphoreCreateMutex();
+}
+
+bool UIFacade::isDrawTask() {
+	if (!uiTaskHandle) return false;
+	TaskHandle_t currentTaskHandle = xTaskGetCurrentTaskHandle();
+//	uint32_t taskID = uxTaskGetTaskNumber(currentTaskHandle);
+//	uint32_t drawTaskID = uxTaskGetTaskNumber(uiTaskHandle);
+//	return taskID == drawTaskID;
+	return currentTaskHandle == uiTaskHandle;
 }
 
 void UIFacade::initDisplay() {
@@ -99,18 +110,25 @@ void UIFacade::updateData() {
  *
  * There are 3 different update mechanism;
  *
- * "quick" - signaled by binary semaphore xUpdateFast
+ * "fast" - signaled by binary semaphore xUpdateFast
  * 		   - this redraws all quickly changing data like speed, cadence, heart rate
  *
  * "slow"  - signaled by binary semaphore xUpdateSlow.
  *         - it isn't that slow: a timer is used to give the semaphore every 250ms (4 Hz)
  *         - here, data that slowly changes is polled from data model. (`Statistics stats`)
  *
+ * The mechanism for fast and slow is the same. The difference is that "slow" is allowed to take more time, because it is
+ * handled AFTER the scheduled draw updated and the next scheduled draw is calculated accounting the time needed for slow update.
+ *
+ * The fast update mechanism is handled directly before the draw and thus delays drawing the UI.
+ *
  * "direct" - data that is rarely updated may directly update lvgl objects. This MUST not be done during refresh, so a mutex (xUIDrawMutex) is used to protect refresh.
  *          - this may block refreshing and thus may lead to less smooth display animations or even some flickering. So use only for rarely updated labels (like IP adress).
+ *
+ * "unprotected direct" - if an update changes only values at a fixed adress, it is not necessary to protect it with a mutex. This is the case for array
  */
 void UIFacade::updateHandler() {
-	unsigned long next_millis = 0;
+	static unsigned long next_millis = 0;
 	while (true) {
 		// Fast update - use this only for data that should be shown with no (further) delay
 		if (xSemaphoreTake(xUpdateFast, static_cast<TickType_t>(0) ) == pdTRUE) {		// Semaphore is used for message "please update" only. So there is no reason to wait.
@@ -133,6 +151,7 @@ void UIFacade::updateHandler() {
 			xSemaphoreGive(xUIDrawMutex);
 		} else {
 			//TaskHandle_t t = xSemaphoreGetMutexHolder(xUIDrawMutex);
+			bclog.log(BCLogger::Log_Error, BCLogger::TAG_UI, "!!!!! UI draw task blocked !!!!!");
 			printf("%d: !!!!! UI draw task blocked !!!!!", millis());
 		}
 
@@ -162,7 +181,6 @@ void UIFacade::updateHandler() {
 void UIFacade::updateClock(const time_t now) {
 	String strClock = DateFormatter::format(DateFormatter::TIME_ONLY,now);
 	String strDate = DateFormatter::format(DateFormatter::DATE_ONLY,now);
-
 	ui_ScrMainUpdateClock(strClock.c_str(), strDate.c_str());
 	uifl.updateClock(strClock, strDate);
 }
@@ -172,7 +190,8 @@ void UIFacade::updateStats() {
 
 	uint32_t timeTot = stats.getTime(t, statTimeMode);
 	ui_ScrMainUpdateStats(Statistics::SUM_TYPE_STRING[t] + 3, stats.getAvg(t, statTimeMode), stats.getSpeedMax(t), stats.getDistance(t), timeTot);
-	ui_SMainNoFLUpdateStats(Statistics::SUM_TYPE_STRING[t] + 3, Statistics::AVG_TYPE_STRING[statTimeMode] + 3, stats.getAvg(t, statTimeMode), stats.getSpeedMax(t), stats.getTemperature(), stats.getDistance(t), timeTot);
+	ui_SMainNoFLUpdateStats(Statistics::SUM_TYPE_STRING[t] + 3, Statistics::AVG_TYPE_STRING[statTimeMode] + 3,
+			stats.getAvg(t, statTimeMode), stats.getSpeedMax(t), sensors.getTemp(), stats.getDistance(t), timeTot, sensors.getHeight());
 }
 
 void UIFacade::updateIntBatteryInt() {
@@ -182,7 +201,6 @@ void UIFacade::updateIntBatteryInt() {
 	float avg = ui_ScrChartUpdateBat(batIntVoltage, batIntPerc, batStr);
 	if (! isnan(avg)) batIntVoltageAvg = avg;
 }
-
 
 // ---------------- external (public) data updater ----------------
 
@@ -209,11 +227,30 @@ void UIFacade::updateGrad(float _grad, float _height) {
 
 
 void UIFacade::updateIP(const String& ipStr) {
-	if (xSemaphoreTake(xUIDrawMutex, 50 / portTICK_PERIOD_MS) == pdTRUE) {
+	bool uiTask = isDrawTask();
+	if (uiTask || xSemaphoreTake(xUIDrawMutex, 250 / portTICK_PERIOD_MS) == pdTRUE) {
 		ui_SWLANUpdateIP(ipStr.c_str());
+		if (!uiTask) xSemaphoreGive(xUIDrawMutex);
+	} else {
+		bclog.log(BCLogger::Log_Error, BCLogger::TAG_UI, "Update IP blocked by mutex");
+	}
+}
+
+void UIFacade::updateSSIDList(const String& ssidStr) {
+	if (xSemaphoreTake(xUIDrawMutex, 250 / portTICK_PERIOD_MS) == pdTRUE) {
+		ui_SWLANUpdateSSIDList(ssidStr.c_str());
 		xSemaphoreGive(xUIDrawMutex);
 	} else {
-		bclog.log(BCLogger::Log_Error, BCLogger::TAG_OP, "Update IP blocked by mutex");
+		bclog.log(BCLogger::Log_Warn, BCLogger::TAG_UI, "Update SSID List blocked by mutex");
+	}
+}
+
+void UIFacade::updateWiFiState(bool wifiEnabled, bool APModeActive, bool disableAPMode, uint8_t apStaCount) {
+	if (xSemaphoreTake(xUIDrawMutex, 250 / portTICK_PERIOD_MS) == pdTRUE) {
+		ui_SWLANUpdateWiFiState(wifiEnabled, APModeActive, disableAPMode, apStaCount);
+		xSemaphoreGive(xUIDrawMutex);
+	} else {
+		bclog.log(BCLogger::Log_Warn, BCLogger::TAG_UI, "Update Wifi State blocked by mutex");
 	}
 }
 
@@ -246,14 +283,14 @@ void UIFacade::updateStateIcon(Statistics::EDrivingState state, UIColor col) {
 		break;
 	}
 
-	if (xSemaphoreTake(xUIDrawMutex, 50 / portTICK_PERIOD_MS) == pdTRUE) {
+	bool uiTask = isDrawTask();
+	if (uiTask || xSemaphoreTake(xUIDrawMutex, 150 / portTICK_PERIOD_MS) == pdTRUE) {
 		ui_SMainNoFLUpdateStateIcon(pCurStateIcon, lvcol);
-		xSemaphoreGive(xUIDrawMutex);
+		if (!uiTask) xSemaphoreGive(xUIDrawMutex);
 	} else {
-		bclog.log(BCLogger::Log_Error, BCLogger::TAG_OP, "Update IP blocked by mutex");
+		bclog.log(BCLogger::Log_Warn, BCLogger::TAG_UI, "Update State Icon blocked by mutex");
 	}
 }
-
 
 void UIFacade::updateNavi(const String& navStr, uint32_t dist, uint8_t dirCode) {
 	static uint8_t oldDirCode = 0;
@@ -276,17 +313,17 @@ void UIFacade::updateNavi(const String& navStr, uint32_t dist, uint8_t dirCode) 
 		ui_SMainNoFLUpdateNav(navStr.c_str(), dist, dirCode);
 		xSemaphoreGive(xUIDrawMutex);
 	} else {
-		bclog.log(BCLogger::Log_Error, BCLogger::TAG_OP, "Nav blocked by mutex");
+		bclog.log(BCLogger::Log_Warn, BCLogger::TAG_UI, "Nav blocked by mutex");
 	}
 }
 
 void UIFacade::updateNaviDist(uint32_t dist) {
-	if (xSemaphoreTake(xUIDrawMutex, 50 / portTICK_PERIOD_MS) == pdTRUE) {
+	if (xSemaphoreTake(xUIDrawMutex, 250 / portTICK_PERIOD_MS) == pdTRUE) {
 		ui_ScrNaviUpdateNavDist(dist);
 		ui_SMainNoFLUpdateNavDist(dist);
 		xSemaphoreGive(xUIDrawMutex);
 	} else {
-		bclog.log(BCLogger::Log_Error, BCLogger::TAG_OP, "Nav dist blocked by mutex");
+		bclog.log(BCLogger::Log_Warn, BCLogger::TAG_UI, "Nav dist blocked by mutex");
 	}
 }
 
@@ -298,7 +335,7 @@ void UIFacade::updateBatInt(float voltage, uint8_t batPerc, bool charging) {
 
 void UIFacade::setChartArray(int16_t a[], uint8_t idx) {
 	if (idx>4) {
-		bclog.log(BCLogger::Log_Error, BCLogger::TAG_OP, "Invalid chart series index");
+		bclog.log(BCLogger::Log_Error, BCLogger::TAG_UI, "Invalid chart series index");
 		return;
 	}
 	ui_ScrChartSetExtArray1(a, idx);
@@ -311,4 +348,5 @@ void UIFacade::setChartPosFirst(uint16_t pos, uint8_t idx) {
 void UIFacade::updateChart() {
 	ui_ScrChartRefresh();
 }
+
 

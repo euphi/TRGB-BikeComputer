@@ -128,7 +128,6 @@ private:
 
 	float gradient = 0.0;				//calculated gradient
 	float height = NAN;
-	float temperature = NAN;
 
 	// use int instead of uint, so -1 can be used as "invalid".
 	int16_t hr = -1;
@@ -136,13 +135,6 @@ private:
 	float speed=0.0;
 
 	uint8_t offAfterMinutes = 5;
-
-	//int16_t grad = 0, height = 0;
-
-//	uint32_t start_distance[ESummaryTypeMax];   // start_distance: For locally stored distances, this is the distance the counter was reset. For extern stored (FL) distance this is the actual distance
-	uint32_t lost_distance[ESummaryTypeMax];   // start_distance: For locally stored distances, this is the distance the counter was reset. For extern stored (FL) distance this is the actual distance
-//	uint32_t distance;							// current distance counter
-//	bool distance_start = false;
 
 	Ticker statCycle;
 	Ticker statStore;
@@ -209,7 +201,6 @@ public:
 	float getAvgCadence(EAvgType avgtype) const;
 	int16_t getHr() const {return hr;}
 	const float getSpeedMax(ESummaryType type) const {return speed_max[type];}
-	float getTemperature() const {return temperature;}
 	uint32_t getDistance(ESummaryType type, bool includeLost = true) const;
 
 	static const char* PREF_TIME_STRING[Statistics::EDrivingStateMax];

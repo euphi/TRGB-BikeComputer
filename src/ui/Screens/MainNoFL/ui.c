@@ -4,7 +4,7 @@
 // Project name: BC_noFL_Main
 
 #include <ui/Screens/MainNoFL/ui.h>
-#include "ui/ui_WLAN.h"
+#include <ui/Screens/SWLAN/ui.h>
 #include "ui/Screens/Settings/ui_Settings.h"
 
 #include "ui/ui_Navi.h"

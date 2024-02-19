@@ -19,9 +19,9 @@
      significant bit (LSB) corresponds to 1cm.
  */
 
-#include <Singletons.h>
 #include <Stats/Distance.h>
 #include <ArduinoJson.h>
+#include <Singletons.h>
 
 Distance::Distance() {
 
@@ -53,6 +53,7 @@ void Distance::loadDistanceForBikeIdx(uint8_t idx) {
 		String prefString = String("DIST_") + idx_str + String("_") + String(Statistics::SUM_TYPE_STRING[j]+3);
 		storedDist.begin(prefString.c_str(), true);		// +3 to skip first three chars "ST_"
 		distanceFromNVS[j]  = storedDist.getFloat("total", 0.0);		// Total distance in m (as float). It is only updated sporadically, so the actual total distance is total + (revs * wheel_circ).
+		lostDistanceFromNVS[j] = storedDist.getFloat("lost_total", 0.0);	// Total distance lost
 		if (isnan(distanceFromNVS[j])) {
 			bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_STAT, "%s: Loaded distance from NVS invalid (NAN) - setting to zero.", Statistics::SUM_TYPE_STRING[j]);
 			distanceFromNVS[j] = 0.0;
@@ -60,7 +61,8 @@ void Distance::loadDistanceForBikeIdx(uint8_t idx) {
 		revsFromNVS[j] = storedDist.getULong("revs", 0);
 		storedDist.end();
 		curTotalDistance[j] = distanceFromNVS[j];
-		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "%s: Loaded total distance %.2fm at %d revs.", Statistics::SUM_TYPE_STRING[j], distanceFromNVS[j], revsFromNVS[j]);
+		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "%s: Loaded %s total distance %.2fm at %d revs.",
+				Statistics::SUM_TYPE_STRING[j], prefString.c_str(), distanceFromNVS[j], revsFromNVS[j]);
 	}
 }
 
@@ -70,18 +72,27 @@ void Distance::updateRevs(uint32_t revs, uint16_t timestamp) {
 	/* Scenario:
 	 * 1. First called after startup, revs > 0
 	 *    --> Start must initialize to revs. If no value (=0) is stored for TOTAL/TOUR/TRIP, also set to revs
-	 *    --> Also the lastRevs must be updated to revs, to avoid a large spike in speed for first calculation
-	 *    --> Also lost revs must be calculated, but this is scenario 2.
+	 *    --> Also the lastRevs must be updated to revs, to avoid a large spike in speed for first calculation --> done in Scenerio 2 which is also triggered
+	 *    --> Also lost revs must be calculated, but different to scenario 2.
 	 *
 	 *    === Trigger: lastRevs == 0
 	 *    */
 	if (lastRevs == 0) {  // Scenario 1, in Scen1 also Scenario 2 is triggered, so it shall not interfere with Scen2 calculations
-		// if this is the first received message, set the "last known" value to current value -> speed = 0.0.
-		lastRevs = revs;
-		for (uint_fast8_t j=0; j <= Statistics::SUM_ESP_START; j++) {
+		bclog.log(BCLogger::Log_Debug, BCLogger::TAG_STAT, "Initialize revs counters");
+		for (uint_fast8_t j = 0; j <= Statistics::SUM_ESP_START; j++) {
 			// If stored rev value is zero and the last known value is also zero, assume it is a reset.
 			//    --> After startup, this is always the case for SUM_ESP_START
-			if (revsFromNVS[j] == 0) revsFromNVS[j] = revs;
+			if (revsFromNVS[j] == 0) {
+				revsFromNVS[j] = revs;
+			} else if (revsFromNVS[j] < revs) {
+				uint32_t lostRevs = revs - revsFromNVS[j];
+				float lostDist = lostRevs * wheel_c;
+				lostDistanceFromNVS[j] += lostDist;
+				bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Lost distance for %s while switched off: %d revs -> %.1f m --> total %.1f",
+						(Statistics::SUM_TYPE_STRING[j] + 3), lostRevs, lostDist, lostDistanceFromNVS[j]);
+			} else {
+				bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "No distance lost in disconnect: %d = %d", revs, revsFromNVS[j]);
+			}
 		}
 	}
 	/* Scenario:
@@ -104,20 +115,15 @@ void Distance::updateRevs(uint32_t revs, uint16_t timestamp) {
 	}
 	// Scenario 2 a & b (in case of b, lastrevs is already set to revs, so delta is 0.
 	if (!stats.isConnected()) {
-		int32_t lostRevs = revs - lastRevs;
-		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Reconnect: Lost %d revs of distance.", lostRevs);
-		if (lostRevs < 0) lostRevs = 0;
+		if (lastRevs > 0) {		// Not in Scenario 1, because Scenario 1 has own logic for lost distance
+			int32_t lostRevs = revs - lastRevs;
+			bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Reconnect: Lost %d revs of distance.", lostRevs);
+			if (lostRevs < 0) lostRevs = 0;
+			updateLostRevs(lostRevs);
+		}
 		lastRevs = revs;	// no spike in speed
 		stats.setConnected(true);
 	}
-
-//	void Statistics::updateLostDistance(uint32_t _dist_lost) {
-//		// distance_start == true --> initial start. Don't set lost_distance for SUM_ESP_START then.
-//		for (uint_fast8_t i = 0; i <= (distance_start ? SUM_ESP_START : SUM_ESP_TRIP); i++) {
-//			lost_distance[i] += _dist_lost;
-//			bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Lost distance for %s now %d pulses", SUM_TYPE_STRING[i], lost_distance[i]);
-//		}
-//	}
 
 	/* Scenario
 	 * 3. Normal Update
@@ -139,6 +145,15 @@ void Distance::updateRevs(uint32_t revs, uint16_t timestamp) {
 	lastRevs = revs;
 }
 
+void Distance::updateLostRevs(const uint32_t lostRevs) {
+	float lostDist = lostRevs * wheel_c;
+	bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Lost distance while disconnects %d revs -> %.1f m", lostRevs, lostDist);
+	for (uint_fast8_t j=0; j <= Statistics::SUM_ESP_START; j++) {
+		lostDistanceFromNVS[j] += lostDist;
+		bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_STAT, "Lost distance %s now %.1f m", (Statistics::SUM_TYPE_STRING[j] + 3), lostDistanceFromNVS[j]);
+	}
+}
+
 void Distance::store() {
 	bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_STAT, "Ticker: Store in Preferences: %d revs.", lastRevs);
 	// To minimize added up floating point error, just store, but continue to use values as loaded at startup.
@@ -146,7 +161,7 @@ void Distance::store() {
 	storeDistanceAndResetRevs(false);
 }
 
-float Distance::calculateSpeed(uint32_t revs, uint16_t duration) {
+float Distance::calculateSpeed(const uint32_t revs, const uint16_t duration) {
 	if (revs > 0) {
 		last_speedUpdate = millis();
 		bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_STAT, "Calculate new speed: %d * %.4f * 1024 * 3.6 / %d", revs, wheel_c, duration);
@@ -163,7 +178,7 @@ float Distance::calculateSpeed(uint32_t revs, uint16_t duration) {
 	}
 }
 
-bool Distance::updateWheelCirc(float circ_in_m) {
+bool Distance::updateWheelCirc(const float circ_in_m) {
 	// Gracious Plausibility check
 	if (circ_in_m < 0.2 || circ_in_m > 5) {
 		bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_STAT, "Try to set implausible value for wheel circumference: %.4f", circ_in_m);
@@ -203,9 +218,10 @@ void Distance::storeDistanceAndResetRevs(bool resetRevs) {
 		String prefString = String("DIST_") + idx_str + String("_") + String(Statistics::SUM_TYPE_STRING[j]+3); // +3 to skip first three chars "ST_"
 		storedDist.begin(prefString.c_str(), false);
 		size_t bytes = storedDist.putFloat("total", curTotalDistance[j]);		// Total distance in m (as float). It is only updated sporadically, so the actual total distance is total + (revs * wheel_circ).
-		bytes += storedDist.putULong("revs", lastRevs);
+		bytes += storedDist.putFloat("lost_total", lostDistanceFromNVS[j]);
+		bytes += (lastRevs > 0)  ? storedDist.putULong("revs", lastRevs) : 4;	// only save lastRevs if there are received from sensor (and thus > 0).
 		storedDist.end();
-		if (bytes < 8) {
+		if (bytes < 12) {
 			bclog.logf(BCLogger::Log_Error, BCLogger::TAG_STAT, "Cannot write to NVS to store wheel circ for %s", prefString.c_str());
 		} else {
 			bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_STAT, "Updated NVS for %s", prefString.c_str());
@@ -223,6 +239,7 @@ void Distance::storeDistanceAndResetRevs(bool resetRevs) {
 		revsFromNVS[Statistics::SUM_ESP_START] = lastRevs;
 	}
 }
+
 
 void Distance::setupWebserver() {
 	webserver.getServer().on("/stat/getDistanceInfo", HTTP_GET, [this](AsyncWebServerRequest *request) {
@@ -284,7 +301,12 @@ void Distance::setupWebserver() {
 				curTotalDistance[Statistics::SUM_ESP_TOTAL] = dataValue;
 				storeDistanceAndResetRevs(true);
 				request->send(200, "text/plain", "Total distance updated");
-			} else if (dataType == "wheelData") {
+			} else if (dataType == "totalDistanceLost") {
+				bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Received new total LOST distance: %.3f km", dataValue / 1000.0);
+				lostDistanceFromNVS[Statistics::SUM_ESP_TOTAL] = dataValue;
+				storeDistanceAndResetRevs(true);
+				request->send(200, "text/plain", "Total LOST distance updated");
+			} if (dataType == "wheelData") {
 				bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Received new wheel circumference: %f mm", dataValue);
 				updateWheelCirc(dataValue);
 				request->send(200, "text/plain", "Wheel data updated");

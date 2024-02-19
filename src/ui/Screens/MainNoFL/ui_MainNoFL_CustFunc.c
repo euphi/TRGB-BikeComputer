@@ -77,7 +77,7 @@ void ui_SMainNoFLUpdateIntBatPerc(uint8_t perc) {
 	lv_bar_set_value(ui_BarBatt, perc, LV_ANIM_OFF);
 }
 
-void ui_SMainNoFLUpdateStats(const char* modeStr, const char* avgStr, float avgSpd, float maxSpd, float temperature, uint32_t dist, uint32_t timeInS) {
+void ui_SMainNoFLUpdateStats(const char* modeStr, const char* avgStr, float avgSpd, float maxSpd, float temperature, uint32_t dist, uint32_t timeInS, float height) {
 	lv_label_set_text_fmt(ui_LabelClockMode, "%s - %s", modeStr, avgStr);
 	//lv_label_set_text_fmt(ui_S1PStatLspdMaxVar, "%.1f", maxSpd);
 	lv_label_set_text_fmt(ui_LabelSpdAvg, "%.1fkm/h", avgSpd);
@@ -85,6 +85,8 @@ void ui_SMainNoFLUpdateStats(const char* modeStr, const char* avgStr, float avgS
 	lv_label_set_text_fmt(ui_LabelDist, "%.1fkm", dist/1000.0);
 	lv_label_set_text_fmt(ui_LabelClock, "%02d:%02d:%02d", timeInS / 3600, (timeInS / 60) % 60, timeInS % 60);
 	lv_label_set_text_fmt(ui_LabelTemp, "%.1f", temperature);
+	lv_label_set_text_fmt(ui_LabelHeight, "%.1f", height);
+
 }
 
 void ui_SMainNoFLUpdateStateIcon(const lv_img_dsc_t * pStateIcon, lv_color_t color) {

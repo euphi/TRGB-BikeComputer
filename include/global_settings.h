@@ -7,8 +7,13 @@
 
 #pragma once
 
-#if not defined SETTING_BIKECOUNT
+#ifndef SETTING_BIKECOUNT
 #define SETTING_BIKECOUNT 2
 #endif
 
+#ifndef SETTING_APCOUNT
+#define SETTING_APCOUNT 3
+#endif
+
 const uint8_t bikecount = SETTING_BIKECOUNT;
+const uint8_t WifiAPCount = SETTING_APCOUNT;

@@ -5,7 +5,6 @@
 #include <Battery.h>
 Battery batt = Battery(3000, 4200, BAT_VOLT_PIN);
 
-
 #include <Ticker.h>
 Ticker batCheckTicker;
 
@@ -49,7 +48,6 @@ void setup() {
 	bleDevs.setup();
 	sensors.setup();
 	batCheckTicker.attach(1, batCheck);
-
 }
 
 void loop() {

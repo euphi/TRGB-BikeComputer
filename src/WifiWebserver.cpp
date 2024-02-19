@@ -30,11 +30,9 @@ WifiWebserver::WifiWebserver():
 }
 
 void WifiWebserver::setup() {
-	enableWifi();
-	bclog.log(BCLogger::Log_Info, TAG, "Connecting to WiFi and set timeserver");
-	configTzTime("CET-1CEST,M3.5.0,M10.5.0/3", ntpServer);
-	wifiCheckTicker.attach_ms(500, +[](WifiWebserver *thisInstance) {thisInstance->checkLoop();}, this);
-	LittleFS.begin();
+	LittleFS.begin();		// WifiWebserver is also responsible for enabling LittleFS, because it is only used for Website storage (Logging is on SDCARD, which is maintained in BClogger).
+
+	// Load settings from NVS
 	WifiSettings.begin("WifiSettings", true);
 	for (uint_fast8_t i = 0; i < WifiAPCount; i++) {
 		String key = "SSID_" + i;
@@ -52,10 +50,16 @@ void WifiWebserver::setup() {
 	}
 	disableAPMode = WifiSettings.getBool("disApMode", false);
 	WifiSettings.end();
+
+	// Enable WiFi
+	enableWifi();
+	bclog.log(BCLogger::Log_Info, TAG, "Connecting to WiFi and set timeserver");
+	configTzTime("CET-1CEST,M3.5.0,M10.5.0/3", ntpServer);
+	startScan();
 	WiFi.begin(StrSSID[0].c_str(), StrPW[0].c_str());
+	wifiCheckTicker.attach_ms(500, +[](WifiWebserver *thisInstance) {thisInstance->checkLoop();}, this);
 //	wifiMulti.addAP(ssid, password);
 //	wifiMulti.addAP("IA216", "xxxxx");
-	startScan();
 }
 
 void WifiWebserver::disableWifi() {
@@ -71,6 +75,8 @@ void WifiWebserver::enableWifi() {
 	WiFi.mode(WIFI_MODE_STA);
 	WiFi.enableIpV6();
 	wifiEnabled = true;
+	wifiWasConnected = false;	// reset wifiWasConnected to enable check loop again
+	lostConnTimeStamp = millis();
 }
 
 void WifiWebserver::enableAPMode(bool enable) {
@@ -102,17 +108,27 @@ void WifiWebserver::startScan() {
 void WifiWebserver::checkLoop() {
 	if (scanActive) {
 		bclog.log(BCLogger::Log_Debug, TAG, "Wifi check loop - scan active");
-		uint16_t result = WiFi.scanComplete();
+		int16_t result = WiFi.scanComplete();
+		if (result == WIFI_SCAN_RUNNING) return;
 		if (result > 0) {
 			String allSSID = "";
 			for (uint16_t i = 0 ; i < result ; i ++) {
 				allSSID += WiFi.SSID(i);
 				allSSID += "\n";
 			}
-			bclog.logf(BCLogger::Log_Debug, TAG, "Scan result: %s", allSSID.c_str());
+			bclog.logf(BCLogger::Log_Debug, TAG, "WiFi Scan: %d SSID found: %s", result, allSSID.c_str());
 			ui.updateSSIDList(allSSID);
 			scanActive = false;
+		} else if (result == 0) {
+			bclog.log(BCLogger::Log_Info, TAG, "WiFi Scan: No SSID found");
+			scanActive = false;
+		} else if (result == WIFI_SCAN_FAILED) {
+			bclog.log(BCLogger::Log_Warn, TAG, "WiFi Scan: failed");
+		} else  {
+			bclog.logf(BCLogger::Log_Warn, TAG, "WiFi Scan: Invalid result 0x%02x", result);
 		}
+		scanActive = false;
+
 	}
 	if (APModeActive) {
 		bclog.log(BCLogger::Log_Debug, TAG, "Wifi check loop - AP mode active");

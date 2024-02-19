@@ -6,8 +6,8 @@
  */
 
 #include "Statistics.h"
-#include "Singletons.h"
 #include "Distance.h"
+#include "Singletons.h"
 
 const char* Statistics::PREF_TIME_STRING[Statistics::EDrivingStateMax] = {
 		"TIME_IN_NOCONN",	//		DS_NO_CONN,
@@ -87,8 +87,6 @@ String Statistics::generateJSONArray() {
 void Statistics::restoreStats() {
 	for (uint_fast8_t c = 0 ; c < SUM_ESP_START; c++) {
 		StatPreferences[c].begin(SUM_TYPE_STRING[c]);
-		lost_distance[c]  = StatPreferences[c].getLong("LOST_DISTANCE",  0);
-		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Loaded lost distance %d) from preferences: %s", lost_distance[c], SUM_TYPE_STRING[c]);
 		for (uint_fast8_t d = 0 ; d < EDrivingStateMax ; d++) {
 			time_in[d][c] = StatPreferences[c].getLong(PREF_TIME_STRING[d], 0);
 			bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Loaded time in %s for %s from preferences: %d", PREF_TIME_STRING[d], SUM_TYPE_STRING[c], time_in[d][c]);
@@ -106,7 +104,6 @@ void Statistics::autoStore() {
 			}
 		}
 	}
-
 	updateTimeSeries();			// FIXME: test only - there may be time or distance mode so maybe move it to cycle or updateRevs.
 	for (uint_fast8_t j=0; j < 4 ; j++) {
 		createChartArray(j);	// FIXME: test only
@@ -114,7 +111,7 @@ void Statistics::autoStore() {
 }
 
 void Statistics::dataStore() {
-	bclog.appendDataLog(speed, temperature, gradient, distHandler.getDistance(), height, hr, cadence);
+	bclog.appendDataLog(speed, sensors.getTemp(), gradient, distHandler.getDistance(), height, hr, cadence);
 }
 
 void Statistics::cycle() {
@@ -146,6 +143,7 @@ void Statistics::cycle() {
 		if (speed > 5.5) {
 			setCurDriveState(cadence < 40  ? DS_DRIVE_COASTING : DS_DRIVE_POWER);
 			offAfterMinutes = 5;
+			time_in_break = 0;	// Necessary so that next if is not true
 		}
 		// no break - also switch off in NO_CONN
 	case DS_NO_CONN:
@@ -432,7 +430,6 @@ void Statistics::calculateGradient(float newDist) {
 		// Get Height information, so it's synchronized with distance update (improves accuracy)
 		sensors.readBME280();
 		float height_new = sensors.getHeight();		// [m]
-		temperature = sensors.getTemp();
 		float delta_height = height_new - gradient_height;
 		if (delta_dist < 0 || delta_dist > 200) {
 			bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_STAT, "Gradient calculation: New distance %.2fm implausible (delta: %.2fm) ", newDist, delta_dist);
@@ -472,7 +469,6 @@ uint32_t Statistics::getDistance(ESummaryType type, bool includeLost) const {
 	case SUM_ESP_TOUR:
 	case SUM_ESP_TRIP:
 	case SUM_ESP_START:
-		//return distance - start_distance[type] - (includeLost ? 0 : lost_distance[type]);  //old
 		return distHandler.getDistance(type);
 #ifdef BC_FL_SUPPORT
 	case SUM_FL_TRIP:

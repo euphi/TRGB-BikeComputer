@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="/stylesheet.css">   
+    <title>Wi-Fi Configuration</title>
+</head>
+<body>
+  <div class="container">
+
+    <h1>Wi-Fi Configuration</h1>
+    <form id="wifiForm">
+        <label for="ssid">Select SSID:</label><br>
+        <select id="ssid" name="ssid">
+            <!-- Options will be populated dynamically using JavaScript -->
+        </select><br>
+        <label for="manualSSID">Or enter SSID manually:</label><br>
+        <input type="text" id="manualSSID" name="manualSSID" placeholder="Enter SSID">
+        <br><br>
+        <label for="password">Password:</label><br>
+        <input type="password" id="password" name="password"><br><br>
+        <input type="submit" value="Store & Connect"><br><br>
+        
+        <a class="link-box" onclick="window.history.back();">Back</a>
+    </form>
+
+    <script>
+        // Function to populate SSID dropdown list
+        function populateSSIDList(ssids) {
+            var ssidDropdown = document.getElementById("ssid");
+            ssidDropdown.innerHTML = ""; // Clear existing options
+
+            // Add each SSID as an option
+            ssids.forEach(function(ssid) {
+                var option = document.createElement("option");
+                option.text = ssid;
+                ssidDropdown.add(option);
+            });
+        }
+
+        // Fetch existing SSIDs from server and populate dropdown list
+        fetch("/wifi/ssids")
+            .then(response => response.json())
+            .then(data => populateSSIDList(data))
+            .catch(error => console.error('Error fetching SSIDs:', error));
+
+        // Submit form data to server for Wi-Fi connection
+        document.getElementById("wifiForm").addEventListener("submit", function(event) {
+            event.preventDefault(); // Prevent default form submission
+
+            var formData = new FormData(this);
+            fetch("/wifi/connect", {
+                method: "POST",
+                body: formData
+            })
+            .then(response => {
+                if (response.ok) {
+                    alert("Wi-Fi connected successfully!");
+                } else {
+                    alert("Failed to connect to Wi-Fi.");
+                }
+            })
+            .catch(error => {
+                console.error("Error connecting to Wi-Fi:", error);
+                alert("Failed to connect to Wi-Fi.");
+            });
+        });
+    </script>
+  </div>
+</body>
+</html>

@@ -20,7 +20,7 @@ public:
 	void store();
 
 	void updateRevs(uint32_t revs, uint16_t timestamp);
-	bool updateWheelCirc(float circ_in_m); // return true on success
+	bool updateWheelCirc(const float circ_in_m); // return true on success
 	void resetDistToZero(Statistics::ESummaryType);
 
 	float revsToDistance(uint32_t revs) {return revs * wheel_c;}
@@ -29,6 +29,7 @@ public:
 private:
 	float wheel_c = NAN;											// wheel_c as loaded from NVS
 	float distanceFromNVS[Statistics::SUM_ESP_TRIP + 1] = {NAN};		// total distance as loaded from NVS
+	float lostDistanceFromNVS[Statistics::SUM_ESP_START + 1] = {0};
 	uint32_t revsFromNVS[Statistics::SUM_ESP_START + 1] = {0};	// total revs as loaded from NVS
 
 	float curTotalDistance[Statistics::SUM_ESP_START + 1] = {NAN};	// current, actual distance for TOTAL, TOUR, TRIP (stored distance + (current revs - stored revs) * wheel_c)
@@ -41,10 +42,11 @@ private:
 
 	Ticker distanceStore;
 
-	float calculateSpeed(uint32_t revs, uint16_t duration);
+	float calculateSpeed(const uint32_t revs, const uint16_t duration);
 	void loadDistanceForBikeIdx(uint8_t idx);
 
 	void storeDistanceAndResetRevs(bool resetRevs=false);		// stores current distance and reset rev count (needed for change of wheel circumference)
+	void updateLostRevs(const uint32_t lostRevs);
 
 	void setupWebserver();
 };

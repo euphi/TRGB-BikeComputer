@@ -3359,6 +3359,71 @@
                 "nid": -69934599,
                 "strtype": "BAR/Value_start",
                 "InheritedType": 6
+              },
+              {
+                "disabled": false,
+                "nid": -1107602054,
+                "strtype": "BAR/EventHandler",
+                "strval": "LONG_PRESSED",
+                "childs": [
+                  {
+                    "nid": -2128676734,
+                    "strtype": "_custom/name",
+                    "strval": "EvShowChart",
+                    "InheritedType": 10
+                  },
+                  {
+                    "nid": -490928310,
+                    "strtype": "_custom/condition_C",
+                    "strval": "",
+                    "InheritedType": 10
+                  },
+                  {
+                    "nid": 2095886018,
+                    "strtype": "_custom/condition_P",
+                    "strval": "",
+                    "InheritedType": 10
+                  },
+                  {
+                    "nid": 2059399822,
+                    "strtype": "_custom/action",
+                    "strval": "CALL FUNCTION",
+                    "childs": [
+                      {
+                        "nid": 1332783641,
+                        "strtype": "CALL FUNCTION/Name",
+                        "strval": "CALL FUNCTION",
+                        "InheritedType": 10
+                      },
+                      {
+                        "nid": 1817510223,
+                        "strtype": "CALL FUNCTION/Call",
+                        "strval": "<{Function_name}>( event_struct )",
+                        "InheritedType": 10
+                      },
+                      {
+                        "nid": 497649743,
+                        "strtype": "CALL FUNCTION/CallC",
+                        "strval": "<{Function_name}>( e );",
+                        "InheritedType": 10
+                      },
+                      {
+                        "nid": 327416136,
+                        "strtype": "CALL FUNCTION/Function_name",
+                        "strval": "EvShowChart",
+                        "InheritedType": 10
+                      },
+                      {
+                        "nid": -647089206,
+                        "strtype": "CALL FUNCTION/Dont_export_function",
+                        "strval": "False",
+                        "InheritedType": 2
+                      }
+                    ],
+                    "InheritedType": 10
+                  }
+                ],
+                "InheritedType": 4
               }
             ],
             "saved_objtypeKey": "BAR"

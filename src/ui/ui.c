@@ -5,11 +5,13 @@
 
 #include "ui.h"
 #include "img/img.h"
-#include "ui_FL.h"
-#include "ui_WLAN.h"
-#include "ui_Navi.h"
-#include "Screens/Settings/ui_Settings.h"
 #include "ui_helpers.h"
+
+// Screens that can be changed to
+#include "ui_FL.h"
+#include "ui_Navi.h"
+#include "Screens/SWLAN/ui.h"
+#include "Screens/Settings/ui_Settings.h"
 
 ///////////////////// VARIABLES ////////////////////
 lv_obj_t * ui_MainScreen;

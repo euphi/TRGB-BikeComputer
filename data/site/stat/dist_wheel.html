@@ -11,9 +11,14 @@
     <h1>Distance Statistics</h1>
     
     <!-- Input fields and buttons for distance and wheel diameter -->
-   	<label for="totalDistance">Total Distance (km):</label>
+   	<label for="totalDistance">Total Distance (m):</label>
 	<input type="number" id="totalDistance" step="0.01" placeholder="Enter total distance">
 	<button onclick="updateData('totalDistance')">Update Total Distance</button>
+
+   	<label for="totalDistanceLost">Total LOST Distance (m):</label>
+	<input type="number" id="totalDistanceLost" step="0.01" placeholder="Enter total distance">
+	<button onclick="updateData('totalDistanceLost')">Update Total Lost Distance</button>
+
    
     <label for="wheelData">Wheel Circumference (mm):</label>
 	<input type="number" id="wheelData" step="1" placeholder="Enter wheel circumference">

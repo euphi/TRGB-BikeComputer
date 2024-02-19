@@ -38,6 +38,10 @@ public:
 	void updateFast() {xSemaphoreGive(xUpdateFast);}
 
 	void updateIP(const String& ipStr);
+	void updateSSIDList(const String& ssidStr);
+	void updateWiFiState(bool wifiEnabled, bool APModeActive, bool disableAPMode, uint8_t apStaCount);
+
+
 	void updateNavi(const String& navStr, uint32_t dist, uint8_t dirCode);
 	void updateNaviDist(uint32_t dist);
 
@@ -95,5 +99,8 @@ private:
 	SemaphoreHandle_t xUpdateSlow;
 	SemaphoreHandle_t xUIDrawMutex;
 	TaskHandle_t uiTaskHandle = NULL;
+
+	bool isDrawTask(); // returns true if running in draw task
+
 
 };
