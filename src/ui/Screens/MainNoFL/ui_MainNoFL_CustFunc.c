@@ -17,7 +17,7 @@ void ui_SMainNoFLUpdateSpeed(float speed) {
 
 }
 void ui_SMainNoFLUpdateCadence(int16_t cadence) {
-	lv_label_set_text_fmt(ui_LabelCad, (cadence >= 0) ? "%d rpm" : "-/-", cadence);
+	lv_label_set_text_fmt(ui_LabelCad, (cadence >= 0) ? "%drpm" : "-/-", cadence);
 	lv_arc_set_value(ui_ArcCad, cadence);
 }
 
@@ -27,11 +27,9 @@ void ui_SMainNoFLUpdateHR(int16_t hr) {
 }
 
 void ui_SMainNoFLUpdateGrad(float grad, float height) {
-	lv_label_set_text_fmt(ui_LabelGradient, "%.1f", grad);
-	lv_label_set_text_fmt(ui_LabelHeight, "%.1f", height);
+	lv_label_set_text_fmt(ui_LabelGradient, "%.1f%%", grad);
+	lv_label_set_text_fmt(ui_LabelHeight, "%.1fm", height);
 }
-
-
 
 void ui_SMainNoFLUpdateNavDist(uint32_t dist) {
 	if (dist < 1500) {
@@ -84,9 +82,8 @@ void ui_SMainNoFLUpdateStats(const char* modeStr, const char* avgStr, float avgS
 	lv_arc_set_value(ui_ArcAvg, (int16_t)(avgSpd * 10));
 	lv_label_set_text_fmt(ui_LabelDist, "%.1fkm", dist/1000.0);
 	lv_label_set_text_fmt(ui_LabelClock, "%02d:%02d:%02d", timeInS / 3600, (timeInS / 60) % 60, timeInS % 60);
-	lv_label_set_text_fmt(ui_LabelTemp, "%.1f", temperature);
-	lv_label_set_text_fmt(ui_LabelHeight, "%.1f", height);
-
+	lv_label_set_text_fmt(ui_LabelTemp, "%.1f°C", temperature);
+	lv_label_set_text_fmt(ui_LabelHeight, "%.1fm", height);
 }
 
 void ui_SMainNoFLUpdateStateIcon(const lv_img_dsc_t * pStateIcon, lv_color_t color) {

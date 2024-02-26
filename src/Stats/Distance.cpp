@@ -201,7 +201,8 @@ bool Distance::updateWheelCirc(const float circ_in_m) {
 
 void Distance::resetDistToZero(Statistics::ESummaryType eSummaryType) {
 	if (eSummaryType < Statistics::SUM_ESP_TOTAL || eSummaryType > Statistics::SUM_ESP_START) {
-		bclog.logf(BCLogger::Log_Error, BCLogger::TAG_STAT, "Try to reset invalid Sum-Type 0x%04x", eSummaryType);
+		bool expected = (eSummaryType == Statistics::SUM_ESP_TOTAL) || (eSummaryType == Statistics::SUM_ESP_START); 	//  if user presses reset in TOTAL or START
+		bclog.logf(expected ? BCLogger::Log_Debug : BCLogger::Log_Error, BCLogger::TAG_STAT, "Try to reset invalid Sum-Type 0x%04x", eSummaryType);
 		return;
 	}
 	curTotalDistance[eSummaryType] = 0;

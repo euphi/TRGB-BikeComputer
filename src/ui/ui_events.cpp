@@ -100,7 +100,7 @@ void statModeNext(bool dir) {
 	ui.setStatMode(dir);
 }
 
-void resetStats(lv_event_t * e)
+void resetStats()
 {
 //	Serial.println("UI Event: Reset stats");
 	stats.getDistHandler().resetDistToZero(ui.getStatMode());

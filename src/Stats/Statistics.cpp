@@ -445,9 +445,9 @@ void Statistics::calculateGradient(float newDist) {
 
 		float gradient_new = NAN; // division by 0 should not lead not +Inf or -Inf, because delta_height is also close to zero. Ideally it would be zero, so 0/0 --> NAN.
 		if (delta_dist > 0.2) {
-			gradient = delta_height / (delta_dist) * 100.0;		// simplified gradient calculation. Accurate enough for smaller gradients.
+			gradient_new = delta_height / (delta_dist) * 100.0;		// simplified gradient calculation. Accurate enough for smaller gradients.
 		}
-		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Gradient: %.2f", gradient);
+		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Gradient: %.2f", gradient_new);
 		addGradientHeight(gradient_new, height_new);
 	}
 #endif

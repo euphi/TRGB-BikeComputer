@@ -10,3 +10,7 @@ def stateIconClicked(event_struct):
 def driveStateUpdate(event_struct):
     return
 
+
+def EvShowChart(event_struct):
+    return
+

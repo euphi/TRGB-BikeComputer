@@ -25,6 +25,7 @@ lv_obj_t * ui_ArcSpeed;
 lv_obj_t * ui_ArcAvg;
 lv_obj_t * ui_ArcCad;
 lv_obj_t * ui_LabelSpeed;
+void ui_event_BarHR(lv_event_t * e);
 lv_obj_t * ui_BarHR;
 lv_obj_t * ui_LabelHR;
 lv_obj_t * ui_LabelDist;
@@ -64,28 +65,41 @@ void ui_event_PanelNav(lv_event_t * e)
     lv_event_code_t event_code = lv_event_get_code(e);
     lv_obj_t * target = lv_event_get_target(e);
     if(event_code == LV_EVENT_CLICKED) {
-        _ui_screen_change(ui_SNavi, LV_SCR_LOAD_ANIM_MOVE_TOP, 500, 0);
+        _ui_screen_change(ui_SChart, LV_SCR_LOAD_ANIM_MOVE_TOP, 500, 0);
+    }
+}
+void ui_event_BarHR(lv_event_t * e)
+{
+    lv_event_code_t event_code = lv_event_get_code(e);
+    lv_obj_t * target = lv_event_get_target(e);
+    if(event_code == LV_EVENT_LONG_PRESSED) {
+        _ui_screen_change(ui_SChart, LV_SCR_LOAD_ANIM_OVER_TOP, 500, 0);
     }
 }
 void ui_event_PanelClock(lv_event_t * e)
 {
-	lv_event_code_t event_code = lv_event_get_code(e);
+    lv_event_code_t event_code = lv_event_get_code(e);
     lv_obj_t * target = lv_event_get_target(e);
-
+    
     if(event_code == LV_EVENT_LONG_PRESSED) {
-        resetStats(e);
+    	lv_indev_wait_release(lv_indev_get_act());
+        resetStats();
     }
     if(event_code == LV_EVENT_GESTURE &&  lv_indev_get_gesture_dir(lv_indev_get_act()) == LV_DIR_TOP) {
+        lv_indev_wait_release(lv_indev_get_act());
         statsTimeMode(true);
     }
     if(event_code == LV_EVENT_GESTURE &&  lv_indev_get_gesture_dir(lv_indev_get_act()) == LV_DIR_BOTTOM) {
+        lv_indev_wait_release(lv_indev_get_act());
         statsTimeMode(false);
     }
 
     if(event_code == LV_EVENT_GESTURE &&  lv_indev_get_gesture_dir(lv_indev_get_act()) == LV_DIR_RIGHT) {
+    	lv_indev_wait_release(lv_indev_get_act());
     	statModeNext(true);
     }
     if(event_code == LV_EVENT_GESTURE &&  lv_indev_get_gesture_dir(lv_indev_get_act()) == LV_DIR_LEFT) {
+    	lv_indev_wait_release(lv_indev_get_act());
     	statModeNext(false);
     }
 }

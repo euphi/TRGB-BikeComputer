@@ -295,7 +295,27 @@
                   },
                   {
                     "part": "lv.PART.MAIN",
-                    "childs": [],
+                    "childs": [
+                      {
+                        "nid": 603924104,
+                        "strtype": "_style/StyleState",
+                        "strval": "DEFAULT",
+                        "childs": [
+                          {
+                            "nid": 1124367577,
+                            "strtype": "_style/Image_reColor",
+                            "intarray": [
+                              0,
+                              255,
+                              128,
+                              255
+                            ],
+                            "InheritedType": 7
+                          }
+                        ],
+                        "InheritedType": 1
+                      }
+                    ],
                     "nid": -1238569088,
                     "strtype": "IMAGE/Style_main",
                     "strval": "lv.PART.MAIN, Rectangle, Image",
@@ -2759,7 +2779,6 @@
                   },
                   {
                     "nid": -1093591655,
-                    "flags": 1048576,
                     "strtype": "OBJECT/Flags",
                     "InheritedType": 1
                   },
@@ -3363,7 +3382,7 @@
               {
                 "disabled": false,
                 "nid": -1107602054,
-                "strtype": "BAR/EventHandler",
+                "strtype": "_event/EventHandler",
                 "strval": "LONG_PRESSED",
                 "childs": [
                   {
@@ -3385,39 +3404,50 @@
                     "InheritedType": 10
                   },
                   {
-                    "nid": 2059399822,
-                    "strtype": "_custom/action",
-                    "strval": "CALL FUNCTION",
+                    "nid": -1990359932,
+                    "strtype": "_event/action",
+                    "strval": "CHANGE SCREEN",
                     "childs": [
                       {
-                        "nid": 1332783641,
-                        "strtype": "CALL FUNCTION/Name",
-                        "strval": "CALL FUNCTION",
+                        "nid": 5215819,
+                        "strtype": "CHANGE SCREEN/Name",
+                        "strval": "CHANGE SCREEN",
                         "InheritedType": 10
                       },
                       {
-                        "nid": 1817510223,
-                        "strtype": "CALL FUNCTION/Call",
-                        "strval": "<{Function_name}>( event_struct )",
+                        "nid": 1921040003,
+                        "strtype": "CHANGE SCREEN/Call",
+                        "strval": "ChangeScreen( <{Screen_to}>, lv.SCR_LOAD_ANIM.<{Fade_mode}>, <{Speed}>, <{Delay}>)",
                         "InheritedType": 10
                       },
                       {
-                        "nid": 497649743,
-                        "strtype": "CALL FUNCTION/CallC",
-                        "strval": "<{Function_name}>( e );",
+                        "nid": -1943115893,
+                        "strtype": "CHANGE SCREEN/CallC",
+                        "strval": "_ui_screen_change( &<{Screen_to}>, LV_SCR_LOAD_ANIM_<{Fade_mode}>, <{Speed}>, <{Delay}>, &<{Screen_to}>_screen_init);",
                         "InheritedType": 10
                       },
                       {
-                        "nid": 327416136,
-                        "strtype": "CALL FUNCTION/Function_name",
-                        "strval": "EvShowChart",
-                        "InheritedType": 10
+                        "nid": 1787548846,
+                        "strtype": "CHANGE SCREEN/Screen_to",
+                        "strval": "GUID7263531-768085S8942168",
+                        "InheritedType": 9
                       },
                       {
-                        "nid": -647089206,
-                        "strtype": "CALL FUNCTION/Dont_export_function",
-                        "strval": "False",
-                        "InheritedType": 2
+                        "nid": 1618416246,
+                        "strtype": "CHANGE SCREEN/Fade_mode",
+                        "strval": "OVER_TOP",
+                        "InheritedType": 3
+                      },
+                      {
+                        "nid": 2117332731,
+                        "strtype": "CHANGE SCREEN/Speed",
+                        "integer": 500,
+                        "InheritedType": 6
+                      },
+                      {
+                        "nid": 597170260,
+                        "strtype": "CHANGE SCREEN/Delay",
+                        "InheritedType": 6
                       }
                     ],
                     "InheritedType": 10
@@ -8569,7 +8599,7 @@
     "theme_color2": 0,
     "uiExportFolderPath": "/home/ian/Coding/Bike/TRGB-BikeComputer/SquareLine/exported_files/SMainNoFl",
     "projectExportFolderPath": "",
-    "backup_cnt": 43,
+    "backup_cnt": 48,
     "autosave_cnt": 0,
     "lvgl_version": "8.3.4",
     "callfuncsexport": "CPP_FILE",

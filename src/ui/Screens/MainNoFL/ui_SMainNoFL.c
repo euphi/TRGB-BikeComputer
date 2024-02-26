@@ -30,6 +30,7 @@ void ui_SMainNoFL_screen_init(void)
     lv_obj_set_x(ui_ImgNav, -8);
     lv_obj_set_y(ui_ImgNav, -10);
     lv_obj_set_style_img_recolor(ui_ImgNav, lv_color_hex(0x0000FF), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_img_opa(ui_ImgNav, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_align(ui_ImgNav, LV_ALIGN_CENTER);
     lv_obj_add_flag(ui_ImgNav, LV_OBJ_FLAG_ADV_HITTEST | LV_OBJ_FLAG_EVENT_BUBBLE);     /// Flags
     lv_obj_clear_flag(ui_ImgNav, LV_OBJ_FLAG_SCROLLABLE);      /// Flags
@@ -316,5 +317,5 @@ void ui_SMainNoFL_screen_init(void)
     lv_obj_add_event_cb(ui_ImgWifi, ui_event_ImgWifi, LV_EVENT_ALL, NULL);
     lv_obj_add_event_cb(ui_ImgSettings, ui_event_ImgSettings, LV_EVENT_ALL, NULL);
     lv_obj_add_event_cb(ui_ImgState, ui_event_ImgState, LV_EVENT_ALL, NULL);
-
+    lv_obj_add_event_cb(ui_BarHR, ui_event_BarHR, LV_EVENT_ALL, NULL);
 }

@@ -80,7 +80,7 @@ void chart_dn(lv_event_t * e);
 void statModeChanged(uint8_t mode);
 void statModeNext(bool dir);
 
-void resetStats(lv_event_t * e);
+void resetStats();
 void statsTimeMode(bool dir);
 
 typedef enum {

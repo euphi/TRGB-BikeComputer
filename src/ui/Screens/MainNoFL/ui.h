@@ -27,6 +27,7 @@ extern lv_obj_t * ui_ArcSpeed;
 extern lv_obj_t * ui_ArcAvg;
 extern lv_obj_t * ui_ArcCad;
 extern lv_obj_t * ui_LabelSpeed;
+void ui_event_BarHR(lv_event_t * e);
 extern lv_obj_t * ui_BarHR;
 extern lv_obj_t * ui_LabelHR;
 extern lv_obj_t * ui_LabelDist;
