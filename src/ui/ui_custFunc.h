@@ -25,6 +25,9 @@ void ui_ScrMainUpdateHR(uint16_t hr);
 void ui_ScrChartUpdateSpeed(float speed);
 float ui_ScrChartUpdateBat(float batVolt, int8_t perc, char* batString);
 
+void ui_MsgBox(const char* str);
+void ui_MsgBoxUpdate(const char* str);
+
 #ifdef __cplusplus
 } /*extern "C"*/
 #endif

@@ -349,4 +349,24 @@ void UIFacade::updateChart() {
 	ui_ScrChartRefresh();
 }
 
+void UIFacade::showMsgBox(const String &msgText, const MsgBoxCallBack &cb) {
+	if (msgCB != NULL) {
+		msgCB(false);
+	}
+	msgCB = cb;
+	ui_MsgBox(msgText.c_str());
+}
 
+
+void UIFacade::updateMsgBox(const String& msgText) {
+	ui_MsgBoxUpdate(msgText.c_str());
+}
+
+
+
+void UIFacade::msgCBFct(bool ok) {
+	if (msgCB != NULL) {
+		msgCB(ok);
+		msgCB = NULL;
+	}
+}

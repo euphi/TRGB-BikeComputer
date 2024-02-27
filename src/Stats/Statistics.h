@@ -184,6 +184,7 @@ public:
 	void toggleStandbyMode();
 private:
 	void updateStateIcon();
+	bool shutdownMsg = false;
 
 public:
 	void reset(ESummaryType type);

@@ -90,6 +90,9 @@ typedef enum {
 } UIDriveStateEvent;
 void driveStateUpdate(const UIDriveStateEvent op);
 
+void msgCppCB(bool ok);
+
+
 #ifdef __cplusplus
 } /*extern "C"*/
 #endif

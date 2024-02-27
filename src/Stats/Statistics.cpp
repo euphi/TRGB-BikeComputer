@@ -206,7 +206,23 @@ void Statistics::updateStateIcon() {
 			time_t time_in_break = millis() - timestamp_stop;
 			time_t remaining = offAfterMinutes * 60000 - time_in_break ;
 			if (( remaining < 60000) && (((time_in_break / 1000) % 2) == 1)) { // part after '&&' enables blinking - TODO: Have blink function(s) based on cycle() count
-				color = (remaining < 10000) ? UIFacade::UI_ColorCrit : UIFacade::UI_ColorWarn;
+				if (remaining > 10000) {
+					color = UIFacade::UI_ColorWarn;
+				} else {
+					color = UIFacade::UI_ColorCrit;
+					char buffer[30];
+					snprintf(buffer, 30, "Switch off in %02d sec",(remaining/1000));
+					if (!shutdownMsg) {
+						shutdownMsg = true;
+						ui.showMsgBox(String(buffer), [this](bool ok) {
+							shutdownMsg = false;
+							if (ok) trgb.deepSleep();
+						});
+					} else {
+						ui.updateMsgBox(String(buffer));
+					}
+				}
+
 			}
 		}
 	}

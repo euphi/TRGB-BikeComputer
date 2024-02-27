@@ -68,6 +68,13 @@ public:
 	void updateStateIcon(Statistics::EDrivingState state, UIColor col);
 
 
+	typedef std::function<void(bool ok)> MsgBoxCallBack;
+	void showMsgBox(const String& msgText, const MsgBoxCallBack& cb);
+	void updateMsgBox(const String& msgText);
+	void msgCBFct(bool ok);
+
+	MsgBoxCallBack msgCB = NULL;
+
 private:
 	void updateData();
 	void updateClock(const time_t now);

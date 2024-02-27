@@ -129,4 +129,6 @@ void driveStateUpdate(const UIDriveStateEvent op)
 	}
 }
 
-
+void msgCppCB(bool ok) {
+	ui.msgCBFct(ok);
+}
