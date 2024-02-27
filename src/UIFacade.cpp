@@ -11,8 +11,8 @@
 
 // Screens
 
-#include "ui/ui_Navi.h"
-#include "ui/ui_NaviCustFunc.h"
+#include "ui/Screens/SNavi/ui.h"
+#include "ui/Screens/SNavi/ui_NaviCustFunc.h"
 
 #include "ui/img/state-icons.h"
 

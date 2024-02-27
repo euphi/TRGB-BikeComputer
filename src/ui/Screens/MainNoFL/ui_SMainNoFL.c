@@ -4,7 +4,7 @@
 // Project name: BC_noFL_Main
 
 #include <ui/Screens/MainNoFL/ui.h>
-#include "ui/ui_Navi.h"
+#include <ui/Screens/SNavi/ui.h>
 
 void ui_SMainNoFL_screen_init(void)
 {

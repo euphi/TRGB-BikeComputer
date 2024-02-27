@@ -2667,7 +2667,7 @@
               {
                 "nid": 1303441625,
                 "strtype": "LABEL/Text",
-                "strval": "--",
+                "strval": "25.4",
                 "InheritedType": 10
               },
               {
@@ -3724,7 +3724,7 @@
               {
                 "nid": -507958049,
                 "strtype": "LABEL/Text",
-                "strval": "-- km",
+                "strval": "2005.3km",
                 "InheritedType": 10
               },
               {
@@ -6997,7 +6997,7 @@
                   {
                     "nid": 539776461,
                     "strtype": "LABEL/Text",
-                    "strval": "320m",
+                    "strval": "1320.9m",
                     "InheritedType": 10
                   },
                   {
@@ -7402,7 +7402,7 @@
                 "flags": 17,
                 "strtype": "OBJECT/Size",
                 "intarray": [
-                  100,
+                  140,
                   75
                 ],
                 "InheritedType": 7
@@ -8599,7 +8599,7 @@
     "theme_color2": 0,
     "uiExportFolderPath": "/home/ian/Coding/Bike/TRGB-BikeComputer/SquareLine/exported_files/SMainNoFl",
     "projectExportFolderPath": "",
-    "backup_cnt": 48,
+    "backup_cnt": 56,
     "autosave_cnt": 0,
     "lvgl_version": "8.3.4",
     "callfuncsexport": "CPP_FILE",

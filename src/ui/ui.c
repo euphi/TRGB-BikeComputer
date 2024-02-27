@@ -9,7 +9,7 @@
 
 // Screens that can be changed to
 #include "ui_FL.h"
-#include "ui_Navi.h"
+#include <ui/Screens/SNavi/ui.h>
 #include "Screens/SWLAN/ui.h"
 #include "Screens/Settings/ui_Settings.h"
 

@@ -5,7 +5,7 @@
  *      Author: ian
  */
 
-#include "../ui_Navi.h"
+#include <ui/Screens/SNavi/ui.h>
 
 #ifndef LV_ATTRIBUTE_MEM_ALIGN
     #define LV_ATTRIBUTE_MEM_ALIGN

@@ -5,10 +5,10 @@
 
 #include <ui/Screens/MainNoFL/ui.h>
 #include <ui/Screens/SWLAN/ui.h>
-#include "ui/Screens/Settings/ui_Settings.h"
+#include <ui/Screens/Settings/ui_Settings.h>
 
-#include "ui/ui_Navi.h"
-#include "ui/Screens/Chart/ui.h"
+#include <ui/Screens/SNavi/ui.h>
+#include <ui/Screens/Chart/ui.h>
 
 #include "ui/ui_helpers.h"
 
@@ -65,7 +65,7 @@ void ui_event_PanelNav(lv_event_t * e)
     lv_event_code_t event_code = lv_event_get_code(e);
     lv_obj_t * target = lv_event_get_target(e);
     if(event_code == LV_EVENT_CLICKED) {
-        _ui_screen_change(ui_SChart, LV_SCR_LOAD_ANIM_MOVE_TOP, 500, 0);
+        _ui_screen_change(ui_SNavi, LV_SCR_LOAD_ANIM_MOVE_TOP, 500, 0);
     }
 }
 void ui_event_BarHR(lv_event_t * e)

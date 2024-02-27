@@ -15,3 +15,5 @@ out.csv
 # Autosave and Backup of SquareLineStudio
 autosave/
 backup/
+/.pydevproject
+SquareLine/assets/

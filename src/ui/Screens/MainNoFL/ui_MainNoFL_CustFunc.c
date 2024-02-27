@@ -9,7 +9,8 @@
 #include <ui/Screens/MainNoFL/ui.h>
 #include "ui_MainNoFL_CustFunc.h"
 
-#include "ui/ui_Navi.h"  // for nav images
+#include <ui/Screens/SNavi/ui.h>		// for nav images
+
 
 void ui_SMainNoFLUpdateSpeed(float speed) {
 	lv_label_set_text_fmt(ui_LabelSpeed, "%.1f", speed);

@@ -5,7 +5,7 @@
  *      Author: ian
  */
 
-#include "ui_Navi.h"
+#include <ui/Screens/SNavi/ui.h>
 #include "ui.h"
 
 void ui_ScrNaviSetBackScreen(lv_obj_t* const screenBack) {
