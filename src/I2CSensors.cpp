@@ -9,6 +9,9 @@
 #include <Singletons.h>
 #include <LittleFS.h>
 
+#include <math.h>		// for pow()
+
+
 I2CSensors::I2CSensors() {
 
 }
@@ -31,15 +34,15 @@ uint16_t I2CSensors::getHTMLPage(String &htmlresponse) {
 }
 
 uint16_t I2CSensors::procHTMLHeight(String& htmlresponse, const float actHeight) {
-	float newRefPress = calculateReferencePressure(actHeight, press) * 100;
-	bme280.setReferencePressure(newRefPress);
+	refPres = calculateReferencePressure(actHeight, press) * 100;
+	bme280.setReferencePressure(refPres );
 	sensorPreferences.begin("Sensors");
-	sensorPreferences.putFloat("RefPressure", newRefPress);
+	sensorPreferences.putFloat("RefPressure", refPres );
 	sensorPreferences.end();
 
 	htmlresponse += "<html><body>";
 	char buffer[255];
-	snprintf(buffer, 254, "Ok - new pressure %.2f mbar for height %.2f.<br /><button onclick=\"window.history.back()\">Go Back</button>", newRefPress, actHeight);
+	snprintf(buffer, 254, "Ok - new pressure %.2f mbar for height %.2f.<br /><button onclick=\"window.history.back()\">Go Back</button>", refPres, actHeight);
 	htmlresponse += buffer;
 	htmlresponse += "</body></html>";
 	return 200;
@@ -63,7 +66,7 @@ void I2CSensors::initBME280() {
 	//  5, 1000ms
 	//  6, 10ms
 	//  7, 20ms
-	bme280.settings.tStandby = 2;
+	bme280.settings.tStandby = 1;
 
 	//filter can be off or number of FIR coefficients to use:
 	//  0, filter off
@@ -76,7 +79,7 @@ void I2CSensors::initBME280() {
 	//tempOverSample can be:
 	//  0, skipped
 	//  1 through 5, oversampling *1, *2, *4, *8, *16 respectively
-	bme280.settings.tempOverSample = 4;
+	bme280.settings.tempOverSample = 2;
 
 	//pressOverSample can be:
 	//  0, skipped
@@ -86,11 +89,11 @@ void I2CSensors::initBME280() {
 	//humidOverSample can be:
 	//  0, skipped
 	//  1 through 5, oversampling *1, *2, *4, *8, *16 respectively
-	bme280.settings.humidOverSample = 4;
+	bme280.settings.humidOverSample = 1;
 
 	bme280.begin();
 	sensorPreferences.begin("Sensors");
-	float  refPres = sensorPreferences.getFloat("RefPressure", 101300.0);
+	refPres = sensorPreferences.getFloat("RefPressure", 101300.0);
 	bme280.setReferencePressure(refPres);
 	sensorPreferences.end();
 
@@ -98,11 +101,28 @@ void I2CSensors::initBME280() {
 }
 
 void I2CSensors::readBME280() {
-	press = bme280.readFloatPressure() / 100; // /100: Pa -> hPa == mbar
-	humid = bme280.readFloatHumidity();
-	temp  = bme280.readTempC();
-	height = bme280.readFloatAltitudeMeters();
-	bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_OP, "BME280: %.2f mbar, %.2f rel%%, %.2f °C, %.2f m NN", press, humid, temp, height);
+	BME280_SensorMeasurements measurement;
+
+	for (uint_fast8_t i = 0 ; i < 10 ; i++) {
+		if (bme280.isMeasuring()) {
+			usleep(2000);
+			yield();
+		} else {
+			bme280.readAllMeasurements(&measurement, 0);
+			press = measurement.pressure / 100.0;
+			humid = measurement.humidity;
+			temp = measurement.temperature;
+			height = -44330.77 * (pow((press / (refPres/100)), 0.190263) - 1.0);
+			bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_OP, "BME280: %.2f mbar, %.2f rel%%, %.2f °C, %.2f m NN", press, humid, temp, height);
+			return;
+		}
+	}
+	bclog.log(BCLogger::Log_Warn, BCLogger::TAG_OP, "Can't read BME280 - measurement in progress (5 times, with 10ms wait)");
+
+//	humid = bme280.readFloatHumidity();
+//	press = bme280.readFloatPressure() / 100; // /100: Pa -> hPa == mbar
+//	temp  = bme280.readTempC();
+//	height = bme280.readFloatAltitudeMeters();
 }
 
 void I2CSensors::readBMI160() {
