@@ -3,8 +3,9 @@
 // LVGL version: 8.3.6
 // Project name: BC_ScreenNavspj
 
-#include "ui.h"
-#include "ui/ui_helpers.h"
+#include <ui/Screens/SNavi/ui.h>
+#include <ui/Screens/SNavi/ui_NaviCustFunc.h>
+#include <ui/ui_helpers.h>
 
 ///////////////////// VARIABLES ////////////////////
 
@@ -44,7 +45,7 @@ void ui_event_SNavi(lv_event_t * e)
     lv_obj_t * target = lv_event_get_target(e);
     if(event_code == LV_EVENT_GESTURE &&  lv_indev_get_gesture_dir(lv_indev_get_act()) == LV_DIR_RIGHT) {
         lv_indev_wait_release(lv_indev_get_act());
-        _ui_screen_change(ui_SNavi_SBack, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 500, 0);
+        ui_ScrNaviGoBack();
     }
 }
 

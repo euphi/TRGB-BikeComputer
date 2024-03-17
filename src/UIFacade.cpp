@@ -295,7 +295,11 @@ void UIFacade::updateStateIcon(Statistics::EDrivingState state, UIColor col) {
 void UIFacade::updateNavi(const String& navStr, uint32_t dist, uint8_t dirCode) {
 	static uint8_t oldDirCode = 0;
 	static bool distAnn = false;
+	static bool avoidBack = false;
+	static uint8_t dirCode_old = 0;
+	static uint32_t dirCode_timestamp = 0;
 	bool loadScreen=false;
+	bool unloadScreen=false;
 	if ( dirCode != oldDirCode) {
 		oldDirCode = dirCode;
 	    loadScreen = true;
@@ -307,8 +311,24 @@ void UIFacade::updateNavi(const String& navStr, uint32_t dist, uint8_t dirCode) 
 	if (distAnn && dist > 250) {
 		distAnn = false;
 	}
+
+	if (dirCode != dirCode_old) {
+		dirCode_old = dirCode;
+		avoidBack = true;
+		dirCode_timestamp = millis();
+	}
+	if (avoidBack && ((millis() - dirCode_timestamp) > 5000)) {
+		avoidBack = false;
+	}
+
+	if (dist > 400 && !avoidBack ) {
+		avoidBack = true;
+		ui_ScrNaviGoBack();
+
+	}
 	if (xSemaphoreTake(xUIDrawMutex, 150 / portTICK_PERIOD_MS) == pdTRUE) {
 		if (loadScreen)	lv_disp_load_scr(ui_SNavi);
+		if (unloadScreen) ui_ScrNaviGoBack();
 		ui_ScrNaviUpdateNav(navStr.c_str(), dist, dirCode);
 		ui_SMainNoFLUpdateNav(navStr.c_str(), dist, dirCode);
 		xSemaphoreGive(xUIDrawMutex);

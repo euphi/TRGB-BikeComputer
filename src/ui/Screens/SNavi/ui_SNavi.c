@@ -26,7 +26,7 @@ void ui_SNavi_screen_init(void)
     lv_obj_set_y(ui_SNavLabelStreet, lv_pct(-30));
     lv_obj_set_align(ui_SNavLabelStreet, LV_ALIGN_CENTER);
     lv_label_set_long_mode(ui_SNavLabelStreet, LV_LABEL_LONG_SCROLL_CIRCULAR);
-    lv_label_set_text(ui_SNavLabelStreet, "Badstraße - FÜ 234");
+    lv_label_set_text(ui_SNavLabelStreet, "---");
     lv_obj_set_style_text_align(ui_SNavLabelStreet, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_font(ui_SNavLabelStreet, &ui_font_SchildGrot36, LV_PART_MAIN | LV_STATE_DEFAULT);
 
@@ -34,7 +34,6 @@ void ui_SNavi_screen_init(void)
     lv_obj_set_width(ui_SNavArcSpeed, 480);
     lv_obj_set_height(ui_SNavArcSpeed, 480);
     lv_obj_set_align(ui_SNavArcSpeed, LV_ALIGN_CENTER);
-
 
     ui_SNavImgNav = lv_img_create(ui_SNavi);
     lv_img_set_src(ui_SNavImgNav, &nav_finish);

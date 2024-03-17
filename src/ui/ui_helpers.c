@@ -51,7 +51,8 @@ void _ui_slider_set_property(lv_obj_t * target, int id, int val)
 
 void _ui_screen_change(lv_obj_t * target, lv_scr_load_anim_t fademode, int spd, int delay)
 {
-    lv_scr_load_anim(target, fademode, spd, delay, false);
+	if (lv_scr_act() == target) return;
+	lv_scr_load_anim(target, fademode, spd, delay, false);
 }
 
 void _ui_arc_increment(lv_obj_t * target, int val)

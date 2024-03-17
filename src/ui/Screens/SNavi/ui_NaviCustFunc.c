@@ -12,6 +12,11 @@ void ui_ScrNaviSetBackScreen(lv_obj_t* const screenBack) {
 	ui_SNavi_SBack = screenBack;
 }
 
+void ui_ScrNaviGoBack(void) {
+    _ui_screen_change(ui_SNavi_SBack, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 500, 0);
+}
+
+
 void ui_ScrNaviUpdateSpeed(float speed) {
 	lv_label_set_text_fmt(ui_SNavLabelSpeed, "%.1f", speed);
 	lv_arc_set_value(ui_SNavArcSpeed, (uint16_t)(speed*10.0));
@@ -35,14 +40,20 @@ void ui_ScrNaviUpdateNavDist(uint32_t dist) {
 		lv_bar_set_value(ui_S1BarNavDist, perc, LV_ANIM_ON);
 		if (dist < 15) {
 			lv_obj_set_style_img_recolor(ui_S1ImgNav, lv_color_hex(0x800080), LV_PART_MAIN | LV_STATE_DEFAULT);			//violett
+			lv_obj_set_style_img_recolor(ui_SNavImgNav, lv_color_hex(0x800080), LV_PART_MAIN | LV_STATE_DEFAULT);		//violett
+
 		} else if (dist < 60) {
 			lv_obj_set_style_img_recolor(ui_S1ImgNav, lv_color_hex(0xFF0000), LV_PART_MAIN | LV_STATE_DEFAULT);			//red
+			lv_obj_set_style_img_recolor(ui_SNavImgNav, lv_color_hex(0xFF0000), LV_PART_MAIN | LV_STATE_DEFAULT);		//red
 		} else if (dist < 100) {
 			lv_obj_set_style_img_recolor(ui_S1ImgNav, lv_color_hex(0xFF8000), LV_PART_MAIN | LV_STATE_DEFAULT);			//orange
+			lv_obj_set_style_img_recolor(ui_SNavImgNav, lv_color_hex(0xFF8000), LV_PART_MAIN | LV_STATE_DEFAULT);		//orange
 		} else if (dist < 250) {
 			lv_obj_set_style_img_recolor(ui_S1ImgNav, lv_color_hex(0x808000), LV_PART_MAIN | LV_STATE_DEFAULT);			//dark yellow
+			lv_obj_set_style_img_recolor(ui_SNavImgNav, lv_color_hex(0x808000), LV_PART_MAIN | LV_STATE_DEFAULT);		//dark yellow
 		} else {
 			lv_obj_set_style_img_recolor(ui_S1ImgNav, lv_color_hex(0x008000), LV_PART_MAIN | LV_STATE_DEFAULT);			//half-dark green
+			lv_obj_set_style_img_recolor(ui_SNavImgNav, lv_color_hex(0x008000), LV_PART_MAIN | LV_STATE_DEFAULT);		//half-dark green
 		}
 	} else {
 		lv_label_set_text_fmt(ui_SNavLabelNavDist, "%.1f km", dist/1000.0);

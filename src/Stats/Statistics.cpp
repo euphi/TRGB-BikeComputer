@@ -216,7 +216,11 @@ void Statistics::updateStateIcon() {
 						shutdownMsg = true;
 						ui.showMsgBox(String(buffer), [this](bool ok) {
 							shutdownMsg = false;
-							if (ok) trgb.deepSleep();
+							if (ok) {
+								trgb.deepSleep();
+							} else {
+								delayStandby();
+							}
 						});
 					} else {
 						ui.updateMsgBox(String(buffer));
