@@ -12,6 +12,8 @@
 //#include <Stats/Distance.h>
 class Distance;
 
+#include <ringbuffer.hpp>
+
 class Statistics {
 public:
 	enum ESummaryType{
@@ -119,20 +121,25 @@ private:
 	S_timeComplete timeData;
 
 	// Variables to calculate gradient (Forumslader calculates gradient on its own)
-#if !BC_FL_SUPPORT
+#ifndef BC_FL_SUPPORT
 	time_t gradient_timestamp = 0;		//Timestamp of last gradient calculation
 	float gradient_dist = 0;			//Distance of last gradient calculation
 	float gradient_height = NAN;		//Height of last gradient calculation
-	Distance& distHandler;				// also the distance handler is only used without Forumslader because FL calculates distance (partly) on its own.
 #endif
+	Distance& distHandler;				// also the distance handler is only used without Forumslader because FL calculates distance (partly) on its own.
 
 	float gradient = 0.0;				//calculated gradient
 	float height = NAN;
+
+	jnk0le::Ringbuffer<S_timeData, 256> rb_timedata;
+
 
 	// use int instead of uint, so -1 can be used as "invalid".
 	int16_t hr = -1;
 	int16_t cadence = 0, cadence_tot = -1;
 	float speed=0.0;
+
+	float temperature = NAN;		//TODO: Use temperature in statistics
 
 	uint8_t offAfterMinutes = 5;
 
@@ -178,7 +185,7 @@ public:
 	Statistics();
 	void setup();
 	void addSpeed(float speed);  // in 0,1km/h
-	void addDistance(uint32_t dist, ESummaryType type = SUM_ESP_TOUR);
+	//void addDistance(uint32_t dist, ESummaryType type = SUM_ESP_TOUR);
 	bool isConnected() {return (curDriveState != DS_NO_CONN);}
 	void delayStandby();
 	void toggleStandbyMode();

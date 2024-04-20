@@ -8,10 +8,11 @@
 #include <FLClassicParser.h>
 #include "Singletons.h"
 
+#include <Stats/Distance.h>
 
 FLClassicParser::FLClassicParser(uint8_t polePair, uint16_t circum_mm):
-dist_m_per_pulse((float)circum_mm/(float)polePair / 1000.0),
-kmh_per_pulse_per_s(dist_m_per_pulse * 3600 / 1000.0),
+//dist_m_per_pulse((float)circum_mm/(float)polePair / 1000.0),
+//kmh_per_pulse_per_s(dist_m_per_pulse * 3600 / 1000.0),
 lastUpdate(millis())
 {
 
@@ -24,7 +25,7 @@ void FLClassicParser::setConnState(EFLConnState state) {
 
 
 void FLClassicParser::updateFromString(const String &flStr) {
-#if BC_FL_SUPPORT
+#ifdef BC_FL_SUPPORT
 	lastUpdate = millis();
 	bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_FL, "Rvcd string: %s", flStr.c_str());
 
@@ -69,12 +70,13 @@ void FLClassicParser::updateFromString(const String &flStr) {
 				//    (uint16_t batVoltage, uint8_t batPerc, int8_t powerStage, int16_t CurBat, int16_t CurConsumer, bool ConsumerOn)> FLBatUpdateHandler;
 				batCB(batterie[0]+batterie[1]+batterie[2], batt_perc, batt_fullCap, stufe, batt_current, cons_current, cons_on_off);
 			}
-			speed_f = pulses_per_s * kmh_per_pulse_per_s;
-			dist_total = ceil((pulsecounter * 4096 + micropulsecounter) * dist_m_per_pulse);
-			stats.addSpeed(speed_f);
-			stats.updateDistance(dist_total, pulsecounter * 4096 + micropulsecounter);
-			stats.addDistance(dist_total, Statistics::SUM_FL_TOTAL);
-			if (speedCB) speedCB(speed_f, dist_total);
+//			speed_f = pulses_per_s * kmh_per_pulse_per_s;
+//			dist_total = ceil((pulsecounter * 4096 + micropulsecounter) * dist_m_per_pulse);
+			stats.getDistHandler().updateRevsFL((pulsecounter * 4096 + micropulsecounter), pulses_per_s);
+//			stats.addSpeed(speed_f);
+			//stats.updateDistance(dist_total, pulsecounter * 4096 + micropulsecounter); //FIXME FL: Distance Handling
+//			stats.addDistance(dist_total, Statistics::SUM_FL_TOTAL);
+			//if (speedCB) speedCB(speed_f, dist_total);
 			break;
 		case 'B': // $FLB,850,98591,2731,0;
 			scanCt = sscanf(flStr.c_str(), "$FLB,%hd,%d,%hd,%hd\n", &temperature, &pressure,&height,&gradient);
@@ -90,12 +92,12 @@ void FLClassicParser::updateFromString(const String &flStr) {
 			switch (scanFLC_id) {
 			case 0: // $FLC,0,0,0,200,3798,26;
 				//Tour: Höhenmeter Total, Tour Steigung Max, Tour Temperatur Max, Tour Höhe Max, Tour Pulse Max
-				stats.addDistance(scanFLC_buffer[4], Statistics::SUM_FL_TOUR);
+				//FIXME: FL: stats.addDistance(scanFLC_buffer[4], Statistics::SUM_FL_TOUR);
 				//stats.updateFLStats();
 				break;
 			case 1: // $FLC,1,0,0,200,3798,26;
 				//Trip: Höhenmeter Total, Tour Steigung Max, Tour Temperatur Max, Tour Höhe Max, Tour Pulse Max
-				stats.addDistance(scanFLC_buffer[4], Statistics::SUM_FL_TRIP);
+				//FIXME: FL: stats.addDistance(scanFLC_buffer[4], Statistics::SUM_FL_TRIP);
 				break;
 			case 2: // $FLC,2,478561,0,200,0,200;
 				// Mixed: Höhenmeter Total Toal, Tour Steigung Min, Tour Temperatur Min, Trip Steigung Min, Trip Temperatur Min

@@ -296,7 +296,9 @@ void BLEDevices::notifyCallbackCSC(BLERemoteCharacteristic *pBLERemoteCharacteri
 			cscIsSpeed[ctype==DEV_CSC_1?1:2] = true;
 			speed_rev = (pData[4] << 24) + (pData[3] << 16) + (pData[2] << 8) + pData[1];		// LSB first
 			speed_time = (pData[6] << 8) + pData[5];	// LSB first
+#if !BC_FL_SUPPORT
 			stats.getDistHandler().updateRevs(speed_rev, speed_time);
+#endif
 		} else {
 			cscIsSpeed[ctype==DEV_CSC_1?1:2] = false;
 			crank_rev = (pData[2] << 8) + pData[1];		// LSB first

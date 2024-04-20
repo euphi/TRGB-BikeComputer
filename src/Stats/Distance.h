@@ -20,6 +20,9 @@ public:
 	void store();
 
 	void updateRevs(uint32_t revs, uint16_t timestamp);
+#ifdef BC_FL_SUPPORT
+	void updateRevsFL(uint32_t revs, float pulses_per_s);
+#endif
 	bool updateWheelCirc(const float circ_in_m); // return true on success
 	void resetDistToZero(Statistics::ESummaryType);
 

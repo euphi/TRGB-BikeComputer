@@ -22,7 +22,7 @@ const char* Statistics::SUM_TYPE_STRING[Statistics::ESummaryTypeMax] = {
 		"ST_TOUR",
 		"ST_TRIP",
 		"ST_START",
-#if defined BC_FL_SUPPORT
+#if BC_FL_SUPPORT
 		"ST_FL_TOTAL",
 		"ST_FL_TOUR",
 		"ST_FL_TRIP",
@@ -491,11 +491,14 @@ uint32_t Statistics::getDistance(ESummaryType type, bool includeLost) const {
 	case SUM_ESP_START:
 		return distHandler.getDistance(type);
 #ifdef BC_FL_SUPPORT
+	//FIXME FL_ Distance handling
 	case SUM_FL_TRIP:
 	case SUM_FL_TOUR:
-		return start_distance[type];
+		//return start_distance[type];
+		return 0;
 	case SUM_FL_TOTAL:
-		return distance;
+		//return distance;
+		return 0;
 #endif
 	}
 	return 0;
