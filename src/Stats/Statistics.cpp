@@ -22,7 +22,7 @@ const char* Statistics::SUM_TYPE_STRING[Statistics::ESummaryTypeMax] = {
 		"ST_TOUR",
 		"ST_TRIP",
 		"ST_START",
-#if BC_FL_SUPPORT
+#ifdef BC_FL_SUPPORT
 		"ST_FL_TOTAL",
 		"ST_FL_TOUR",
 		"ST_FL_TRIP",
@@ -38,7 +38,6 @@ const char* Statistics::AVG_TYPE_STRING[Statistics::EAvgTypeMax] = {
 Statistics::Statistics(): distHandler(* new Distance())  {
 	timestamp_last = millis();
 	timestamp_stop = timestamp_last;
-
 }
 
 void Statistics::setup() {
@@ -111,7 +110,11 @@ void Statistics::autoStore() {
 }
 
 void Statistics::dataStore() {
+#ifdef TRGBBC_SENSORS_I2C
 	bclog.appendDataLog(speed, sensors.getTemp(), gradient, distHandler.getDistance(), height, hr, cadence);
+#else
+	bclog.appendDataLog(speed, NAN, gradient, distHandler.getDistance(), height, hr, cadence);	//FIXME: Get Temp from FL
+#endif
 }
 
 void Statistics::cycle() {
@@ -168,7 +171,9 @@ void Statistics::cycle() {
 		}
 	}
 	updateStateIcon();				// Always update in cycle, to support blinking and missed changes/init.
+#ifdef TRGBBC_SENSORS_I2C
 	sensors.readBME280();
+#endif
 }
 
 void Statistics::delayStandby() {
@@ -473,14 +478,8 @@ void Statistics::calculateGradient(float newDist) {
 #endif
 }
 
-void Statistics::addGradientFL(int16_t _grad, int16_t _height, int16_t _temp) {
-#ifdef BC_FL_SUPPORT
-	// Convert to float
-	height = _height * 1.0;
-	gradient = _grad / 10.0;
-	temperature = _temp / 10.0;
-	ui.updateGrad(gradient, height);
-#endif
+void Statistics::addTemperature(float _temperature) {
+	tempC = _temperature;
 }
 
 uint32_t Statistics::getDistance(ESummaryType type, bool includeLost) const {

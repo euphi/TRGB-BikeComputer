@@ -27,6 +27,8 @@
 #include <ui/Screens/Chart/ui.h>
 #include <ui/Screens/Chart/ui_Chart_CustFunc.h>
 
+#include <ui/Screens/SOTA/ui.h>
+
 #include "ui/ui.h"  // FL main and chart screen
 #include "ui/ui_custFunc.h"
 
@@ -69,11 +71,15 @@ void UIFacade::initDisplay() {
     ui_SWLAN_extra_init(); // QR Code
     ui_SNavi_screen_init();
     ui_ScrSettings_screen_init();
+
+    ui_SOTA_screen_init();
+
     // .. add init of new screens here
 
     // 3. set main screen
-#if BC_FL_SUPPORT
-    ui_MainScreen = ui_S1Main;
+#ifdef BC_FL_SUPPORT
+    //ui_MainScreen = ui_S1Main;
+    ui_MainScreen = ui_SMainNoFL;
 #else
     ui_MainScreen = ui_SMainNoFL;
 #endif
@@ -190,8 +196,10 @@ void UIFacade::updateStats() {
 
 	uint32_t timeTot = stats.getTime(t, statTimeMode);
 	ui_ScrMainUpdateStats(Statistics::SUM_TYPE_STRING[t] + 3, stats.getAvg(t, statTimeMode), stats.getSpeedMax(t), stats.getDistance(t), timeTot);
+
+//TODO: Check if heigt is also updated in non-FL mode at standstill (no gradient calculation)
 	ui_SMainNoFLUpdateStats(Statistics::SUM_TYPE_STRING[t] + 3, Statistics::AVG_TYPE_STRING[statTimeMode] + 3,
-			stats.getAvg(t, statTimeMode), stats.getSpeedMax(t), sensors.getTemp(), stats.getDistance(t), timeTot, sensors.getHeight());
+			stats.getAvg(t, statTimeMode), stats.getSpeedMax(t), stats.getTemp(), stats.getDistance(t), timeTot);
 }
 
 void UIFacade::updateIntBatteryInt() {
@@ -388,5 +396,24 @@ void UIFacade::msgCBFct(bool ok) {
 	if (msgCB != NULL) {
 		msgCB(ok);
 		msgCB = NULL;
+	}
+}
+
+
+void UIFacade::otaStart() {
+	if (xSemaphoreTake(xUIDrawMutex, 250 / portTICK_PERIOD_MS) == pdTRUE) {
+		lv_disp_load_scr(ui_SOTA);
+		xSemaphoreGive(xUIDrawMutex);
+	} else {
+		bclog.log(BCLogger::Log_Warn, BCLogger::TAG_UI, "OTA Display blocked by mutex");
+	}
+}
+
+void UIFacade::otaProgress(uint8_t perc) {
+	if (xSemaphoreTake(xUIDrawMutex, 250 / portTICK_PERIOD_MS) == pdTRUE) {
+		ui_SOTA_updatePerc(perc);
+		xSemaphoreGive(xUIDrawMutex);
+	} else {
+		bclog.log(BCLogger::Log_Warn, BCLogger::TAG_UI, "OTA Display blocked by mutex");
 	}
 }

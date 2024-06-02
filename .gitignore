@@ -17,3 +17,5 @@ autosave/
 backup/
 /.pydevproject
 SquareLine/assets/
+
+/Tools/DL_Data/

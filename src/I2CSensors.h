@@ -7,6 +7,7 @@
 
 #pragma once
 
+#ifdef TRGBBC_SENSORS_I2C
 #include "SparkFunBME280.h"
 
 #include <SPI.h>        // needed so that pio can find the SPI include in BMI160 library
@@ -66,3 +67,5 @@ private:
 	Ticker bme280Cycle;
 	Preferences sensorPreferences;
 };
+
+#endif

@@ -10,6 +10,8 @@
 #include <ui/Screens/SNavi/ui.h>
 #include <ui/Screens/Chart/ui.h>
 
+#include <ui/ui_FL.h> // TODO Move to Screens
+
 #include "ui/ui_helpers.h"
 
 #include <lvgl.h>
@@ -101,6 +103,16 @@ void ui_event_PanelClock(lv_event_t * e)
     if(event_code == LV_EVENT_GESTURE &&  lv_indev_get_gesture_dir(lv_indev_get_act()) == LV_DIR_LEFT) {
     	lv_indev_wait_release(lv_indev_get_act());
     	statModeNext(false);
+    }
+}
+
+void ui_event_BarBatt(lv_event_t * e)
+{
+    lv_event_code_t event_code = lv_event_get_code(e);
+    lv_obj_t * target = lv_event_get_target(e);
+    if(event_code == LV_EVENT_LONG_PRESSED) {
+        //_ui_screen_change(&ui_ScreenFL, LV_SCR_LOAD_ANIM_OVER_LEFT, 500, 0, &ui_SMainNoFL_screen_init);
+    	_ui_screen_change(ui_ScreenFL, LV_SCR_LOAD_ANIM_OVER_LEFT, 500, 0);
     }
 }
 void ui_event_ImgWifi(lv_event_t * e)

@@ -34,5 +34,7 @@ extern WifiWebserver webserver;
 #include "BLEDevices.h"
 extern BLEDevices bleDevs;
 
+#ifdef TRGBBC_SENSORS_I2C
 #include "I2CSensors.h"
 extern I2CSensors sensors;
+#endif

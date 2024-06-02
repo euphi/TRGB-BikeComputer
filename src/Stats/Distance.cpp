@@ -135,7 +135,6 @@ void Distance::updateRevs(uint32_t revs, uint16_t timestamp) {
 			curTotalDistance[Statistics::SUM_ESP_TOTAL], curTotalDistance[Statistics::SUM_ESP_TOUR], curTotalDistance[Statistics::SUM_ESP_TRIP], curTotalDistance[Statistics::SUM_ESP_START]);
 
 	stats.checkDistance(curTotalDistance[Statistics::SUM_ESP_START]);
-	lastRevs = revs;
 
 	// If timestamp is zero, revs have been transmitted without timestamp (e.g. in FL mode) --> no speed calculation possible (here)
 	if (timestamp > 0) {
@@ -146,7 +145,17 @@ void Distance::updateRevs(uint32_t revs, uint16_t timestamp) {
 		}
 		lastTimestamp = timestamp;
 	}
+	lastRevs = revs;
 }
+
+#ifdef BC_FL_SUPPORT
+void Distance::updateRevsFL(uint32_t revs, float pulses_per_s) {
+	updateRevs(revs, 0);
+	float newSpeed = pulses_per_s * wheel_c * 3.6;
+	bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_STAT, "New speed from FL %.2f", newSpeed);
+	stats.addSpeed(newSpeed);
+}
+#endif
 
 void Distance::updateLostRevs(const uint32_t lostRevs) {
 	float lostDist = lostRevs * wheel_c;
@@ -155,13 +164,6 @@ void Distance::updateLostRevs(const uint32_t lostRevs) {
 		lostDistanceFromNVS[j] += lostDist;
 		bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_STAT, "Lost distance %s now %.1f m", (Statistics::SUM_TYPE_STRING[j] + 3), lostDistanceFromNVS[j]);
 	}
-}
-
-void Distance::updateRevsFL(uint32_t revs, float pulses_per_s) {
-	updateRevs(revs, 0);
-	float newSpeed = pulses_per_s * wheel_c * 3.6;
-	bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_STAT, "New speed from FL %.2f", newSpeed);
-	stats.addSpeed(newSpeed);
 }
 
 void Distance::store() {

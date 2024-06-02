@@ -75,6 +75,9 @@ public:
 
 	MsgBoxCallBack msgCB = NULL;
 
+	void otaStart();
+	void otaProgress(uint8_t perc);
+
 private:
 	void updateData();
 	void updateClock(const time_t now);

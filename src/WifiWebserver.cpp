@@ -10,7 +10,7 @@
 #include <SD_MMC.h>
 #include <LittleFS.h>
 #include <FS.h>
-#include <AsyncElegantOTA.h>
+#include <ElegantOTA.h>
 #include <ArduinoJson.h>
 #include <version.h>
 #include <nvs.h>
@@ -167,6 +167,7 @@ void WifiWebserver::checkLoop() {
 		bclog.log(BCLogger::Log_Warn, TAG, "Wifi connection lost - disabling it to save power");
 		disableWifi();
 	}
+	ElegantOTA.loop();		// check loop for ElegantOTA (seems to only check for reboot-flag for now)
 }
 
 void WifiWebserver::scanResult() {
@@ -274,6 +275,7 @@ void WifiWebserver::setupWebserver() {
 		}
 	});
 
+#if TRGBBC_SENSORS_I2C
 	server.on("/sensor/", HTTP_GET,  [this](AsyncWebServerRequest *request) {
 		htmlresponse.clear();
 		sensors.getHTMLPage(htmlresponse);
@@ -287,10 +289,15 @@ void WifiWebserver::setupWebserver() {
 		int16_t code = sensors.procHTMLHeight(htmlresponse, heightValue);
 		request->send(200, "text/html", htmlresponse);
 	});
+#endif		//TODO: Add height (pressure) adjustment for FL
+
 
 	server.on("/log/set", HTTP_GET, [](AsyncWebServerRequest *request) {
 		String tag = request->getParam("tag")->value();
 		String level = request->getParam("level")->value();
+		String output = request->getParam("output")->value();
+
+		bool toSerialWeb = output.equalsIgnoreCase("Serial");
 
 		// Validate tag and level values
 		if (tag.length() > 0 && level.length() > 0) {
@@ -320,7 +327,7 @@ void WifiWebserver::setupWebserver() {
 				request->send(400, "text/plain", "Invalid level.");
 				return;
 			}
-			bclog.setLogLevel(static_cast<BCLogger::LogType>(l), static_cast<BCLogger::LogTag>(t), true, false);
+			bclog.setLogLevel(static_cast<BCLogger::LogType>(l), static_cast<BCLogger::LogTag>(t), !toSerialWeb, toSerialWeb);
 			request->send(200, "text/plain", "Log level set successfully.");
 		} else {
 			// Respond with an error message for invalid parameters
@@ -389,7 +396,18 @@ void WifiWebserver::setupWebserver() {
 	});
 
 	// -- Allow OTA via Web ("ElegantOTA" library)
-	AsyncElegantOTA.begin(&server); // Start ElegantOTA - it listens on "/update/"
+	ElegantOTA.begin(&server); // Start ElegantOTA - it listens on "/update/"
+	ElegantOTA.setAutoReboot(true);
+	ElegantOTA.onStart([]() {
+		bclog.log(BCLogger::Log_Info, TAG, "Start OTA Update");
+		ui.otaStart();
+	});
+	ElegantOTA.onProgress([](size_t current, size_t total) {
+		uint8_t perc = (current * 100) / total;
+		bclog.logf(BCLogger::Log_Debug, TAG, "OTA Update: %d %% [%d byte from %d byte].", perc, current, total);
+		ui.otaProgress(perc);
+	});
+
 
 	// -- download Binary Logfile
 	server.serveStatic("/log/", SD_MMC, "/BIKECOMP/");

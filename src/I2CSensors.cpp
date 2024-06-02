@@ -4,6 +4,8 @@
  *  Created on: 03.01.2024
  *      Author: ian
  */
+#ifdef TRGBBC_SENSORS_I2C
+
 
 #include <I2CSensors.h>
 #include <Singletons.h>
@@ -177,3 +179,6 @@ void I2CSensors::initBMI160() {
     BMI160.setGyroOffsetEnabled(true);
 
 }
+
+#endif
+

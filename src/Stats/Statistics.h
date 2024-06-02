@@ -42,7 +42,6 @@ public:
 	};
 
 private:
-
 	enum EStatDataType {
 		DT_SPEED,
 		DT_HR,
@@ -59,7 +58,6 @@ private:
 	time_t timestamp_last;
 	uint32_t time_in[EDrivingStateMax][ESummaryTypeMax];
 	time_t timestamp_stop;
-
 
 	struct S_DataPoint {
 		float min;
@@ -90,7 +88,6 @@ private:
 		uint8_t curCountCadence;
 		uint8_t curCountHr;
 		uint8_t curCountGradHeight;
-
 	};
 
 	S_distanceComplete distanceData;
@@ -98,17 +95,17 @@ private:
 	float distSeries_last = 0.0;
 
 	// Data storage per time
-	struct S_timeData {	// 48 Byte
+	struct S_timeData {	// 46 Byte
 		float distance;		//   4 Byte
-		S_DataPoint speed;
-		S_DataPoint cadence;
-		S_DataPoint hr;
+		float tempC;		//   4 Byte
+		S_DataPoint speed;	//  12 Byte
+		S_DataPoint cadence;//  12 Byte
+		S_DataPoint hr;		//  12 Byte
 		uint8_t coastShare:8;
 		uint8_t pauseShare:8;
-
 	};
 
-	struct S_timeComplete {		// 19252 Byte
+	struct S_timeComplete {		// 18459 Byte
 		time_t startTime;
 		S_timeData data[400];
 		S_timeData currentMinMax;
@@ -129,7 +126,8 @@ private:
 	Distance& distHandler;				// also the distance handler is only used without Forumslader because FL calculates distance (partly) on its own.
 
 	float gradient = 0.0;				//calculated gradient
-	float height = NAN;
+	float height   = NAN;
+	float tempC    = NAN;
 
 	jnk0le::Ringbuffer<S_timeData, 256> rb_timedata;
 
@@ -138,8 +136,6 @@ private:
 	int16_t hr = -1;
 	int16_t cadence = 0, cadence_tot = -1;
 	float speed=0.0;
-
-	float temperature = NAN;		//TODO: Use temperature in statistics
 
 	uint8_t offAfterMinutes = 5;
 
@@ -200,8 +196,9 @@ public:
 	void addHR(int16_t heartrate);
 	void addCadence(int16_t cadence, int16_t total);
 	void setConnected(bool connected);
-	void addGradientFL(int16_t grad, int16_t height, int16_t temp);
 	void addGradientHeight(float _grad, float _height);
+	void addTemperature(float _temperature);
+
 
 	uint32_t getTime(ESummaryType type, EAvgType avgtype) const;
 
@@ -210,6 +207,7 @@ public:
 	int16_t getHr() const {return hr;}
 	const float getSpeedMax(ESummaryType type) const {return speed_max[type];}
 	uint32_t getDistance(ESummaryType type, bool includeLost = true) const;
+	float getTemp() const {return tempC;}
 
 	static const char* PREF_TIME_STRING[Statistics::EDrivingStateMax];
 	static const char* AVG_TYPE_STRING[Statistics::EAvgTypeMax];

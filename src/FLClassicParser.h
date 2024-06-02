@@ -41,8 +41,10 @@ private:
 	EFLConnState cstate = FL_STATE_UNKNOWN;
 
 	FLBatUpdateHandler batCB = nullptr;
-	FLEnvUpdateHandler envCB = nullptr;
+	//FLEnvUpdateHandler envCB = nullptr;
 	FLStateUpdateHandler stateCB = nullptr;
+
+	const uint8_t polePairs = 14;
 
 	unsigned long lastUpdate;
 	uint32_t flags_last = 0;

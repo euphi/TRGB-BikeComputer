@@ -10,9 +10,10 @@
 
 #include <Stats/Distance.h>
 
-FLClassicParser::FLClassicParser(uint8_t polePair, uint16_t circum_mm):
+FLClassicParser::FLClassicParser(uint8_t _polePair, uint16_t circum_mm):
 //dist_m_per_pulse((float)circum_mm/(float)polePair / 1000.0),
 //kmh_per_pulse_per_s(dist_m_per_pulse * 3600 / 1000.0),
+polePairs(_polePair),
 lastUpdate(millis())
 {
 
@@ -72,7 +73,7 @@ void FLClassicParser::updateFromString(const String &flStr) {
 			}
 //			speed_f = pulses_per_s * kmh_per_pulse_per_s;
 //			dist_total = ceil((pulsecounter * 4096 + micropulsecounter) * dist_m_per_pulse);
-			stats.getDistHandler().updateRevsFL((pulsecounter * 4096 + micropulsecounter), pulses_per_s);
+			stats.getDistHandler().updateRevsFL(((pulsecounter * 4096 + micropulsecounter)/polePairs), static_cast<float>(pulses_per_s)/polePairs);
 //			stats.addSpeed(speed_f);
 			//stats.updateDistance(dist_total, pulsecounter * 4096 + micropulsecounter); //FIXME FL: Distance Handling
 //			stats.addDistance(dist_total, Statistics::SUM_FL_TOTAL);
@@ -81,11 +82,11 @@ void FLClassicParser::updateFromString(const String &flStr) {
 		case 'B': // $FLB,850,98591,2731,0;
 			scanCt = sscanf(flStr.c_str(), "$FLB,%hd,%d,%hd,%hd\n", &temperature, &pressure,&height,&gradient);
 			if (scanCt != 4) Serial.println("❌ Not all fields scanned");
-			if (envCB) {
-				envCB(temperature, pressure, height, gradient);
-			}
-			stats.addGradientFL(gradient, height, temperature);
-			//Serial.printf("[%x] Temp: %.02f\tPressure: %.01f\tHeight: %.01f\tGradient: %d\n", scanCt, temperature/10.0, pressure/100.0, height/10.0, gradient);
+//			if (envCB) {
+//				envCB(temperature, pressure, height, gradient);
+//			}
+			stats.addGradientHeight(gradient/10.0, height/10.0);
+			stats.addTemperature(temperature < 80 ? (temperature / 10.0) : NAN);	//FL sometimes send inplausible data -> set it to NAN
 			break;
 		case 'C':
 			scanCt = sscanf(flStr.c_str(), "$FLC,%hhd,%d,%d,%d,%d,%d\n", &scanFLC_id, &scanFLC_buffer[0],&scanFLC_buffer[1],&scanFLC_buffer[2],&scanFLC_buffer[3],&scanFLC_buffer[4]);
