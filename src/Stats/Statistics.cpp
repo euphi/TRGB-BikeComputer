@@ -111,9 +111,12 @@ void Statistics::autoStore() {
 
 void Statistics::dataStore() {
 #ifdef TRGBBC_SENSORS_I2C
+	tempC = sensors.getTemp();
+	height = sensors.getHeight();
+	ui.updateHeight(height);
 	bclog.appendDataLog(speed, sensors.getTemp(), gradient, distHandler.getDistance(), height, hr, cadence);
 #else
-	bclog.appendDataLog(speed, NAN, gradient, distHandler.getDistance(), height, hr, cadence);	//FIXME: Get Temp from FL
+	bclog.appendDataLog(speed, tempC, gradient, distHandler.getDistance(), height, hr, cadence);
 #endif
 }
 

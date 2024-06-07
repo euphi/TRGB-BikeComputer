@@ -275,7 +275,7 @@ void WifiWebserver::setupWebserver() {
 		}
 	});
 
-#if TRGBBC_SENSORS_I2C
+#ifdef TRGBBC_SENSORS_I2C
 	server.on("/sensor/", HTTP_GET,  [this](AsyncWebServerRequest *request) {
 		htmlresponse.clear();
 		sensors.getHTMLPage(htmlresponse);

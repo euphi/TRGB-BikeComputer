@@ -233,6 +233,12 @@ void UIFacade::updateGrad(float _grad, float _height) {
 	xSemaphoreGive(xUpdateFast);
 }
 
+void UIFacade::updateHeight(float _height) { // height only update,
+	height = _height;
+	xSemaphoreGive(xUpdateFast);
+}
+
+
 
 void UIFacade::updateIP(const String& ipStr) {
 	bool uiTask = isDrawTask();
@@ -385,12 +391,9 @@ void UIFacade::showMsgBox(const String &msgText, const MsgBoxCallBack &cb) {
 	ui_MsgBox(msgText.c_str());
 }
 
-
 void UIFacade::updateMsgBox(const String& msgText) {
 	ui_MsgBoxUpdate(msgText.c_str());
 }
-
-
 
 void UIFacade::msgCBFct(bool ok) {
 	if (msgCB != NULL) {
@@ -398,7 +401,6 @@ void UIFacade::msgCBFct(bool ok) {
 		msgCB = NULL;
 	}
 }
-
 
 void UIFacade::otaStart() {
 	if (xSemaphoreTake(xUIDrawMutex, 250 / portTICK_PERIOD_MS) == pdTRUE) {

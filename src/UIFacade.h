@@ -25,6 +25,7 @@ public:
 	void updateCadence(uint16_t cad);	// cadence in revs per min
 	void updateHR(uint16_t hr);       	// heartbet in beats per min
 	void updateGrad(float grad, float height);	// grad(ient) in permille,
+	void updateHeight(float height);	// height only update,
 
 	void setStatMode(Statistics::ESummaryType mode) {statMode = mode;}
 	void setStatMode(bool dir) {

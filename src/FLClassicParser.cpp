@@ -36,7 +36,8 @@ void FLClassicParser::updateFromString(const String &flStr) {
 	uint32_t scanFLC_buffer[5];
 
 	if (flStr.startsWith("$FL")) {
-		uint16_t pulses_per_s, temperature, pressure, height, gradient;
+		uint16_t pulses_per_s, pressure;
+		int16_t  temperature, height, gradient;
 
 		int8_t cons_on_off;
 		int8_t	stufe;			// -1: Dauer-Aus, 0: aus, 1-4: nach Geschwindigkeit
@@ -86,7 +87,7 @@ void FLClassicParser::updateFromString(const String &flStr) {
 //				envCB(temperature, pressure, height, gradient);
 //			}
 			stats.addGradientHeight(gradient/10.0, height/10.0);
-			stats.addTemperature(temperature < 80 ? (temperature / 10.0) : NAN);	//FL sometimes send inplausible data -> set it to NAN
+			stats.addTemperature( (temperature < 800) ? (temperature / 10.0) : NAN);	//FL sometimes send inplausible data -> set it to NAN
 			break;
 		case 'C':
 			scanCt = sscanf(flStr.c_str(), "$FLC,%hhd,%d,%d,%d,%d,%d\n", &scanFLC_id, &scanFLC_buffer[0],&scanFLC_buffer[1],&scanFLC_buffer[2],&scanFLC_buffer[3],&scanFLC_buffer[4]);
