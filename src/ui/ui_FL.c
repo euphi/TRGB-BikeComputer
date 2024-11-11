@@ -119,8 +119,14 @@ void ui_ScrFLUpdateClock(const char* clockStr, const char* dateStr) {
 
 
 void ui_ScrFLUpdateFlags(uint32_t flags) {
+	lv_obj_t* const checkbox[FL_FLAG_MAX] = {
+			0, 0, 0, 0, 0, 0, 0, ui_SFLPStateCB4,
+			0, 					0, 						0,					ui_SFLPStateCB4,	0, 					ui_SFLPStateCB6,		ui_SFLPStateCB7,	ui_SFLPStateCB8,
+			ui_ScreenFLCBError0, ui_ScreenFLCBError1, ui_ScreenFLCBError2, ui_ScreenFLCBError3, ui_ScreenFLCBError4, ui_ScreenFLCBError5, ui_ScreenFLCBError6, ui_ScreenFLCBError7
+	};
 	for (uint8_t f=0; f < FL_FLAG_MAX; f++) {
-		lv_obj_t* cb=0;
+		//lv_obj_t* cb=0;
+		lv_obj_t* cb=checkbox[f];
 		switch (f) {
 		case FL_FLAG_BALANCE1:
 		case FL_FLAG_BALANCE2:
@@ -140,6 +146,8 @@ void ui_ScrFLUpdateFlags(uint32_t flags) {
 			break;
 		case FL_FLAG_DISCHARGE_INH:
 		case FL_FLAG_FULL_DISCHARGE:
+			cb = ui_SFLPStateCB6;
+			break;
 		case FL_FLAG_CAPACITY_ACC:
 			cb = ui_SFLPStateCB7;
 			break;
@@ -150,7 +158,11 @@ void ui_ScrFLUpdateFlags(uint32_t flags) {
 			cb = ui_ScreenFLCBError0;
 			break;
 		case FL_ERR_CELL_TEMP_LOW:
+			cb = ui_ScreenFLCBError1;
+			break;
 		case FL_ERR_CELL_TEMP_HIGH:
+			cb = ui_ScreenFLCBError2;
+			break;
 		case FL_ERR_VOLTAGE_HIGH:
 			cb = ui_ScreenFLCBError3;
 			break;
@@ -448,7 +460,7 @@ void ui_ScreenFL_screen_init(void)
     lv_obj_set_y(ui_Screen1_Label4, lv_pct(42));
     lv_obj_set_align(ui_Screen1_Label4, LV_ALIGN_CENTER);
     lv_label_set_text(ui_Screen1_Label4, "n/a");
-    lv_obj_set_style_text_font(ui_Screen1_Label4, &lv_font_montserrat_48, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(ui_Screen1_Label4, &lv_font_montserrat_28, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     ui_Screen1_Label5 = lv_label_create(ui_ScreenFL);
     lv_obj_set_width(ui_Screen1_Label5, LV_SIZE_CONTENT);   /// 1
@@ -494,7 +506,7 @@ void ui_ScreenFL_screen_init(void)
     ui_ScreenFL_Bar3 = lv_bar_create(ui_ScreenFL);
     lv_bar_set_mode(ui_ScreenFL_Bar3, LV_BAR_MODE_SYMMETRICAL);
     lv_bar_set_range(ui_ScreenFL_Bar3, -1000, 1000);
-    lv_bar_set_value(ui_ScreenFL_Bar3, -1500, LV_ANIM_OFF);
+    lv_bar_set_value(ui_ScreenFL_Bar3, 0, LV_ANIM_OFF);
     lv_obj_set_width(ui_ScreenFL_Bar3, 20);
     lv_obj_set_height(ui_ScreenFL_Bar3, lv_pct(50));
     lv_obj_set_y(ui_ScreenFL_Bar3, 0);

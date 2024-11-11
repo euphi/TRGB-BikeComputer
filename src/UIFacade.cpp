@@ -195,7 +195,7 @@ void UIFacade::updateStats() {
 	Statistics::ESummaryType t = statMode;
 
 	uint32_t timeTot = stats.getTime(t, statTimeMode);
-	ui_ScrMainUpdateStats(Statistics::SUM_TYPE_STRING[t] + 3, stats.getAvg(t, statTimeMode), stats.getSpeedMax(t), stats.getDistance(t), timeTot);
+	ui_ScrMainUpdateStats(Statistics::SUM_TYPE_STRING[t] + 3, stats.getAvg(t, statTimeMode), stats.getSpeedMax(t), stats.getDistance(t, true), timeTot);
 
 //TODO: Check if heigt is also updated in non-FL mode at standstill (no gradient calculation)
 	ui_SMainNoFLUpdateStats(Statistics::SUM_TYPE_STRING[t] + 3, Statistics::AVG_TYPE_STRING[statTimeMode] + 3,

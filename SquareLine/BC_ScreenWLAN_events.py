@@ -18,3 +18,7 @@ def WLANStoreNConn(event_struct):
 def EvSSIDRoller(event_struct):
     return
 
+
+def WLANAPMode(event_struct):
+    return
+

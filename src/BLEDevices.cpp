@@ -348,7 +348,7 @@ void BLEDevices::komootLoop() {
 
 
 	//last known dist to target - (   distance driven since last update )
-	int32_t d = nav_distance - (stats.getDistance(Statistics::SUM_ESP_START) - nav_distance_int);
+	int32_t d = nav_distance - (stats.getDistance(Statistics::SUM_ESP_START, true) - nav_distance_int);
 
 	uint_fast8_t updateTime = 40; // default 4 sec
 	if (d < 0) {

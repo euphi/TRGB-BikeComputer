@@ -219,6 +219,7 @@ void Distance::resetDistToZero(Statistics::ESummaryType eSummaryType) {
 	}
 	curTotalDistance[eSummaryType] = 0;
 	distanceFromNVS[eSummaryType] = 0;
+	lostDistanceFromNVS[eSummaryType] = 0;
 	revsFromNVS[eSummaryType] = lastRevs;
 	storeDistanceAndResetRevs();
 	stats.reset(eSummaryType);

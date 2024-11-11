@@ -27,7 +27,9 @@ public:
 	void resetDistToZero(Statistics::ESummaryType);
 
 	float revsToDistance(uint32_t revs) {return revs * wheel_c;}
-	const float getDistance(Statistics::ESummaryType t = Statistics::SUM_ESP_START) const {return curTotalDistance[t];}
+	const float getDistance(Statistics::ESummaryType t = Statistics::SUM_ESP_START, bool includeLost = false) const {
+		return ( curTotalDistance[t] - ( includeLost ? 0 : lostDistanceFromNVS[t]) );
+	}
 
 private:
 	float wheel_c = NAN;											// wheel_c as loaded from NVS

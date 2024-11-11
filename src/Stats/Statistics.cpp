@@ -491,7 +491,7 @@ uint32_t Statistics::getDistance(ESummaryType type, bool includeLost) const {
 	case SUM_ESP_TOUR:
 	case SUM_ESP_TRIP:
 	case SUM_ESP_START:
-		return distHandler.getDistance(type);
+		return distHandler.getDistance(type, includeLost);
 #ifdef BC_FL_SUPPORT
 	//FIXME FL_ Distance handling
 	case SUM_FL_TRIP:
