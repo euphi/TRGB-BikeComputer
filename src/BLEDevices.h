@@ -11,7 +11,8 @@
 #include <BLEScan.h>
 #include <BLEUtils.h>
 #include <Arduino.h>
-#include <Ticker.h>
+//#include <Ticker.h>
+#include <TickTwo.h>
 #include <FLClassicParser.h>
 #include <Preferences.h>
 
@@ -74,10 +75,14 @@ private:
 	uint8_t reconnCount = 0;
 
 	BLERemoteCharacteristic* pKomootRemoteCharacteristic = nullptr;
-	Ticker komootTicker;
-	Ticker connCheckTicker;
-	Ticker batScanTicker;
+	TickType_t tickCounter[4];
+	TickTwo komootTicker;
+	TickTwo connCheckTicker;
+	TickTwo batScanTicker;
 
+
+	void init();
+	void taskLoop();
 
 
 	void komootLoop();
@@ -89,6 +94,8 @@ private:
 	void resetAdress(EDevType type);
 
 	EDevType nextCSCSlotAvailable();
+
+	TaskHandle_t bleTaskHandle;
 
 public:
 	BLEDevices();
@@ -109,5 +116,8 @@ public:
 	uint16_t getHTMLPage(String& htmlresponse);
 	uint16_t procHTMLCmd(String& htmlresponse, const String& cmd, const String& arg);
 
+
 	void setup();
+
+	static void taskInit(void * _thisInstance);
 };

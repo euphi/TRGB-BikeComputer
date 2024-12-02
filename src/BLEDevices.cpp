@@ -28,9 +28,83 @@ const uint8_t twoByteOn[] = {0x01,0x00};
 
 std::function<void(BLEScanResults)> scanCB;
 
-BLEDevices::BLEDevices()
+BLEDevices::BLEDevices():
+		komootTicker( ( [this]() { this->komootLoop(); }) , 100, 0, MILLIS),
+		connCheckTicker( ( [this]() { this->connCheckLoop(); }) , 250, 0, MILLIS),
+		batScanTicker ( ( [this]() { this->batCheckLoop(); }) , 300000, 0, MILLIS)
 {
 
+}
+
+//void BLEDevices::taskInit(void *_thisInstance) {
+//	TickType_t xLastWakeTime;
+//	const TickType_t xFrequency = pdMS_TO_TICKS(10);
+//	BaseType_t xWasDelayed;
+//
+//	BLEDevices *thisInstance = static_cast<BLEDevices*>(_thisInstance);
+//	if (! _thisInstance) { Serial.println("BLE Task Instance is NULL");Serial.flush();abort();}
+//	thisInstance->init();
+//
+//	xLastWakeTime = xTaskGetTickCount();
+//
+//	while (true) {
+//		xWasDelayed = xTaskDelayUntil(&xLastWakeTime, xFrequency);
+//
+//		if (xWasDelayed == pdFAIL) {
+//			Serial.println("BLEDeviceTask execution delayed");
+//		}
+//		thisInstance->taskLoop();
+//
+//		if ( (xTaskGetTickCount() - xLastWakeTime) > 5) {
+//			Serial.println("BLEDeviceTask took more than 5 ticks");
+//		}
+//
+//	}
+//}
+
+void BLEDevices::init() {
+
+	TickType_t xLastWakeTime;
+	const TickType_t xFrequency = pdMS_TO_TICKS(50);
+	TickType_t execDuration = 0;
+
+	startBLEScan();	//TODO: May be replaced by connCheck.
+	komootTicker.start();
+	connCheckTicker.start();
+	batScanTicker.start();
+
+	xLastWakeTime = xTaskGetTickCount();
+	while (true) {
+		vTaskDelay(xFrequency - execDuration);
+		tickCounter[0] = xTaskGetTickCount();
+//		BaseType_t xWasDelayed = xTaskDelayUntil(&xLastWakeTime, xFrequency);
+//		if (xWasDelayed == pdFAIL) {
+//			bclog.log(BCLogger::Log_Warn, BCLogger::TAG_BLE, "BLEDeviceTask execution delayed");
+//		}
+
+		taskLoop();
+		tickCounter[3] = xTaskGetTickCount();
+
+		execDuration = (tickCounter[3] - tickCounter[0]);
+
+		if ( execDuration > xFrequency ) {
+			bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_BLE, "%d: BLEDeviceTask took more ticks than cycle (%d - Batscan: %d - ConnCheck: %d - Komoot: %d)\n",
+					tickCounter[3],
+					execDuration,
+					tickCounter[3]  - tickCounter[2],
+					tickCounter[2]  - tickCounter[1],
+					tickCounter[1]  - tickCounter[0]);
+			execDuration = xFrequency - pdMS_TO_TICKS(1); // Only delay 1ms for next loop iteration
+		}
+	}
+}
+
+void BLEDevices::taskLoop() {
+	komootTicker.update();
+	tickCounter[1] = xTaskGetTickCount();
+	connCheckTicker.update();
+	tickCounter[2] = xTaskGetTickCount();
+	batScanTicker.update();
 }
 
 void BLEDevices::setup() {
@@ -39,12 +113,11 @@ void BLEDevices::setup() {
 		  bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "🔵 ✔️ BLE scan completed: %d devices found.", result.getCount());
 		  this->scanning=false;
 	  };
-	  startBLEScan();
-	  komootTicker.attach_ms(100, +[](BLEDevices* thisInstance) {thisInstance->komootLoop();}, this);
-	  connCheckTicker.attach_ms(250, +[](BLEDevices* thisInstance) {thisInstance->connCheckLoop();}, this);
-	  batScanTicker.attach(300, +[](BLEDevices* thisInstance) {thisInstance->batCheckLoop();}, this);
+
 	  restoreAdresses();
-}
+	  //xTaskCreate(taskInit, "BLE Task", 4096, NULL, 0, &bleTaskHandle);
+	  //xTaskCreate(+[](void* thisInstance){taskInit(thisInstance);},  "BLE Task", 4096, NULL, 0, &bleTaskHandle);
+	  xTaskCreate(+[](void* thisInstance){((BLEDevices*)thisInstance)->init();},  "BLE Task", 4096, this, 0, &bleTaskHandle);}
 
 void BLEDevices::restoreAdresses() {
 	StatPreferences.begin("BLEConn");
@@ -389,7 +462,7 @@ void BLEDevices::connCheckLoop() {
 	if (millis() < 6000) return;
 	if (!scanning) reconnCount++;
 	for (uint16_t c = 0; c < DEV_COUNT; c++) {
-		if (doConnect[c]) connectToServer(static_cast<EDevType>(c));		// check if new connection shall be established
+		if (!scanning && doConnect[c]) connectToServer(static_cast<EDevType>(c));		// check if new connection shall be established
 		if (connState[c] == CONN_CONNECTED && !pClient[c]->isConnected()) { // check if existing connection is lost
 			connState[c] = CONN_LOST;
 			bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_BLE, "%s Lost connection.", DEV_EMOJI[c]);

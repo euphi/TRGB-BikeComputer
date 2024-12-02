@@ -259,16 +259,16 @@ void BCLogger::log(LogType type, LogTag tag, const String& str) {
 
 	String symbolStr = LEVEL_SYMBOL[type] + TAG_SYMBOL[tag] + String(" ");
 
-	if (write_file) {
-		f.print(timeStr);
-		f.println(str);
-	}
-	yield();
 	if (write_serial) {
 		Serial.print(symbolStr);
 		Serial.print(timeStr);
 		Serial.println(str);
 		sendLogEvent(str, symbolStr);
+	}
+	//yield();
+	if (write_file) {
+		f.print(timeStr);
+		f.println(str);
 	}
 }
 

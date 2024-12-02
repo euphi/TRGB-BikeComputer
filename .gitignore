@@ -9,6 +9,9 @@ CMakeLists.txt
 /versioning
 include/version.h
 
+
+/Tools/DL_DATA/
+
 # Output files of binary log converter
 out.csv
 
@@ -18,4 +21,4 @@ backup/
 /.pydevproject
 SquareLine/assets/
 
-/Tools/DL_Data/
+
