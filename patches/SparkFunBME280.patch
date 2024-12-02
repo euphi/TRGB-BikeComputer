@@ -1,0 +1,25 @@
+--- ".pio/libdeps/trgb-esp32-s3-FL/SparkFun BME280/src/SparkFunBME280.h"	2020-12-31 04:44:27.000000000 +0100
++++ ".pio/libdeps/trgb-esp32-s3/SparkFun BME280/src/SparkFunBME280.h"	2024-12-02 22:08:47.334115549 +0100
+@@ -43,9 +43,6 @@
+ //You will need to have the SoftwareWire library installed
+ //#include <SoftwareWire.h> //SoftwareWire by Testato. Installed from library manager.
+ 
+-#define I2C_MODE 0
+-#define SPI_MODE 1
+-
+ #ifndef BME280_SPI_CLOCK
+ #ifdef ARDUINO_ARCH_ESP32
+ #define BME280_SPI_CLOCK 1000000
+@@ -186,6 +183,12 @@
+ class BME280
+ {
+   public:
++
++    enum {
++	I2C_MODE=0,
++	SPI_MODE=1
++    };
++	   
+     //settings
+     BME280_SensorSettings settings;
+ 	SensorCalibration calibration;
