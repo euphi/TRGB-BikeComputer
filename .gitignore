@@ -10,7 +10,7 @@ CMakeLists.txt
 include/version.h
 
 
-/Tools/DL_DATA/
+/Tools/DL_Data/
 
 # Output files of binary log converter
 out.csv
