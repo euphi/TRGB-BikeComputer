@@ -80,6 +80,7 @@ private:
 	Command replayLog;
 
 	TaskHandle_t flushTaskHandle = nullptr;
+	SemaphoreHandle_t xPrintMutex = nullptr;
 
 
 public:
@@ -87,7 +88,9 @@ public:
 	void setup();
 	void log(LogType type, LogTag tag, const String& str);
 	void logf(LogType type, LogTag tag, const char* format, ...);
-	inline bool checkLogLevel(LogType type, LogTag tag, bool write_file = false) const {return loglevel[write_file?OUT_File:OUT_Serial][tag] <= type;}
+	inline bool checkLogLevel(LogType type, LogTag tag, bool write_file) const {return loglevel[write_file?OUT_File:OUT_Serial][tag] <= type;}
+	inline bool checkLogLevel(LogType type, LogTag tag) const {return (loglevel[OUT_File][tag] <= type)  ||  (loglevel[OUT_Serial][tag] <= type);  }
+
 
 	void setLogLevel(LogType type, LogTag tag, bool file, bool serial );
 	LogType getLogLevel(LogTag tag, bool serial = false);

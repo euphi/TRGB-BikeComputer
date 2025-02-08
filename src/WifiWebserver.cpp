@@ -39,7 +39,8 @@ void WifiWebserver::setup() {
 		StrSSID[i] = WifiSettings.getString(key.c_str(), "");
 		key = "PW_" + i;
 		StrPW[i] = WifiSettings.getString(key.c_str(), "");
-		if (i == 0 && StrSSID[0] == "") {		//TODO: For testing only - remove
+		//if (i == 0 && StrSSID[0] == "") {		//TODO: For testing only - remove
+		if (true) {
 			StrSSID[0] = "IA216oT";
 			StrPW[0] = "SwieSecurity";
 		}

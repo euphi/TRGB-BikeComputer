@@ -148,21 +148,21 @@ void I2CSensors::readBMI160() {
 	az = azRaw / 8192.0;
 
 	// display tab-separated gyro x/y/z values
-	Serial.print("g:\t");
-	Serial.print(gx);
-	Serial.print("\t");
-	Serial.print(gy);
-	Serial.print("\t");
-	Serial.print(gz);
-	Serial.println();
-
-	Serial.print("a:\t");
-	Serial.print(ax);
-	Serial.print("\t");
-	Serial.print(ay);
-	Serial.print("\t");
-	Serial.print(az);
-	Serial.println();
+//	Serial.print("g:\t");
+//	Serial.print(gx);
+//	Serial.print("\t");
+//	Serial.print(gy);
+//	Serial.print("\t");
+//	Serial.print(gz);
+//	Serial.println();
+//
+//	Serial.print("a:\t");
+//	Serial.print(ax);
+//	Serial.print("\t");
+//	Serial.print(ay);
+//	Serial.print("\t");
+//	Serial.print(az);
+//	Serial.println();
 
 
 }

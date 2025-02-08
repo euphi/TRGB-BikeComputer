@@ -27,6 +27,7 @@ void cmdCB(cmd *c) {
 BCLogger::BCLogger():
 		logevents("/debug/logevent")
 {
+	xPrintMutex = xSemaphoreCreateMutex();
 
 }
 
@@ -259,11 +260,31 @@ void BCLogger::log(LogType type, LogTag tag, const String& str) {
 
 	String symbolStr = LEVEL_SYMBOL[type] + TAG_SYMBOL[tag] + String(" ");
 
+<<<<<<< Upstream, based on branch 'main' of git@github.com:euphi/TRGB-BikeComputer.git
+=======
+	if (write_file) {
+		if (xSemaphoreTake(xPrintMutex, static_cast<TickType_t>(100 / portTICK_PERIOD_MS)) == pdTRUE) {
+			f.print(timeStr);
+			f.println(str);
+			xSemaphoreGive(xPrintMutex);
+		} else {
+			printf("%d: !!!!! File Log output blocked !!!!!", millis());
+		}
+	}
+
+	yield();
+
+>>>>>>> ac5fa7b Refactor BLE Connection Management (WIP!)
 	if (write_serial) {
-		Serial.print(symbolStr);
-		Serial.print(timeStr);
-		Serial.println(str);
-		sendLogEvent(str, symbolStr);
+		if (xSemaphoreTake(xPrintMutex, static_cast<TickType_t>(100 / portTICK_PERIOD_MS)) == pdTRUE) {
+			Serial.print(symbolStr);
+			Serial.print(timeStr);
+			Serial.println(str);
+			sendLogEvent(str, symbolStr);
+			xSemaphoreGive(xPrintMutex);
+		} else {
+			printf("%d: !!!!! Serial Log output blocked !!!!!", millis());
+		}
 	}
 	//yield();
 	if (write_file) {

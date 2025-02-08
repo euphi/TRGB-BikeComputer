@@ -7,7 +7,9 @@
 
 #pragma once
 
-#include <vector> // Arduino BLE somehow misses this include. So add it here.
+#include <vector>
+#include <memory>
+
 #include <BLEScan.h>
 #include <BLEUtils.h>
 #include <Arduino.h>
@@ -16,7 +18,7 @@
 #include <FLClassicParser.h>
 #include <Preferences.h>
 
-class BLEDevices: public BLEAdvertisedDeviceCallbacks {
+class BLEDevices: public BLEAdvertisedDeviceCallbacks, BLEClientCallbacks {
 
 typedef enum {
 	DEV_UNKNOWN = -1,
@@ -41,20 +43,37 @@ static const char* DEV_STRING[DEV_COUNT];
 static const char* CONN_STRING[CONN_COUNT];
 
 private:
-	BLEScan* pBLEScan = nullptr;
-	BLEAddress *pServerAddress[DEV_COUNT];
-	BLEAddress *pStoredAddress[DEV_COUNT];
-	BLEClient  *pClient[DEV_COUNT];
+	struct SDevToConnect {
+	    std::unique_ptr<BLEAdvertisedDevice> client;  // BLE-Client für die Verbindung
+	    EDevType devType;
+	};
+	// Refactoring Scan & Connect: New variables and methods:
+	std::vector<SDevToConnect> connectDevices;		// Devices to be connected (filtered results from scan)
+	//std::unique_ptr<BLEClient> clients[DEV_COUNT];						// BLEClients objects of connected devices
+	std::array<std::unique_ptr<BLEClient>, DEV_COUNT> clients;
 
-	bool scanning=false;
+
+	BLEAddress *pStoredAddress[DEV_COUNT];
+
+	void scanAndConnectTask();
+	TaskHandle_t scanTaskHandle;
+	BLEScan* pBLEScan = nullptr;
+
+	//BLEAddress *pServerAddress[DEV_COUNT];
+
+	//BLEClient  *pClient[DEV_COUNT];  // FIXME: To be removed (or refactored)
+
 	bool doConnect[DEV_COUNT] = {false, false, false, false, false};
 	bool hasBatService[DEV_COUNT] = {true, true, true, false, false};
 	int16_t batLevel[DEV_COUNT] = {-1, -1, -1, -1, -1};
 	EBLEConnState connState[DEV_COUNT] = {CONN_DEV_NOTFOUND, CONN_DEV_NOTFOUND, CONN_DEV_NOTFOUND, CONN_DEV_NOTFOUND, CONN_DEV_NOTFOUND};
 	Preferences StatPreferences;
 
-	static const int scanTime = 5; //In seconds
-	bool connectToServer(EDevType ctype);
+	static const int scanTime = 8; //In seconds
+	bool connectToServer(SDevToConnect& dev);
+
+	virtual void onConnect(BLEClient *pClient);
+	virtual void onDisconnect(BLEClient *pClient);
 
 	String bufferFL;
 
@@ -65,12 +84,8 @@ private:
 	uint16_t cadence = 0;
 	bool cscIsSpeed[2] = {false, false};
 
-	bool connectUnknown = false;		// if true, connect to unknown device. If false connect only known devices or for device types that have no known address yet (auto-learn)
-
 	int32_t nav_distance, nav_distance_int = 0;
 	uint32_t nav_timestamp = 0;
-
-
 
 	uint8_t reconnCount = 0;
 
@@ -95,7 +110,15 @@ private:
 
 	EDevType nextCSCSlotAvailable();
 
+<<<<<<< Upstream, based on branch 'main' of git@github.com:euphi/TRGB-BikeComputer.git
 	TaskHandle_t bleTaskHandle;
+=======
+
+
+	EDevType filterDevice(BLEAdvertisedDevice& dev);
+	bool isAlreadyConnected(BLEAdvertisedDevice& newDevice);
+
+>>>>>>> ac5fa7b Refactor BLE Connection Management (WIP!)
 
 public:
 	BLEDevices();
