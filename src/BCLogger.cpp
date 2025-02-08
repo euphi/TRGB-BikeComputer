@@ -260,8 +260,6 @@ void BCLogger::log(LogType type, LogTag tag, const String& str) {
 
 	String symbolStr = LEVEL_SYMBOL[type] + TAG_SYMBOL[tag] + String(" ");
 
-<<<<<<< Upstream, based on branch 'main' of git@github.com:euphi/TRGB-BikeComputer.git
-=======
 	if (write_file) {
 		if (xSemaphoreTake(xPrintMutex, static_cast<TickType_t>(100 / portTICK_PERIOD_MS)) == pdTRUE) {
 			f.print(timeStr);
@@ -274,7 +272,6 @@ void BCLogger::log(LogType type, LogTag tag, const String& str) {
 
 	yield();
 
->>>>>>> ac5fa7b Refactor BLE Connection Management (WIP!)
 	if (write_serial) {
 		if (xSemaphoreTake(xPrintMutex, static_cast<TickType_t>(100 / portTICK_PERIOD_MS)) == pdTRUE) {
 			Serial.print(symbolStr);
@@ -285,11 +282,6 @@ void BCLogger::log(LogType type, LogTag tag, const String& str) {
 		} else {
 			printf("%d: !!!!! Serial Log output blocked !!!!!", millis());
 		}
-	}
-	//yield();
-	if (write_file) {
-		f.print(timeStr);
-		f.println(str);
 	}
 }
 

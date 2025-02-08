@@ -13,8 +13,7 @@
 #include <BLEScan.h>
 #include <BLEUtils.h>
 #include <Arduino.h>
-//#include <Ticker.h>
-#include <TickTwo.h>
+#include <Ticker.h>
 #include <FLClassicParser.h>
 #include <Preferences.h>
 
@@ -90,10 +89,11 @@ private:
 	uint8_t reconnCount = 0;
 
 	BLERemoteCharacteristic* pKomootRemoteCharacteristic = nullptr;
-	TickType_t tickCounter[4];
-	TickTwo komootTicker;
-	TickTwo connCheckTicker;
-	TickTwo batScanTicker;
+
+	//TickType_t tickCounter[4];
+	Ticker komootTicker;
+	Ticker connCheckTicker;
+	Ticker batScanTicker;
 
 
 	void init();
@@ -110,15 +110,10 @@ private:
 
 	EDevType nextCSCSlotAvailable();
 
-<<<<<<< Upstream, based on branch 'main' of git@github.com:euphi/TRGB-BikeComputer.git
 	TaskHandle_t bleTaskHandle;
-=======
-
-
 	EDevType filterDevice(BLEAdvertisedDevice& dev);
 	bool isAlreadyConnected(BLEAdvertisedDevice& newDevice);
 
->>>>>>> ac5fa7b Refactor BLE Connection Management (WIP!)
 
 public:
 	BLEDevices();
