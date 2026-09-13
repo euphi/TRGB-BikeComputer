@@ -116,7 +116,7 @@ public:
 
 	bool replayFile(const String& path);
 
-
+	void save_coredump_to_littlefs(const String& filename);
 
 
 private:

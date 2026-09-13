@@ -11,6 +11,7 @@
 #include <LittleFS.h>
 #include <FS.h>
 #include <ElegantOTA.h>
+//#include <PrettyOTA.h>
 #include <ArduinoJson.h>
 #include <version.h>
 #include <nvs.h>
@@ -266,7 +267,7 @@ void WifiWebserver::setupWebserver() {
 
 	server.on("^\\/dev\\/([A-Za-z0-9]+)$", HTTP_GET, [this] (AsyncWebServerRequest *request) {
 		htmlresponse.clear();
-		const AsyncWebParameter* para = request->getParam(0);
+		const AsyncWebParameter* para = request->getParam((size_t)0);
 		bclog.logf(BCLogger::Log_Info, TAG, "💻 Request on /dev/: %s\n\tPath-Arg: %s - %s", request->url().c_str(), request->pathArg(0).c_str(), para ? para->value().c_str() : "n/a");
 		if (!para) {
 			request->send(400, "text/plain", "Missing parameter");
@@ -396,6 +397,19 @@ void WifiWebserver::setupWebserver() {
 		request->send(200);
 	});
 
+//
+//	PrettyOTA       OTAUpdates;
+//	OTAUpdates.Begin(&server);
+//	OTAUpdates.OnStart([](NSPrettyOTA::UPDATE_MODE updateMode) {
+//		bclog.log(BCLogger::Log_Info, TAG, "Start OTA Update");
+//		ui.otaStart();
+//	});
+//	OTAUpdates.OnProgress([](size_t current, size_t total) {
+//		uint8_t perc = (current * 100) / total;
+//		bclog.logf(BCLogger::Log_Debug, TAG, "OTA Update: %d %% [%d byte from %d byte].", perc, current, total);
+//		ui.otaProgress(perc);
+//	});
+
 	// -- Allow OTA via Web ("ElegantOTA" library)
 	ElegantOTA.begin(&server); // Start ElegantOTA - it listens on "/update/"
 	ElegantOTA.setAutoReboot(true);
@@ -413,6 +427,7 @@ void WifiWebserver::setupWebserver() {
 	// -- download Binary Logfile
 	server.serveStatic("/log/", SD_MMC, "/BIKECOMP/");
 	server.serveStatic("/", LittleFS, "/site/").setCacheControl("max-age=31536000").setDefaultFile("index.html");
+	//server.serveStatic("/core/", LittleFS, "/core/").setCacheControl("max-age=31536000");
 
 	// URI not found
 	server.onNotFound([](AsyncWebServerRequest *request) {

@@ -7,7 +7,7 @@
 
 #pragma once
 
-#include <Arduino.h>
+//#include <Arduino.h>
 #include <Preferences.h>
 #include <global_settings.h>
 #include <Ticker.h>

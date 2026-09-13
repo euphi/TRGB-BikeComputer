@@ -90,8 +90,13 @@ void Distance::updateRevs(uint32_t revs, uint16_t timestamp) {
 				lostDistanceFromNVS[j] += lostDist;
 				bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Lost distance for %s while switched off: %d revs -> %.1f m --> total %.1f",
 						(Statistics::SUM_TYPE_STRING[j] + 3), lostRevs, lostDist, lostDistanceFromNVS[j]);
-			} else {
+			} else if (revsFromNVS[j] == revs) {
 				bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "No distance lost in disconnect: %d = %d", revs, revsFromNVS[j]);
+			} else { // --> revsFromNVS[j] > revs
+				bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_STAT, "Stored revs (%d) greater than revs stored in sensor (%d) - has sensor been reset?", revsFromNVS[j], revs);
+				float lostDist = revs * wheel_c;
+				lostDistanceFromNVS[j] += lostDist;
+				revsFromNVS[j] = revs;
 			}
 		}
 	}
@@ -106,7 +111,7 @@ void Distance::updateRevs(uint32_t revs, uint16_t timestamp) {
 	 *    === TRIGGER: revs received, but not connected
  	 */
 	if (revs < lastRevs) {	// Scenario 2 b
-		bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_STAT, "Received revs %d smaller than stored (%d). New CSC sensor?", revs, lastRevs);
+		bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_STAT, "Received revs %d smaller than stored (%d). Your CSC sensor seems to loose distance info on reconnect.", revs, lastRevs);
 		// My cheap CYCPLUS CSC sensor does not store cumulative wheel revs. Every reconnect it starts with 0.. To mitigate impact, store the distance and ignore the update.
 		// Note: The Magene CSC sensors (that cost a little bit more, but are still quite cheap) do not show this behaviour.
 		lastRevs = revs;
@@ -126,7 +131,7 @@ void Distance::updateRevs(uint32_t revs, uint16_t timestamp) {
 	}
 
 	/* Scenario
-	 * 3. Normal Update
+	 * 3. Normal Update (includes scen 1 & 2)
 	 */
 	for (uint_fast8_t j=0; j <= Statistics::SUM_ESP_START; j++) {
 		curTotalDistance[j] = ( (j == Statistics::SUM_ESP_START) ? 0.0 : distanceFromNVS[j] ) + ( (revs - revsFromNVS[j]) * wheel_c);

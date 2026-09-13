@@ -8,8 +8,11 @@
 #include <BCLogger.h>
 #include <DateTime.h>
 #include <SD_MMC.h>
+#include <LittleFS.h>
 #include "Singletons.h"
 #include <esp_task_wdt.h>
+#include <esp_core_dump.h>
+
 
 const char *BCLogger::TAG_STRING[LogTagMax] = { "RAW", "FL", "BLE", "STAT", "WIFI", "SD", "OP", "CLI", "UI" };
 const char *BCLogger::LEVEL_STRING[LogTypeMax] = { "DEBUG", "INFO", "WARN", "ERROR" };
@@ -71,12 +74,15 @@ void BCLogger::setup() {
 	if (!SD_MMC.exists(LOGDIR) && !SD_MMC.mkdir(LOGDIR))
 		log(Log_Error, TAG_SD, "Failed to create dir " + LOGDIR);
 
+	//String file_core;
+
 	if (DateTime.getParts().getYear() >= 2023) { // time seems to be somehow valid
 		time_t now;
 		time(&now);
 		file_data = DateFormatter::format((LOGDIR + "/%Y%m%d/L_%H%M%S.bin").c_str(), now);
 		file_debuglog = DateFormatter::format((LOGDIR + "/%Y%m%d/D_%H%M%S.log").c_str(), now);
 		file_nmealog = DateFormatter::format((LOGDIR + "/%Y%m%d/N_%H%M%S.log").c_str(), now);
+		//file_core = DateFormatter::format("/core/%Y%m%d/C_%H%M%S.core", now);
 		fileNameIncludesDateTime = true;
 	} else {
 		log(Log_Warn, TAG_SD, "No time available to create file names");
@@ -92,6 +98,7 @@ void BCLogger::setup() {
 		file_data = dirName + "/L" + fnumber + ".bin";
 		file_debuglog = dirName + "/D" + fnumber + ".log";
 		file_nmealog = dirName + "/N" + fnumber + ".log";
+		//file_core = String("/core/C_")+fnumber+".core";
 	}
 	fdebug = SD_MMC.open(file_debuglog, FILE_APPEND, true);
 	fdata  = SD_MMC.open(file_data, FILE_APPEND, true);
@@ -99,6 +106,7 @@ void BCLogger::setup() {
 
 	logf(Log_Info, TAG_SD, "New file name: %s\n", file_data.c_str());
 
+	//save_coredump_to_littlefs(file_core);
 
 	xTaskCreate(+[](void* thisInstance){((BCLogger*)thisInstance)->flushAllFiles();}, "FlusherTask", 3072, this, 5, &flushTaskHandle);
 
@@ -503,3 +511,54 @@ bool BCLogger::cleanUp(File& root, uint32_t minsize) {
 	}
 	return allFileDeleted;
 }
+
+
+// Funktion zum Speichern des Coredumps auf LittleFS
+void BCLogger::save_coredump_to_littlefs(const String& filename) {
+    size_t coredump_size = 0;
+    size_t coredump_addr = 0;
+
+    // Core-Dump aus Flash holen
+    esp_err_t err = esp_core_dump_image_get(&coredump_addr, &coredump_size);
+    if (err != ESP_OK || coredump_addr == 0 || coredump_size == 0) {
+        ESP_LOGE("COREDUMP", "Fehler beim Abrufen des Coredumps: %d", err);
+        return;
+    }
+
+    // Cast in einen Zeiger auf uint8_t*
+    uint8_t *coredump_data = reinterpret_cast<uint8_t *>(coredump_addr);
+
+    // Datei öffnen und schreiben
+    File file = LittleFS.open(filename, FILE_WRITE, true);  //TODO: This work because LittleFS is already initialized in WifiWebserver which is started BEFORE BCLogger.
+    if (!file) {
+        ESP_LOGE("COREDUMP", "Fehler beim Öffnen der Coredump-Datei");
+        return;
+    }
+	logf(Log_Info, TAG_SD, "Existing core-dump found with %d byte at adress %x", coredump_size, coredump_addr);
+
+    const size_t chunksize = 512;
+	uint8_t buffer[chunksize];
+    size_t offset = 0;
+
+    const esp_partition_t* coredump_part = esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_COREDUMP, NULL);
+    if (!coredump_part) {
+        log(Log_Info, TAG_SD, "Keine Coredump-Partition gefunden!");
+        return;
+    }
+
+    while (offset < coredump_size) {
+        size_t to_read = std::min(chunksize, coredump_size - offset);
+        esp_err_t err = esp_partition_read(coredump_part, offset, buffer, to_read);
+        if (err != ESP_OK) {
+            ESP_LOGE("COREDUMP", "Fehler beim Lesen des Coredumps: %d", err);
+            break;
+        }
+        file.write(buffer, to_read);
+        offset += to_read;
+    }
+    file.close();
+    logf(Log_Info, TAG_SD, "Coredump %s erfolgreich gespeichert (%d Bytes)", filename.c_str(), offset);
+}
+
+
+

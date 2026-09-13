@@ -32,7 +32,8 @@ const uint8_t twoByteOn[] = {0x01,0x00};
 
 BLEDevices::BLEDevices()
 {
-
+	xDevMutex = xSemaphoreCreateMutex();
+	xKomootMutex = xSemaphoreCreateMutex();
 }
 
 void BLEDevices::setup() {
@@ -44,9 +45,8 @@ void BLEDevices::setup() {
 //		  this->scanning=false;
 //	  };
 	  //##SCANTASK-Removed: startBLEScan();
-	  komootTicker.attach_ms(100, +[](BLEDevices* thisInstance) {thisInstance->komootLoop();}, this);
-	  connCheckTicker.attach_ms(250, +[](BLEDevices* thisInstance) {thisInstance->connCheckLoop();}, this);
-	  batScanTicker.attach(300, +[](BLEDevices* thisInstance) {thisInstance->batCheckLoop();}, this);
+	  //komootTicker.attach_ms(100, +[](BLEDevices* thisInstance) {thisInstance->komootLoop();}, this);
+	  //connCheckTicker.attach_ms(250, +[](BLEDevices* thisInstance) {thisInstance->connCheckLoop();}, this);
 	  restoreAdresses();
 }
 
@@ -75,31 +75,52 @@ void BLEDevices::setup() {
 void BLEDevices::scanAndConnectTask() {
 	bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "👨‍🏭 Start");
 
+    TickType_t lastBatteryCheck = xTaskGetTickCount();  // Initialize battery check timer
+
+
 	do {
 		bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "👨‍🏭 --> Scanning");
+		// Blocks, but does not directly access data structures -> don't use Mutex
 		startBLEScan();
 		bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "👨‍🏭 --> Scan finished & stored");
-
-
 		// 3. ---------- Connect to stored results and store connected clients. ----------
 
 		bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "👨‍🏭 --> Connecting");
+
+		// total time of the loop including should not exceed 30sec, because some CSC devices switch themself off again
+		// after been activated by movement - and not get active again till standstill and movement again.
+		TickType_t waitTime = 20 * 1000 / portTICK_PERIOD_MS;  // Default wait time: 20 sec
+		TickType_t now = xTaskGetTickCount();
+
+		// Mutex only for clients, so inside connectToServer()
+		// Take Mutex - I really hope that there can't be a disconnect callback while connecting
+		TickType_t start = xTaskGetTickCount();
+
 		if (connectDevices.size()) {
-			for (auto& dev : connectDevices) {
-				connectToServer(dev);
-			}
+			for (auto& dev : connectDevices) {connectToServer(dev);}
 		} else {
 			bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "Nothing to connect");
 		}
 		bclog.log(BCLogger::Log_Debug, BCLogger::TAG_BLE, "🗑️ - Delete advertised list");
 		connectDevices.clear();
-
+		TickType_t duration = xTaskGetTickCount() - start;
 
 		// 4. --------- Wait some time ---------
-		bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "👨‍🏭 --- Wait ---");
-		// total time of the loop including should not exceed 30sec, because some CSC devices switch themself off again,
-		// after been activated by movement - and not get active again till standstill and movement again.
-		vTaskDelay(15 * 1000 / portTICK_PERIOD_MS);	// Wait 15 Sec -
+		bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "👨‍🏭 --- Check batteries (every 5 Min) and Wait ---");
+
+
+		if ((now - lastBatteryCheck) > (5 * 60 * 1000 / portTICK_PERIOD_MS)) {  // Every 5 minutes
+			TickType_t start = xTaskGetTickCount();
+			checkBatteries();  // This may block, so measure its execution time
+			duration += xTaskGetTickCount() - start;
+
+			// Ensure wait time stays within the 30s loop constraint
+			waitTime = std::max(TickType_t(0), waitTime - duration);
+
+			lastBatteryCheck = xTaskGetTickCount();  // Reset battery check timer
+		}
+
+		vTaskDelay(waitTime);  // Adjusted wait time
 
 		bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "👨‍🏭 --> Connection Check");
 
@@ -227,10 +248,32 @@ void BLEDevices::onConnect(BLEClient *pClient) {
 
 }
 
-void BLEDevices::onDisconnect(BLEClient *pClient) {
-	bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "🛑 Disconnect %s", pClient->getPeerAddress().toString().c_str());
-}
 
+void BLEDevices::onDisconnect(BLEClient *pClient) {
+    if (!pClient) return;  // Safety check
+
+    BLEAddress discAddr = pClient->getPeerAddress();
+    bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "🛑 Disconnect %s", discAddr.toString().c_str());
+	if (xSemaphoreTake(xDevMutex, static_cast<TickType_t>(500 / portTICK_PERIOD_MS)) == pdTRUE) {
+		// Find the client in the array
+		auto it = std::find_if(clients.begin(), clients.end(), [&](const std::unique_ptr<BLEClient> &client) {
+			return client && client->getPeerAddress() == discAddr;
+		});
+		// Remove the client if found
+		if (it != clients.end()) {
+			EDevType dt = static_cast<EDevType>(std::distance(clients.begin(), it));  // Get index
+			bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "%s diconnected. Remove Client for %s.", DEV_EMOJI[dt], DEV_STRING[dt]);
+			it->reset();  // Delete the client and set pointer to nullptr
+			updateDisconnectedDev(dt);
+
+		} else {
+			bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_BLE, "Disconnected Client not found in array.");
+		}
+		xSemaphoreGive(xDevMutex);
+	} else {
+		bclog.logf(BCLogger::Log_Error, BCLogger::TAG_BLE, "❌⚠️❌⚠️❌ Mutex blocked while trying to find disconnected device ❌⚠️❌⚠️❌");
+	}
+}
 
 BLEDevices::EDevType BLEDevices::filterDevice(BLEAdvertisedDevice& dev) {
 	if (isAlreadyConnected(dev)) {
@@ -244,8 +287,8 @@ BLEDevices::EDevType BLEDevices::filterDevice(BLEAdvertisedDevice& dev) {
 				//Simple "connect everything" solution: return static_cast<EDevType>(d);
 				// Now, we found a interesting device and we need to check if we want to connect it.
 
-				// Is the device address stored for this type?
-				if (dev.getAddress().equals(*pStoredAddress[d])) {
+				// Is the device address stored for this type? (Note, if no adress is stored, pStoredAddress is nullptr
+				if (pStoredAddress[d] && dev.getAddress().equals(*pStoredAddress[d])) {
 					bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "Filter: Found stored address %s --> connect", pStoredAddress[d]->toString().c_str());
 					connState[d] = CONN_ADVERTISED;
 					return static_cast<EDevType>(d);
@@ -260,11 +303,32 @@ BLEDevices::EDevType BLEDevices::filterDevice(BLEAdvertisedDevice& dev) {
 			}
 		}
 	}
+	if (dev.getName().find("ForumsLader") != std::string::npos) {
+		bclog.log(BCLogger::Log_Info, BCLogger::TAG_BLE, "\t⚡ Found FL Device");
+//		pServerAddress[DEV_FL] = new BLEAddress(advertisedDevice.getAddress());
+//		if (connectUnknown || pStoredAddress[DEV_FL] == nullptr || pServerAddress[DEV_FL]->equals(*pStoredAddress[DEV_FL])) {
+//			doConnect[DEV_FL] = true;
+//			connState[DEV_FL] = CONN_ADVERTISED;
+//		} else {
+//			bclog.log(BCLogger::Log_Warn, BCLogger::TAG_BLE, "\t⚡ no new connection to FL allowed");
+//			delete pServerAddress[DEV_FL];
+//			pServerAddress[DEV_FL] = nullptr;
+//		}
+		return DEV_FL;
+	}
 	bclog.log(BCLogger::Log_Debug, BCLogger::TAG_BLE, "Filter: 💤 Device not interesting");
 	return DEV_UNKNOWN;
 }
 
-
+/**
+ * @brief Checks if the advertised BLE device is already connected.
+ *
+ * This method iterates over the list of connected BLE clients and compares their
+ * addresses with the address of the newly advertised device.
+ *
+ * @param newDevice The advertised BLE device to check.
+ * @return true if the device is already connected, false otherwise.
+ */
 bool BLEDevices::isAlreadyConnected(BLEAdvertisedDevice& newDevice) {
     auto it = std::find_if(clients.begin(), clients.end(),
         [&newDevice](const std::unique_ptr<BLEClient>& client) {
@@ -273,6 +337,43 @@ bool BLEDevices::isAlreadyConnected(BLEAdvertisedDevice& newDevice) {
     return it != clients.end();  // true, wenn Gerät bereits verbunden ist
 }
 
+/**
+ * @brief Updates statistics, UI, and internal states after a device disconnects.
+ *
+ * This method handles device disconnection events by updating relevant components
+ * such as statistics and connection states based on the device type.
+ *
+ * @param dt The type of device that has disconnected.
+ */
+void BLEDevices::updateDisconnectedDev(const EDevType dt) {
+	switch (dt) {
+#ifdef BC_FL_SUPPORT
+	case DEV_FL:
+		flparser.setConnState(FLClassicParser::FL_STATE_LOST);
+		stats.setConnected(false);
+		break;
+#endif
+	case DEV_HRM:
+		stats.addHR(-1);
+		break;
+	case DEV_CSC_1:
+	case DEV_CSC_2:
+		if (cscIsSpeed[dt==DEV_CSC_1?1:2]) {
+			stats.setConnected(false);
+		} else {
+			stats.addCadence(-1, 0);
+		}
+		break;
+	case DEV_KOMOOT:
+		if (xSemaphoreTake(xKomootMutex, 1000)) {
+			pKomootRemoteChar = nullptr;
+			xSemaphoreGive(xKomootMutex);
+		} else {
+			bclog.log(BCLogger::Log_Error, BCLogger::TAG_BLE, "Can't set pKomootRemote to nullptr after disconnect, because Mutex is blocked.");
+		}
+		break;
+	}
+}
 
 //BLEDevices::EDevType BLEDevices::nextCSCSlotAvailable() {
 //	bool csc1Free = (pStoredAddress[DEV_CSC_1] == nullptr);
@@ -295,9 +396,12 @@ bool BLEDevices::isAlreadyConnected(BLEAdvertisedDevice& newDevice) {
 //}
 
 
-
 /**
- * Restores address from NVS (persistent memory (file system))
+ * @brief Restores previously stored BLE device addresses from NVS (persistent memory).
+ *
+ * This method retrieves stored BLE addresses from the non-volatile storage (NVS)
+ * and assigns them to the corresponding device slots. If no address is found for a
+ * specific device type, a log message is generated.
  */
 void BLEDevices::restoreAdresses() {
 	StatPreferences.begin("BLEConn");
@@ -310,12 +414,19 @@ void BLEDevices::restoreAdresses() {
 			bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "No BLE address stored in preferences for %s", DEV_STRING[c]);
 		}
 	}
-	StatPreferences.remove(DEV_STRING[DEV_KOMOOT]);
+	StatPreferences.remove(DEV_STRING[DEV_KOMOOT]);  // no need to store, because address is random. This line deletes existing stored adresses and can be deleted soon
 	StatPreferences.end();
 }
 
 /**
- * Stores address from NVS (persistent memory (file system))
+ * @brief Stores a BLE device address in NVS (persistent memory).
+ *
+ * This method saves the BLE address of a given device type to non-volatile storage (NVS)
+ * for later retrieval. The function does not store addresses for Komoot devices, as they
+ * use random addresses.
+ *
+ * @param type The device type whose address should be stored.
+ * @param addr The BLE address to be stored.
  */
 void BLEDevices::storeAdress(EDevType type, BLEAddress &addr) {
 	if (type == DEV_KOMOOT) return;	// komoot uses random address
@@ -325,13 +436,29 @@ void BLEDevices::storeAdress(EDevType type, BLEAddress &addr) {
 	StatPreferences.end();
 }
 
-
+/**
+ * @brief Removes a stored BLE device address from NVS and clears internal references.
+ *
+ * This method deletes a previously stored BLE address for a given device type from
+ * non-volatile storage (NVS) and clears the corresponding internal pointer.
+ *
+ * Special handling is applied to cycling sensors (CSC): If the address of `DEV_CSC_1`
+ * is removed while `DEV_CSC_2` still has a stored address, the `DEV_CSC_2` address is
+ * moved to `DEV_CSC_1` to maintain consistency.
+ *
+ * FIXME: This logic is flawed. It would work fine, if the BC is restarted immediately afterwards. However, it confuses connections if CSC2 is already connected.
+ *
+ * @param type The device type whose address should be removed.
+ */
 void BLEDevices::resetAdress(EDevType type) {
 	StatPreferences.begin("BLEConn");
 	bool succ = StatPreferences.remove(DEV_STRING[type]);
 	bclog.logf(succ ? BCLogger::Log_Debug : BCLogger::Log_Warn, BCLogger::TAG_BLE, "Removed stored address for pref %s: %s", DEV_STRING[type], succ ? "OK":"FAILED");
 	if (succ) {
-		if (pStoredAddress[type]) delete pStoredAddress[type];
+		if (pStoredAddress[type]) {
+			delete pStoredAddress[type];
+	        pStoredAddress[type] = nullptr; // Prevent use-after-free
+		}
 
 		// ensure that DEV_CSC1 cannot be empty when CSC2 has stored address. So, if this happens, move CSC2 to CSC1
 		if (type == DEV_CSC_1 && pStoredAddress[DEV_CSC_2]) {
@@ -346,9 +473,20 @@ void BLEDevices::resetAdress(EDevType type) {
 
 // ---------------------------------------------
 
+/**
+ * @brief Attempts to connect to a BLE device and set up communication.
+ *
+ * This method establishes a connection to the specified BLE device,
+ * retrieves its services and characteristics, and registers for notifications.
+ * If the connection is successful, it updates the stored address and checks
+ * for battery service availability.
+ *
+ * @param dev The device structure containing the device type and advertised device.
+ * @return true if the connection was successful, false otherwise.
+ */
 bool BLEDevices::connectToServer(SDevToConnect& dev) {
 	const EDevType dt = dev.devType;
-	BLEAddress addr = dev.client->getAddress();
+	BLEAddress addr = dev.advDev->getAddress();
 	bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "%s - connecting to devicetype %s [%s]", DEV_EMOJI[dt], DEV_STRING[dt], addr.toString().c_str() );
 
 	if (clients[dt]) {
@@ -359,18 +497,25 @@ bool BLEDevices::connectToServer(SDevToConnect& dev) {
 		auto client = std::unique_ptr<BLEClient>(new BLEClient());
 		client->setClientCallbacks(this);
 		client->setMTU(256);		// TODO: Is it necessary to set it that large? (Komoot info is quite large, check!)
-		clients[dt] = std::move(client);
+		if (xSemaphoreTake(xDevMutex, static_cast<TickType_t>(500 / portTICK_PERIOD_MS)) == pdTRUE) {
+			clients[dt] = std::move(client);
+			xSemaphoreGive(xDevMutex);
+		} else {
+			bclog.logf(BCLogger::Log_Error, BCLogger::TAG_BLE, "❌⚠️❌⚠️❌ Mutex blocked when creating new client! ❌⚠️❌⚠️❌");
+			return false;
+		}
 	}
 
 
 	// ----------> Note that this is a blocking call! <----------------------
-	bool connected = clients[dt]->connect(dev.client.get());
+	bool connected = clients[dt]->connect(dev.advDev.get());
+	connState[dt] = connected ? CONN_CONNECTED : CONN_LOST;
 	//--------
 	if (!connected) {
 			Serial.printf("❌ Can't connect to device %s.\n", addr.toString().c_str());
-			return false; // client will be released automatically
+			clients[dt].release();	// Delete client
+			return false;
 	}
-
 	BLEUUID uuid = serviceUUID[dt];
 	BLERemoteService* pRemoteService = clients[dt]->getService(uuid);
 	if (pRemoteService == nullptr) {
@@ -381,36 +526,21 @@ bool BLEDevices::connectToServer(SDevToConnect& dev) {
 	if (pRemoteCharacteristic == nullptr) {
 		bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_BLE, "🔵⚠️ Cannot find %s remote characteristic", DEV_EMOJI[dt]);
 		return false;
-	}
-	if (dt == DEV_KOMOOT) {
-		//pRemoteCharacteristic->getDescriptor(BLEUUID((uint16_t)0x2902))->writeValue((uint8_t*)twoByteOn, 2, true);
-		pKomootRemoteCharacteristic = pRemoteCharacteristic;
-		bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "🔵%s Setup handler for komoot\n", DEV_EMOJI[dt]);
 	} else if (dt == DEV_FL) {
 		stats.setConnected(true);  // "Connected" for Stats means that a speed sensor is connected (used for avg calculation). For CSC sensors this is done in the NotifyCallback, because here it is not yet known if sensor is speed or cadence
+	} else if (dt == DEV_KOMOOT) {
+		//readKomootDataAfterNotification(pRemoteCharacteristic);
+		pKomootRemoteChar = pRemoteCharacteristic;
+		if (!komootTaskHandle) {
+			xTaskCreate([](void* thisPtr) { static_cast<BLEDevices*>(thisPtr)->komootPollingTask();}, "KomootPollTask", 3072, this, 1, &komootTaskHandle);
+		}
 	}
 
 	pRemoteCharacteristic->registerForNotify([&, dt](BLERemoteCharacteristic* pBLERemoteCharacteristic, uint8_t* pData, size_t length, bool isNotify) {notifyCallbackCSC(pBLERemoteCharacteristic, pData, length, isNotify, dt);});
 	bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "🔵%s Notify registered\n", DEV_EMOJI[dt]);
 
 	storeAdress(dt, addr);	// update stored adress in NVS - regardless if it really has changed or not
-
-	if (hasBatService[dt]) {
-		BLERemoteService *pRemoteServiceBat = clients[dt]->getService(serviceUUIDBat);
-		if (pRemoteServiceBat == nullptr) {
-			bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_BLE, "🔵⚠️ Cannot find battery remote service %s", DEV_EMOJI[dt]);
-			hasBatService[dt] = false;
-			return false;
-		}
-		BLERemoteCharacteristic *pRemoteCharacteristicBat = pRemoteServiceBat->getCharacteristic(charUUIDBat);
-		if (pRemoteCharacteristicBat == nullptr) {
-			bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_BLE, "🔵⚠️ Cannot find battery remote characteristics %s", DEV_EMOJI[dt]);
-			hasBatService[dt] = false;		//TODO set to high again for disconnect?
-			return false;
-		}
-		batLevel[dt] = pRemoteCharacteristicBat->readUInt8();
-		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "%s battery level %d %%", DEV_EMOJI[dt], batLevel[dt]);
-	}
+	if (hasBatService[dt]) readBatLevel(dt);
 	return true;
 }
 
@@ -433,21 +563,23 @@ void BLEDevices::notifyCallbackCSC(BLERemoteCharacteristic *pBLERemoteCharacteri
 #endif
 	case DEV_CSC_1:
 	case DEV_CSC_2:
-		bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "Received from CSC %d bytes", length);
+		//Extra Debug only: bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "Received from CSC %d bytes", length);
 		flags = pData[0];
-		bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, " - Flag %x: Wheel: [%c] Crank: [%c]", flags, (flags & 1) ? 'x':' ', (flags & 2) ? 'x':' ');
+		//Extra Debug only: bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, " - Flag %x: Wheel: [%c] Crank: [%c]", flags, (flags & 1) ? 'x':' ', (flags & 2) ? 'x':' ');
 		isSpeed = (flags & 1);
 		if ((!isSpeed && !(flags & 2)) || (length < (5 + (isSpeed?2:0)))) {		// 1 + 4 bytes for cadence, 1 + 6 bytes for speed
 			bclog.log(BCLogger::Log_Error, BCLogger::TAG_BLE, "Unknown flags or message to small from CSC device");
 			return;
 		}
 		if (isSpeed) {
+//#ifndef  BC_FL_SUPPORT
 			cscIsSpeed[ctype==DEV_CSC_1?1:2] = true;
 			speed_rev = (pData[4] << 24) + (pData[3] << 16) + (pData[2] << 8) + pData[1];		// LSB first
 			speed_time = (pData[6] << 8) + pData[5];	// LSB first
-#ifndef  BC_FL_SUPPORT
 			stats.getDistHandler().updateRevs(speed_rev, speed_time);
-#endif
+			uint32_t d = nav_distance - (stats.getDistance(Statistics::SUM_ESP_START, true) - nav_distance_int);
+			ui.updateNaviDist(d);
+//#endif
 		} else {
 			cscIsSpeed[ctype==DEV_CSC_1?1:2] = false;
 			crank_rev = (pData[2] << 8) + pData[1];		// LSB first
@@ -464,7 +596,7 @@ void BLEDevices::notifyCallbackCSC(BLERemoteCharacteristic *pBLERemoteCharacteri
 				if (millis() - crank_time_last_received > 1200) {
 					cadence = 0;
 				} else {
-					bclog.log(BCLogger::Log_Info, BCLogger::TAG_BLE, "Ignore 0 revolutions since last update is less than 1200ms");
+					bclog.log(BCLogger::Log_Info, BCLogger::TAG_BLE, "Iwwwwwwwgnore 0 revolutions since last update is less than 1200ms");
 				}
 			}
 			crank_rev_last = crank_rev;
@@ -483,124 +615,230 @@ void BLEDevices::notifyCallbackCSC(BLERemoteCharacteristic *pBLERemoteCharacteri
 		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "Heart rate: %d ❤ per minute", hr);
 		stats.addHR(hr);
 		break;
+	case DEV_KOMOOT:
+		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "Komooot Callback of length %d byte.", length);
+		readKomootDataAfterNotification(pBLERemoteCharacteristic);
+		break;
 	default:
 		bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_BLE, "Notify Callback for %d\n", ctype);
 		bclog.log(BCLogger::Log_Warn, BCLogger::TAG_BLE, pBLERemoteCharacteristic->toString().c_str());
 	}
 }
 
-void BLEDevices::komootLoop() {
-	static uint8_t kCounter = 0;
-	if (millis() < 6000) return; // no display update in first 6 seconds - (safe value that is much longer than display init but shorter than connection to komoot BLE service)
-
-	//                  every 4 sec      OR
-
-
-	//last known dist to target - (   distance driven since last update )
-	int32_t d = nav_distance - (stats.getDistance(Statistics::SUM_ESP_START, true) - nav_distance_int);
-
-	uint_fast8_t updateTime = 40; // default 4 sec
-	if (d < 0) {
-		updateTime = 4;			// 0,4s if distance is exceeded
-		d = 0;
-	} else if (d < 50) {
-		updateTime = 10;
+void BLEDevices::readKomootDataAfterNotification(BLERemoteCharacteristic* pChar) {
+	if (!pChar) {
+		bclog.log(BCLogger::Log_Warn, BCLogger::TAG_BLE, "⚠️ Komoot characteristic not available!");
+		return;
 	}
-	if (pKomootRemoteCharacteristic) {
-		if (++kCounter >= updateTime) {		// at least every 4 seconds
-			kCounter = 0;
-			std::string value = pKomootRemoteCharacteristic->readValue();
-			bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "Read komoot string with %d bytes", value.length());
-			if (value.length() > 4) {
-				//in case we have update flag but characteristic changed due to navigation stop between
-				std::string street;
-				street = value.substr(9); //this causes abort when there are not at least 9 bytes available
-				std::string direction;
-				direction = value.substr(4, 4);
-				uint8_t d = direction[0];
-				std::string distance;
-				distance = value.substr(5, 8);
-				nav_distance = distance[0] | distance[1] << 8 | distance[2] << 16 | distance[3] << 24;
-				nav_distance_int = stats.getDistance(Statistics::SUM_ESP_START);
-				nav_timestamp = millis();
-				bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "Komoot-Navigation: %d m in Richtung %0x auf %s", nav_distance, d, street.c_str());
-				ui.updateNavi(String(street.c_str()), nav_distance, d);
-			} else {
-				bclog.log(BCLogger::Log_Error, BCLogger::TAG_BLE, "Less than 10 byte received from komoot");
-			}
+
+	std::string value = pChar->readValue();
+	bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "🔵 Read komoot string with %d bytes", value.length());
+
+	if (value.length() >= 8) { // Mindestlänge überprüfen
+		std::string street = value.substr(9);
+		std::string direction = value.substr(4, 1);
+		uint8_t d = direction[0];
+		std::string distance = value.substr(5, 4);
+
+		nav_distance = distance[0] | (distance[1] << 8) | (distance[2] << 16) | (distance[3] << 24);
+		nav_distance_int = stats.getDistance(Statistics::SUM_ESP_START);
+		nav_timestamp = millis();
+
+		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "🧭 Komoot-Navigation: %d m in Richtung 0x%X auf %s", nav_distance, d, street.c_str());
+
+		ui.updateNavi(String(street.c_str()), nav_distance, d);
+	} else {
+		bclog.log(BCLogger::Log_Error, BCLogger::TAG_BLE, "❌ Fehler: Unvollständige Daten von Komoot erhalten!");
+	}
+}
+
+void BLEDevices::komootPollingTask() {
+    bclog.log(BCLogger::Log_Info, BCLogger::TAG_BLE, "🔄 Komoot Polling Task gestartet!");
+
+    while (true) {
+        uint32_t waitTime = pollKomootData(); // Wartezeit von Funktion bestimmen
+        if (waitTime > 5000) waitTime = 5000; // Maximal 5 Sekunden warten
+
+        vTaskDelay(waitTime / portTICK_PERIOD_MS);
+    }
+}
+
+uint32_t BLEDevices::pollKomootData() {
+	static uint32_t lastPollTime = 0;
+	uint32_t pollInterval = 4000; // Standard: alle 4s
+
+	// Berechnen, wie lange gewartet werden soll
+	if (millis() - lastPollTime < pollInterval) {
+		int32_t d = nav_distance - (stats.getDistance(Statistics::SUM_ESP_START, true) - nav_distance_int);
+		ui.updateNaviDist(d);
+		return pollInterval - (millis() - lastPollTime);
+	}
+	lastPollTime = millis();
+
+	std::string value;
+
+	if (xSemaphoreTake(xKomootMutex, 1000)) {
+		if (!pKomootRemoteChar) {
+			bclog.log(BCLogger::Log_Info, BCLogger::TAG_BLE, "⚠️ Komoot characteristic not available!");
+			return 5000; // Falls keine Verbindung besteht, seltener pollen (5s)
+		}
+		// Wert lesen
+		value = pKomootRemoteChar->readValue();
+		bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "🔵 Read komoot string with %d bytes", value.length());
+		xSemaphoreGive(xKomootMutex);
+	} else {
+		bclog.log(BCLogger::Log_Error, BCLogger::TAG_BLE, "Komoot Mutex blocked while polling.");
+		return 4000;
+	}
+
+	if (value.length() > 9) { // Mindestlänge prüfen
+		std::string street = value.substr(9);
+		std::string direction = value.substr(4, 4);
+		uint8_t d = direction[0];
+		std::string distance = value.substr(5, 4);
+
+		nav_distance = distance[0] | (distance[1] << 8) | (distance[2] << 16) | (distance[3] << 24);
+		nav_distance_int = stats.getDistance(Statistics::SUM_ESP_START, true);
+		nav_timestamp = millis();
+
+		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "🧭 Komoot-Navigation: %d m in Richtung 0x%X auf %s", nav_distance, d, street.c_str());
+
+		ui.updateNavi(String(street.c_str()), nav_distance, d);
+
+		// Dynamisches Polling: Häufiger, wenn Ziel nahe ist
+		if (nav_distance < 50) {
+			pollInterval = 1000; // 1s wenn nah dran
+		} else if (nav_distance < 500) {
+			pollInterval = 2000; // 2s für mittlere Entfernung
 		} else {
-			ui.updateNaviDist(d);
+			pollInterval = 4000; // Standard 4s
+		}
+	} else {
+		bclog.log(BCLogger::Log_Error, BCLogger::TAG_BLE, "❌ Fehler: Unvollständige Daten von Komoot erhalten!");
+		pollInterval = 5000; // Falls Fehler, seltener pollen
+	}
+
+	return pollInterval;
+}
+
+
+//void BLEDevices::komootLoop() {
+//	static uint8_t kCounter = 0;
+//	if (millis() < 6000) return; // no display update in first 6 seconds - (safe value that is much longer than display init but shorter than connection to komoot BLE service)
+//
+//	//                  every 4 sec      OR
+//
+//
+//	//last known dist to target - (   distance driven since last update )
+//	int32_t d = nav_distance - (stats.getDistance(Statistics::SUM_ESP_START, true) - nav_distance_int);
+//
+//	uint_fast8_t updateTime = 40; // default 4 sec
+//	if (d < 0) {
+//		updateTime = 4;			// 0,4s if distance is exceeded
+//		d = 0;
+//	} else if (d < 50) {
+//		updateTime = 10;
+//	}
+//	if (pKomootRemoteCharacteristic) {
+//		if (++kCounter >= updateTime) {		// at least every 4 seconds
+//			kCounter = 0;
+//			std::string value = pKomootRemoteCharacteristic->readValue();
+//			bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "Read komoot string with %d bytes", value.length());
+//			if (value.length() > 4) {
+//				//in case we have update flag but characteristic changed due to navigation stop between
+//				std::string street;
+//				street = value.substr(9); //this causes abort when there are not at least 9 bytes available
+//				std::string direction;
+//				direction = value.substr(4, 4);
+//				uint8_t d = direction[0];
+//				std::string distance;
+//				distance = value.substr(5, 8);
+//				nav_distance = distance[0] | distance[1] << 8 | distance[2] << 16 | distance[3] << 24;
+//				nav_distance_int = stats.getDistance(Statistics::SUM_ESP_START);
+//				nav_timestamp = millis();
+//				bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "Komoot-Navigation: %d m in Richtung %0x auf %s", nav_distance, d, street.c_str());
+//				ui.updateNavi(String(street.c_str()), nav_distance, d);
+//			} else {
+//				bclog.log(BCLogger::Log_Error, BCLogger::TAG_BLE, "Less than 10 byte received from komoot");
+//			}
+//		} else {
+//			ui.updateNaviDist(d);
+//		}
+//	}
+//}
+
+/**
+ * @brief Checks and updates the battery levels for connected BLE devices.
+ *
+ * This function iterates over all possible device types and checks whether they are
+ * connected and support battery level reading. If so, it retrieves the battery level
+ * from the corresponding BLE characteristic.
+ *
+ * - If the read operation is successful, the battery level is updated.
+ * - If the read operation fails, a warning is logged, the battery service is disabled
+ *   for this device (`hasBatService[dt] = false`), and the battery level is set to -1.
+ *
+ * Logging is provided for debugging and informational purposes.
+ *
+ * @note This function should be called periodically to keep battery levels up to date.
+ */
+void BLEDevices::checkBatteries() {
+	for (EDevType dt = DEV_HRM; dt < DEV_COUNT; dt = static_cast<EDevType>(dt + 1)) {
+		if (connState[dt] == CONN_CONNECTED && hasBatService[dt]) {
+			readBatLevel(dt);
 		}
 	}
 }
 
-void BLEDevices::connCheckLoop() {
-	if (millis() < 6000) return;
-	//if (!scanning) reconnCount++;
-	for (uint16_t c = 0; c < DEV_COUNT; c++) {
-		//if (doConnect[c]) connectToServer(static_cast<EDevType>(c));		// check if new connection shall be established
-		if (connState[c] == CONN_CONNECTED /*&& !pClient[c]->isConnected()*/) { // check if existing connection is lost
-			connState[c] = CONN_LOST;
-			bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_BLE, "%s Lost connection.", DEV_EMOJI[c]);
-			switch (c) {
-#ifdef BC_FL_SUPPORT
-			case DEV_FL:
-				flparser.setConnState(FLClassicParser::FL_STATE_LOST);
-				stats.setConnected(false);
-				break;
-#endif
-			case DEV_HRM:
-				stats.addHR(-1);
-				break;
-			case DEV_CSC_1:
-			case DEV_CSC_2:
-				if (cscIsSpeed[c==DEV_CSC_1?1:2]) {
-					stats.setConnected(false);
-				} else {
-					stats.addCadence(-1, 0);
-				}
-				break;
-			}
-			reconnCount += 16;
-		}
+
+int8_t BLEDevices::readBatLevel(const EDevType dt) {
+	bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "Read %s battery level", DEV_EMOJI[dt]);
+	std::string valStr = clients[dt]->getValue(serviceUUIDBat, charUUIDBat);
+	if (!valStr.empty()) {
+		batLevel[dt] = static_cast<int8_t>(valStr[0]);  // Convert first byte to int8
+		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "%s battery level %d %%", DEV_EMOJI[dt], batLevel[dt]);
+	} else {
+		bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_BLE, "⚠️ Battery level read failed for %s", DEV_EMOJI[dt]);
+		hasBatService[dt] = false;
+		batLevel[dt] = -1;  // Indicate failure
 	}
-	if (reconnCount >= 40) {
-		reconnCount = 0;
-		startBLEScan();
-	}
+	return batLevel[dt];
 }
 
-void BLEDevices::batCheckLoop() {
-	for (uint16_t c = 0; c < DEV_COUNT; c++) {
-		if (connState[c] == CONN_CONNECTED) {
-			bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "Read %s battery level", DEV_EMOJI[c]);
-			//TODO: Implement Bat check
-		}
-	}
-}
 
 uint16_t BLEDevices::getHTMLPage(String &htmlresponse) {
 	uint16_t rc = 200;
-	htmlresponse += "<!DOCTYPE html><html lang=\"en\">\n<head>\n  <meta charset=\"UTF-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n  <title>Connected Devices</title>\n  <link rel=\"stylesheet\" href=\"/stylesheet.css\">\n</head>\n<body>  <h2>Connected Devices</h2>";
-	htmlresponse += " <table>\n    <thead>\n      <tr><th>Device Type</th><th>Stored Address</th><th>Connection State</th><th>Current Address</th><th>Additional Data 1</th><th>Additional Data 2</th><th>Battery Level</th><th>Reconnect</th></tr></thead>\n    <tbody>\n";
-	for (uint16_t c = 0; c < DEV_COUNT; c++) {
-		char buffer[255];
-		char buffer_short[64];
-		snprintf(buffer_short, 63, "<a  class=\"reconnect-link\" href=\"reset?dev=%d\">↻</a>", c);
+    htmlresponse.reserve(2048);  // Pre-allocate memory to improve performance
 
-		snprintf(buffer, 254, "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%d</td><td>%d%%</td><td>%s</td></tr>\n",
-				DEV_STRING[c],
-				pStoredAddress[c] ? pStoredAddress[c]->toString().c_str() : "-empty-",
-				CONN_STRING[connState[c]],
-				clients[c] ? clients[c].get()->getPeerAddress().toString().c_str() : "-n/a-",
-				(c == DEV_CSC_1 || c == DEV_CSC_2) ?  (cscIsSpeed[c] ? "Speed" : "Cadence" ) : "-n/a-",
-				(c == DEV_CSC_1 || c == DEV_CSC_2) ?  (cscIsSpeed[c] ? speed_rev : crank_rev_last ) : -1,
-				batLevel[c],
-				pStoredAddress[c] ? buffer_short :"-");
-		htmlresponse += buffer;
-	}
-	htmlresponse += "</tbody>\n</table>\n</body></html>";
-	return rc;
+    htmlresponse += "<!DOCTYPE html><html lang=\"en\">\n<head>\n"
+                    "  <meta charset=\"UTF-8\">\n"
+                    "  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n"
+                    "  <title>Connected Devices</title>\n"
+                    "  <link rel=\"stylesheet\" href=\"/stylesheet.css\">\n"
+                    "</head>\n<body>\n"
+                    "  <h2>Connected Devices</h2>\n"
+                    "  <table>\n"
+                    "    <thead>\n"
+                    "      <tr><th>Device Type</th><th>Stored Address</th><th>Connection State</th>"
+                    "<th>Current Address</th><th>Additional Data 1</th><th>Additional Data 2</th>"
+                    "<th>Battery Level</th><th>Reconnect</th></tr>\n"
+                    "    </thead>\n<tbody>\n";
+    for (uint16_t c = 0; c < DEV_COUNT; c++) {
+        String reconnectLink = (pStoredAddress[c])
+            ? "<a class=\"reconnect-link\" href=\"reset?dev=" + String(c) + "\">↻</a>"
+            : "-";
+
+        htmlresponse += "<tr><td>" + String(DEV_STRING[c]) + "</td><td>"
+                     + (pStoredAddress[c] ? pStoredAddress[c]->toString().c_str() : "-empty-") + "</td><td>"
+                     + String(CONN_STRING[connState[c]]) + "</td><td>"
+                     + (clients[c] ? clients[c].get()->getPeerAddress().toString().c_str() : "-n/a-") + "</td><td>"
+                     + ((c == DEV_CSC_1 || c == DEV_CSC_2) ? (cscIsSpeed[c] ? "Speed" : "Cadence") : "-n/a-") + "</td><td>"
+                     + String((c == DEV_CSC_1 || c == DEV_CSC_2) ? (cscIsSpeed[c] ? speed_rev : crank_rev_last) : -1) + "</td><td>"
+                     + String(batLevel[c]) + "%</td><td>"
+                     + reconnectLink + "</td></tr>\n";
+    }
+    htmlresponse += "</tbody>\n</table>\n</body></html>";
+    return rc;
 }
 
 uint16_t BLEDevices::procHTMLCmd(String& htmlresponse, const String& cmd, const String& arg) {
@@ -613,8 +851,6 @@ uint16_t BLEDevices::procHTMLCmd(String& htmlresponse, const String& cmd, const 
 		resetAdress(static_cast<EDevType>(devNum));
 		htmlresponse += "OK - deleted address";
 		return 200;
-	} else if (cmd.equals("reset")) {
-		htmlresponse += "OK - accepting CSC connections from unkown devices";
 	} else {
 		htmlresponse += "Not implemented (yet)\n";
 		return 501;

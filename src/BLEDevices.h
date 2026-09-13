@@ -43,19 +43,19 @@ static const char* CONN_STRING[CONN_COUNT];
 
 private:
 	struct SDevToConnect {
-	    std::unique_ptr<BLEAdvertisedDevice> client;  // BLE-Client für die Verbindung
+	    std::unique_ptr<BLEAdvertisedDevice> advDev;  // BLE-Client für die Verbindung
 	    EDevType devType;
 	};
 	// Refactoring Scan & Connect: New variables and methods:
 	std::vector<SDevToConnect> connectDevices;		// Devices to be connected (filtered results from scan)
 	//std::unique_ptr<BLEClient> clients[DEV_COUNT];						// BLEClients objects of connected devices
 	std::array<std::unique_ptr<BLEClient>, DEV_COUNT> clients;
-
-
 	BLEAddress *pStoredAddress[DEV_COUNT];
 
+	SemaphoreHandle_t xDevMutex = nullptr;		// Mutex to control access to data structures for device handling
+
 	void scanAndConnectTask();
-	TaskHandle_t scanTaskHandle;
+	TaskHandle_t scanTaskHandle = nullptr;
 	BLEScan* pBLEScan = nullptr;
 
 	//BLEAddress *pServerAddress[DEV_COUNT];
@@ -64,7 +64,7 @@ private:
 
 	bool doConnect[DEV_COUNT] = {false, false, false, false, false};
 	bool hasBatService[DEV_COUNT] = {true, true, true, false, false};
-	int16_t batLevel[DEV_COUNT] = {-1, -1, -1, -1, -1};
+	int8_t batLevel[DEV_COUNT] = {-1, -1, -1, -1, -1};
 	EBLEConnState connState[DEV_COUNT] = {CONN_DEV_NOTFOUND, CONN_DEV_NOTFOUND, CONN_DEV_NOTFOUND, CONN_DEV_NOTFOUND, CONN_DEV_NOTFOUND};
 	Preferences StatPreferences;
 
@@ -73,6 +73,7 @@ private:
 
 	virtual void onConnect(BLEClient *pClient);
 	virtual void onDisconnect(BLEClient *pClient);
+	void updateDisconnectedDev(const EDevType dt);
 
 	String bufferFL;
 
@@ -83,26 +84,32 @@ private:
 	uint16_t cadence = 0;
 	bool cscIsSpeed[2] = {false, false};
 
-	int32_t nav_distance, nav_distance_int = 0;
+	int32_t nav_distance = 0, nav_distance_int = 0;
 	uint32_t nav_timestamp = 0;
 
 	uint8_t reconnCount = 0;
 
-	BLERemoteCharacteristic* pKomootRemoteCharacteristic = nullptr;
+	//BLERemoteCharacteristic* pKomootRemoteCharacteristic = nullptr;
 
-	//TickType_t tickCounter[4];
-	Ticker komootTicker;
-	Ticker connCheckTicker;
-	Ticker batScanTicker;
+	//Ticker komootTicker;
+
+	void readKomootDataAfterNotification(BLERemoteCharacteristic* pChar);
+	BLERemoteCharacteristic* pKomootRemoteChar = nullptr;
+	void komootPollingTask();
+	uint32_t pollKomootData();
+	TaskHandle_t komootTaskHandle = nullptr;
+	SemaphoreHandle_t xKomootMutex = nullptr;		// Mutex to control access to data structures for device handling
 
 
-	void init();
-	void taskLoop();
 
 
-	void komootLoop();
-	void connCheckLoop();
-	void batCheckLoop();
+	//void komootLoop();
+	//void connCheckLoop();
+
+	void checkBatteries();
+	int8_t readBatLevel(const EDevType dt);
+
+
 	void startBLEScan();
 	void restoreAdresses();
 	void storeAdress(EDevType type, BLEAddress& addr);
@@ -110,7 +117,6 @@ private:
 
 	EDevType nextCSCSlotAvailable();
 
-	TaskHandle_t bleTaskHandle;
 	EDevType filterDevice(BLEAdvertisedDevice& dev);
 	bool isAlreadyConnected(BLEAdvertisedDevice& newDevice);
 
