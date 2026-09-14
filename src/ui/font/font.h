@@ -12,6 +12,7 @@
 
 
 LV_FONT_DECLARE(ui_font_by75_96);
+LV_FONT_DECLARE(ui_font_SchildGrot18);
 LV_FONT_DECLARE(ui_font_SchildGrot24);
 LV_FONT_DECLARE(ui_font_SchildGrot36);
 LV_FONT_DECLARE(TimeFont24);

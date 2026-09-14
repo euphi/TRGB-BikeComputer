@@ -70,6 +70,7 @@ void UIFacade::initDisplay() {
     ui_SWLAN_screen_init();
     ui_SWLAN_extra_init(); // QR Code
     ui_SNavi_screen_init();
+    ui_ScrNaviExtraInit(); // next-maneuver preview
     ui_ScrSettings_screen_init();
 
     ui_SOTA_screen_init();
@@ -311,7 +312,9 @@ void UIFacade::updateStateIcon(Statistics::EDrivingState state, UIColor col) {
 	}
 }
 
-void UIFacade::updateNavi(const String& navStr, uint32_t dist, uint8_t maneuver, uint8_t roundaboutExit) {
+void UIFacade::updateNavi(const String& navStr, uint32_t dist, uint8_t maneuver, uint8_t roundaboutExit,
+		uint8_t nextManeuver, uint32_t nextManeuverDist, const String& nextStreet,
+		uint32_t remainingDist, uint32_t remainingTime) {
 	static uint8_t oldManeuver = 0;
 	static bool distAnn = false;
 	static bool avoidBack = false;
@@ -348,7 +351,8 @@ void UIFacade::updateNavi(const String& navStr, uint32_t dist, uint8_t maneuver,
 	if (xSemaphoreTake(xUIDrawMutex, 150 / portTICK_PERIOD_MS) == pdTRUE) {
 		if (loadScreen)	lv_disp_load_scr(ui_SNavi);
 		if (unloadScreen) ui_ScrNaviGoBack();
-		ui_ScrNaviUpdateNav(navStr.c_str(), dist, maneuver, roundaboutExit);
+		ui_ScrNaviUpdateNav(navStr.c_str(), dist, maneuver, roundaboutExit, nextManeuver, nextManeuverDist,
+				nextStreet.c_str(), remainingDist, remainingTime);
 		ui_SMainNoFLUpdateNav(navStr.c_str(), dist, maneuver, roundaboutExit);
 		xSemaphoreGive(xUIDrawMutex);
 	} else {

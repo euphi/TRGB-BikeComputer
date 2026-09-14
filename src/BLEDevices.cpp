@@ -577,7 +577,7 @@ void BLEDevices::handleNavData(const uint8_t* pData, size_t length) {
 
 	case NAV_MSG_NAV_NONE:
 		bclog.log(BCLogger::Log_Info, BCLogger::TAG_BLE, "🧭 No active route");
-		ui.updateNavi(String(), 0, NAV_MANEUVER_NONE);
+		ui.updateNavi(String(), 0, NAV_MANEUVER_NONE, 0, NAV_MANEUVER_NONE, 0, String(), 0, 0);
 		break;
 
 	case NAV_MSG_NAV_UPDATE: {
@@ -638,7 +638,8 @@ void BLEDevices::handleNavData(const uint8_t* pData, size_t length) {
 				navManeuverToString(maneuver), maneuverDist, street.c_str(), remainingDist, remainingTime,
 				navManeuverToString(nextManeuver), nextManeuverDist, nextStreet.c_str());
 
-		ui.updateNavi(street, maneuverDist, maneuver, roundaboutExit);
+		ui.updateNavi(street, maneuverDist, maneuver, roundaboutExit, nextManeuver, nextManeuverDist,
+				nextStreet, remainingDist, remainingTime);
 		break;
 	}
 
