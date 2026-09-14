@@ -32,7 +32,7 @@ lv_obj_t * ui_SWLANPanelPlacelholderQR;
 void ui_event_SWLANRollerSSID(lv_event_t * e);
 lv_obj_t * ui_SWLANRollerSSID;
 lv_obj_t * ui_SWLANKeyB;
-lv_obj_t * ui____initial_actions0;
+static lv_obj_t * ui____initial_actions0;
 
 ///////////////////// TEST LVGL SETTINGS ////////////////////
 #if LV_COLOR_DEPTH != 16

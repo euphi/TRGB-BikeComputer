@@ -303,7 +303,7 @@ BLEDevices::EDevType BLEDevices::filterDevice(BLEAdvertisedDevice& dev) {
 			}
 		}
 	}
-	if (dev.getName().find("ForumsLader") != std::string::npos) {
+	if (dev.getName().indexOf("ForumsLader") != -1) {
 		bclog.log(BCLogger::Log_Info, BCLogger::TAG_BLE, "\t⚡ Found FL Device");
 //		pServerAddress[DEV_FL] = new BLEAddress(advertisedDevice.getAddress());
 //		if (connectUnknown || pStoredAddress[DEV_FL] == nullptr || pServerAddress[DEV_FL]->equals(*pStoredAddress[DEV_FL])) {
@@ -631,14 +631,14 @@ void BLEDevices::readKomootDataAfterNotification(BLERemoteCharacteristic* pChar)
 		return;
 	}
 
-	std::string value = pChar->readValue();
+	String value = pChar->readValue();
 	bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "🔵 Read komoot string with %d bytes", value.length());
 
 	if (value.length() >= 8) { // Mindestlänge überprüfen
-		std::string street = value.substr(9);
-		std::string direction = value.substr(4, 1);
+		String street = value.substring(9);
+		String direction = value.substring(4, 5);
 		uint8_t d = direction[0];
-		std::string distance = value.substr(5, 4);
+		String distance = value.substring(5, 9);
 
 		nav_distance = distance[0] | (distance[1] << 8) | (distance[2] << 16) | (distance[3] << 24);
 		nav_distance_int = stats.getDistance(Statistics::SUM_ESP_START);
@@ -646,7 +646,7 @@ void BLEDevices::readKomootDataAfterNotification(BLERemoteCharacteristic* pChar)
 
 		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "🧭 Komoot-Navigation: %d m in Richtung 0x%X auf %s", nav_distance, d, street.c_str());
 
-		ui.updateNavi(String(street.c_str()), nav_distance, d);
+		ui.updateNavi(street, nav_distance, d);
 	} else {
 		bclog.log(BCLogger::Log_Error, BCLogger::TAG_BLE, "❌ Fehler: Unvollständige Daten von Komoot erhalten!");
 	}
@@ -675,7 +675,7 @@ uint32_t BLEDevices::pollKomootData() {
 	}
 	lastPollTime = millis();
 
-	std::string value;
+	String value;
 
 	if (xSemaphoreTake(xKomootMutex, 1000)) {
 		if (!pKomootRemoteChar) {
@@ -692,10 +692,10 @@ uint32_t BLEDevices::pollKomootData() {
 	}
 
 	if (value.length() > 9) { // Mindestlänge prüfen
-		std::string street = value.substr(9);
-		std::string direction = value.substr(4, 4);
+		String street = value.substring(9);
+		String direction = value.substring(4, 8);
 		uint8_t d = direction[0];
-		std::string distance = value.substr(5, 4);
+		String distance = value.substring(5, 9);
 
 		nav_distance = distance[0] | (distance[1] << 8) | (distance[2] << 16) | (distance[3] << 24);
 		nav_distance_int = stats.getDistance(Statistics::SUM_ESP_START, true);
@@ -703,7 +703,7 @@ uint32_t BLEDevices::pollKomootData() {
 
 		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "🧭 Komoot-Navigation: %d m in Richtung 0x%X auf %s", nav_distance, d, street.c_str());
 
-		ui.updateNavi(String(street.c_str()), nav_distance, d);
+		ui.updateNavi(street, nav_distance, d);
 
 		// Dynamisches Polling: Häufiger, wenn Ziel nahe ist
 		if (nav_distance < 50) {
@@ -793,8 +793,8 @@ void BLEDevices::checkBatteries() {
 
 int8_t BLEDevices::readBatLevel(const EDevType dt) {
 	bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "Read %s battery level", DEV_EMOJI[dt]);
-	std::string valStr = clients[dt]->getValue(serviceUUIDBat, charUUIDBat);
-	if (!valStr.empty()) {
+	String valStr = clients[dt]->getValue(serviceUUIDBat, charUUIDBat);
+	if (!valStr.isEmpty()) {
 		batLevel[dt] = static_cast<int8_t>(valStr[0]);  // Convert first byte to int8
 		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "%s battery level %d %%", DEV_EMOJI[dt], batLevel[dt]);
 	} else {

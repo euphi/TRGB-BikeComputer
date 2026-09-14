@@ -75,7 +75,7 @@ void WifiWebserver::enableWifi() {
 	ui.updateIP(String("Enabling WiFi .."));
 	WiFi.setSleep(true);
 	WiFi.mode(WIFI_MODE_STA);
-	WiFi.enableIpV6();
+	WiFi.enableIPv6();
 	wifiEnabled = true;
 	wifiWasConnected = false;	// reset wifiWasConnected to enable check loop again
 	lostConnTimeStamp = millis();
@@ -476,20 +476,22 @@ static const char *type_to_str(nvs_type_t type)
 void WifiWebserver::setupNvsDebug() {
 	server.on("/debug/nvs", HTTP_GET, [](AsyncWebServerRequest *request) {
 		String respString("NVS Iterator\n\n");
-		nvs_iterator_t it = nvs_entry_find("nvs", NULL, NVS_TYPE_ANY);
-		if (it == NULL) {
+		nvs_iterator_t it = NULL;
+		esp_err_t res = nvs_entry_find("nvs", NULL, NVS_TYPE_ANY, &it);
+		if (res != ESP_OK) {
 			bclog.log(BCLogger::Log_Warn, TAG, "Can't iterate over NVS");
 			request->send(500, "text/plain", "Can't iterate over NVS");
 			return;
 		}
-		do {
+		while (res == ESP_OK) {
 			nvs_entry_info_t info;
 			nvs_entry_info(it, &info);
-			it = nvs_entry_next(it);
 			char buffer[400];
 			snprintf(buffer, sizeof(buffer) - 1, "namespace '%s', key '%s', type '%s' \n", info.namespace_name, info.key, type_to_str(info.type));
 			respString += buffer;
-		} while (it != NULL);
+			res = nvs_entry_next(&it);
+		}
+		nvs_release_iterator(it);
 		request->send(200, "text/plain", respString);
 	});
 }

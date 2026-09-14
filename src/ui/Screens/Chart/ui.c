@@ -15,7 +15,7 @@ void ui_event_SChart(lv_event_t * e);
 lv_obj_t * ui_SChart;
 lv_obj_t * ui_Chart1;
 lv_chart_series_t * ui_Chart1_series[4];
-lv_obj_t * ui_LabelSpeed;
+lv_obj_t * ui_ChartLabelSpeed;
 lv_obj_t * ui_PanelMode;
 void ui_event_ButtonGrad(lv_event_t * e);
 lv_obj_t * ui_ButtonGrad;
@@ -23,7 +23,7 @@ lv_obj_t * ui_LButtonGrad;
 void ui_event_ButtonPuls(lv_event_t * e);
 lv_obj_t * ui_ButtonPuls;
 lv_obj_t * ui_LButtonPuls;
-lv_obj_t * ui____initial_actions0;
+static lv_obj_t * ui____initial_actions0;
 
 ///////////////////// TEST LVGL SETTINGS ////////////////////
 #if LV_COLOR_DEPTH != 16

@@ -50,7 +50,7 @@ lv_obj_t * ui_LabelHeight;
 lv_obj_t * ui_LabelTemp;
 void ui_event_ImgState(lv_event_t * e);
 lv_obj_t * ui_ImgState;
-lv_obj_t * ui____initial_actions0;
+static lv_obj_t * ui____initial_actions0;
 
 ///////////////////// TEST LVGL SETTINGS ////////////////////
 #if LV_COLOR_DEPTH != 16

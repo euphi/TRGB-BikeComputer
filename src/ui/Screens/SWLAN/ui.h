@@ -43,7 +43,6 @@ extern lv_obj_t * ui_SWLANPanelPlacelholderQR;
 void ui_event_SWLANRollerSSID(lv_event_t * e);
 extern lv_obj_t * ui_SWLANRollerSSID;
 extern lv_obj_t * ui_SWLANKeyB;
-extern lv_obj_t * ui____initial_actions0;
 
 void ui_init(void);
 

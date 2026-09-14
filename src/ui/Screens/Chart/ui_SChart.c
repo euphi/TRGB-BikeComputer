@@ -27,16 +27,16 @@ void ui_SChart_screen_init(void)
     ui_Chart1_series[3] = lv_chart_add_series(ui_Chart1, lv_color_hex(0xFFFF00), LV_CHART_AXIS_SECONDARY_Y);
 
 
-    ui_LabelSpeed = lv_label_create(ui_Chart1);
-    lv_obj_set_width(ui_LabelSpeed, LV_SIZE_CONTENT);   /// 1
-    lv_obj_set_height(ui_LabelSpeed, LV_SIZE_CONTENT);    /// 1
-    lv_obj_set_x(ui_LabelSpeed, 0);
-    lv_obj_set_y(ui_LabelSpeed, -120);
-    lv_obj_set_align(ui_LabelSpeed, LV_ALIGN_CENTER);
-    lv_label_set_text(ui_LabelSpeed, "25,3");
-    lv_obj_set_style_text_color(ui_LabelSpeed, lv_color_hex(0x00FFF7), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_text_opa(ui_LabelSpeed, 150, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_text_font(ui_LabelSpeed, &lv_font_montserrat_48, LV_PART_MAIN | LV_STATE_DEFAULT);
+    ui_ChartLabelSpeed = lv_label_create(ui_Chart1);
+    lv_obj_set_width(ui_ChartLabelSpeed, LV_SIZE_CONTENT);   /// 1
+    lv_obj_set_height(ui_ChartLabelSpeed, LV_SIZE_CONTENT);    /// 1
+    lv_obj_set_x(ui_ChartLabelSpeed, 0);
+    lv_obj_set_y(ui_ChartLabelSpeed, -120);
+    lv_obj_set_align(ui_ChartLabelSpeed, LV_ALIGN_CENTER);
+    lv_label_set_text(ui_ChartLabelSpeed, "25,3");
+    lv_obj_set_style_text_color(ui_ChartLabelSpeed, lv_color_hex(0x00FFF7), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_opa(ui_ChartLabelSpeed, 150, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(ui_ChartLabelSpeed, &lv_font_montserrat_48, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     ui_PanelMode = lv_obj_create(ui_SChart);
     lv_obj_set_width(ui_PanelMode, 250);

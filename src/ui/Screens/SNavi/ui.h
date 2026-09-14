@@ -31,7 +31,6 @@ extern lv_obj_t * ui_SNavLabenHR;
 extern lv_obj_t * ui_SNavLabelCad;
 extern lv_obj_t * ui_SNavBarBat;
 extern lv_obj_t * ui_ImgButton1;
-extern lv_obj_t * ui____initial_actions0;
 
 extern lv_obj_t * ui_SNavi_SBack;
 

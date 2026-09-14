@@ -20,7 +20,7 @@ void ui_event_SChart(lv_event_t * e);
 extern lv_obj_t * ui_SChart;
 extern lv_obj_t * ui_Chart1;
 extern lv_chart_series_t * ui_Chart1_series[4];
-extern lv_obj_t * ui_LabelSpeed;
+extern lv_obj_t * ui_ChartLabelSpeed;
 extern lv_obj_t * ui_PanelMode;
 void ui_event_ButtonGrad(lv_event_t * e);
 extern lv_obj_t * ui_ButtonGrad;
