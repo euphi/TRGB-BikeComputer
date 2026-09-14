@@ -43,7 +43,7 @@ public:
 	void updateWiFiState(bool wifiEnabled, bool APModeActive, bool disableAPMode, uint8_t apStaCount);
 
 
-	void updateNavi(const String& navStr, uint32_t dist, uint8_t dirCode);
+	void updateNavi(const String& navStr, uint32_t dist, uint8_t maneuver, uint8_t roundaboutExit = 0);
 	void updateNaviDist(uint32_t dist);
 
 	void updateBatInt(float voltage, uint8_t batPerc, bool charging);

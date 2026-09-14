@@ -11,40 +11,6 @@
     #define LV_ATTRIBUTE_MEM_ALIGN
 #endif
 
-const lv_img_dsc_t* NavImgTable[32] = {
-	&nav_reserved,	// 0
-	&nav_straight,	// 1
-	&nav_start,		// 2
-	&nav_finish,		// 3
-	&nav_left45,		// 4
-	&nav_left90,		// 5
-	&nav_left135,	// 6
-	&nav_right135,	// 7
-	&nav_right90,	// 8
-	&nav_right45,	// 9
-	&nav_fork_r,		// 10
-	&nav_fork_l,		// 11
-	&nav_uturn,		// 12
-	&nav_reserved,	// 13
-	&nav_reserved,	// 14
-	&nav_reserved,	// 15 - Roundabout L
-	&nav_reserved,	// 16
-	&nav_reserved,	// 17
-	&nav_reserved,	// 18
-	&nav_reserved,	// 19
-	&nav_reserved,	// 20
-	&nav_reserved,	// 21
-	&nav_reserved,	// 22
-	&nav_reserved,	// 23
-	&nav_reserved,	// 24
-	&nav_reserved,	// 25
-	&nav_reserved,	// 26
-	&nav_reserved,	// 27
-	&nav_Kreisel_3_3,// 28
-	&nav_reserved,	// 29
-	&nav_nonav,		// 30 - out of route
-	&nav_reserved	// 31ff. reserved for future use
-};
 
 #ifndef LV_ATTRIBUTE_IMG_NAV_FINISH
 #define LV_ATTRIBUTE_IMG_NAV_FINISH

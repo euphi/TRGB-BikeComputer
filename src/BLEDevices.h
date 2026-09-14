@@ -25,7 +25,7 @@ typedef enum {
 	DEV_CSC_1,
 	DEV_CSC_2,
 	DEV_FL,
-	DEV_KOMOOT,
+	DEV_NAV,
 	DEV_COUNT
 } EDevType;
 
@@ -85,26 +85,10 @@ private:
 	bool cscIsSpeed[2] = {false, false};
 
 	int32_t nav_distance = 0, nav_distance_int = 0;
-	uint32_t nav_timestamp = 0;
 
 	uint8_t reconnCount = 0;
 
-	//BLERemoteCharacteristic* pKomootRemoteCharacteristic = nullptr;
-
-	//Ticker komootTicker;
-
-	void readKomootDataAfterNotification(BLERemoteCharacteristic* pChar);
-	BLERemoteCharacteristic* pKomootRemoteChar = nullptr;
-	void komootPollingTask();
-	uint32_t pollKomootData();
-	TaskHandle_t komootTaskHandle = nullptr;
-	SemaphoreHandle_t xKomootMutex = nullptr;		// Mutex to control access to data structures for device handling
-
-
-
-
-	//void komootLoop();
-	//void connCheckLoop();
+	void handleNavData(const uint8_t* pData, size_t length);
 
 	void checkBatteries();
 	int8_t readBatLevel(const EDevType dt);

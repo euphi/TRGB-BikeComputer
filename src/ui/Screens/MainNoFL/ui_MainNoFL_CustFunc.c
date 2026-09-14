@@ -10,6 +10,7 @@
 #include "ui_MainNoFL_CustFunc.h"
 
 #include <ui/Screens/SNavi/ui.h>		// for nav images
+#include "ui/img/nav_icons.h"
 
 
 void ui_SMainNoFLUpdateSpeed(float speed) {
@@ -55,19 +56,18 @@ void ui_SMainNoFLUpdateNavDist(uint32_t dist) {
 	}
 }
 
-void ui_SMainNoFLUpdateNav(const char* navStr, uint32_t dist, uint8_t dirCode) {
-	static uint8_t dirCodeLast = 255;
+void ui_SMainNoFLUpdateNav(const char* navStr, uint32_t dist, uint8_t maneuver, uint8_t roundaboutExit) {
+	static uint8_t maneuverLast = 255, exitLast = 0;
 	//lv_label_set_text(ui_SNavLabelStreet, navStr);
 	ui_SMainNoFLUpdateNavDist(dist);
-	if (dirCode != dirCodeLast) {
-		dirCodeLast = dirCode;
-		if (dirCode < 32) {
-			lv_img_set_src(ui_ImgNav, Nav64ImgTable[dirCode]);
-			if (dirCode > 0) {
-			    lv_obj_clear_flag(ui_PanelNav, LV_OBJ_FLAG_HIDDEN);     /// Flags
-			} else {	 // Code = 0 --> unknown, also happens if Navigation is finished
-			    lv_obj_add_flag(ui_PanelNav, LV_OBJ_FLAG_HIDDEN);     /// Flags
-			}
+	if (maneuver != maneuverLast || roundaboutExit != exitLast) {
+		maneuverLast = maneuver;
+		exitLast = roundaboutExit;
+		lv_img_set_src(ui_ImgNav, navIcon64(maneuver, roundaboutExit));
+		if (maneuver != NAV_MANEUVER_NONE) {
+		    lv_obj_clear_flag(ui_PanelNav, LV_OBJ_FLAG_HIDDEN);     /// Flags
+		} else {	// NONE --> also happens once navigation is finished
+		    lv_obj_add_flag(ui_PanelNav, LV_OBJ_FLAG_HIDDEN);     /// Flags
 		}
 	}
 }

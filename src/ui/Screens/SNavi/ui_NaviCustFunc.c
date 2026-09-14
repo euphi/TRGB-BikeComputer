@@ -7,6 +7,7 @@
 
 #include <ui/Screens/SNavi/ui.h>
 #include "ui.h"
+#include "ui/img/nav_icons.h"
 
 void ui_ScrNaviSetBackScreen(lv_obj_t* const screenBack) {
 	ui_SNavi_SBack = screenBack;
@@ -64,20 +65,19 @@ void ui_ScrNaviUpdateNavDist(uint32_t dist) {
 	}
 }
 
-void ui_ScrNaviUpdateNav(const char* navStr, uint32_t dist, uint8_t dirCode) {
-	static uint8_t dirCodeLast = 255;
+void ui_ScrNaviUpdateNav(const char* navStr, uint32_t dist, uint8_t maneuver, uint8_t roundaboutExit) {
+	static uint8_t maneuverLast = 255, exitLast = 0;
 	lv_label_set_text(ui_SNavLabelStreet, navStr);
 	ui_ScrNaviUpdateNavDist(dist);
-	if (dirCode != dirCodeLast) {
-		dirCodeLast = dirCode;
-		if (dirCode < 32) {
-			lv_img_set_src(ui_SNavImgNav, NavImgTable[dirCode]);
-			lv_img_set_src(ui_S1ImgNav, Nav64ImgTable[dirCode]);
-			if (dirCode > 0) {
-			    lv_obj_clear_flag(ui_S1PanelNav, LV_OBJ_FLAG_HIDDEN);     /// Flags
-			} else {	 // Code = 0 --> unknown, also happens if Navigation is finished
-			    lv_obj_add_flag(ui_S1PanelNav, LV_OBJ_FLAG_HIDDEN);     /// Flags
-			}
+	if (maneuver != maneuverLast || roundaboutExit != exitLast) {
+		maneuverLast = maneuver;
+		exitLast = roundaboutExit;
+		lv_img_set_src(ui_SNavImgNav, navIconLarge(maneuver, roundaboutExit));
+		lv_img_set_src(ui_S1ImgNav, navIcon64(maneuver, roundaboutExit));
+		if (maneuver != NAV_MANEUVER_NONE) {
+		    lv_obj_clear_flag(ui_S1PanelNav, LV_OBJ_FLAG_HIDDEN);     /// Flags
+		} else {	// NONE --> also happens once navigation is finished
+		    lv_obj_add_flag(ui_S1PanelNav, LV_OBJ_FLAG_HIDDEN);     /// Flags
 		}
 	}
 }

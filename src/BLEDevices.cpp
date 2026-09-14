@@ -12,18 +12,19 @@
 
 #include "Singletons.h"
 #include "Stats/Distance.h"
+#include "BikeNavProtocol.h"
 
 #include <task.h>
 
-// HRM, CSC, FL, KomootApp
-const BLEUUID BLEDevices::serviceUUID[DEV_COUNT] = { BLEUUID((uint16_t)0x180D), BLEUUID((uint16_t)0x1816), BLEUUID((uint16_t)0x1816), BLEUUID("e62efa94-afa8-11ed-afa1-0242ac120002"), BLEUUID("71C1E128-D92F-4FA8-A2B2-0F171DB3436C")};
+// HRM, CSC, FL, BikeNavRelay Navigation (see ../BikeNavRelay/PROTOCOL.md)
+const BLEUUID BLEDevices::serviceUUID[DEV_COUNT] = { BLEUUID((uint16_t)0x180D), BLEUUID((uint16_t)0x1816), BLEUUID((uint16_t)0x1816), BLEUUID("e62efa94-afa8-11ed-afa1-0242ac120002"), BLEUUID("f7ac2b76-986b-45fd-8e44-f116a61f319d")};
 const BLEUUID BLEDevices::serviceUUIDBat = BLEUUID((uint16_t) 0x180F);
 const BLEUUID BLEDevices::serviceUUIDExposure = BLEUUID((uint16_t) 0xFD6F);
-const BLEUUID BLEDevices::charUUID[DEV_COUNT] = { BLEUUID((uint16_t)0x2A37), BLEUUID((uint16_t)0x2A5B), BLEUUID((uint16_t)0x2A5B), BLEUUID("e62efe40-afa8-11ed-afa1-0242ac120002"), BLEUUID("503DD605-9BCB-4F6E-B235-270A57483026")};
+const BLEUUID BLEDevices::charUUID[DEV_COUNT] = { BLEUUID((uint16_t)0x2A37), BLEUUID((uint16_t)0x2A5B), BLEUUID((uint16_t)0x2A5B), BLEUUID("e62efe40-afa8-11ed-afa1-0242ac120002"), BLEUUID("7473da02-2de8-4f48-9e46-21b36380c176")};
 const BLEUUID BLEDevices::charUUIDBat = BLEUUID((uint16_t) 0x2A19);
 
 const char* BLEDevices::DEV_EMOJI[DEV_COUNT] = {"❤️","🚴","🚴","⚡", "🧭"};
-const char* BLEDevices::DEV_STRING[DEV_COUNT] = {"HeartRate","CSC1","CSC2","Forumslader", "Komoot"};
+const char* BLEDevices::DEV_STRING[DEV_COUNT] = {"HeartRate","CSC1","CSC2","Forumslader", "BikeNavRelay"};
 const char* BLEDevices::CONN_STRING[CONN_COUNT] = {"Not Found","Advertised (not yet connected)","Connected","Lost"};
 
 const uint8_t twoByteOn[] = {0x01,0x00};
@@ -33,7 +34,6 @@ const uint8_t twoByteOn[] = {0x01,0x00};
 BLEDevices::BLEDevices()
 {
 	xDevMutex = xSemaphoreCreateMutex();
-	xKomootMutex = xSemaphoreCreateMutex();
 }
 
 void BLEDevices::setup() {
@@ -45,8 +45,6 @@ void BLEDevices::setup() {
 //		  this->scanning=false;
 //	  };
 	  //##SCANTASK-Removed: startBLEScan();
-	  //komootTicker.attach_ms(100, +[](BLEDevices* thisInstance) {thisInstance->komootLoop();}, this);
-	  //connCheckTicker.attach_ms(250, +[](BLEDevices* thisInstance) {thisInstance->connCheckLoop();}, this);
 	  restoreAdresses();
 }
 
@@ -172,75 +170,6 @@ void BLEDevices::onResult(BLEAdvertisedDevice advertisedDevice) {	// Call by val
 		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "✅ found Service @ %s [%s] - store to connect", advertisedDevice.getName().c_str(),  advertisedDevice.getAddress().toString().c_str());
 	    connectDevices.emplace_back(SDevToConnect{std::unique_ptr<BLEAdvertisedDevice>(new BLEAdvertisedDevice(advertisedDevice)), dt});
 	}
-
-//	for (uint8_t c = 0; c < advertisedDevice.getServiceUUIDCount(); c++) {
-//		BLEUUID uuid = advertisedDevice.getServiceUUID(c);
-//		if (uuid.equals(serviceUUID[DEV_CSC_1])) {
-//			BLEAddress *pAddr = new BLEAddress(advertisedDevice.getAddress());
-//			EDevType dtype = DEV_CSC_1;
-//			bool devFound = false;
-//			if (pStoredAddress[DEV_CSC_1] && pAddr->equals(*pStoredAddress[DEV_CSC_1])) {
-//				bclog.log(BCLogger::Log_Info, BCLogger::TAG_BLE, "Found stored device for CSC1");
-//				devFound = true;
-//				dtype = DEV_CSC_1;
-//			} else if (pStoredAddress[DEV_CSC_2] && pAddr->equals(*pStoredAddress[DEV_CSC_2])) {
-//				bclog.log(BCLogger::Log_Info, BCLogger::TAG_BLE, "Found stored device for CSC2");
-//				devFound = true;
-//				dtype = DEV_CSC_2;
-//			} else {
-//				dtype = nextCSCSlotAvailable();
-//				if (dtype == DEV_UNKNOWN) {
-//					bclog.log(BCLogger::Log_Warn, BCLogger::TAG_BLE, "\t🚴 No free CSC connection");
-//					delete pAddr;
-//					break; // out of for loop
-//				}
-//			}
-//			bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "\t🚴 Found CSC Device %d", dtype);
-//			pServerAddress[dtype] = pAddr;
-//			doConnect[dtype] = true;
-//			connState[dtype] = CONN_ADVERTISED;
-//		}
-//		if (uuid.equals(serviceUUID[DEV_HRM])) {
-//			bclog.log(BCLogger::Log_Info, BCLogger::TAG_BLE, "\t❤️ Found HRM Device");
-//			pServerAddress[DEV_HRM] = new BLEAddress(advertisedDevice.getAddress());
-//			if (connectUnknown || pStoredAddress[DEV_HRM] == nullptr || pServerAddress[DEV_HRM]->equals(*pStoredAddress[DEV_HRM])) {
-//				doConnect[DEV_HRM] = true;
-//				connState[DEV_HRM] = CONN_ADVERTISED;
-//			} else {
-//				bclog.log(BCLogger::Log_Warn, BCLogger::TAG_BLE, "\t❤️ no new connection to HRM allowed");
-//				delete pServerAddress[DEV_HRM];
-//				pServerAddress[DEV_HRM] = nullptr;
-//			}
-//		}
-//		if (uuid.equals(serviceUUID[DEV_KOMOOT])) {
-//			bclog.log(BCLogger::Log_Info, BCLogger::TAG_BLE, "\t🧭 Found Komoot App");
-//			if (connState[DEV_KOMOOT] != CONN_CONNECTED) {
-//				pServerAddress[DEV_KOMOOT] = new BLEAddress(advertisedDevice.getAddress());
-//				if (connectUnknown || pStoredAddress[DEV_KOMOOT] == nullptr
-//						|| pServerAddress[DEV_KOMOOT]->equals(*pStoredAddress[DEV_KOMOOT])) {
-//					doConnect[DEV_KOMOOT] = true;
-//					connState[DEV_KOMOOT] = CONN_ADVERTISED;
-//				} else {
-//					delete pServerAddress[DEV_KOMOOT];
-//					pServerAddress[DEV_KOMOOT] = nullptr;
-//					bclog.log(BCLogger::Log_Warn, BCLogger::TAG_BLE, "\t🧭 no new connection to komoot allowed");
-//				}
-//			}
-//		}
-//		bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "\tService-UUID: %s", uuid.toString().c_str());
-//	}
-//	if (advertisedDevice.getName().find("ForumsLader") != std::string::npos) {
-//		bclog.log(BCLogger::Log_Info, BCLogger::TAG_BLE, "\t⚡ Found FL Device");
-//		pServerAddress[DEV_FL] = new BLEAddress(advertisedDevice.getAddress());
-//		if (connectUnknown || pStoredAddress[DEV_FL] == nullptr || pServerAddress[DEV_FL]->equals(*pStoredAddress[DEV_FL])) {
-//			doConnect[DEV_FL] = true;
-//			connState[DEV_FL] = CONN_ADVERTISED;
-//		} else {
-//			bclog.log(BCLogger::Log_Warn, BCLogger::TAG_BLE, "\t⚡ no new connection to FL allowed");
-//			delete pServerAddress[DEV_FL];
-//			pServerAddress[DEV_FL] = nullptr;
-//		}
-//	}
 }
 
 void BLEDevices::onConnect(BLEClient *pClient) {
@@ -364,13 +293,8 @@ void BLEDevices::updateDisconnectedDev(const EDevType dt) {
 			stats.addCadence(-1, 0);
 		}
 		break;
-	case DEV_KOMOOT:
-		if (xSemaphoreTake(xKomootMutex, 1000)) {
-			pKomootRemoteChar = nullptr;
-			xSemaphoreGive(xKomootMutex);
-		} else {
-			bclog.log(BCLogger::Log_Error, BCLogger::TAG_BLE, "Can't set pKomootRemote to nullptr after disconnect, because Mutex is blocked.");
-		}
+	case DEV_NAV:
+		ui.updateNavi(String(), 0, NAV_MANEUVER_NONE);		// hide stale directions once the phone disconnects
 		break;
 	}
 }
@@ -405,7 +329,7 @@ void BLEDevices::updateDisconnectedDev(const EDevType dt) {
  */
 void BLEDevices::restoreAdresses() {
 	StatPreferences.begin("BLEConn");
-	for (uint16_t c = 0; c < DEV_KOMOOT; c++) {
+	for (uint16_t c = 0; c < DEV_NAV; c++) {
 		uint8_t bit128[16];
 		if (StatPreferences.getBytes(DEV_STRING[c], &bit128, 16) > 0) {
 			pStoredAddress[c] = new BLEAddress(bit128);
@@ -414,7 +338,7 @@ void BLEDevices::restoreAdresses() {
 			bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "No BLE address stored in preferences for %s", DEV_STRING[c]);
 		}
 	}
-	StatPreferences.remove(DEV_STRING[DEV_KOMOOT]);  // no need to store, because address is random. This line deletes existing stored adresses and can be deleted soon
+	StatPreferences.remove(DEV_STRING[DEV_NAV]);  // no need to store, because address is random. This line deletes existing stored adresses and can be deleted soon
 	StatPreferences.end();
 }
 
@@ -422,14 +346,14 @@ void BLEDevices::restoreAdresses() {
  * @brief Stores a BLE device address in NVS (persistent memory).
  *
  * This method saves the BLE address of a given device type to non-volatile storage (NVS)
- * for later retrieval. The function does not store addresses for Komoot devices, as they
- * use random addresses.
+ * for later retrieval. The function does not store addresses for the BikeNavRelay device, as
+ * Android peripherals typically use a random/rotating address.
  *
  * @param type The device type whose address should be stored.
  * @param addr The BLE address to be stored.
  */
 void BLEDevices::storeAdress(EDevType type, BLEAddress &addr) {
-	if (type == DEV_KOMOOT) return;	// komoot uses random address
+	if (type == DEV_NAV) return;	// BikeNavRelay (Android peripheral) likely uses a random/rotating address, like Komoot before it
 	StatPreferences.begin("BLEConn");
 	size_t rc = StatPreferences.putBytes(DEV_STRING[type], addr.getNative(), 16);
 	bclog.logf(rc > 0 ? BCLogger::Log_Debug : BCLogger::Log_Error, BCLogger::TAG_BLE, "Stored %d bytes to pref %s: %s", rc, DEV_STRING[type],	addr.toString().c_str());
@@ -496,7 +420,7 @@ bool BLEDevices::connectToServer(SDevToConnect& dev) {
 	} else {
 		auto client = std::unique_ptr<BLEClient>(new BLEClient());
 		client->setClientCallbacks(this);
-		client->setMTU(256);		// TODO: Is it necessary to set it that large? (Komoot info is quite large, check!)
+		client->setMTU(256);		// TODO: Is it necessary to set it that large? (Nav frames can be up to ~253 byte usable payload, see PROTOCOL.md)
 		if (xSemaphoreTake(xDevMutex, static_cast<TickType_t>(500 / portTICK_PERIOD_MS)) == pdTRUE) {
 			clients[dt] = std::move(client);
 			xSemaphoreGive(xDevMutex);
@@ -528,16 +452,18 @@ bool BLEDevices::connectToServer(SDevToConnect& dev) {
 		return false;
 	} else if (dt == DEV_FL) {
 		stats.setConnected(true);  // "Connected" for Stats means that a speed sensor is connected (used for avg calculation). For CSC sensors this is done in the NotifyCallback, because here it is not yet known if sensor is speed or cadence
-	} else if (dt == DEV_KOMOOT) {
-		//readKomootDataAfterNotification(pRemoteCharacteristic);
-		pKomootRemoteChar = pRemoteCharacteristic;
-		if (!komootTaskHandle) {
-			xTaskCreate([](void* thisPtr) { static_cast<BLEDevices*>(thisPtr)->komootPollingTask();}, "KomootPollTask", 3072, this, 1, &komootTaskHandle);
-		}
 	}
 
-	pRemoteCharacteristic->registerForNotify([&, dt](BLERemoteCharacteristic* pBLERemoteCharacteristic, uint8_t* pData, size_t length, bool isNotify) {notifyCallbackCSC(pBLERemoteCharacteristic, pData, length, isNotify, dt);});
-	bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "🔵%s Notify registered\n", DEV_EMOJI[dt]);
+	// BikeNavRelay's characteristic is INDICATE (confirmed ack per frame, see PROTOCOL.md "Warum Indicate statt Notify"), all others use plain Notify.
+	bool useNotify = (dt != DEV_NAV);
+	pRemoteCharacteristic->registerForNotify([&, dt](BLERemoteCharacteristic* pBLERemoteCharacteristic, uint8_t* pData, size_t length, bool isNotify) {notifyCallbackCSC(pBLERemoteCharacteristic, pData, length, isNotify, dt);}, useNotify);
+	bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "🔵%s %s registered\n", DEV_EMOJI[dt], useNotify ? "Notify" : "Indicate");
+
+	if (dt == DEV_NAV) {
+		// Fallback per PROTOCOL.md: Read the last frame directly, don't wait for the first Indicate/heartbeat.
+		String initial = pRemoteCharacteristic->readValue();
+		if (initial.length() > 0) handleNavData(reinterpret_cast<const uint8_t*>(initial.c_str()), initial.length());
+	}
 
 	storeAdress(dt, addr);	// update stored adress in NVS - regardless if it really has changed or not
 	if (hasBatService[dt]) readBatLevel(dt);
@@ -615,9 +541,8 @@ void BLEDevices::notifyCallbackCSC(BLERemoteCharacteristic *pBLERemoteCharacteri
 		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "Heart rate: %d ❤ per minute", hr);
 		stats.addHR(hr);
 		break;
-	case DEV_KOMOOT:
-		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "Komooot Callback of length %d byte.", length);
-		readKomootDataAfterNotification(pBLERemoteCharacteristic);
+	case DEV_NAV:
+		handleNavData(pData, length);
 		break;
 	default:
 		bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_BLE, "Notify Callback for %d\n", ctype);
@@ -625,147 +550,102 @@ void BLEDevices::notifyCallbackCSC(BLERemoteCharacteristic *pBLERemoteCharacteri
 	}
 }
 
-void BLEDevices::readKomootDataAfterNotification(BLERemoteCharacteristic* pChar) {
-	if (!pChar) {
-		bclog.log(BCLogger::Log_Warn, BCLogger::TAG_BLE, "⚠️ Komoot characteristic not available!");
+/**
+ * @brief Parses one BikeNavRelay frame (Indicate payload or Read fallback) and updates the nav UI.
+ *
+ * Frame layout per ../BikeNavRelay/PROTOCOL.md: byte 0 = protocol version, byte 1 = message type,
+ * followed by TLV entries (tag 1 byte | length 1 byte | value) when the message is NAV_UPDATE.
+ * Unknown tags are skipped by length, not interpreted -- that's the whole point of TLV over the
+ * old fixed Komoot byte layout: future protocol additions won't break this parser.
+ */
+void BLEDevices::handleNavData(const uint8_t* pData, size_t length) {
+	if (length < 2) {
+		bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_BLE, "🧭 Nav frame too short (%d byte)", length);
+		return;
+	}
+	uint8_t version = pData[0];
+	uint8_t msgType = pData[1];
+	if (version != BIKENAV_PROTOCOL_VERSION) {
+		bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_BLE, "🧭 Unsupported nav protocol version %d (expected %d)", version, BIKENAV_PROTOCOL_VERSION);
 		return;
 	}
 
-	String value = pChar->readValue();
-	bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "🔵 Read komoot string with %d bytes", value.length());
+	switch (msgType) {
+	case NAV_MSG_HELLO:
+		bclog.log(BCLogger::Log_Info, BCLogger::TAG_BLE, "🧭 BikeNavRelay HELLO");
+		break;
 
-	if (value.length() >= 8) { // Mindestlänge überprüfen
-		String street = value.substring(9);
-		String direction = value.substring(4, 5);
-		uint8_t d = direction[0];
-		String distance = value.substring(5, 9);
+	case NAV_MSG_NAV_NONE:
+		bclog.log(BCLogger::Log_Info, BCLogger::TAG_BLE, "🧭 No active route");
+		ui.updateNavi(String(), 0, NAV_MANEUVER_NONE);
+		break;
 
-		nav_distance = distance[0] | (distance[1] << 8) | (distance[2] << 16) | (distance[3] << 24);
-		nav_distance_int = stats.getDistance(Statistics::SUM_ESP_START);
-		nav_timestamp = millis();
+	case NAV_MSG_NAV_UPDATE: {
+		uint8_t maneuver = NAV_MANEUVER_UNKNOWN;
+		uint8_t nextManeuver = NAV_MANEUVER_UNKNOWN;
+		uint8_t roundaboutExit = 0;
+		uint32_t maneuverDist = 0, nextManeuverDist = 0, remainingDist = 0, remainingTime = 0;
+		String street, nextStreet;
 
-		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "🧭 Komoot-Navigation: %d m in Richtung 0x%X auf %s", nav_distance, d, street.c_str());
-
-		ui.updateNavi(street, nav_distance, d);
-	} else {
-		bclog.log(BCLogger::Log_Error, BCLogger::TAG_BLE, "❌ Fehler: Unvollständige Daten von Komoot erhalten!");
-	}
-}
-
-void BLEDevices::komootPollingTask() {
-    bclog.log(BCLogger::Log_Info, BCLogger::TAG_BLE, "🔄 Komoot Polling Task gestartet!");
-
-    while (true) {
-        uint32_t waitTime = pollKomootData(); // Wartezeit von Funktion bestimmen
-        if (waitTime > 5000) waitTime = 5000; // Maximal 5 Sekunden warten
-
-        vTaskDelay(waitTime / portTICK_PERIOD_MS);
-    }
-}
-
-uint32_t BLEDevices::pollKomootData() {
-	static uint32_t lastPollTime = 0;
-	uint32_t pollInterval = 4000; // Standard: alle 4s
-
-	// Berechnen, wie lange gewartet werden soll
-	if (millis() - lastPollTime < pollInterval) {
-		int32_t d = nav_distance - (stats.getDistance(Statistics::SUM_ESP_START, true) - nav_distance_int);
-		ui.updateNaviDist(d);
-		return pollInterval - (millis() - lastPollTime);
-	}
-	lastPollTime = millis();
-
-	String value;
-
-	if (xSemaphoreTake(xKomootMutex, 1000)) {
-		if (!pKomootRemoteChar) {
-			bclog.log(BCLogger::Log_Info, BCLogger::TAG_BLE, "⚠️ Komoot characteristic not available!");
-			return 5000; // Falls keine Verbindung besteht, seltener pollen (5s)
+		size_t pos = 2;
+		while (pos + 2 <= length) {
+			uint8_t tag = pData[pos];
+			uint8_t len = pData[pos + 1];
+			pos += 2;
+			if (pos + len > length) {
+				bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_BLE, "🧭 TLV tag 0x%02X length %d exceeds frame, aborting parse", tag, len);
+				break;
+			}
+			const uint8_t* val = pData + pos;
+			switch (tag) {
+			case NAV_TAG_MANEUVER:
+				if (len >= 1) maneuver = val[0];
+				break;
+			case NAV_TAG_MANEUVER_DISTANCE_M:
+				if (len >= 4) maneuverDist = val[0] | (val[1] << 8) | (val[2] << 16) | (val[3] << 24);
+				break;
+			case NAV_TAG_ROUNDABOUT_EXIT:
+				if (len >= 1) roundaboutExit = val[0];
+				break;
+			case NAV_TAG_STREET_NAME:
+				street = String(val, len);
+				break;
+			case NAV_TAG_NEXT_MANEUVER:
+				if (len >= 1) nextManeuver = val[0];
+				break;
+			case NAV_TAG_NEXT_MANEUVER_DISTANCE_M:
+				if (len >= 4) nextManeuverDist = val[0] | (val[1] << 8) | (val[2] << 16) | (val[3] << 24);
+				break;
+			case NAV_TAG_NEXT_STREET_NAME:
+				nextStreet = String(val, len);
+				break;
+			case NAV_TAG_REMAINING_DISTANCE_M:
+				if (len >= 4) remainingDist = val[0] | (val[1] << 8) | (val[2] << 16) | (val[3] << 24);
+				break;
+			case NAV_TAG_REMAINING_TIME_S:
+				if (len >= 4) remainingTime = val[0] | (val[1] << 8) | (val[2] << 16) | (val[3] << 24);
+				break;
+			default:
+				break;	// unknown tag: length already respected below, value ignored
+			}
+			pos += len;
 		}
-		// Wert lesen
-		value = pKomootRemoteChar->readValue();
-		bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "🔵 Read komoot string with %d bytes", value.length());
-		xSemaphoreGive(xKomootMutex);
-	} else {
-		bclog.log(BCLogger::Log_Error, BCLogger::TAG_BLE, "Komoot Mutex blocked while polling.");
-		return 4000;
-	}
 
-	if (value.length() > 9) { // Mindestlänge prüfen
-		String street = value.substring(9);
-		String direction = value.substring(4, 8);
-		uint8_t d = direction[0];
-		String distance = value.substring(5, 9);
-
-		nav_distance = distance[0] | (distance[1] << 8) | (distance[2] << 16) | (distance[3] << 24);
+		nav_distance = maneuverDist;
 		nav_distance_int = stats.getDistance(Statistics::SUM_ESP_START, true);
-		nav_timestamp = millis();
 
-		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "🧭 Komoot-Navigation: %d m in Richtung 0x%X auf %s", nav_distance, d, street.c_str());
+		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "🧭 %s in %d m auf %s (Rest: %d m / %d s). Next: %s in %d m auf %s",
+				navManeuverToString(maneuver), maneuverDist, street.c_str(), remainingDist, remainingTime,
+				navManeuverToString(nextManeuver), nextManeuverDist, nextStreet.c_str());
 
-		ui.updateNavi(street, nav_distance, d);
-
-		// Dynamisches Polling: Häufiger, wenn Ziel nahe ist
-		if (nav_distance < 50) {
-			pollInterval = 1000; // 1s wenn nah dran
-		} else if (nav_distance < 500) {
-			pollInterval = 2000; // 2s für mittlere Entfernung
-		} else {
-			pollInterval = 4000; // Standard 4s
-		}
-	} else {
-		bclog.log(BCLogger::Log_Error, BCLogger::TAG_BLE, "❌ Fehler: Unvollständige Daten von Komoot erhalten!");
-		pollInterval = 5000; // Falls Fehler, seltener pollen
+		ui.updateNavi(street, maneuverDist, maneuver, roundaboutExit);
+		break;
 	}
 
-	return pollInterval;
+	default:
+		bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_BLE, "🧭 Unknown nav message type 0x%02X", msgType);
+	}
 }
-
-
-//void BLEDevices::komootLoop() {
-//	static uint8_t kCounter = 0;
-//	if (millis() < 6000) return; // no display update in first 6 seconds - (safe value that is much longer than display init but shorter than connection to komoot BLE service)
-//
-//	//                  every 4 sec      OR
-//
-//
-//	//last known dist to target - (   distance driven since last update )
-//	int32_t d = nav_distance - (stats.getDistance(Statistics::SUM_ESP_START, true) - nav_distance_int);
-//
-//	uint_fast8_t updateTime = 40; // default 4 sec
-//	if (d < 0) {
-//		updateTime = 4;			// 0,4s if distance is exceeded
-//		d = 0;
-//	} else if (d < 50) {
-//		updateTime = 10;
-//	}
-//	if (pKomootRemoteCharacteristic) {
-//		if (++kCounter >= updateTime) {		// at least every 4 seconds
-//			kCounter = 0;
-//			std::string value = pKomootRemoteCharacteristic->readValue();
-//			bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "Read komoot string with %d bytes", value.length());
-//			if (value.length() > 4) {
-//				//in case we have update flag but characteristic changed due to navigation stop between
-//				std::string street;
-//				street = value.substr(9); //this causes abort when there are not at least 9 bytes available
-//				std::string direction;
-//				direction = value.substr(4, 4);
-//				uint8_t d = direction[0];
-//				std::string distance;
-//				distance = value.substr(5, 8);
-//				nav_distance = distance[0] | distance[1] << 8 | distance[2] << 16 | distance[3] << 24;
-//				nav_distance_int = stats.getDistance(Statistics::SUM_ESP_START);
-//				nav_timestamp = millis();
-//				bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "Komoot-Navigation: %d m in Richtung %0x auf %s", nav_distance, d, street.c_str());
-//				ui.updateNavi(String(street.c_str()), nav_distance, d);
-//			} else {
-//				bclog.log(BCLogger::Log_Error, BCLogger::TAG_BLE, "Less than 10 byte received from komoot");
-//			}
-//		} else {
-//			ui.updateNaviDist(d);
-//		}
-//	}
-//}
 
 /**
  * @brief Checks and updates the battery levels for connected BLE devices.

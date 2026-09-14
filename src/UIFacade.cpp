@@ -311,16 +311,16 @@ void UIFacade::updateStateIcon(Statistics::EDrivingState state, UIColor col) {
 	}
 }
 
-void UIFacade::updateNavi(const String& navStr, uint32_t dist, uint8_t dirCode) {
-	static uint8_t oldDirCode = 0;
+void UIFacade::updateNavi(const String& navStr, uint32_t dist, uint8_t maneuver, uint8_t roundaboutExit) {
+	static uint8_t oldManeuver = 0;
 	static bool distAnn = false;
 	static bool avoidBack = false;
-	static uint8_t dirCode_old = 0;
-	static uint32_t dirCode_timestamp = 0;
+	static uint8_t maneuver_old = 0;
+	static uint32_t maneuver_timestamp = 0;
 	bool loadScreen=false;
 	bool unloadScreen=false;
-	if ( dirCode != oldDirCode) {
-		oldDirCode = dirCode;
+	if ( maneuver != oldManeuver) {
+		oldManeuver = maneuver;
 	    loadScreen = true;
 	}
 	if (!distAnn && dist < 200) {
@@ -331,12 +331,12 @@ void UIFacade::updateNavi(const String& navStr, uint32_t dist, uint8_t dirCode) 
 		distAnn = false;
 	}
 
-	if (dirCode != dirCode_old) {
-		dirCode_old = dirCode;
+	if (maneuver != maneuver_old) {
+		maneuver_old = maneuver;
 		avoidBack = true;
-		dirCode_timestamp = millis();
+		maneuver_timestamp = millis();
 	}
-	if (avoidBack && ((millis() - dirCode_timestamp) > 5000)) {
+	if (avoidBack && ((millis() - maneuver_timestamp) > 5000)) {
 		avoidBack = false;
 	}
 
@@ -348,8 +348,8 @@ void UIFacade::updateNavi(const String& navStr, uint32_t dist, uint8_t dirCode) 
 	if (xSemaphoreTake(xUIDrawMutex, 150 / portTICK_PERIOD_MS) == pdTRUE) {
 		if (loadScreen)	lv_disp_load_scr(ui_SNavi);
 		if (unloadScreen) ui_ScrNaviGoBack();
-		ui_ScrNaviUpdateNav(navStr.c_str(), dist, dirCode);
-		ui_SMainNoFLUpdateNav(navStr.c_str(), dist, dirCode);
+		ui_ScrNaviUpdateNav(navStr.c_str(), dist, maneuver, roundaboutExit);
+		ui_SMainNoFLUpdateNav(navStr.c_str(), dist, maneuver, roundaboutExit);
 		xSemaphoreGive(xUIDrawMutex);
 	} else {
 		bclog.log(BCLogger::Log_Warn, BCLogger::TAG_UI, "Nav blocked by mutex");

@@ -34,9 +34,6 @@ extern lv_obj_t * ui_ImgButton1;
 
 extern lv_obj_t * ui_SNavi_SBack;
 
-extern const lv_img_dsc_t* NavImgTable[];
-extern const lv_img_dsc_t* Nav64ImgTable[];
-
 void ui_SNavi_screen_init(void);
 
 LV_IMG_DECLARE(nav_reserved)

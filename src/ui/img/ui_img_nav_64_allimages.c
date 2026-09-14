@@ -5,44 +5,6 @@
 #endif
 
 
-const lv_img_dsc_t* Nav64ImgTable[32] = {
-	&nav_64_reserved,	// 0
-	&nav_64_straight,	// 1
-	&nav_64_start,		// 2
-	&nav_64_finish,		// 3
-	&nav_64_left45,		// 4
-	&nav_64_left90,		// 5
-	&nav_64_left135,	// 6
-	&nav_64_right135,	// 7
-	&nav_64_right90,	// 8
-	&nav_64_reserved,	// 9
-	//&nav_64_right45,	// 9
-	&nav_64_fork_r,		// 10
-	&nav_64_fork_l,		// 11
-	&nav_64_uturn,		// 12
-	&nav_64_reserved,	// 13
-	&nav_64_reserved,	// 14
-	&nav_64_reserved,	// 15 - Roundabout L
-	&nav_64_reserved,	// 16
-	&nav_64_reserved,	// 17
-	&nav_64_reserved,	// 18
-	&nav_64_reserved,	// 19
-	&nav_64_reserved,	// 20
-	&nav_64_reserved,	// 21
-	&nav_64_reserved,	// 22
-	&nav_64_reserved,	// 23
-	&nav_64_reserved,	// 24
-	&nav_64_reserved,	// 25
-	&nav_64_reserved,	// 26
-	&nav_64_reserved,	// 27
-	&nav_64_reserved,	// 28
-	//&nav_64_Kreisel_3_3,// 28
-	&nav_64_reserved,	// 29
-	&nav_64_nonav,		// 30 - out of route
-	&nav_64_reserved	// 31ff. reserved for future use
-};
-
-
 #ifndef LV_ATTRIBUTE_IMG_NAV_64_FINISH
 #define LV_ATTRIBUTE_IMG_NAV_64_FINISH
 #endif
