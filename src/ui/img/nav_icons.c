@@ -18,7 +18,7 @@ const lv_img_dsc_t* navIcon64(uint8_t maneuver, uint8_t roundaboutExit) {
 	case NAV_MANEUVER_TURN_SLIGHT_LEFT:  return &nav_64_left45;
 	case NAV_MANEUVER_TURN_LEFT:         return &nav_64_left90;
 	case NAV_MANEUVER_TURN_SHARP_LEFT:   return &nav_64_left135;
-	case NAV_MANEUVER_TURN_SLIGHT_RIGHT: return &nav_64_reserved;	// TODO: no nav_64_right45 asset compiled yet (doc/Resources/Images/nav_64_righ45.png was never converted)
+	case NAV_MANEUVER_TURN_SLIGHT_RIGHT: return &nav_64_right45;
 	case NAV_MANEUVER_TURN_RIGHT:        return &nav_64_right90;
 	case NAV_MANEUVER_TURN_SHARP_RIGHT:  return &nav_64_right135;
 	case NAV_MANEUVER_KEEP_LEFT:         return &nav_64_fork_l;
