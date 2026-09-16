@@ -21,4 +21,12 @@ backup/
 /.pydevproject
 SquareLine/assets/
 
+# CAD build environment / generated exports (regenerate via cad/*.py)
+cad/.venv/
+cad/export/
+
+# Local archive of flashable firmware builds (binaries only, kept out of git
+# history on purpose -- see firmware-archive/INDEX.md)
+/firmware-archive/
+
 

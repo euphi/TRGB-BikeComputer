@@ -20,7 +20,7 @@ Compile and upload with platformio.
 #### BLE Devices
 - [X] Connect to CSC Cadence
 - [X] Connect to heart rate
-- [X] Connect to komoot App
+- [X] Connect to [TrailBridge](https://github.com/euphi/TrailBridge) app (navigation + GPS position)
 - [X] connect to CSC speed
 - [X] connect to Forumslader Classic via my [BLE gateway](https://github.com/euphi/ESP32_FLClassic2BLE)
 
@@ -95,23 +95,21 @@ Compile and upload with platformio.
 
 ### Use Navigation
 
-If you use the komoot App on your mobile and start following a route (load preplanned trip or use the route planner, it will start advertising a simple navigation service. The TRGB-Bikecomputer will connect to the mobile and read navigation instruction. These are shown on display.
+Navigation comes from [TrailBridge](https://github.com/euphi/TrailBridge), a companion
+Android app that reads OsmAnd's turn-by-turn instructions and forwards them to the bike
+computer over BLE using a documented TLV protocol (see TrailBridge's
+[PROTOCOL.md](https://github.com/euphi/TrailBridge/blob/main/PROTOCOL.md)). It replaces
+Komoot's now-discontinued BLE navigation service, which this project used originally.
+
+TrailBridge also exposes the phone's raw GPS position over a second, independent BLE
+service (works even without OsmAnd running), which the bike computer logs to its binary
+datalog alongside its own sensors.
 
 #### Limitations (for now):
 
-- TRGB-Bikecomputer will connect to the first komoot App it sees
-- font supports standard ASCII only (no "Umlauts").
+- TRGB-Bikecomputer connects to the first TrailBridge instance it sees (its BLE address
+  isn't persisted/locked, since Android peripherals use a rotating address).
 - no manual change to nav screen yet (automatic change if new navigation instruction arrives or if distance is < 250m)
-
-#### Limitations (of komoot):
-
-- komoot is not a good navigation system.
-- It is great for planning routes, but it does not provide information about the turn after the next one and street names are often incomplete or misleading.
-- If you are off your route, komoot often asks to confirm new route on mobile even if route recalculation is switched on.
-- You must stop and store the route to finish navigation, otherwise your mobile keeps sending navigation instructions.
-- Even worse, in this case komoot often seems to freeze navigation information on old state
-- Even worse, a combination of the mentioned problems above often occur if you start a round-trip tour and komoot thinks you are already on your way back: Route is not updated or only to the short distance to destination, it takes a long time to restart and bluetooth navigation still shows old data.
-- The instructions to connect device to komoot may be misleading. You don't need to manually connect, but you need to activate routing support and then load a route. (To see if komoot advertise its navigation service, use another mobile with a BLE scanner).
 
 ### Licences and Attributions
 
