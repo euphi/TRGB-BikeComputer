@@ -70,6 +70,10 @@ public:
 
 	void updateStateIcon(Statistics::EDrivingState state, UIColor col);
 
+	// Small GPS-fix status icon on the base screen -- hasFix false hides it entirely,
+	// col signals fix quality (see Statistics::updateGpsFixIcon() for the thresholds).
+	void updateGpsFix(bool hasFix, UIColor col);
+
 
 	typedef std::function<void(bool ok)> MsgBoxCallBack;
 	void showMsgBox(const String& msgText, const MsgBoxCallBack& cb);

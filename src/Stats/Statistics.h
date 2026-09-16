@@ -11,6 +11,7 @@
 #include <Preferences.h>
 //#include <Stats/Distance.h>
 class Distance;
+#include "BikeGpsProtocol.h"
 
 #include <ringbuffer.hpp>
 
@@ -187,6 +188,7 @@ public:
 	void toggleStandbyMode();
 private:
 	void updateStateIcon();
+	void updateGpsFixIcon(const SGpsFix& fix);
 	bool shutdownMsg = false;
 
 public:

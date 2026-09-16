@@ -12,6 +12,7 @@
 #include <FS.h>
 #include <Ticker.h>
 #include <AsyncEventSource.h>
+#include "BikeGpsProtocol.h"
 
 class BCLogger {
 public:
@@ -36,6 +37,18 @@ public:
 		LogTagMax
 	};
 private:
+	// Bits of LogData::gpsFlags. GPS_LOG_VALID mirrors SGpsFix::valid (a POSITION_UPDATE was
+	// received at all); it does NOT mean the fix is fresh -- check gpsFixAgeMs for that
+	// (see BikeGpsProtocol.h). The other bits mirror SGpsFix's hasXxx flags: the corresponding
+	// value field is 0 when its bit is clear.
+	enum LogDataGpsFlags : uint8_t {
+		LOG_GPS_VALID        = 0x01,
+		LOG_GPS_HAS_ALTITUDE = 0x02,
+		LOG_GPS_HAS_SPEED    = 0x04,
+		LOG_GPS_HAS_BEARING  = 0x08,
+		LOG_GPS_HAS_ACCURACY = 0x10,
+	};
+
 	struct LogData {
 		time_t timestamp;					//        4
 		float speed;						// + 4 =  8
@@ -45,6 +58,16 @@ private:
 		float dist_m;						// + 4 = 24
 		uint8_t hr : 8;						// + 1 = 25
 		uint8_t cadence: 8;  				// + 1 = 26
+		// GPS position from TrailBridge's GPS-Positions-Service (see ../TrailBridge/PROTOCOL.md
+		// and BikeGpsProtocol.h) -- added here, binary format bumped incompatibly.
+		uint8_t gpsFlags;					// + 1 = 27  (see LogDataGpsFlags)
+		int32_t gpsLatitudeE7;				// + 4 = 31
+		int32_t gpsLongitudeE7;				// + 4 = 35
+		int32_t gpsAltitudeM;				// + 4 = 39
+		uint32_t gpsSpeedCms;				// + 4 = 43
+		uint16_t gpsBearingDegX100;			// + 2 = 45
+		uint16_t gpsAccuracyMX10;			// + 2 = 47
+		uint32_t gpsFixAgeMs;				// + 4 = 51
 	};
 
 
@@ -96,7 +119,7 @@ public:
 	LogType getLogLevel(LogTag tag, bool serial = false);
 
 	// DataLogger
-	void appendDataLog(const float speed, const float temp, const float gradient, const float distance, const float height, const uint8_t hr, const uint8_t cadence);
+	void appendDataLog(const float speed, const float temp, const float gradient, const float distance, const float height, const uint8_t hr, const uint8_t cadence, const SGpsFix& gps);
 
 	int16_t listDir(const String& dirname, uint8_t levels);
 

@@ -308,7 +308,7 @@ void BCLogger::logf(LogType type, LogTag tag, const char *format, ...) {
 }
 
 
-void BCLogger::appendDataLog(float speed, float temp, float gradient, float distance, float height, uint8_t hr, uint8_t cadence) {
+void BCLogger::appendDataLog(float speed, float temp, float gradient, float distance, float height, uint8_t hr, uint8_t cadence, const SGpsFix& gps) {
 	LogData b;
 	time_t now;
 	time(&now);
@@ -321,6 +321,19 @@ void BCLogger::appendDataLog(float speed, float temp, float gradient, float dist
 	b.height = height;
 	b.hr = hr;
 	b.cadence = cadence;
+
+	b.gpsFlags = (gps.valid ? LOG_GPS_VALID : 0)
+			| (gps.hasAltitude ? LOG_GPS_HAS_ALTITUDE : 0)
+			| (gps.hasSpeed ? LOG_GPS_HAS_SPEED : 0)
+			| (gps.hasBearing ? LOG_GPS_HAS_BEARING : 0)
+			| (gps.hasAccuracy ? LOG_GPS_HAS_ACCURACY : 0);
+	b.gpsLatitudeE7 = gps.latitudeE7;
+	b.gpsLongitudeE7 = gps.longitudeE7;
+	b.gpsAltitudeM = gps.altitudeM;
+	b.gpsSpeedCms = gps.speedCms;
+	b.gpsBearingDegX100 = gps.bearingDegX100;
+	b.gpsAccuracyMX10 = gps.accuracyMX10;
+	b.gpsFixAgeMs = gps.fixAgeMs;
 
 	if (!fdata) {
 		log(Log_Warn, TAG_SD, "Data file not open");

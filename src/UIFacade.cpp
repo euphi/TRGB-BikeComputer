@@ -67,6 +67,7 @@ void UIFacade::initDisplay() {
     ui_SChart_screen_init();			// new chart (own SQS project)
 
     ui_SMainNoFL_screen_init();
+    ui_SMainNoFLExtraInit(); // GPS fix status icon
     ui_SWLAN_screen_init();
     ui_SWLAN_extra_init(); // QR Code
     ui_SNavi_screen_init();
@@ -309,6 +310,29 @@ void UIFacade::updateStateIcon(Statistics::EDrivingState state, UIColor col) {
 		if (!uiTask) xSemaphoreGive(xUIDrawMutex);
 	} else {
 		bclog.log(BCLogger::Log_Warn, BCLogger::TAG_UI, "Update State Icon blocked by mutex");
+	}
+}
+
+void UIFacade::updateGpsFix(bool hasFix, UIColor col) {
+	lv_color_t lvcol = lv_color_black();
+	switch (col) {
+	case UI_ColorWarn:
+		lvcol = lv_palette_main(LV_PALETTE_AMBER);
+		break;
+	case UI_ColorCrit:
+		lvcol = lv_palette_main(LV_PALETTE_RED);
+		break;
+	case UI_ColorOK:
+		lvcol = lv_palette_main(LV_PALETTE_GREEN);
+		break;
+	}
+
+	bool uiTask = isDrawTask();
+	if (uiTask || xSemaphoreTake(xUIDrawMutex, 150 / portTICK_PERIOD_MS) == pdTRUE) {
+		ui_SMainNoFLUpdateGpsFix(hasFix, lvcol);
+		if (!uiTask) xSemaphoreGive(xUIDrawMutex);
+	} else {
+		bclog.log(BCLogger::Log_Warn, BCLogger::TAG_UI, "Update GPS fix icon blocked by mutex");
 	}
 }
 

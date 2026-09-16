@@ -13,6 +13,7 @@
 #include "Singletons.h"
 #include "Stats/Distance.h"
 #include "BikeNavProtocol.h"
+#include "BikeGpsProtocol.h"
 
 #include <task.h>
 
@@ -22,6 +23,11 @@ const BLEUUID BLEDevices::serviceUUIDBat = BLEUUID((uint16_t) 0x180F);
 const BLEUUID BLEDevices::serviceUUIDExposure = BLEUUID((uint16_t) 0xFD6F);
 const BLEUUID BLEDevices::charUUID[DEV_COUNT] = { BLEUUID((uint16_t)0x2A37), BLEUUID((uint16_t)0x2A5B), BLEUUID((uint16_t)0x2A5B), BLEUUID("e62efe40-afa8-11ed-afa1-0242ac120002"), BLEUUID("7473da02-2de8-4f48-9e46-21b36380c176")};
 const BLEUUID BLEDevices::charUUIDBat = BLEUUID((uint16_t) 0x2A19);
+
+// GPS-Positions-Service (see ../TrailBridge/PROTOCOL.md) -- second, independent, unadvertised
+// service on the same peer as DEV_NAV, discovered via GATT service discovery after connecting.
+const BLEUUID BLEDevices::gpsServiceUUID = BLEUUID("66b5835c-9be6-43d1-b24a-f9337c0fcb7f");
+const BLEUUID BLEDevices::gpsCharUUID = BLEUUID("10c49e7b-4808-4d63-9b68-9ba6c385db0d");
 
 const char* BLEDevices::DEV_EMOJI[DEV_COUNT] = {"❤️","🚴","🚴","⚡", "🧭"};
 const char* BLEDevices::DEV_STRING[DEV_COUNT] = {"HeartRate","CSC1","CSC2","Forumslader", "BikeNavRelay"};
@@ -295,6 +301,7 @@ void BLEDevices::updateDisconnectedDev(const EDevType dt) {
 		break;
 	case DEV_NAV:
 		ui.updateNavi(String(), 0, NAV_MANEUVER_NONE);		// hide stale directions once the phone disconnects
+		gpsFix = SGpsFix();		// GPS-Positions-Service shares this connection, so it's gone too
 		break;
 	}
 }
@@ -463,6 +470,10 @@ bool BLEDevices::connectToServer(SDevToConnect& dev) {
 		// Fallback per PROTOCOL.md: Read the last frame directly, don't wait for the first Indicate/heartbeat.
 		String initial = pRemoteCharacteristic->readValue();
 		if (initial.length() > 0) handleNavData(reinterpret_cast<const uint8_t*>(initial.c_str()), initial.length());
+
+		// Second, independent service on the same peer, not advertised -- only shows up via
+		// GATT service discovery, which connect() already did. See PROTOCOL.md "GPS-Positions-Service".
+		subscribeGpsPosition(clients[dt].get());
 	}
 
 	storeAdress(dt, addr);	// update stored adress in NVS - regardless if it really has changed or not
@@ -646,6 +657,131 @@ void BLEDevices::handleNavData(const uint8_t* pData, size_t length) {
 	default:
 		bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_BLE, "🧭 Unknown nav message type 0x%02X", msgType);
 	}
+}
+
+/**
+ * @brief Subscribes to the GPS-Positions-Service on an already-connected DEV_NAV peer.
+ *
+ * This service is not advertised (31-byte legacy advertising limit on the app side, see
+ * PROTOCOL.md), so it can't be found via the usual scan/filterDevice path. It only shows up
+ * via GATT service discovery, which BLEClient::connect() already performed for pClient.
+ * If it's missing, this is an older TrailBridge version without the service -- log and move on.
+ */
+void BLEDevices::subscribeGpsPosition(BLEClient* pClient) {
+	BLERemoteService* pService = pClient->getService(gpsServiceUUID);
+	if (pService == nullptr) {
+		bclog.log(BCLogger::Log_Warn, BCLogger::TAG_BLE, "📍⚠️ GPS position service not found on peer (older TrailBridge version?)");
+		return;
+	}
+	BLERemoteCharacteristic* pCharacteristic = pService->getCharacteristic(gpsCharUUID);
+	if (pCharacteristic == nullptr) {
+		bclog.log(BCLogger::Log_Warn, BCLogger::TAG_BLE, "📍⚠️ GPS position characteristic not found");
+		return;
+	}
+	// Indicate, like the nav characteristic (see PROTOCOL.md "Warum Indicate statt Notify") --
+	// its own subscription/CCCD, independent of the nav service's heartbeat/state.
+	pCharacteristic->registerForNotify([this](BLERemoteCharacteristic* c, uint8_t* pData, size_t length, bool isNotify) {handleGpsData(pData, length);}, false);
+	bclog.log(BCLogger::Log_Debug, BCLogger::TAG_BLE, "📍 GPS position Indicate registered");
+
+	// Fallback per PROTOCOL.md: Read the last frame directly, don't wait for the first Indicate/heartbeat.
+	String initial = pCharacteristic->readValue();
+	if (initial.length() > 0) handleGpsData(reinterpret_cast<const uint8_t*>(initial.c_str()), initial.length());
+}
+
+/**
+ * @brief Parses one GPS-Positions-Service frame (Indicate payload or Read fallback).
+ *
+ * Frame layout per ../TrailBridge/PROTOCOL.md, section "GPS-Positions-Service": byte 0 = protocol
+ * version, byte 1 = message type, followed by TLV entries (tag 1 byte | length 1 byte | value)
+ * when the message is POSITION_UPDATE. Unknown tags are skipped by length, not interpreted --
+ * same TLV-forward-compat reasoning as the nav parser above.
+ */
+void BLEDevices::handleGpsData(const uint8_t* pData, size_t length) {
+	if (length < 2) {
+		bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_BLE, "📍 GPS frame too short (%d byte)", length);
+		return;
+	}
+	uint8_t version = pData[0];
+	uint8_t msgType = pData[1];
+	if (version != GPS_PROTOCOL_VERSION) {
+		bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_BLE, "📍 Unsupported GPS protocol version %d (expected %d)", version, GPS_PROTOCOL_VERSION);
+		return;
+	}
+
+	switch (msgType) {
+	case GPS_MSG_HELLO:
+		bclog.log(BCLogger::Log_Info, BCLogger::TAG_BLE, "📍 TrailBridge GPS HELLO");
+		break;
+
+	case GPS_MSG_POSITION_NONE:
+		bclog.log(BCLogger::Log_Info, BCLogger::TAG_BLE, "📍 No GPS fix (GPS off, permission missing, or no reception yet)");
+		gpsFix = SGpsFix();
+		break;
+
+	case GPS_MSG_POSITION_UPDATE: {
+		SGpsFix fix;
+		fix.valid = true;
+
+		size_t pos = 2;
+		while (pos + 2 <= length) {
+			uint8_t tag = pData[pos];
+			uint8_t len = pData[pos + 1];
+			pos += 2;
+			if (pos + len > length) {
+				bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_BLE, "📍 TLV tag 0x%02X length %d exceeds frame, aborting parse", tag, len);
+				break;
+			}
+			const uint8_t* val = pData + pos;
+			switch (tag) {
+			case GPS_TAG_LATITUDE_E7:
+				if (len >= 4) fix.latitudeE7 = (int32_t)(val[0] | (val[1] << 8) | (val[2] << 16) | (val[3] << 24));
+				break;
+			case GPS_TAG_LONGITUDE_E7:
+				if (len >= 4) fix.longitudeE7 = (int32_t)(val[0] | (val[1] << 8) | (val[2] << 16) | (val[3] << 24));
+				break;
+			case GPS_TAG_ALTITUDE_M:
+				if (len >= 4) { fix.hasAltitude = true; fix.altitudeM = (int32_t)(val[0] | (val[1] << 8) | (val[2] << 16) | (val[3] << 24)); }
+				break;
+			case GPS_TAG_SPEED_CMS:
+				if (len >= 4) { fix.hasSpeed = true; fix.speedCms = val[0] | (val[1] << 8) | (val[2] << 16) | (val[3] << 24); }
+				break;
+			case GPS_TAG_BEARING_DEG_X100:
+				if (len >= 2) { fix.hasBearing = true; fix.bearingDegX100 = val[0] | (val[1] << 8); }
+				break;
+			case GPS_TAG_ACCURACY_M_X10:
+				if (len >= 2) { fix.hasAccuracy = true; fix.accuracyMX10 = val[0] | (val[1] << 8); }
+				break;
+			case GPS_TAG_FIX_AGE_MS:
+				if (len >= 4) fix.fixAgeMs = val[0] | (val[1] << 8) | (val[2] << 16) | (val[3] << 24);
+				break;
+			default:
+				break;	// unknown tag: length already respected below, value ignored
+			}
+			pos += len;
+		}
+
+		gpsFix = fix;
+		gpsFixReceivedMillis = millis();
+
+		bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "📍 %.7f, %.7f (fix age %u ms)", fix.latitudeE7 / 1e7, fix.longitudeE7 / 1e7, fix.fixAgeMs);
+		break;
+	}
+
+	default:
+		bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_BLE, "📍 Unknown GPS message type 0x%02X", msgType);
+	}
+}
+
+/**
+ * @brief Returns the latest known GPS fix, with fixAgeMs advanced by the time elapsed since
+ * it was received over BLE (so a caller doesn't need to also track the reception timestamp).
+ */
+SGpsFix BLEDevices::getGpsFix() const {
+	SGpsFix fix = gpsFix;
+	if (fix.valid) {
+		fix.fixAgeMs += (millis() - gpsFixReceivedMillis);
+	}
+	return fix;
 }
 
 /**

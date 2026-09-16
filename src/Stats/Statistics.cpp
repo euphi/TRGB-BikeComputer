@@ -110,14 +110,43 @@ void Statistics::autoStore() {
 }
 
 void Statistics::dataStore() {
+	SGpsFix gpsFix = bleDevs.getGpsFix();
 #ifdef TRGBBC_SENSORS_I2C
 	tempC = sensors.getTemp();
 	height = sensors.getHeight();
 	ui.updateHeight(height);
-	bclog.appendDataLog(speed, sensors.getTemp(), gradient, distHandler.getDistance(), height, hr, cadence);
+	bclog.appendDataLog(speed, sensors.getTemp(), gradient, distHandler.getDistance(), height, hr, cadence, gpsFix);
 #else
-	bclog.appendDataLog(speed, tempC, gradient, distHandler.getDistance(), height, hr, cadence);
+	bclog.appendDataLog(speed, tempC, gradient, distHandler.getDistance(), height, hr, cadence, gpsFix);
 #endif
+	updateGpsFixIcon(gpsFix);
+}
+
+/**
+ * @brief Colors/shows the base screen's GPS status icon from the latest TrailBridge fix.
+ *
+ * Quality is judged from horizontal accuracy (SGpsFix::accuracyMX10), the only quality metric
+ * the TrailBridge protocol actually carries -- there's no real DOP available (Android's Location
+ * API doesn't expose classic HDOP/PDOP either). A fix is also treated as "gone" once it's older
+ * than a few heartbeat intervals: TrailBridge keeps resending the last known fix with a growing
+ * fixAgeMs while it can't get a new one (tunnel, no reception), it doesn't switch to
+ * POSITION_NONE for that -- see PROTOCOL.md and BikeGpsProtocol.h.
+ */
+void Statistics::updateGpsFixIcon(const SGpsFix& fix) {
+	static const uint32_t GPS_STALE_MS = 30000;			// well beyond TrailBridge's 5s heartbeat
+	static const uint16_t GPS_ACCURACY_GOOD_M_X10 = 50;	// <= 5m: green
+	static const uint16_t GPS_ACCURACY_OK_M_X10 = 150;		// <= 15m: amber, else red
+
+	bool hasFix = fix.valid && fix.fixAgeMs <= GPS_STALE_MS;
+	UIFacade::UIColor color = UIFacade::UI_ColorCrit;
+	if (hasFix && fix.hasAccuracy) {
+		if (fix.accuracyMX10 <= GPS_ACCURACY_GOOD_M_X10) {
+			color = UIFacade::UI_ColorOK;
+		} else if (fix.accuracyMX10 <= GPS_ACCURACY_OK_M_X10) {
+			color = UIFacade::UI_ColorWarn;
+		}
+	}
+	ui.updateGpsFix(hasFix, color);
 }
 
 void Statistics::cycle() {

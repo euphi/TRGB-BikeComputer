@@ -11,6 +11,35 @@
 
 #include <ui/Screens/SNavi/ui.h>		// for nav images
 #include "ui/img/nav_icons.h"
+#include "ui/img/gps_icon.h"
+
+// GPS fix status icon, left column above the driving-state icon (ui_ImgState sits at
+// x=-180,y=-36; this continues that same column/spacing one slot up). Not part of the
+// SquareLine project/ui_SMainNoFL.c -- created by hand in ui_SMainNoFLExtraInit() below,
+// like the next-maneuver preview on the Navi screen (see ui_NaviCustFunc.c).
+static lv_obj_t* ui_ImgGps;
+
+void ui_SMainNoFLExtraInit(void) {
+	ui_ImgGps = lv_img_create(ui_SMainNoFL);
+	lv_img_set_src(ui_ImgGps, &gpsSatDish);
+	lv_obj_set_width(ui_ImgGps, 64);
+	lv_obj_set_height(ui_ImgGps, 64);
+	lv_obj_set_x(ui_ImgGps, -180);
+	lv_obj_set_y(ui_ImgGps, -108);
+	lv_obj_set_align(ui_ImgGps, LV_ALIGN_CENTER);
+	lv_obj_clear_flag(ui_ImgGps, LV_OBJ_FLAG_SCROLLABLE);
+	lv_obj_set_style_img_recolor_opa(ui_ImgGps, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
+	lv_obj_add_flag(ui_ImgGps, LV_OBJ_FLAG_HIDDEN);		// hidden until the first GPS fix arrives
+}
+
+void ui_SMainNoFLUpdateGpsFix(bool hasFix, lv_color_t color) {
+	if (hasFix) {
+		lv_obj_set_style_img_recolor(ui_ImgGps, color, LV_PART_MAIN | LV_STATE_DEFAULT);
+		lv_obj_clear_flag(ui_ImgGps, LV_OBJ_FLAG_HIDDEN);
+	} else {
+		lv_obj_add_flag(ui_ImgGps, LV_OBJ_FLAG_HIDDEN);
+	}
+}
 
 
 void ui_SMainNoFLUpdateSpeed(float speed) {

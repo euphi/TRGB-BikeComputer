@@ -27,6 +27,11 @@ void ui_SMainNoFLUpdateClock(uint32_t dist);
 
 void ui_SMainNoFLUpdateStateIcon(const lv_img_dsc_t * pStateIcon, lv_color_t color);
 
+// GPS fix status icon -- hand-added, not part of the SquareLine-generated ui_SMainNoFL.c
+// (see ui_SMainNoFLExtraInit()), same reasoning as ui_ScrNaviExtraInit() on the Navi screen.
+void ui_SMainNoFLExtraInit(void);
+void ui_SMainNoFLUpdateGpsFix(bool hasFix, lv_color_t color);
+
 
 
 #ifdef __cplusplus

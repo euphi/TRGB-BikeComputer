@@ -16,6 +16,7 @@
 #include <Ticker.h>
 #include <FLClassicParser.h>
 #include <Preferences.h>
+#include "BikeGpsProtocol.h"
 
 class BLEDevices: public BLEAdvertisedDeviceCallbacks, BLEClientCallbacks {
 
@@ -90,6 +91,14 @@ private:
 
 	void handleNavData(const uint8_t* pData, size_t length);
 
+	// GPS-Positions-Service: second, independent service on the same peer as DEV_NAV
+	// (not advertised, see PROTOCOL.md "GPS-Positions-Service") -- so it has no EDevType/
+	// BLEClient of its own, it's subscribed on the already-connected DEV_NAV client.
+	SGpsFix gpsFix;
+	uint32_t gpsFixReceivedMillis = 0;
+	void subscribeGpsPosition(BLEClient* pClient);
+	void handleGpsData(const uint8_t* pData, size_t length);
+
 	void checkBatteries();
 	int8_t readBatLevel(const EDevType dt);
 
@@ -114,6 +123,13 @@ public:
 	static const BLEUUID serviceUUIDExposure;
 
 	static const BLEUUID charUUIDBat;
+
+	static const BLEUUID gpsServiceUUID;
+	static const BLEUUID gpsCharUUID;
+
+	// Latest known GPS fix (or invalid, if none received / lost with the DEV_NAV connection).
+	// fixAgeMs is updated to reflect the time elapsed since it was received over BLE.
+	SGpsFix getGpsFix() const;
 
 	// Interface BLEAdvertisedDeviceCallbacks
 	void onResult(BLEAdvertisedDevice advertisedDevice);
