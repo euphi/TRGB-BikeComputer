@@ -1,19 +1,24 @@
-# TRGB-BikeComputer -- Projektkontext für Claude Code (BLE-Empfangsseite für BikeNavRelay)
+# TRGB-BikeComputer -- Projektkontext für Claude Code (BLE-Empfangsseite für TrailBridge)
+
+(Die Companion-App hieß ursprünglich "BikeNavRelay", wurde aber in
+"TrailBridge" umbenannt -- Paket `com.euphi.trailbridge`. Das lokale
+Ordner-Verzeichnis heißt jetzt ebenfalls `TrailBridge`, nicht mehr
+`BikeNavRelay`; alle Pfade unten sind entsprechend aktuell.)
 
 ESP32-Fahrradcomputer (LVGL-UI; Sensoren: Herzfrequenz, CSC, Forumslader,
 ehemals Komoot-BLE-Navigation). Firmware-Gegenstück zur Android-Companion-App
-[BikeNavRelay](../BikeNavRelay/) -- ersetzt Komoots eingestellten
+[TrailBridge](../TrailBridge/) -- ersetzt Komoots eingestellten
 BLE-Navigationsdienst durch einen TLV-Parser nach dem dort definierten
 Protokoll.
 
 **Vor jeder Änderung an der BLE-Navigation lesen:**
-[`../BikeNavRelay/PROTOCOL.md`](../BikeNavRelay/PROTOCOL.md) -- verbindlicher
+[`../TrailBridge/PROTOCOL.md`](../TrailBridge/PROTOCOL.md) -- verbindlicher
 Wire-Format-Vertrag zwischen der App (Peripheral/GATT-Server) und diesem
 Firmware-Code (Central/GATT-Client). Nicht auf eigene Faust vom Protokoll
 abweichen -- Änderungswünsche zuerst mit dem Nutzer und im
-BikeNavRelay-Repo klären, dort ist das Protokoll die Quelle der Wahrheit.
+TrailBridge-Repo klären, dort ist das Protokoll die Quelle der Wahrheit.
 
-## Aufgabe (Meilenstein 3 von BikeNavRelay)
+## Aufgabe (Meilenstein 3 von TrailBridge)
 
 `src/BLEDevices.cpp`/`.h`: den alten, größtenteils schon auskommentierten
 Komoot-Client-Code (`DEV_KOMOOT`, `readKomootDataAfterNotification()`,
@@ -33,6 +38,35 @@ und durch einen TLV-Parser nach PROTOCOL.md ersetzen:
   alten 32-Slot-Komoot-Icon-Index und von OsmAnds internen
   `TurnType`-Konstanten.
 
+### Zusätzlich (Stand 2026-09-16): zweiter Service, GPS-Position
+
+TrailBridge hat neben dem Nav-Service jetzt einen **zweiten, unabhängigen**
+BLE-Service, der die rohe Handy-GPS-Position liefert (direkt vom
+GPS-Chip, nicht von OsmAnd -- läuft also auch ohne laufendes OsmAnd).
+Eigener Abschnitt "GPS-Positions-Service" in PROTOCOL.md, Kurzfassung hier:
+
+- Service-/Characteristic-UUID: `66b5835c-9be6-43d1-b24a-f9337c0fcb7f` /
+  `10c49e7b-4808-4d63-9b68-9ba6c385db0d`, Properties Indicate + Read --
+  eigene Subscription/CCCD-Write nötig, unabhängig von der Nav-Characteristic.
+- **Wird nicht beworben** (Advertising-Paket bleibt beim Nav-Service allein,
+  31-Byte-Legacy-Limit auf App-Seite) -- dieser Service taucht erst nach dem
+  Verbindungsaufbau bei der GATT-Service-Discovery auf, nicht im Scan/
+  Advertising-Response. Also: nach dem Connect zum Nav-Service ganz normal
+  alle Services discovern, nicht nur die eine beworbene UUID erwarten.
+- Frame-Format wie beim Nav-Service (Byte 0 Version, Byte 1 Message-Type:
+  HELLO/POSITION_UPDATE/POSITION_NONE), aber eigener TLV-Tag-Satz:
+  Latitude/Longitude als int32-LE-E7-Fixpunkt (Grad × 1e7), optional Höhe/
+  Speed/Kurs/Genauigkeit, plus FIX_AGE_MS (uint32 LE, ms seit dem Fix --
+  wichtig, damit die Firmware einen veralteten Heartbeat-Wert erkennt statt
+  ihn als aktuell anzuzeigen). Exaktes Tag-Layout inkl. durchgerechnetem
+  Byte-Beispiel: PROTOCOL.md, Abschnitt "GPS-Positions-Service".
+- Praktisch heißt das für `BLEDevices.cpp`: zwei parallele
+  Indicate-Subscriptions auf zwei Characteristics desselben zentralen
+  Peers, zwei kleine TLV-Parser (können sich den Tag/Länge/Wert-Lesecode
+  teilen, nur die Tag-Tabelle unterscheidet sich), zwei
+  "zuletzt gesehen"-Zustände (Nav kann aktiv sein während Position noch auf
+  den ersten Fix wartet, oder umgekehrt).
+
 ## Verifizierte Fakten (aus dem tatsächlichen Code hier geprüft)
 
 - **Komoot nutzte in diesem Code gar kein Notify/Indicate, sondern reines
@@ -46,11 +80,11 @@ und durch einen TLV-Parser nach PROTOCOL.md ersetzen:
   (Komoot hat als Peripheral offenbar nicht sauber notifiziert), nicht am
   ESP32-BLE-Stack hier -- Notify/Indicate funktioniert bei den CSC-Sensoren
   auf demselben Stack einwandfrei. Für die neue Characteristic ist das
-  also kein bekanntes Risiko: BikeNavRelay ist eine eigene, kontrollierte
+  also kein bekanntes Risiko: TrailBridge ist eine eigene, kontrollierte
   Android-Peripheral-Implementierung (kein Closed-Source-Verhalten wie bei
   Komoot), daher spricht nichts dagegen, direkt auf Indicate zu setzen.
   Trotzdem beim Umbau kurz mit nRF Connect verifizieren (siehe
-  BikeNavRelay-README), ob Indicate ankommt, bevor der TLV-Parser
+  TrailBridge-README), ob Indicate ankommt, bevor der TLV-Parser
   draufgesetzt wird -- normale Vorsicht, kein spezielles Warnsignal mehr.
   Für Indicate reicht bei dieser BLE-Lib (`#include <BLEDevice.h>`,
   ESP32-Arduino-Core-BLE, kein NimBLE in `platformio.ini`/`lib_deps`)
@@ -58,7 +92,7 @@ und durch einen TLV-Parser nach PROTOCOL.md ersetzen:
   bool-Parameter unterscheidet Notify (`true`, Default) von Indicate
   (`false`). Vor dem Umbau kurz gegen die tatsächlich installierte
   Lib-Version prüfen, nicht blind übernehmen.
-- BLE-Rollen bewusst so: **BikeNavRelay (Handy) = Peripheral/GATT-Server,
+- BLE-Rollen bewusst so: **TrailBridge (Handy) = Peripheral/GATT-Server,
   dieser ESP32 = Central/GATT-Client** (wie bisher bei Komoot) -- nicht
   umdrehen ohne Rücksprache mit dem Nutzer, betrifft auch die bestehende
   Verbindungslogik für die anderen Sensoren (HR, CSC, Forumslader) in
@@ -88,4 +122,4 @@ Environments:
 ## Programmiersprachen-Präferenz
 
 C++/PlatformIO für die ESP32-Firmware, wie im restlichen Repo. Kein
-Java/Kotlin hier -- das ist die Android-Seite in `../BikeNavRelay/`.
+Java/Kotlin hier -- das ist die Android-Seite in `../TrailBridge/`.
