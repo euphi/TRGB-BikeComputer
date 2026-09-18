@@ -1,6 +1,7 @@
 #include <Arduino.h>
 
 #include "Singletons.h"
+#include "BootLogoRimRidge.h"
 
 #include <Battery.h>
 Battery batt = Battery(3000, 4200, BAT_VOLT_PIN);
@@ -32,6 +33,7 @@ void batCheck() {
 }
 
 void setup() {
+	trgb.setLogo(bootLogoRimRidge);
 	trgb.init();
 	webserver.setup(); // start early to update system time as soon as possible
 	TRGBSuppport::print_chip_info();

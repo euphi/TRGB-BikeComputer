@@ -29,4 +29,10 @@ cad/export/
 # history on purpose -- see firmware-archive/INDEX.md)
 /firmware-archive/
 
+# EEZ Studio: per-user editor state (selected page/panel layout, not project
+# content) and the timestamped backups our edit scripts take before each
+# mutation (EEZStudio/tmp/*.py) -- git itself is the real backup going forward.
+EEZStudio/*.eez-project-ui-state
+EEZStudio/*.bak.*
+
 

@@ -7,6 +7,7 @@
 
 #include <UIFacade.h>
 #include "Singletons.h"
+#include "BikeNavProtocol.h"
 
 
 // Screens
@@ -31,6 +32,17 @@
 
 #include "ui/ui.h"  // FL main and chart screen
 #include "ui/ui_custFunc.h"
+
+// EEZ Studio-generated "RimRidge" main screen (feature/rimridge-ui-design).
+// Project lives at EEZStudio/TRGB-BikeComputer.eez-project, destinationFolder
+// ../src/ui_eez (deliberately NOT ../src/ui, so an EEZ Studio re-export never
+// overwrites the still-present SquareLine-generated screens below). RimRidge
+// is now the permanent main screen, so this include is no longer optional -
+// hand-written wiring lives in RimRidgeCustFunc.cpp/.h (kept outside
+// src/ui_eez/ since that whole directory gets replaced on every EEZ export).
+#include "ui_eez/screens.h"
+#include "ui_eez/ui.h"
+#include "ui/RimRidgeCustFunc.h"
 
 #include <DateTime.h>
 
@@ -78,13 +90,18 @@ void UIFacade::initDisplay() {
 
     // .. add init of new screens here
 
+    create_screen_rim_ridge();
+    ui_RimRidgeUpdateNav(nullptr, 0, NAV_MANEUVER_NONE, 0); // start on the "no nav" icon, not rr_ic_turn's EEZ-authored default placeholder
+
     // 3. set main screen
-#ifdef BC_FL_SUPPORT
-    //ui_MainScreen = ui_S1Main;
-    ui_MainScreen = ui_SMainNoFL;
-#else
-    ui_MainScreen = ui_SMainNoFL;
-#endif
+    // RimRidge is now the permanent main/boot screen (2026-09-18). The old
+    // SquareLine screens above are still initialized - some of their update
+    // functions are still called from the update loop below for hidden
+    // dependencies (see updateIntBatteryInt()) - but none of them are ever
+    // shown anymore; see memory ui-tooling-eez-studio-migration for the
+    // full list of what's disabled-not-deleted and needs restoring once
+    // RimRidge-style replacements exist for OTA/Nav/WLAN/Settings/Chart.
+    ui_MainScreen = objects.rim_ridge;
 
     ui_ScrNaviSetBackScreen(ui_MainScreen);
     ui_ScrChartSetBackScreen(ui_MainScreen);
@@ -140,17 +157,13 @@ void UIFacade::updateHandler() {
 	while (true) {
 		// Fast update - use this only for data that should be shown with no (further) delay
 		if (xSemaphoreTake(xUpdateFast, static_cast<TickType_t>(0) ) == pdTRUE) {		// Semaphore is used for message "please update" only. So there is no reason to wait.
-			ui_ScrMainUpdateFast(speed, grad);
-			ui_ScrNaviUpdateSpeed(speed);
-			ui_ScrChartUpdateSpeed(speed);
-			ui_SMainNoFLUpdateSpeed(speed);
-			ui_ScrMainUpdateCadence(cad);
-			ui_ScrNaviUpdateCadence(cad);
-			ui_SMainNoFLUpdateCadence(cad);
-			ui_ScrMainUpdateHR(hr);
-			ui_ScrNaviUpdateHR(hr);
-			ui_SMainNoFLUpdateHR(hr);
-			ui_SMainNoFLUpdateGrad(grad, height);
+			// Old-screen fan-out (ui_ScrMain*/ui_ScrNavi*/ui_ScrChart*/ui_SMainNoFL*)
+			// removed 2026-09-18 - those screens are disabled, not deleted, see
+			// memory ui-tooling-eez-studio-migration for the restore list.
+			ui_RimRidgeUpdateSpeed(speed);
+			ui_RimRidgeUpdateCadence(cad);
+			ui_RimRidgeUpdateHR(hr);
+			ui_RimRidgeUpdateGrad(grad, height);
 		}
 
 		int32_t next_ms = 20; // wait 20ms if Mutex can't be taken within 100ms (this should never happen)
@@ -189,7 +202,8 @@ void UIFacade::updateHandler() {
 void UIFacade::updateClock(const time_t now) {
 	String strClock = DateFormatter::format(DateFormatter::TIME_ONLY,now);
 	String strDate = DateFormatter::format(DateFormatter::DATE_ONLY,now);
-	ui_ScrMainUpdateClock(strClock.c_str(), strDate.c_str());
+	// ui_ScrMainUpdateClock removed 2026-09-18 (old S1Main screen disabled,
+	// RimRidge has no clock widget - confirmed leave-out for this step).
 	uifl.updateClock(strClock, strDate);
 }
 
@@ -202,17 +216,22 @@ void UIFacade::updateStats() {
 		struct tm *lt = localtime(&now);
 		timeTot = lt->tm_hour * 3600 + lt->tm_min * 60 + lt->tm_sec;
 	}
-	ui_ScrMainUpdateStats(Statistics::SUM_TYPE_STRING[t] + 3, stats.getAvg(t, statTimeMode), stats.getSpeedMax(t), stats.getDistance(t, true), timeTot);
+	// ui_ScrMainUpdateStats removed 2026-09-18 (old S1Main screen disabled).
 
 //TODO: Check if heigt is also updated in non-FL mode at standstill (no gradient calculation)
-	ui_SMainNoFLUpdateStats(Statistics::SUM_TYPE_STRING[t] + 3, Statistics::AVG_TYPE_STRING[statTimeMode] + 3,
+	ui_RimRidgeUpdateStats(Statistics::SUM_TYPE_STRING[t] + 3, Statistics::AVG_TYPE_STRING[statTimeMode] + 3,
 			stats.getAvg(t, statTimeMode), stats.getSpeedMax(t), stats.getTemp(), stats.getDistance(t), timeTot);
 }
 
 void UIFacade::updateIntBatteryInt() {
 	char batStr[32];
 	snprintf(batStr, 31, "Volt: %.02fV - %d%% %s", batIntVoltage, batIntPerc, batIntCharging?"- C": "");
-	ui_SMainNoFLUpdateIntBatPerc(batIntPerc);
+	ui_RimRidgeUpdateIntBatPerc(batIntPerc);
+	// ui_ScrChartUpdateBat kept even though the Chart screen is disabled:
+	// it also computes the rolling battery-voltage average (batIntVoltageAvg)
+	// by reading back samples from the Chart's own lv_chart widget storage -
+	// removing this call would silently freeze that average. See memory
+	// ui-tooling-eez-studio-migration for the full disabled-screens list.
 	float avg = ui_ScrChartUpdateBat(batIntVoltage, batIntPerc, batStr);
 	if (! isnan(avg)) batIntVoltageAvg = avg;
 }
@@ -248,69 +267,38 @@ void UIFacade::updateHeight(float _height) { // height only update,
 
 
 void UIFacade::updateIP(const String& ipStr) {
-	bool uiTask = isDrawTask();
-	if (uiTask || xSemaphoreTake(xUIDrawMutex, 250 / portTICK_PERIOD_MS) == pdTRUE) {
-		ui_SWLANUpdateIP(ipStr.c_str());
-		if (!uiTask) xSemaphoreGive(xUIDrawMutex);
-	} else {
-		bclog.log(BCLogger::Log_Error, BCLogger::TAG_UI, "Update IP blocked by mutex");
-	}
+	// SWLAN screen disabled 2026-09-18, no RimRidge equivalent (no IP
+	// display) - restore once WLAN gets a RimRidge-style screen.
+	(void) ipStr;
 }
 
 void UIFacade::updateSSIDList(const String& ssidStr) {
-	if (xSemaphoreTake(xUIDrawMutex, 250 / portTICK_PERIOD_MS) == pdTRUE) {
-		ui_SWLANUpdateSSIDList(ssidStr.c_str());
-		xSemaphoreGive(xUIDrawMutex);
-	} else {
-		bclog.log(BCLogger::Log_Warn, BCLogger::TAG_UI, "Update SSID List blocked by mutex");
-	}
+	// SWLAN screen disabled 2026-09-18, no RimRidge equivalent - restore
+	// once WLAN gets a RimRidge-style screen.
+	(void) ssidStr;
 }
 
 void UIFacade::updateWiFiState(bool wifiEnabled, bool APModeActive, bool disableAPMode, uint8_t apStaCount) {
-	if (xSemaphoreTake(xUIDrawMutex, 250 / portTICK_PERIOD_MS) == pdTRUE) {
-		ui_SWLANUpdateWiFiState(wifiEnabled, APModeActive, disableAPMode, apStaCount);
-		xSemaphoreGive(xUIDrawMutex);
+	// SWLAN-specific update removed 2026-09-18 (screen disabled, not
+	// deleted) - RimRidge only gets the simple show/hide for now, the
+	// AP-mode/client-count detail lived on SWLAN only and has no home yet.
+	bool uiTask = isDrawTask();
+	if (uiTask || xSemaphoreTake(xUIDrawMutex, 250 / portTICK_PERIOD_MS) == pdTRUE) {
+		ui_RimRidgeUpdateWiFiState(wifiEnabled, APModeActive, disableAPMode, apStaCount);
+		if (!uiTask) xSemaphoreGive(xUIDrawMutex);
 	} else {
 		bclog.log(BCLogger::Log_Warn, BCLogger::TAG_UI, "Update Wifi State blocked by mutex");
 	}
 }
 
 void UIFacade::updateStateIcon(Statistics::EDrivingState state, UIColor col) {
-	const lv_img_dsc_t *pCurStateIcon = NULL;
-	switch (state) {
-	case Statistics::DS_DRIVE_COASTING:
-	case Statistics::DS_DRIVE_POWER:
-		pCurStateIcon = &stateCyclePower;
-		break;
-	case Statistics::DS_BREAK:
-	case Statistics::DS_STOP:
-		pCurStateIcon = &stateStop;
-		break;
-	case Statistics::DS_NO_CONN:
-	default:
-		pCurStateIcon = &nav_64_nonav;
-	}
-
-	lv_color_t lvcol = lv_color_black();
-	switch (col) {
-	case UI_ColorWarn:
-		lvcol = lv_palette_main(LV_PALETTE_AMBER);
-		break;
-	case UI_ColorCrit:
-		lvcol = lv_palette_main(LV_PALETTE_RED);
-		break;
-	case UI_ColorOK:
-		lvcol = lv_palette_main(LV_PALETTE_GREEN);
-		break;
-	}
-
-	bool uiTask = isDrawTask();
-	if (uiTask || xSemaphoreTake(xUIDrawMutex, 150 / portTICK_PERIOD_MS) == pdTRUE) {
-		ui_SMainNoFLUpdateStateIcon(pCurStateIcon, lvcol);
-		if (!uiTask) xSemaphoreGive(xUIDrawMutex);
-	} else {
-		bclog.log(BCLogger::Log_Warn, BCLogger::TAG_UI, "Update State Icon blocked by mutex");
-	}
+	// No-op since 2026-09-18: driving-state icon (coasting/power/braking/
+	// stopped, was ui_ImgState on MainNoFL) has no RimRidge widget yet -
+	// confirmed leave-out for this step. Statistics.cpp still calls this
+	// every cycle, so keep the function (just without a widget to update);
+	// restore the icon/color selection logic (see git history of this
+	// function) once RimRidge grows a place for it.
+	(void) state; (void) col;
 }
 
 void UIFacade::updateGpsFix(bool hasFix, UIColor col) {
@@ -329,7 +317,7 @@ void UIFacade::updateGpsFix(bool hasFix, UIColor col) {
 
 	bool uiTask = isDrawTask();
 	if (uiTask || xSemaphoreTake(xUIDrawMutex, 150 / portTICK_PERIOD_MS) == pdTRUE) {
-		ui_SMainNoFLUpdateGpsFix(hasFix, lvcol);
+		ui_RimRidgeUpdateGpsFix(hasFix, lvcol);
 		if (!uiTask) xSemaphoreGive(xUIDrawMutex);
 	} else {
 		bclog.log(BCLogger::Log_Warn, BCLogger::TAG_UI, "Update GPS fix icon blocked by mutex");
@@ -367,17 +355,15 @@ void UIFacade::updateNavi(const String& navStr, uint32_t dist, uint8_t maneuver,
 		avoidBack = false;
 	}
 
-	if (dist > 400 && !avoidBack ) {
-		avoidBack = true;
-		ui_ScrNaviGoBack();
-
-	}
+	// Full-screen SNavi popup disabled 2026-09-18 (confirmed with user) -
+	// loadScreen/unloadScreen/avoidBack bookkeeping above is now inert
+	// (nothing acts on it anymore) but left in place since it's harmless
+	// and documents the original intent for when RimRidge grows a
+	// full-screen nav view. RESTORE lv_disp_load_scr(ui_SNavi) /
+	// ui_ScrNaviGoBack() below once that exists.
+	(void) loadScreen; (void) unloadScreen;
 	if (xSemaphoreTake(xUIDrawMutex, 150 / portTICK_PERIOD_MS) == pdTRUE) {
-		if (loadScreen)	lv_disp_load_scr(ui_SNavi);
-		if (unloadScreen) ui_ScrNaviGoBack();
-		ui_ScrNaviUpdateNav(navStr.c_str(), dist, maneuver, roundaboutExit, nextManeuver, nextManeuverDist,
-				nextStreet.c_str(), remainingDist, remainingTime);
-		ui_SMainNoFLUpdateNav(navStr.c_str(), dist, maneuver, roundaboutExit);
+		ui_RimRidgeUpdateNav(navStr.c_str(), dist, maneuver, roundaboutExit);
 		xSemaphoreGive(xUIDrawMutex);
 	} else {
 		bclog.log(BCLogger::Log_Warn, BCLogger::TAG_UI, "Nav blocked by mutex");
@@ -386,8 +372,8 @@ void UIFacade::updateNavi(const String& navStr, uint32_t dist, uint8_t maneuver,
 
 void UIFacade::updateNaviDist(uint32_t dist) {
 	if (xSemaphoreTake(xUIDrawMutex, 250 / portTICK_PERIOD_MS) == pdTRUE) {
-		ui_ScrNaviUpdateNavDist(dist);
-		ui_SMainNoFLUpdateNavDist(dist);
+		// ui_ScrNaviUpdateNavDist removed 2026-09-18 (SNavi popup disabled).
+		ui_RimRidgeUpdateNavDist(dist);
 		xSemaphoreGive(xUIDrawMutex);
 	} else {
 		bclog.log(BCLogger::Log_Warn, BCLogger::TAG_UI, "Nav dist blocked by mutex");
@@ -436,19 +422,13 @@ void UIFacade::msgCBFct(bool ok) {
 }
 
 void UIFacade::otaStart() {
-	if (xSemaphoreTake(xUIDrawMutex, 250 / portTICK_PERIOD_MS) == pdTRUE) {
-		lv_disp_load_scr(ui_SOTA);
-		xSemaphoreGive(xUIDrawMutex);
-	} else {
-		bclog.log(BCLogger::Log_Warn, BCLogger::TAG_UI, "OTA Display blocked by mutex");
-	}
+	// SOTA screen disabled 2026-09-18 (confirmed with user) - RimRidge stays
+	// visible during an OTA update, no progress feedback on screen until
+	// SOTA gets a RimRidge-style replacement. RESTORE lv_disp_load_scr(ui_SOTA)
+	// below once that exists.
 }
 
 void UIFacade::otaProgress(uint8_t perc) {
-	if (xSemaphoreTake(xUIDrawMutex, 250 / portTICK_PERIOD_MS) == pdTRUE) {
-		ui_SOTA_updatePerc(perc);
-		xSemaphoreGive(xUIDrawMutex);
-	} else {
-		bclog.log(BCLogger::Log_Warn, BCLogger::TAG_UI, "OTA Display blocked by mutex");
-	}
+	// ui_SOTA_updatePerc removed 2026-09-18 (SOTA screen disabled, see otaStart()).
+	(void) perc;
 }

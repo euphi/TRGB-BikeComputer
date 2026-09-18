@@ -1,0 +1,32 @@
+{
+  "files": [
+    "actions.h",
+    "fonts.h",
+    "images.c",
+    "images.h",
+    "screens.c",
+    "screens.h",
+    "structs.h",
+    "styles.c",
+    "styles.h",
+    "ui.c",
+    "ui.h",
+    "ui_font_by7x128.c",
+    "ui_font_font_schild.c",
+    "ui_image_boot_logo_rim_ridge.c",
+    "ui_image_nav_no_nav.c",
+    "ui_image_rr_icon_battery.c",
+    "ui_image_rr_icon_cadence.c",
+    "ui_image_rr_icon_gps.c",
+    "ui_image_rr_icon_gradient.c",
+    "ui_image_rr_icon_heart.c",
+    "ui_image_rr_icon_height.c",
+    "ui_image_rr_icon_pause.c",
+    "ui_image_rr_icon_power.c",
+    "ui_image_rr_icon_temp.c",
+    "ui_image_rr_icon_turn.c",
+    "ui_image_rr_icon_wifi.c",
+    "ui_image_settings_icon.c",
+    "vars.h"
+  ]
+}
