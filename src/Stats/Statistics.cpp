@@ -8,6 +8,7 @@
 #include "Statistics.h"
 #include "Distance.h"
 #include "Singletons.h"
+#include <esp_heap_caps.h>
 
 const char* Statistics::PREF_TIME_STRING[Statistics::EDrivingStateMax] = {
 		"TIME_IN_NOCONN",	//		DS_NO_CONN,
@@ -36,6 +37,11 @@ const char* Statistics::AVG_TYPE_STRING[Statistics::EAvgTypeMax] = {
 };
 
 Statistics::Statistics(): distHandler(* new Distance())  {
+	// PSRAM-backed (see S_timeComplete::data's comment in Statistics.h for why only this field,
+	// not the whole struct). heap_caps_calloc (not _malloc) so it starts zeroed, matching what
+	// this got for free before as a plain .bss-resident array.
+	timeData.data = static_cast<S_timeData*>(heap_caps_calloc(400, sizeof(S_timeData), MALLOC_CAP_SPIRAM));
+	assert(timeData.data);		// same fail-fast convention as TRGBSuppport.cpp's own PSRAM draw-buffer allocations
 	timestamp_last = millis();
 	timestamp_stop = timestamp_last;
 }

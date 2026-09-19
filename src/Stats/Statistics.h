@@ -108,7 +108,19 @@ private:
 
 	struct S_timeComplete {		// 18459 Byte
 		time_t startTime;
-		S_timeData data[400];
+		// 400-entry history ring -- PSRAM-backed (allocated in the constructor, see
+		// Statistics.cpp), 18.4KB is too much to tie up in internal DRAM permanently, which
+		// BLE/SD_MMC need DMA-capable room in (see the SD-logging DMA starvation fix). Only
+		// touched every ~5-15s (updateTimeSeries()/createChartArray()), never from the hot path
+		// below, so PSRAM's extra access latency doesn't matter here.
+		S_timeData* data;
+		// Hot accumulator: addCadence()/addHR()/addSpeed() write into this on EVERY BLE sensor
+		// notify (so potentially several times/sec) -- kept in plain internal RAM on purpose.
+		// Moving this alongside `data` above (as part of one PSRAM-backed struct) is what
+		// caused the display to flicker/tear: the RGB panel has no bounce buffer
+		// (TRGBSuppport.cpp: fb_in_psram=1, no bounce_buffer_size_px), so it DMAs the
+		// framebuffer straight from PSRAM with zero tolerance for other PSRAM traffic sharing
+		// the bus (2026-09-19 investigation).
 		S_timeData currentMinMax;
 		uint16_t index = 0;
 		uint8_t curCountSpeed;
@@ -116,7 +128,7 @@ private:
 		uint8_t curCountHr;
 	};
 
-	S_timeComplete timeData;
+	S_timeComplete timeData;	// plain internal-RAM member; only its `data` field is PSRAM-backed (see constructor)
 
 	// Variables to calculate gradient (Forumslader calculates gradient on its own)
 #ifndef BC_FL_SUPPORT
@@ -163,6 +175,9 @@ private:
 	//TODO: Move into separate class
 	enum DataClass {SPEED = 0, HR, HEIGHT, GRADIENT, TEMPERATURE, CADENCE, DISTANCE};
 	static const uint8_t chart_array_count = 4;
+	// Reverted to plain internal RAM (2026-09-19): only 3.2KB, and lv_chart_set_ext_y_array()
+	// (ui_ScrChartSetExtArray1) makes LVGL read this directly on every chart refresh -- not
+	// worth it as another PSRAM-contention source given the display flicker investigation.
 	int16_t chart_array[chart_array_count][400];
 	uint16_t chart_array_startPos[chart_array_count];
 	DataClass chart_array_type[chart_array_count] = {SPEED, HR, CADENCE, DISTANCE};
