@@ -138,7 +138,9 @@ private:
 	int16_t cadence = 0, cadence_tot = -1;
 	float speed=0.0;
 
-	uint8_t offAfterMinutes = 5;
+	// Minutes stopped/disconnected before auto-off (deepSleep()); 255 = disabled. Starts
+	// disabled -- toggle via long-press on the drive-state icon (toggleStandbyMode()).
+	uint8_t offAfterMinutes = 255;
 
 	Ticker statCycle;
 	Ticker statStore;

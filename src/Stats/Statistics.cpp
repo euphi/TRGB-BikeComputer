@@ -177,7 +177,7 @@ void Statistics::cycle() {
 	case DS_BREAK:
 		if (speed > 5.5) {
 			setCurDriveState(cadence < 40  ? DS_DRIVE_COASTING : DS_DRIVE_POWER);
-			offAfterMinutes = 5;
+			if (offAfterMinutes != 255) offAfterMinutes = 5;	// don't silently re-enable auto-off if the user disabled it (long-press / Pause button)
 			time_in_break = 0;	// Necessary so that next if is not true
 		}
 		// no break - also switch off in NO_CONN

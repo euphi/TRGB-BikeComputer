@@ -301,6 +301,7 @@ void BLEDevices::updateDisconnectedDev(const EDevType dt) {
 		break;
 	case DEV_NAV:
 		ui.updateNavi(String(), 0, NAV_MANEUVER_NONE);		// hide stale directions once the phone disconnects
+		ui.updateLanes(nullptr, 0, 0, nullptr, 0, 0);
 		gpsFix = SGpsFix();		// GPS-Positions-Service shares this connection, so it's gone too
 		break;
 	}
@@ -427,7 +428,11 @@ bool BLEDevices::connectToServer(SDevToConnect& dev) {
 	} else {
 		auto client = std::unique_ptr<BLEClient>(new BLEClient());
 		client->setClientCallbacks(this);
-		client->setMTU(256);		// TODO: Is it necessary to set it that large? (Nav frames can be up to ~253 byte usable payload, see PROTOCOL.md)
+		// Only DEV_NAV needs a large MTU (nav/GPS TLV frames up to ~253 byte payload, see
+		// PROTOCOL.md); HRM/CSC/FL notify a handful of bytes and are fine with the default.
+		// Requesting 256 for all five connections wasted ATT buffers (internal, DMA-competing
+		// RAM) on four connections that never used it -- see nav_debug.log SD write failures.
+		if (dt == DEV_NAV) client->setMTU(256);
 		if (xSemaphoreTake(xDevMutex, static_cast<TickType_t>(500 / portTICK_PERIOD_MS)) == pdTRUE) {
 			clients[dt] = std::move(client);
 			xSemaphoreGive(xDevMutex);
@@ -444,7 +449,7 @@ bool BLEDevices::connectToServer(SDevToConnect& dev) {
 	//--------
 	if (!connected) {
 			Serial.printf("❌ Can't connect to device %s.\n", addr.toString().c_str());
-			clients[dt].release();	// Delete client
+			clients[dt].reset();	// Delete client (release() alone would leak it -- releases ownership without deleting)
 			return false;
 	}
 	BLEUUID uuid = serviceUUID[dt];
@@ -562,6 +567,23 @@ void BLEDevices::notifyCallbackCSC(BLERemoteCharacteristic *pBLERemoteCharacteri
 }
 
 /**
+ * @brief Parses a LANES/NEXT_LANES TLV value (tag 0x0A/0x0B) into up to
+ * NAV_LANES_MAX NavLane entries. Extra lanes beyond that cap are silently
+ * dropped (real roads rarely exceed 6-8 lanes, see BikeNavProtocol.h).
+ */
+static uint8_t parseLanes(const uint8_t* val, uint8_t len, NavLane* out) {
+	uint8_t count = len / 4;
+	if (count > NAV_LANES_MAX) count = NAV_LANES_MAX;
+	for (uint8_t i = 0; i < count; i++) {
+		out[i].primary   = val[i * 4 + 0];
+		out[i].secondary = val[i * 4 + 1];
+		out[i].tertiary  = val[i * 4 + 2];
+		out[i].flags     = val[i * 4 + 3];
+	}
+	return count;
+}
+
+/**
  * @brief Parses one BikeNavRelay frame (Indicate payload or Read fallback) and updates the nav UI.
  *
  * Frame layout per ../BikeNavRelay/PROTOCOL.md: byte 0 = protocol version, byte 1 = message type,
@@ -589,6 +611,7 @@ void BLEDevices::handleNavData(const uint8_t* pData, size_t length) {
 	case NAV_MSG_NAV_NONE:
 		bclog.log(BCLogger::Log_Info, BCLogger::TAG_BLE, "🧭 No active route");
 		ui.updateNavi(String(), 0, NAV_MANEUVER_NONE, 0, NAV_MANEUVER_NONE, 0, String(), 0, 0);
+		ui.updateLanes(nullptr, 0, 0, nullptr, 0, 0);
 		break;
 
 	case NAV_MSG_NAV_UPDATE: {
@@ -597,12 +620,17 @@ void BLEDevices::handleNavData(const uint8_t* pData, size_t length) {
 		uint8_t roundaboutExit = 0;
 		uint32_t maneuverDist = 0, nextManeuverDist = 0, remainingDist = 0, remainingTime = 0;
 		String street, nextStreet;
+		NavLane lanes[NAV_LANES_MAX];
+		NavLane nextLanes[NAV_LANES_MAX];
+		uint8_t laneCount = 0, nextLaneCount = 0;
+		uint32_t laneDist = 0, nextLaneDist = 0;
 
 		size_t pos = 2;
 		while (pos + 2 <= length) {
 			uint8_t tag = pData[pos];
 			uint8_t len = pData[pos + 1];
 			pos += 2;
+			bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "🧭 TLV tag=0x%02X len=%d", tag, len);
 			if (pos + len > length) {
 				bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_BLE, "🧭 TLV tag 0x%02X length %d exceeds frame, aborting parse", tag, len);
 				break;
@@ -636,6 +664,18 @@ void BLEDevices::handleNavData(const uint8_t* pData, size_t length) {
 			case NAV_TAG_REMAINING_TIME_S:
 				if (len >= 4) remainingTime = val[0] | (val[1] << 8) | (val[2] << 16) | (val[3] << 24);
 				break;
+			case NAV_TAG_LANES:
+				laneCount = parseLanes(val, len, lanes);
+				break;
+			case NAV_TAG_NEXT_LANES:
+				nextLaneCount = parseLanes(val, len, nextLanes);
+				break;
+			case NAV_TAG_LANE_DISTANCE_M:
+				if (len >= 4) laneDist = val[0] | (val[1] << 8) | (val[2] << 16) | (val[3] << 24);
+				break;
+			case NAV_TAG_NEXT_LANE_DISTANCE_M:
+				if (len >= 4) nextLaneDist = val[0] | (val[1] << 8) | (val[2] << 16) | (val[3] << 24);
+				break;
 			default:
 				break;	// unknown tag: length already respected below, value ignored
 			}
@@ -649,8 +689,25 @@ void BLEDevices::handleNavData(const uint8_t* pData, size_t length) {
 				navManeuverToString(maneuver), maneuverDist, street.c_str(), remainingDist, remainingTime,
 				navManeuverToString(nextManeuver), nextManeuverDist, nextStreet.c_str());
 
+		if (laneCount > 0 || nextLaneCount > 0) {
+			auto laneStr = [](const NavLane* l, uint8_t n) {
+				String s;
+				for (uint8_t i = 0; i < n; i++) {
+					if (i) s += " | ";
+					s += navManeuverToString(l[i].primary);
+					if (l[i].secondary != NAV_MANEUVER_NONE) { s += "/"; s += navManeuverToString(l[i].secondary); }
+					if (l[i].tertiary != NAV_MANEUVER_NONE) { s += "/"; s += navManeuverToString(l[i].tertiary); }
+					if (l[i].flags & NAV_LANE_FLAG_ACTIVE) s += "*";
+				}
+				return s;
+			};
+			bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "🧭 Lanes in %d m: [%s]  Next lanes in %d m: [%s]",
+					laneDist, laneStr(lanes, laneCount).c_str(), nextLaneDist, laneStr(nextLanes, nextLaneCount).c_str());
+		}
+
 		ui.updateNavi(street, maneuverDist, maneuver, roundaboutExit, nextManeuver, nextManeuverDist,
 				nextStreet, remainingDist, remainingTime);
+		ui.updateLanes(lanes, laneCount, laneDist, nextLanes, nextLaneCount, nextLaneDist);
 		break;
 	}
 

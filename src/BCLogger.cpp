@@ -12,6 +12,7 @@
 #include "Singletons.h"
 #include <esp_task_wdt.h>
 #include <esp_core_dump.h>
+#include <esp_heap_caps.h>
 
 
 const char *BCLogger::TAG_STRING[LogTagMax] = { "RAW", "FL", "BLE", "STAT", "WIFI", "SD", "OP", "CLI", "UI" };
@@ -122,7 +123,11 @@ void BCLogger::sendLogEvent(const String& logMessage, const String& tag) {
 
 void BCLogger::flushAllFiles() {  // Ticker all 5 seconds
 	do {  // FlusherTask, Prio 5
-		bclog.log(Log_Debug, TAG_SD, "Flush");
+		// DMA-capable internal RAM is what SD_MMC needs for its transfer buffers (PSRAM can't
+		// substitute) and it's shared with WiFi/BLE -- log it here so a shrinking pool shows up
+		// in our own logs instead of only as untagged "allocate_dma_buf: not enough mem" lines
+		// straight from ESP-IDF on Serial (see nav_debug.log incident, 2026-09).
+		bclog.logf(Log_Info, TAG_SD, "Flush (DMA-capable heap free: %u byte)", heap_caps_get_free_size(MALLOC_CAP_DMA));
 		if (fdebug) fdebug.flush();
 		yield();
 		if (fnmea) fnmea.flush();
