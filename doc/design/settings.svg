@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 480" role="img" aria-label="Rim &amp; Ridge Einstellungsscreen: Build-Version, IP-Adresse, Neustart- und Tiefschlaf-Taste">
+  <title>Rim &amp; Ridge — Einstellungen</title>
+
+  <circle cx="240" cy="240" r="240" fill="#161B1F"/>
+  <circle cx="240" cy="240" r="234" fill="none" stroke="#3A362E" stroke-width="1.5"/>
+
+  <!-- header: gear + screen title, no functional gauge on this screen -->
+  <g transform="translate(240,88) scale(1.5)">
+    <circle r="9" fill="none" stroke="#CBA36B" stroke-width="2.2"/>
+    <circle r="2" fill="#CBA36B"/>
+    <g stroke="#CBA36B" stroke-width="2.2" stroke-linecap="round">
+      <line x1="0" y1="-12" x2="0" y2="-18" transform="rotate(0)"/>
+      <line x1="0" y1="-12" x2="0" y2="-18" transform="rotate(60)"/>
+      <line x1="0" y1="-12" x2="0" y2="-18" transform="rotate(120)"/>
+      <line x1="0" y1="-12" x2="0" y2="-18" transform="rotate(180)"/>
+      <line x1="0" y1="-12" x2="0" y2="-18" transform="rotate(240)"/>
+      <line x1="0" y1="-12" x2="0" y2="-18" transform="rotate(300)"/>
+    </g>
+  </g>
+  <text x="240" y="135" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="15" letter-spacing="4" fill="#CBA36B">EINSTELLUNGEN</text>
+
+  <!-- info rows: label/value pairs, room to add more rows below as this screen grows -->
+  <text x="240" y="180" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="12" letter-spacing="2" fill="#9BA097">BUILD</text>
+  <text x="240" y="210" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="24" fill="#E7E2D6">0.4.0 · a3f1c9e</text>
+
+  <text x="240" y="252" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="12" letter-spacing="2" fill="#9BA097">IP-ADRESSE</text>
+  <text x="240" y="282" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="24" fill="#E7E2D6">192.168.1.47</text>
+
+  <!-- actions: Neustart (reuses the cadence/reset arrow glyph) and Tiefschlaf (crescent) -->
+  <rect x="135" y="320" width="210" height="40" rx="20" fill="#1E252B" stroke="#CBA36B" stroke-opacity="0.35" stroke-width="1.5"/>
+  <g transform="translate(168,340) scale(1.4)" fill="none" stroke="#CBA36B" stroke-width="2" stroke-linecap="round">
+    <path d="M -6,2 A 7 7 0 1 1 3,7.5"/>
+    <path d="M3,7.5 L7,7 L4,3" fill="#CBA36B" stroke="none"/>
+  </g>
+  <text x="195" y="346" font-family="'IBM Plex Sans'" font-weight="600" font-size="18" fill="#E7E2D6">Neustart</text>
+
+  <rect x="135" y="375" width="210" height="40" rx="20" fill="#1E252B" stroke="#CBA36B" stroke-opacity="0.35" stroke-width="1.5"/>
+  <g transform="translate(168,395)">
+    <circle cx="0" cy="0" r="8" fill="#CBA36B"/>
+    <circle cx="4.5" cy="-2.5" r="7" fill="#1E252B"/>
+  </g>
+  <text x="195" y="401" font-family="'IBM Plex Sans'" font-weight="600" font-size="18" fill="#E7E2D6">Tiefschlaf</text>
+</svg>
