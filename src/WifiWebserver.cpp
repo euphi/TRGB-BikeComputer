@@ -295,9 +295,11 @@ void WifiWebserver::setupWebserver() {
 
 
 	server.on("/log/set", HTTP_GET, [](AsyncWebServerRequest *request) {
-		String tag = request->getParam("tag")->value();
-		String level = request->getParam("level")->value();
-		String output = request->getParam("output")->value();
+		// getParam() returns nullptr for a missing param -- log.html didn't send "output" at all
+		// until this fix, which made this an unconditional null-pointer crash on every use.
+		String tag = request->hasParam("tag") ? request->getParam("tag")->value() : "";
+		String level = request->hasParam("level") ? request->getParam("level")->value() : "";
+		String output = request->hasParam("output") ? request->getParam("output")->value() : "";
 
 		bool toSerialWeb = output.equalsIgnoreCase("Serial");
 
@@ -342,9 +344,12 @@ void WifiWebserver::setupWebserver() {
 		//DynamicJsonDocument doc(1024);  // deprecated
 		JsonDocument doc;
 
+		// Serial and File levels can differ (bclog.getLogLevel()'s "serial" param, default false,
+		// used to mean this only ever reported the File level) -- report both.
 		for (uint16_t t = BCLogger::TAG_RAW_NMEA; t < BCLogger::LogTagMax; t++) {
-			BCLogger::LogType ll = bclog.getLogLevel(static_cast<BCLogger::LogTag>(t));
-			doc[BCLogger::TAG_STRING[t]] = BCLogger::LEVEL_STRING[ll];
+			JsonObject tagLevels = doc[BCLogger::TAG_STRING[t]].to<JsonObject>();
+			tagLevels["file"] = BCLogger::LEVEL_STRING[bclog.getLogLevel(static_cast<BCLogger::LogTag>(t), false)];
+			tagLevels["serial"] = BCLogger::LEVEL_STRING[bclog.getLogLevel(static_cast<BCLogger::LogTag>(t), true)];
 		}
 		// Serialize JSON document to a string
 		String jsonString;

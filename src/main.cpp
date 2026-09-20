@@ -43,7 +43,6 @@ void setup() {
 
 	bclog.setup();
     cli.setOnError(errorCallback);
-    cli.available();
     cmdPing = cli.addCmd("ping", [](cmd* c) {Serial.println("Pong!");});
     cmdPing.setDescription("Responds with a pong and logs it");
     cmdBat = cli.addCmd("showbat", [](cmd* c) {Serial.printf("Battery: %d%% - charging [%c]", batt.level(), batt.voltage()>3300?'x':' ');});

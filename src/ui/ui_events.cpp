@@ -39,7 +39,8 @@ void BrightChanged(lv_event_t * e)
 	//int sliderValue = ( ( (int)lv_slider_get_value(slider)) << 8 ) / 100 - 1;
 	int sliderValue = (int)lv_slider_get_value(slider);
 
-	bclog.logf( BCLogger::Log_Info, BCLogger::TAG_OP, "New brightness value %d.\n", sliderValue);
+	// Debug, not Info: fires repeatedly while the user drags the slider, not just once per change.
+	bclog.logf( BCLogger::Log_Debug, BCLogger::TAG_OP, "New brightness value %d.\n", sliderValue);
 	if (sliderValue > 250) {
 		analogWrite(EXAMPLE_PIN_NUM_BK_LIGHT, 255);
 		delay(5);

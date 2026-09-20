@@ -49,26 +49,39 @@ private:
 		LOG_GPS_HAS_ACCURACY = 0x10,
 	};
 
+	// Bumped whenever a field is added/removed/reordered below, so a future reader (e.g. a
+	// GPX-conversion script) can detect which layout it's looking at instead of silently
+	// desyncing -- see Tools/ReadTachoBin.py, which is already stale against the GPS-era format
+	// added in v1 for exactly this reason.
+	static const uint8_t LOG_DATA_FORMAT_VERSION = 1;
+
+	// Byte offsets below are the REAL, compiler-computed ones (verified via offsetof() against
+	// this exact toolchain, not counted by hand -- time_t is 8 bytes here, not 4, which is what
+	// desynced these comments and the static_asserts below in the first place. No padding gaps
+	// anywhere in this layout: the four single-byte fields (hr/cadence/gpsFlags/formatVersion)
+	// land back-to-back and total exactly 4 bytes, so gpsLatitudeE7 starts already 4-aligned.
 	struct LogData {
-		time_t timestamp;					//        4
-		float speed;						// + 4 =  8
-		float temp;  						// + 4 = 12
-		float grad;							// + 4 = 16
-		float height;						// + 4 = 20
-		float dist_m;						// + 4 = 24
-		uint8_t hr : 8;						// + 1 = 25
-		uint8_t cadence: 8;  				// + 1 = 26
+		time_t timestamp;					//        8
+		float speed;						// + 4 = 12
+		float temp;  						// + 4 = 16
+		float grad;							// + 4 = 20
+		float height;						// + 4 = 24
+		float dist_m;						// + 4 = 28
+		uint8_t hr;							// + 1 = 29
+		uint8_t cadence;					// + 1 = 30
 		// GPS position from TrailBridge's GPS-Positions-Service (see ../TrailBridge/PROTOCOL.md
 		// and BikeGpsProtocol.h) -- added here, binary format bumped incompatibly.
-		uint8_t gpsFlags;					// + 1 = 27  (see LogDataGpsFlags)
-		int32_t gpsLatitudeE7;				// + 4 = 31
-		int32_t gpsLongitudeE7;				// + 4 = 35
-		int32_t gpsAltitudeM;				// + 4 = 39
-		uint32_t gpsSpeedCms;				// + 4 = 43
-		uint16_t gpsBearingDegX100;			// + 2 = 45
-		uint16_t gpsAccuracyMX10;			// + 2 = 47
-		uint32_t gpsFixAgeMs;				// + 4 = 51
+		uint8_t gpsFlags;					// + 1 = 31  (see LogDataGpsFlags)
+		uint8_t formatVersion;				// + 1 = 32, always written = LOG_DATA_FORMAT_VERSION
+		int32_t gpsLatitudeE7;				// + 4 = 36
+		int32_t gpsLongitudeE7;				// + 4 = 40
+		int32_t gpsAltitudeM;				// + 4 = 44
+		uint32_t gpsSpeedCms;				// + 4 = 48
+		uint16_t gpsBearingDegX100;			// + 2 = 50
+		uint16_t gpsAccuracyMX10;			// + 2 = 52
+		uint32_t gpsFixAgeMs;				// + 4 = 56
 	};
+	static_assert(sizeof(LogData) == 56, "LogData layout changed -- update the offset comments above and Tools/ReadTachoBin.py");
 
 
 	enum LogOutput {
@@ -90,7 +103,6 @@ private:
 
 	bool fileNameIncludesDateTime = false;
 
-	void storeAllPrefs();
 	void storeLoglevel(LogType level, LogTag tag, bool file, bool serial);
 	void printLoglevels();
 

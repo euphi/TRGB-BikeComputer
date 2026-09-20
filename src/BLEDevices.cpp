@@ -448,7 +448,7 @@ bool BLEDevices::connectToServer(SDevToConnect& dev) {
 	connState[dt] = connected ? CONN_CONNECTED : CONN_LOST;
 	//--------
 	if (!connected) {
-			Serial.printf("❌ Can't connect to device %s.\n", addr.toString().c_str());
+			bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_BLE, "❌ Can't connect to device %s.", addr.toString().c_str());
 			clients[dt].reset();	// Delete client (release() alone would leak it -- releases ownership without deleting)
 			return false;
 	}
@@ -497,7 +497,10 @@ void BLEDevices::notifyCallbackCSC(BLERemoteCharacteristic *pBLERemoteCharacteri
 		bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_FL, "Received %d bytes:\n\t%s", length, pData);
 		bufferFL.concat(pData, length);
 		if (bufferFL.indexOf('\n') >0) {
-			bclog.log(BCLogger::Log_Info, BCLogger::TAG_FL, bufferFL.substring(0, bufferFL.length()-1));
+			// Debug, not Info: fires on every BLE notify, and FLClassicParser::updateFromString()
+			// below logs the same sentence again as TAG_RAW_NMEA -- no need for two copies active
+			// by default.
+			bclog.log(BCLogger::Log_Debug, BCLogger::TAG_FL, bufferFL.substring(0, bufferFL.length()-1));
 			flparser.updateFromString(bufferFL);
 			bufferFL.clear();
 		}
@@ -542,7 +545,11 @@ void BLEDevices::notifyCallbackCSC(BLERemoteCharacteristic *pBLERemoteCharacteri
 				}
 			}
 			crank_rev_last = crank_rev;
-			bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "Cadence %d revs per minute", cadence);
+			// Debug, not Info: fires on every BLE notify, immediately upstream of
+			// Statistics::addCadence()'s accumulator write (see Statistics.h's PSRAM-placement
+			// comment on why that specific write path is sensitive to being on a hot/frequent
+			// trigger).
+			bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "Cadence %d revs per minute", cadence);
 			stats.addCadence(cadence, crank_rev);
 		}
 		break;
@@ -554,7 +561,10 @@ void BLEDevices::notifyCallbackCSC(BLERemoteCharacteristic *pBLERemoteCharacteri
 		if ((pData[0] & 1)) {		// LSB flag = 16 bit or 8bit
 			hr |= (pData[2] << 8);
 		}
-		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "Heart rate: %d ❤ per minute", hr);
+		// Debug, not Info: fires on every BLE notify, immediately upstream of
+		// Statistics::addHR()'s accumulator write (see the Cadence log above for why that matters
+		// on this hardware).
+		bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "Heart rate: %d ❤ per minute", hr);
 		stats.addHR(hr);
 		break;
 	case DEV_NAV:

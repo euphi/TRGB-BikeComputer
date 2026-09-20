@@ -62,13 +62,20 @@ void BCLogger::setup() {
 	replayLog = cli.addCmd("replay", cmdCB);
 	replayLog.addPositionalArgument("path");
 
+	// FlusherTask and the SSE log stream don't touch the SD card at all (flushAllFiles() already
+	// null-checks each File before using it), so set them up unconditionally -- previously an
+	// early return here for a missing SD card also silently disabled the live web log stream,
+	// which has nothing to do with SD presence.
+	xTaskCreate(+[](void* thisInstance){((BCLogger*)thisInstance)->flushAllFiles();}, "FlusherTask", 3072, this, 5, &flushTaskHandle);
+	webserver.getServer().addHandler(&logevents);
+
 	uint8_t cardType = SD_MMC.cardType();
 	if (cardType == CARD_NONE) {
 		log(Log_Warn, TAG_SD, "No SD card attached!");
 		return;
 	}
 	logf(Log_Info, TAG_SD, "SD Card Type: %s", (cardType == CARD_MMC) ? "MMC" : (cardType == CARD_SD) ? "SDSC" : (cardType == CARD_SDHC) ? "SDHC" : "UNKNOWN");
-	logf(Log_Info, TAG_SD, "SD Card Size: %lluMBn", SD_MMC.cardSize() / (1024 * 1024));
+	logf(Log_Info, TAG_SD, "SD Card Size: %lluMB", SD_MMC.cardSize() / (1024 * 1024));
 	logf(Log_Info, TAG_SD, "Total space: %lluMB", SD_MMC.totalBytes() / (1024 * 1024));
 	logf(Log_Info, TAG_SD, "Used space: %lluMB", SD_MMC.usedBytes() / (1024 * 1024));
 
@@ -107,35 +114,52 @@ void BCLogger::setup() {
 
 	logf(Log_Info, TAG_SD, "New file name: %s\n", file_data.c_str());
 
+	// TODO: save_coredump_to_littlefs() is disabled on purpose, not just unfinished -- enabling it
+	// previously caused a boot-time crash loop: writing the coredump to LittleFS itself crashed
+	// (cause not yet diagnosed), which created a *new* coredump, which then got "saved" (and
+	// crashed again) on the next boot, forever. Before re-enabling: find and fix whatever in
+	// save_coredump_to_littlefs()/the coredump-partition read path crashes, and confirm a
+	// coredump partition already stuck in that state (from a past crash) can't retrigger the
+	// loop even after the code fix -- may need to explicitly erase/invalidate it once
+	// (esp_core_dump_image_check() / erasing the coredump partition) rather than just fixing
+	// the write path.
 	//save_coredump_to_littlefs(file_core);
-
-	xTaskCreate(+[](void* thisInstance){((BCLogger*)thisInstance)->flushAllFiles();}, "FlusherTask", 3072, this, 5, &flushTaskHandle);
-
-	webserver.getServer().addHandler(&logevents);
 }
 
 // Method to send log messages as events
 void BCLogger::sendLogEvent(const String& logMessage, const String& tag) {
-  //logevents.send(logMessage.c_str(), tag.c_str(), millis());
-  logevents.send(logMessage.c_str(), "message", millis());
+  logevents.send(logMessage.c_str(), tag.c_str(), millis());
 }
 
 
-void BCLogger::flushAllFiles() {  // Ticker all 5 seconds
-	do {  // FlusherTask, Prio 5
+void BCLogger::flushAllFiles() {
+	// FlusherTask, Prio 5 -- a dedicated always-running task with its own vTaskDelay loop below,
+	// not actually a Ticker despite coincidentally also running every 5s.
+	// log()'s writes to fdebug/fnmea and appendDataLog()'s write to fdata are mutex-protected
+	// (xPrintMutex); flush() on those same File handles needs the same protection, or it can
+	// race a concurrent write from another task. Same 100ms-timeout-and-skip pattern as log():
+	// a missed flush just retries next cycle rather than risking blocking this task indefinitely.
+	auto flushLocked = [this](File& f) {
+		if (!f) return;
+		if (xSemaphoreTake(xPrintMutex, static_cast<TickType_t>(100 / portTICK_PERIOD_MS)) == pdTRUE) {
+			f.flush();
+			xSemaphoreGive(xPrintMutex);
+		} else {
+			printf("%d: !!!!! File flush blocked !!!!!", millis());
+		}
+	};
+	do {
 		// DMA-capable internal RAM is what SD_MMC needs for its transfer buffers (PSRAM can't
 		// substitute) and it's shared with WiFi/BLE -- log it here so a shrinking pool shows up
 		// in our own logs instead of only as untagged "allocate_dma_buf: not enough mem" lines
 		// straight from ESP-IDF on Serial (see nav_debug.log incident, 2026-09).
-		bclog.logf(Log_Info, TAG_SD, "Flush (DMA-capable heap free: %u byte)", heap_caps_get_free_size(MALLOC_CAP_DMA));
-		if (fdebug) fdebug.flush();
+		bclog.logf(Log_Debug, TAG_SD, "Flush (DMA-capable heap free: %u byte)", heap_caps_get_free_size(MALLOC_CAP_DMA));
+		flushLocked(fdebug);
 		yield();
-		if (fnmea) fnmea.flush();
+		flushLocked(fnmea);
 		yield();
-		if (fdata) fdata.flush();
+		flushLocked(fdata);
 		vTaskDelay(5000 / portTICK_PERIOD_MS);
-
-
 	} while (true);
 }
 
@@ -163,7 +187,7 @@ void BCLogger::handleCommand(const Command &cmd) {
 
 	if (cmd.equals(replayLog)) {
 		Argument pathArg = cmd.getArgument("path");
-		logf(Log_Info, TAG_OP, "Replay file %s", pathArg.getValue());
+		logf(Log_Info, TAG_OP, "Replay file %s", pathArg.getValue().c_str());
 		replayFile(pathArg.getValue());
 		return;
 	}
@@ -187,27 +211,12 @@ void BCLogger::handleCommand(const Command &cmd) {
 		if (argLevel.getValue().equalsIgnoreCase(LEVEL_STRING[l]))
 			break;
 	}
-	Serial.print("Level: ");
-	Serial.println(l);
-	Serial.flush();
 	if (l == LogTypeMax) {
 		logf(Log_Warn, TAG_OP, "Invalid log level %s", argLevel.getValue().c_str());
 		return;
 	}
 	setLogLevel(static_cast<LogType>(l), static_cast<LogTag>(t), argFile, argSerial);
 }
-
-//void BCLogger::storeAllPrefs() {
-//	logPrefs[OUT_Serial].begin("LSer");
-//	logPrefs[OUT_File].begin("LFile");
-//	for (uint_fast8_t c = 0; c < LogOutputMax; c++) {
-//		for (uint_fast8_t d = 0; d < LogTagMax; d++) {
-//			logPrefs[c].putLong(TAG_STRING[d], loglevel[c][d]);
-//		}
-//	}
-//	logPrefs[OUT_File].end();
-//	logPrefs[OUT_Serial].end();
-//}
 
 void BCLogger::storeLoglevel(LogType level, LogTag tag, bool file, bool serial) {
 	if (file) {
@@ -290,7 +299,7 @@ void BCLogger::log(LogType type, LogTag tag, const String& str) {
 			Serial.print(symbolStr);
 			Serial.print(timeStr);
 			Serial.println(str);
-			sendLogEvent(str, symbolStr);
+			sendLogEvent(str, TAG_STRING[tag]);
 			xSemaphoreGive(xPrintMutex);
 		} else {
 			printf("%d: !!!!! Serial Log output blocked !!!!!", millis());
@@ -303,12 +312,12 @@ void BCLogger::logf(LogType type, LogTag tag, const char *format, ...) {
 	va_list arg;
 	va_start(arg, format);
 	char temp[256];
-	size_t len = vsnprintf(temp, sizeof(temp), format, arg);
-	if (len >= sizeof(temp)) {
-		log(Log_Error, TAG_OP, "Logger: Log-String shortened (too long)");
-		log(type, tag, format);
-	}
+	int len = vsnprintf(temp, sizeof(temp), format, arg);
 	va_end(arg);
+	if (len < 0) return;  // encoding error, nothing sensible to log
+	if (static_cast<size_t>(len) >= sizeof(temp)) {		
+		log(Log_Error, TAG_OP, "Logger: Log-String shortened from " + String(len) + " to " + String((int)sizeof(temp) - 1) + " byte");
+	}
 	log(type, tag, String(temp));
 }
 
@@ -332,6 +341,7 @@ void BCLogger::appendDataLog(float speed, float temp, float gradient, float dist
 			| (gps.hasSpeed ? LOG_GPS_HAS_SPEED : 0)
 			| (gps.hasBearing ? LOG_GPS_HAS_BEARING : 0)
 			| (gps.hasAccuracy ? LOG_GPS_HAS_ACCURACY : 0);
+	b.formatVersion = LOG_DATA_FORMAT_VERSION;
 	b.gpsLatitudeE7 = gps.latitudeE7;
 	b.gpsLongitudeE7 = gps.longitudeE7;
 	b.gpsAltitudeM = gps.altitudeM;
@@ -344,12 +354,23 @@ void BCLogger::appendDataLog(float speed, float temp, float gradient, float dist
 		log(Log_Warn, TAG_SD, "Data file not open");
 		return;
 	}
-	fdata.write((byte*) &b, sizeof(b));
+	// xPrintMutex also guards fdata against flushAllFiles()'s concurrent fdata.flush() (see
+	// flushAllFiles()) -- and unlike the old unconditional write, a short/failed write (SD full,
+	// card pulled mid-ride) is now surfaced instead of silently losing the record.
+	if (xSemaphoreTake(xPrintMutex, static_cast<TickType_t>(100 / portTICK_PERIOD_MS)) == pdTRUE) {
+		size_t written = fdata.write((byte*) &b, sizeof(b));
+		xSemaphoreGive(xPrintMutex);
+		if (written != sizeof(b)) {
+			log(Log_Error, TAG_SD, "Data record write incomplete: " + String(written) + "/" + String(sizeof(b)) + " byte");
+		}
+	} else {
+		printf("%d: !!!!! Data file write blocked, record lost !!!!!", millis());
+	}
 }
 
 int16_t BCLogger::listDir(const String &dirname, uint8_t levels) {
 	int16_t max_number = 0;
-	logf(Log_Debug, TAG_SD, "📁 Listing directory: %s", dirname);
+	logf(Log_Debug, TAG_SD, "📁 Listing directory: %s", dirname.c_str());
 
 	File root = SD_MMC.open(dirname);
 	if (!root) {
@@ -494,13 +515,13 @@ void BCLogger::replayNextLine() {
 //TODO Also replay binary files
 bool BCLogger::replayFile(const String &path) {
 	if (fileReplay) {
-		logf(Log_Warn, TAG_SD, "ReplayFile %s already open - closing it.", path);
+		logf(Log_Warn, TAG_SD, "ReplayFile %s already open - closing it.", path.c_str());
 		fileReplay.close();
 		timeLasteLine = 0;
 	}
 	fileReplay = SD_MMC.open(path);
 	if (!fileReplay) {
-		logf(Log_Error, TAG_SD, "Failed to open replay file %s", path);
+		logf(Log_Error, TAG_SD, "Failed to open replay file %s", path.c_str());
 		return false;
 	}
 	stats.setConnected(true);	// Fake connect FL

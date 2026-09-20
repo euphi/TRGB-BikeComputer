@@ -60,10 +60,10 @@ void FLClassicParser::updateFromString(const String &flStr) {
 		switch(flStr.charAt(3)) { //                                                                                                                 Strom in mA? // Verbraucherstrom int. Temp Verbraucher Timeout
 		case '5':  // $FL5,08c800,0,0,4158,4161,4162,-18,0,294,1,233,3679,13231,25897;                        $FL5,08c800,     0,        0,       4158,        4161,        4162,       -18,         0,           294,        1,          233,        3679,             13231,         25897;
 			scanCt = sscanf(flStr.c_str(), "$FL5,%lx,%hhd,%hd,%hd,%hd,%hd,%hd,%hd,%hd,%hhd,%hd,%d,%d,%d\n", &flags, &stufe, &pulses_per_s, &batterie[0],&batterie[1],&batterie[2],&batt_current,&cons_current,&int_temp,&cons_on_off,&timeout,&micropulsecounter,&pulsecounter,&timecounter);
-			if (scanCt != 14) Serial.println("❌ Not all fields scanned");
+			if (scanCt != 14) bclog.log(BCLogger::Log_Warn, BCLogger::TAG_FL, "❌ Not all fields scanned");
 
 			if (flags != flags_last) {
-				Serial.printf("Flags changed: %x\n", flags);
+				bclog.logf(BCLogger::Log_Info, BCLogger::TAG_FL, "Flags changed: %x", flags);
 				if (stateCB) stateCB(FL_STATE_CONNECTED, flags, timeout);
 				flags_last=flags;
 			}
@@ -82,7 +82,7 @@ void FLClassicParser::updateFromString(const String &flStr) {
 			break;
 		case 'B': // $FLB,850,98591,2731,0;
 			scanCt = sscanf(flStr.c_str(), "$FLB,%hd,%d,%hd,%hd\n", &temperature, &pressure,&height,&gradient);
-			if (scanCt != 4) Serial.println("❌ Not all fields scanned");
+			if (scanCt != 4) bclog.log(BCLogger::Log_Warn, BCLogger::TAG_FL, "❌ Not all fields scanned");
 //			if (envCB) {
 //				envCB(temperature, pressure, height, gradient);
 //			}
@@ -119,12 +119,14 @@ void FLClassicParser::updateFromString(const String &flStr) {
 		case 'V':	// $FLV,500290515,5.01;  // Version Info
 			break;
 		default:
-			Serial.printf("❌ Unknown FL-ID '%c'\n", flStr.charAt(3));
+			bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_FL, "❌ Unknown FL-ID '%c'", flStr.charAt(3));
 		}
-		bclog.log(BCLogger::Log_Info, BCLogger::TAG_RAW_NMEA, flStr);
+		// Debug, not Info: fires on every BLE notify, and BLEDevices::notifyCallbackCSC() already
+		// logs the same sentence as TAG_FL -- no need for two copies active by default.
+		bclog.log(BCLogger::Log_Debug, BCLogger::TAG_RAW_NMEA, flStr);
 
 	} else {
-		Serial.println("❌ Unknown String identifier");
+		bclog.log(BCLogger::Log_Warn, BCLogger::TAG_FL, "❌ Unknown String identifier");
 	}
 #endif
 }
