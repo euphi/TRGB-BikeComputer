@@ -6,22 +6,30 @@
 <title>Time Series Viewer</title>
 <script src="/js/uPlot.iife.min.js"></script>
 <link rel="stylesheet" href="/css/uPlot.min.css">
+<link rel="stylesheet" href="/stylesheet.css">
 </head>
 <body>
-	<h1>Time Series Viewer</h1>
-	<div id="chart"></div>
+	<div class="chart-panel">
+		<h1>Time Series Chart</h1>
+		<p class="chart-caption">/stat/data &middot; refreshes every 5s</p>
+		<div id="chart"></div>
+	</div>
 
 	<script>
-		// Create uPlot chart
+		// Create uPlot chart, themed to match the Rim & Ridge panel it sits in
 		var opts = {
-			title : 'Time Series Chart',
+			title : '',
 			width : 800,
-			height : 600,
+			height : 520,
 			series : [ {}, {
 				show : true,
-				stroke : "red",
-				width : 1
+				stroke : "#CBA36B",
+				width : 2,
 			} ],
+			axes : [
+				{ stroke : "#9BA097", grid : { stroke : "#3A362E", width : 1 }, ticks : { stroke : "#3A362E" } },
+				{ stroke : "#9BA097", grid : { stroke : "#3A362E", width : 1 }, ticks : { stroke : "#3A362E" } },
+			],
 		};
 		var data = [ [], [] ]
 		var uplot = new uPlot(opts, data, document.getElementById('chart'));

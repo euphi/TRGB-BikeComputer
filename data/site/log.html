@@ -3,10 +3,23 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Set Log Levels</title>
   <link rel="stylesheet" href="/stylesheet.css">
-  
+  <title>Set Log Levels</title>
+
   <script>
+    function badgeClass(level) {
+      switch ((level || '').toUpperCase()) {
+        case 'DEBUG': return 'badge-debug';
+        case 'INFO':  return 'badge-info';
+        case 'WARN':  return 'badge-warn';
+        case 'ERROR': return 'badge-error';
+        default:      return '';
+      }
+    }
+    function levelBadge(level) {
+      return '<span class="badge ' + badgeClass(level) + '">' + level + '</span>';
+    }
+
     function setLogLevels() {
       // Get values from the input fields
       var tag = document.getElementById("tagSelect").value;
@@ -70,8 +83,8 @@
           var cellFile = row.insertCell(1);
           var cellSerial = row.insertCell(2);
           cellTag.innerHTML = tag;
-          cellFile.innerHTML = logLevels[tag].file;
-          cellSerial.innerHTML = logLevels[tag].serial;
+          cellFile.innerHTML = levelBadge(logLevels[tag].file);
+          cellSerial.innerHTML = levelBadge(logLevels[tag].serial);
         }
       }
 
@@ -82,11 +95,11 @@
 
       // Initial call to get current log levels when the page loads
       getLogLevels();
-    
+
   </script>
 </head>
 <body>
-  <div class="container">
+  <div class="container" style="max-width:560px;">
    <!-- Table to display current log levels -->
   <h2>Current Log Levels</h2>
   <table border="1">
@@ -99,7 +112,7 @@
     </thead>
     <tbody id="logLevelsTableBody"></tbody>
   </table>
-  <h2>Set Log Levels</h2>
+  <h2 style="margin-top:22px;">Set Log Levels</h2>
   <label for="tagSelect">Tag:</label>
   <select id="tagSelect">
     <option value="RAW">RAW</option>
@@ -111,24 +124,26 @@
     <option value="OP">OP</option>
     <option value="CLI">CLI</option>
     <option value="UI">UI</option>
-  </select><br>
+    <option value="WEB">WEB</option>
+  </select>
   <label for="levelSelect">Level:</label>
   <select id="levelSelect">
     <option value="DEBUG">DEBUG</option>
     <option value="INFO">INFO</option>
     <option value="WARN">WARN</option>
     <option value="ERROR">ERROR</option>
-  </select><br>
+  </select>
   <label for="outputSelect">Output:</label>
   <select id="outputSelect">
     <option value="File">File</option>
     <option value="Serial">Serial</option>
-  </select><br>
-  <!-- <button onclick="setLogLevels()">Set Log Levels</button>  -->
-  <!-- <button onclick="goBack()">Back</button>  -->
-  <a class="link-box" onclick="setLogLevels()">Set Log Levels</a>
-  <a class="link-box" onclick="goBack()">Back</a>
-  <a class="link-box" href="/cleanup">Cleanup logfiles</a> (delete empty and very small ones)
+  </select>
+  <div class="row" style="margin-top:14px;">
+    <a class="btn" onclick="setLogLevels()">Set Log Levels</a>
+    <a class="btn btn-ghost" onclick="goBack()">Back</a>
+    <a class="btn btn-ghost" href="/cleanup">Cleanup logfiles</a>
+  </div>
+  <p style="font-size:0.78rem; color:var(--rr-muted); margin-top:10px;">Cleanup deletes empty and very small logfiles.</p>
   </div>
 </body>
 </html>

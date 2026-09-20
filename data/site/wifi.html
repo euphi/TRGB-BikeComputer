@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="/stylesheet.css">   
+    <link rel="stylesheet" href="/stylesheet.css">
     <title>Wi-Fi Configuration</title>
 </head>
 <body>
@@ -11,18 +11,18 @@
 
     <h1>Wi-Fi Configuration</h1>
     <form id="wifiForm">
-        <label for="ssid">Select SSID:</label><br>
+        <label for="ssid">Select SSID:</label>
         <select id="ssid" name="ssid">
             <!-- Options will be populated dynamically using JavaScript -->
-        </select><br>
-        <label for="manualSSID">Or enter SSID manually:</label><br>
+        </select>
+        <label for="manualSSID">Or enter SSID manually:</label>
         <input type="text" id="manualSSID" name="manualSSID" placeholder="Enter SSID">
-        <br><br>
-        <label for="password">Password:</label><br>
-        <input type="password" id="password" name="password"><br><br>
-        <input type="submit" value="Store & Connect"><br><br>
-        
-        <a class="link-box" onclick="window.history.back();">Back</a>
+        <label for="password">Password:</label>
+        <input type="password" id="password" name="password">
+        <div class="row">
+          <input type="submit" value="Store &amp; Connect">
+          <a class="btn btn-ghost" onclick="window.history.back();">Back</a>
+        </div>
     </form>
 
     <script>

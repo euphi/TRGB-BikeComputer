@@ -26,20 +26,48 @@
 </head>
 <body>
   <div class="container">
-    <a class="link-box" href="wifi.html">WiFi Settings</a>
-    <a class="link-box" href="/logfiles/">Logfiles</a>
-    <a class="link-box" href="/log.html">Log Settings</a>
-    <a class="link-box" href="/update">Update</a>
-    <a class="link-box" href="/dev/">BLE Devices</a>
-    <a class="link-box" href="/sensor/">Sensors (I2C)</a>
-    <a class="link-box" href="/stat/index.html">Charts</a>
-    <a class="link-box" href="/system/">Systeminfo</a>
-    
+    <p class="eyebrow">T-RGB Bikecomputer</p>
+    <h1 style="text-align:center; font-size:1.7rem;">Dashboard</h1>
+    <div class="tiles">
+      <a class="link-box" href="wifi.html">
+        <svg viewBox="-11 -11 22 22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><g transform="scale(0.8)"><circle cx="0" cy="6" r="1.6" fill="currentColor" stroke="none"/><path d="M-5,1 A7 7 0 0 1 5,1"/><path d="M-9,-4 A13 13 0 0 1 9,-4"/></g></svg>
+        WiFi Settings
+      </a>
+      <a class="link-box" href="/logfiles/">
+        <svg viewBox="-11 -11 22 22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="-7" y1="-6" x2="7" y2="-6"/><line x1="-7" y1="0" x2="7" y2="0"/><line x1="-7" y1="6" x2="7" y2="6"/></svg>
+        Logfiles
+      </a>
+      <a class="link-box" href="/log.html">
+        <svg viewBox="-11 -11 22 22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="-6" y1="-8" x2="-6" y2="8"/><circle cx="-6" cy="-2" r="2" fill="currentColor" stroke="none"/><line x1="0" y1="-8" x2="0" y2="8"/><circle cx="0" cy="3" r="2" fill="currentColor" stroke="none"/><line x1="6" y1="-8" x2="6" y2="8"/><circle cx="6" cy="-4" r="2" fill="currentColor" stroke="none"/></svg>
+        Log Settings
+      </a>
+      <a class="link-box" href="/update">
+        <svg viewBox="-11 -11 22 22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M0,-7 L0,5"/><path d="M-4,1 L0,5 L4,1"/><path d="M-7,8 L7,8"/></svg>
+        Update
+      </a>
+      <a class="link-box" href="/dev/">
+        <svg viewBox="-11 -11 22 22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M-4,-4.5 L4,4.5 L0,9 L0,-9 L4,-4.5 L-4,4.5"/></svg>
+        BLE Devices
+      </a>
+      <a class="link-box" href="/sensor/">
+        <svg viewBox="-11 -11 22 22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="-3" y="-9" width="6" height="13" rx="3"/><circle cx="0" cy="6.5" r="4.3" fill="currentColor" stroke="none"/></svg>
+        Sensors (I2C)
+      </a>
+      <a class="link-box" href="/stat/index.html">
+        <svg viewBox="-11 -11 22 22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="-8,5 -2,-3 3,2 8,-6"/><circle cx="8" cy="-6" r="1.5" fill="currentColor" stroke="none"/></svg>
+        Charts
+      </a>
+      <a class="link-box" href="/system/">
+        <svg viewBox="-11 -11 22 22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="-5" y="-5" width="10" height="10" rx="1.5"/><line x1="0" y1="-8" x2="0" y2="-5.5"/><line x1="0" y1="5.5" x2="0" y2="8"/><line x1="-8" y1="0" x2="-5.5" y2="0"/><line x1="5.5" y1="0" x2="8" y2="0"/></svg>
+        Systeminfo
+      </a>
+    </div>
+
     <!-- Dark Mode Toggle Button -->
     <!-- <button id="darkModeToggle" onclick="toggleDarkMode()">Toggle Dark Mode</button>  -->
   </div>
 
-<!-- 
+<!--
   <script>
     // Dark Mode Toggle Script
     function toggleDarkMode() {

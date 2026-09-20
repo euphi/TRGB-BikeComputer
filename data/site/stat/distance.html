@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="/stylesheet.css">
 </head>
 <body>
-  <div class="container">
+  <div class="container" style="max-width:460px;">
     <h2>Simple Distance</h2>
     <table id="simpleDistanceTable">
       <thead>
@@ -21,6 +21,8 @@
     </table>
 
     <script>
+      var RESET_ICON = '<svg viewBox="-11 -11 22 22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M-6,2 A7 7 0 1 1 3,7.5"/><path d="M3,7.5 L7,7 L4,3" fill="currentColor" stroke="none"/></svg>';
+
       // Function to load simple distance information asynchronously
       function loadDistance() {
         fetch('/stat/getDistance')
@@ -36,12 +38,12 @@
               <tr>
                 <td>Tour</td>
                 <td>${data.TOUR.actualDistance}</td>
-                <td><button onclick="resetDistance('TOUR')">↺</button></td>
+                <td><a class="icon-btn" onclick="resetDistance('TOUR')">${RESET_ICON}</a></td>
               </tr>
               <tr>
                 <td>Trip</td>
                 <td>${data.TRIP.actualDistance}</td>
-                <td><button onclick="resetDistance('TRIP')">↺</button></td>
+                <td><a class="icon-btn" onclick="resetDistance('TRIP')">${RESET_ICON}</a></td>
               </tr>
             `;
           });

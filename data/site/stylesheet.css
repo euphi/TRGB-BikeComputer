@@ -1,93 +1,333 @@
+/* Self-hosted subset (latin only) of the three device fonts -- no Google Fonts
+   dependency, so the dashboard renders identically with or without internet
+   access on the viewing device. ~92KB total across all five files. */
+@font-face {
+  font-family: 'Big Shoulders Display';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/BigShouldersDisplay-Bold.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/IBMPlexSans-Medium.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/IBMPlexSans-SemiBold.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/IBMPlexMono-Regular.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/IBMPlexMono-Medium.woff2') format('woff2');
+}
+
+/* Rim & Ridge — shared design tokens, reused verbatim from the LVGL device UI */
+:root {
+  --rr-bg: #161B1F;
+  --rr-panel: #1E252B;
+  --rr-panel-2: #282019;
+  --rr-line: #3A362E;
+  --rr-brass: #CBA36B;
+  --rr-brass-dim: rgba(203, 163, 107, 0.32);
+  --rr-parchment: #E7E2D6;
+  --rr-parchment-bright: #F3ECDF;
+  --rr-muted: #9BA097;
+  --rr-sage: #7FA08F;
+  --rr-info: #6C90B0;
+  --rr-ok: #6FA98C;
+  --rr-warn: #D7B463;
+  --rr-err: #C1604A;
+}
+
+* { box-sizing: border-box; }
+
 /* Common Styles */
 body {
   margin: 0;
-  padding: 0;
-  font-family: Arial, sans-serif;
-  background-image: url('/photos/bg_TdF1b.jpg');
+  padding: 22px 16px 40px;
+  font-family: 'IBM Plex Sans', Arial, sans-serif;
+  background-color: var(--rr-bg);
+  /* Replaces two ~250-290KB JPEGs (bg_TdF1.jpg / bg_TdF1b.jpg) with a ~0.5KB SVG ridge-line
+     motif -- much lighter for the ESP32's own HTTP stack, and matches the device's icon
+     language instead of a stock photo. */
+  background-image: url('/photos/bg_ridge.svg');
+  background-repeat: no-repeat;
+  background-position: bottom center;
+  background-size: cover;
+  background-attachment: fixed;
+  color: var(--rr-parchment);
+  min-height: 100vh;
 }
 
-/* Dashboard Page Styles */
+h1, h2, h3 {
+  font-family: 'Big Shoulders Display', 'Arial Narrow', sans-serif;
+  font-weight: 700;
+  color: var(--rr-parchment-bright);
+  margin: 0 0 16px;
+}
+
+.eyebrow {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--rr-brass);
+  text-align: center;
+  margin: 0 0 4px;
+}
+
+/* Dashboard / Page Container */
 .container {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  /* height: 100vh; */  
-  margin: auto;
-  padding: 20px;
-  border-radius: 15px; 
-  background-color: rgba(40, 40, 80, 0.6); 
-  color: #fff; /* Light text color */
-  width: fit-content;
+  margin: 0 auto;
+  padding: 26px;
+  max-width: 480px;
+  border-radius: 16px;
+  background: var(--rr-panel);
+  border: 1px solid var(--rr-brass-dim);
+  box-shadow: 0 20px 40px -26px rgba(0, 0, 0, 0.6);
+  color: var(--rr-parchment);
 }
 
-.sensor-box {
-	background-color: rgba(15, 15, 50, 0.7);
-	margin: 10px;
-	padding: 20px; 
-	border-radius: 5px;
+/* Dashboard link tiles */
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-top: 6px;
 }
 
 .link-box {
-  margin: 10px;
-  padding: 20px;
-  background-color: #333; /* Dark box color */
-  border-radius: 10px;
-  text-align: center;
-  font-size: 20px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0;
+  padding: 14px 12px;
+  background: var(--rr-panel-2);
+  border: 1px solid var(--rr-brass-dim);
+  border-radius: 11px;
+  text-align: left;
+  font-size: 0.86rem;
+  font-weight: 500;
   text-decoration: none;
-  color: #fff; /* Light text color */
+  color: var(--rr-parchment);
+  cursor: pointer;
+  transition: border-color .15s, background .15s;
 }
 
-.link-box:hover {
-  background-color: #555; /* Darker box color on hover */
+.link-box svg { flex: none; width: 20px; height: 20px; color: var(--rr-brass); }
+
+.link-box:hover { border-color: var(--rr-brass); background: #2C231B; }
+
+/* Action buttons (forms, tool pages) */
+.row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+
+.btn, input[type="submit"] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  margin-top: 14px;
+  padding: 10px 20px;
+  border-radius: 20px;
+  border: none;
+  background: var(--rr-brass);
+  color: var(--rr-bg);
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-weight: 600;
+  font-size: 0.88rem;
+  text-decoration: none;
+  cursor: pointer;
 }
 
+.btn-ghost {
+  background: transparent;
+  border: 1.5px solid var(--rr-brass-dim);
+  color: var(--rr-parchment);
+}
+.btn-ghost:hover { border-color: var(--rr-brass); }
 
-/* BLE Device Page Styles */
+/* Plain <button> elements (e.g. stat/dist_wheel.html) get the same ghost-pill look
+   as .btn-ghost by default, without needing a class on every element. */
+button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 8px;
+  padding: 9px 16px;
+  border-radius: 20px;
+  border: 1.5px solid var(--rr-brass-dim);
+  background: transparent;
+  color: var(--rr-parchment);
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 0.86rem;
+  cursor: pointer;
+}
+button:hover { border-color: var(--rr-brass); }
+
+.icon-btn {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid var(--rr-brass-dim);
+  background: var(--rr-panel-2);
+  color: var(--rr-brass);
+  cursor: pointer;
+}
+.icon-btn:hover { border-color: var(--rr-brass); }
+.icon-btn svg { width: 14px; height: 14px; }
+
+/* Sensor readout panels */
+.sensor-box {
+  background: var(--rr-panel-2);
+  border: 1px solid var(--rr-brass-dim);
+  border-radius: 12px;
+  margin: 0 0 14px;
+  padding: 16px 18px;
+}
+.sensor-box h3 { font-size: 1rem; margin-bottom: 8px; }
+.sensor-box p { margin: 5px 0; font-family: 'IBM Plex Mono', monospace; font-size: 0.84rem; color: var(--rr-parchment); }
+.sensor-box p span { color: var(--rr-parchment-bright); }
+
+/* Tables */
 table {
-  width: auto;
+  width: 100%;
   border-collapse: collapse;
-  margin-top: 10px;
-  color: #fff; /* Light text color */
+  margin-top: 8px;
+  font-size: 0.84rem;
+  color: var(--rr-parchment);
 }
 
 th, td {
-  border: 1px solid #555; /* Darker border color */
-  padding: 12px;
+  border-bottom: 1px solid var(--rr-line);
+  padding: 9px 10px;
   text-align: left;
 }
 
-td {
-	background-color: #337;
-}
+td { background: transparent; font-family: 'IBM Plex Mono', monospace; }
 
 th {
-  background-color: #333; /* Dark header background color */
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.64rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--rr-brass);
+  background: transparent;
+  border-bottom: 1px solid var(--rr-brass-dim);
 }
+
+tr:hover td { background: rgba(203, 163, 107, 0.05); }
 
 .reconnect-link {
   text-decoration: none;
-  color: #3498db;
-  font-weight: bold;
+  color: var(--rr-brass);
+  font-weight: 600;
 }
 
-/* Dark Mode Styles */
-.dark-mode {
-  background-color: #111; /* Very dark background color */
-  color: #fff; /* Light text color */
+/* Forms */
+label {
+  display: block;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--rr-muted);
+  margin: 13px 0 6px;
 }
 
-/* Dark Mode Toggle Button Styles */
+input[type="text"], input[type="password"], input[type="number"], select {
+  width: 100%;
+  padding: 9px 11px;
+  background: #12161A;
+  border: 1px solid var(--rr-brass-dim);
+  border-radius: 8px;
+  color: var(--rr-parchment-bright);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.86rem;
+}
+input:focus, select:focus { outline: none; border-color: var(--rr-brass); }
+
+/* Log level badges -- reuse the HF-zone colors from the device's heart-rate band */
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 8px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.03em;
+}
+.badge-debug { background: rgba(108, 144, 176, 0.18); color: var(--rr-info); }
+.badge-info  { background: rgba(111, 169, 140, 0.18); color: var(--rr-ok); }
+.badge-warn  { background: rgba(215, 180, 99, 0.18); color: var(--rr-warn); }
+.badge-error { background: rgba(193, 96, 74, 0.18); color: var(--rr-err); }
+
+/* Console / live log output */
+.console {
+  max-height: 60vh;
+  overflow: auto;
+  margin-top: 10px;
+  padding: 12px 14px;
+  background: #12161A;
+  border: 1px solid var(--rr-line);
+  border-radius: 10px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.8rem;
+  line-height: 1.7;
+}
+.console .line { white-space: pre-wrap; }
+
+/* Chart panel (stat/index.html) */
+.chart-panel {
+  background: var(--rr-panel);
+  border: 1px solid var(--rr-brass-dim);
+  border-radius: 14px;
+  padding: 18px 20px 10px;
+  max-width: 820px;
+  margin: 0 auto;
+}
+.chart-panel h1 { font-size: 1.3rem; margin-bottom: 2px; }
+.chart-caption {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.72rem;
+  color: var(--rr-muted);
+  margin: 0 0 14px;
+}
+
+/* Dark Mode toggle -- vestigial now that the whole site is dark by default,
+   kept functional so the existing button/JS in sensor/index.html still works. */
+.dark-mode { background-color: var(--rr-bg); color: var(--rr-parchment); }
+
 #darkModeToggle {
   position: fixed;
   bottom: 20px;
   right: 20px;
-  font-size: 18px;
-  padding: 10px;
-  background-color: #333; /* Dark box color */
-  border: none;
-  border-radius: 5px;
-  color: #fff; /* Light text color */
+  font-size: 0.8rem;
+  padding: 9px 16px;
+  background: var(--rr-panel-2);
+  border: 1px solid var(--rr-brass-dim);
+  border-radius: 20px;
+  color: var(--rr-parchment);
+  font-family: 'IBM Plex Sans', sans-serif;
   cursor: pointer;
 }
+#darkModeToggle:hover { border-color: var(--rr-brass); }
