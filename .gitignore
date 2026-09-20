@@ -14,6 +14,18 @@ include/version.h
 
 # Output files of binary log converter
 out.csv
+out.gpx
+
+# Python venv and caches for the Tools/ log tooling (see Tools/README.md --
+# recreate with: python3 -m venv Tools/.venv). The venv ignores itself via
+# its own .gitignore; listed here so it stays ignored if that is ever lost.
+/Tools/.venv/
+__pycache__/
+.pytest_cache/
+
+# Local state of the BikeLog upload service (raw rides + SQLite index). Lives
+# outside the repo by default; this catches an explicitly relocated one.
+/Tools/BikeLogService/state/
 
 # Autosave and Backup of SquareLineStudio
 autosave/

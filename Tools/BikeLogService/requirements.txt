@@ -1,0 +1,8 @@
+# Service dependencies. Install into a venv:
+#   python3 -m venv Tools/.venv && Tools/.venv/bin/pip install -r Tools/BikeLogService/requirements.txt
+fastapi>=0.110
+uvicorn>=0.27
+
+# Tests only (TestClient needs httpx)
+pytest>=8.0
+httpx>=0.27

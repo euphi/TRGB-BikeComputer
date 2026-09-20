@@ -1,0 +1,46 @@
+# systemd unit for the bike log upload service.
+#
+# As a user service (no root needed, recommended for a home server):
+#   mkdir -p ~/.config/systemd/user
+#   cp Tools/BikeLogService/bikelog.service ~/.config/systemd/user/
+#   $EDITOR ~/.config/systemd/user/bikelog.service      # adjust the paths
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now bikelog
+#   loginctl enable-linger $USER                        # survive logout
+#
+# As a system service, drop it into /etc/systemd/system/ and set User=/Group=.
+
+[Unit]
+Description=BikeLog upload service (TRGB-BikeComputer)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+# Adjust to where the repo lives on this machine:
+WorkingDirectory=%h/Coding/Bike/TRGB-BikeComputer/Tools
+ExecStart=%h/Coding/Bike/TRGB-BikeComputer/Tools/.venv/bin/uvicorn \
+    bikelogservice.app:app --host 0.0.0.0 --port 8080
+Environment=PYTHONPATH=%h/Coding/Bike/TRGB-BikeComputer/Tools:%h/Coding/Bike/TRGB-BikeComputer/Tools/BikeLogService
+
+# Rides and the SQLite index live here. StateDirectory= creates it and
+# bikelogservice.config picks it up from $STATE_DIRECTORY automatically.
+StateDirectory=bikelog
+
+# Auth is off by default -- see Tools/BikeLogService/README.md. To switch it
+# on later, uncomment both lines and put the token on the device as well.
+# Environment=BIKELOG_REQUIRE_AUTH=1
+# Environment=BIKELOG_TOKENS=<token>:gravel
+
+Restart=on-failure
+RestartSec=5
+
+# The service only ever writes below its state directory.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%S/bikelog
+
+[Install]
+WantedBy=default.target
