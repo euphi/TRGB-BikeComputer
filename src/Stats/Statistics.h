@@ -79,9 +79,27 @@ private:
 	static void addFloatToDatapoint(S_DataPoint& data, const float val);
 	static float setDatapointAvg(S_DataPoint& data, uint8_t& count);
 
-	struct S_distanceComplete {		// >20856 Byte
+	// Number of 100m buckets kept in S_distanceComplete::data -> 48km of history.
+	// Used both for the allocation and for the index wrap in updateDistanceSeries();
+	// those two used to disagree (array of 480, wrap at 400), leaving 79 slots dead.
+	static const uint16_t DISTANCE_SERIES_LEN = 480;
+
+	struct S_distanceComplete {
 		uint32_t startDistance = 0;
-		S_distanceData data[480];				// per 100m -> 48km
+		// PSRAM-backed, same reasoning and same fail-fast convention as S_timeComplete::data
+		// below: 480 * 72 byte = ~34.5KB that used to sit in internal .bss, which is the pool
+		// WiFi/lwIP/BLE/SD_MMC compete for (measured: 21KB free when idle, ~300 byte under
+		// web load).
+		// Safe against the panel-tearing constraint from 7051e56 by TRIGGER, which is the
+		// test that matters, not by size: the single write below fires once per 100m ridden
+		// (updateDistanceSeries()) -- not from a BLE notify callback, not from an LVGL draw,
+		// and not at all while the bike is standing still. Contrast currentMinMax, which is
+		// written on every sensor notification and therefore stays internal, and chart_array,
+		// which LVGL reads on every chart refresh and likewise stays internal.
+		// If flicker ever needs re-diagnosing, check triggers before reverting this: a
+		// periodic heap_caps_get_info()/get_largest_free_block() on MALLOC_CAP_SPIRAM walks
+		// every block of the PSRAM heap and is a far bigger offender than this field.
+		S_distanceData* data = nullptr;			// DISTANCE_SERIES_LEN entries, per 100m
 		S_distanceData currentMinMax;
 		float curDistance = 0;
 		uint16_t index = 0;
@@ -142,7 +160,13 @@ private:
 	float height   = NAN;
 	float tempC    = NAN;
 
-	jnk0le::Ringbuffer<S_timeData, 256> rb_timedata;
+	// PSRAM-backed for the same reason as distanceData.data (~12.3KB of internal .bss).
+	// Currently unused -- it belongs to the charts that are to come back; kept, not deleted.
+	// Allocated with placement new in the constructor because Ringbuffer is a real object
+	// (two atomics + the element array), not a plain buffer. When the charts do return, do
+	// NOT hand a PSRAM pointer straight to LVGL (no lv_chart_set_ext_y_array on this) --
+	// copy into an internal staging buffer first, or the panel tearing from 7051e56 is back.
+	jnk0le::Ringbuffer<S_timeData, 256>* rb_timedata = nullptr;
 
 
 	// use int instead of uint, so -1 can be used as "invalid".
@@ -198,6 +222,9 @@ private:
 public:
 	Statistics();
 	void setup();
+private:
+	void allocPsramBuffers();	// see the definition -- must run after the display is up
+public:
 	void addSpeed(float speed);  // in 0,1km/h
 	//void addDistance(uint32_t dist, ESummaryType type = SUM_ESP_TOUR);
 	bool isConnected() {return (curDriveState != DS_NO_CONN);}

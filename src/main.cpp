@@ -2,6 +2,7 @@
 
 #include "Singletons.h"
 #include "BootLogoRimRidge.h"
+#include "WebInstrument.h"
 
 #include <Battery.h>
 Battery batt = Battery(3000, 4200, BAT_VOLT_PIN);
@@ -20,6 +21,7 @@ void errorCallback(cmd_error* e) {
 
 Command cmdPing;
 Command cmdBat;
+Command cmdMem;
 String inputBuffer;
 
 int8_t batLevel = -1;
@@ -46,6 +48,11 @@ void setup() {
     cmdPing = cli.addCmd("ping", [](cmd* c) {Serial.println("Pong!");});
     cmdPing.setDescription("Responds with a pong and logs it");
     cmdBat = cli.addCmd("showbat", [](cmd* c) {Serial.printf("Battery: %d%% - charging [%c]", batt.level(), batt.voltage()>3300?'x':' ');});
+    // Same output FlusherTask emits every 5s, but on demand -- so a memory reading right
+    // after a request doesn't have to wait for the next flush cycle. Stack watermarks
+    // included here (the periodic report only prints them every 60s).
+    cmdMem = cli.addCmd("mem", [](cmd* c) {WebInstr::report(true, true); WebInstr::reportDisplayBuffers(); WebInstr::drain();});
+    cmdMem.setDescription("Log free internal/DMA/PSRAM heap, open requests and task stack watermarks");
 	ui.initDisplay();
     stats.setup();
 	bleDevs.setup();

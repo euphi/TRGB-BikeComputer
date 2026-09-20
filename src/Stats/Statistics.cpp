@@ -9,6 +9,7 @@
 #include "Distance.h"
 #include "Singletons.h"
 #include <esp_heap_caps.h>
+#include <new>				// placement new for the PSRAM-backed rb_timedata, see the constructor
 
 const char* Statistics::PREF_TIME_STRING[Statistics::EDrivingStateMax] = {
 		"TIME_IN_NOCONN",	//		DS_NO_CONN,
@@ -42,11 +43,46 @@ Statistics::Statistics(): distHandler(* new Distance())  {
 	// this got for free before as a plain .bss-resident array.
 	timeData.data = static_cast<S_timeData*>(heap_caps_calloc(400, sizeof(S_timeData), MALLOC_CAP_SPIRAM));
 	assert(timeData.data);		// same fail-fast convention as TRGBSuppport.cpp's own PSRAM draw-buffer allocations
+
+	// NOTE: distanceData.data and rb_timedata are deliberately NOT allocated here -- see
+	// allocPsramBuffers(), called from setup(). This constructor runs during static init,
+	// i.e. before trgb.init(), and anything allocated here shifts every later PSRAM
+	// allocation, including LVGL's two 460KB draw buffers.
 	timestamp_last = millis();
 	timestamp_stop = timestamp_last;
 }
 
+// Allocated from setup(), NOT from the constructor, and this ordering is load-bearing.
+//
+// The constructor runs during static init, before main()'s trgb.init(). The RGB panel
+// driver allocates its framebuffer with .psram_trans_align = 64, so that one is safe --
+// but TRGBSuppport.cpp then allocates LVGL's two 460KB draw buffers with a plain
+// heap_caps_malloc(MALLOC_CAP_SPIRAM), which carries NO alignment guarantee: their
+// addresses depend entirely on what was taken out of the PSRAM heap before them.
+// LVGL memcpys a full 460KB draw buffer into the framebuffer on every flush, and this
+// board's panel DMAs that same framebuffer out of PSRAM with no bounce buffer. Degrading
+// that copy's alignment shows up as visible tearing -- observed as a frequent, irregular
+// left-shift (distinct from the right-shift-with-wraparound in commit 7051e56, which had
+// a different cause).
+//
+// setup() runs after trgb.init() and ui.initDisplay(), so allocating here leaves the
+// display buffers at exactly the addresses they had before these two fields existed.
+// Keep it that way: do not move PSRAM allocations into a statically constructed object.
+void Statistics::allocPsramBuffers() {
+	distanceData.data = static_cast<S_distanceData*>(
+			heap_caps_calloc(DISTANCE_SERIES_LEN, sizeof(S_distanceData), MALLOC_CAP_SPIRAM));
+	assert(distanceData.data);
+
+	// Ringbuffer has no state beyond its two atomics and the element array, so plain
+	// placement new over zeroed PSRAM is enough -- no destructor is ever needed either,
+	// this lives for the whole runtime like every other singleton member here.
+	void* rbMem = heap_caps_calloc(1, sizeof(*rb_timedata), MALLOC_CAP_SPIRAM);
+	assert(rbMem);
+	rb_timedata = new (rbMem) jnk0le::Ringbuffer<S_timeData, 256>();
+}
+
 void Statistics::setup() {
+	allocPsramBuffers();
 	restoreStats();
 	distHandler.setup();
 	// What kind of sorcery is this?  --> See https://stackoverflow.com/questions/60985496/arduino-esp8266-esp32-ticker-callback-class-member-function
@@ -359,7 +395,7 @@ void Statistics::updateDistanceSeries() {
 		time(&distanceData.currentMinMax.timestamp);	// --> write timestamp
 
 		distanceData.data[distanceData.index++] = distanceData.currentMinMax;
-		if (distanceData.index > 400) {
+		if (distanceData.index >= DISTANCE_SERIES_LEN) {
 			bclog.log(BCLogger::Log_Warn, BCLogger::TAG_STAT, "Statistics DistanceData overflow - resetting index to 0");
 			distanceData.index = 0;
 		}

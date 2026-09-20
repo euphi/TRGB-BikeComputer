@@ -28,6 +28,7 @@ private:
 	void setupWebserver();
 	Ticker wifiCheckTicker;
 	bool wifiWasConnected = false;
+	bool webserverStarted = false;	// routes are registered exactly once, see setupWebserver()
 	time_t lostConnTimeStamp = 0;
 	AsyncWebServer server;
 

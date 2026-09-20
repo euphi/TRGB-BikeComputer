@@ -13,13 +13,35 @@
 #include <esp_task_wdt.h>
 #include <esp_core_dump.h>
 #include <esp_heap_caps.h>
+#include "WebInstrument.h"
 
 
-const char *BCLogger::TAG_STRING[LogTagMax] = { "RAW", "FL", "BLE", "STAT", "WIFI", "SD", "OP", "CLI", "UI" };
+const char *BCLogger::TAG_STRING[LogTagMax] = { "RAW", "FL", "BLE", "STAT", "WIFI", "SD", "OP", "CLI", "UI", "WEB" };
 const char *BCLogger::LEVEL_STRING[LogTypeMax] = { "DEBUG", "INFO", "WARN", "ERROR" };
 
-const String BCLogger::TAG_SYMBOL[LogTagMax] = { String("📜"), String("📟"), String("🔵"), String("📊"), String("📶"), String("💾"), String("🎮"), String("⌨"), String("🖥️") };
+const String BCLogger::TAG_SYMBOL[LogTagMax] = { String("📜"), String("📟"), String("🔵"), String("📊"), String("📶"), String("💾"), String("🎮"), String("⌨"), String("🖥️"), String("🌐") };
 const String BCLogger::LEVEL_SYMBOL[LogTypeMax] = { String("🐛"), String("ℹ️"), String("⚠️"), String("❌") };
+
+// Adding a tag or level means extending, in lockstep: the enum in BCLogger.h, the four
+// arrays above, the loglevel[][] default matrix in BCLogger.h, and the <select> in
+// data/site/log.html. The array bounds come from the enum, so a forgotten entry is NOT a
+// compile error -- it just leaves a nullptr that blows up the first "%s" that hits it.
+// A static_assert can't see that (the elements aren't constant expressions), so check at
+// boot instead; see the call at the top of setup().
+void BCLogger::checkTagTablesComplete() const {
+	for (uint_fast8_t t = 0; t < LogTagMax; t++) {
+		if (TAG_STRING[t] == nullptr || TAG_SYMBOL[t].isEmpty()) {
+			// Can't route this through log() -- that would use the very table that's broken.
+			Serial.printf("!!! BCLogger: tag table incomplete at index %u (LogTagMax=%u) -- "
+			              "extend TAG_STRING/TAG_SYMBOL in BCLogger.cpp\n", t, LogTagMax);
+		}
+	}
+	for (uint_fast8_t l = 0; l < LogTypeMax; l++) {
+		if (LEVEL_STRING[l] == nullptr || LEVEL_SYMBOL[l].isEmpty()) {
+			Serial.printf("!!! BCLogger: level table incomplete at index %u (LogTypeMax=%u)\n", l, LogTypeMax);
+		}
+	}
+}
 
 const String BCLogger::LOGDIR = "/BIKECOMP";
 
@@ -36,6 +58,7 @@ BCLogger::BCLogger():
 }
 
 void BCLogger::setup() {
+	checkTagTablesComplete();
 	logPrefs[OUT_Serial].begin("LSer", true);
 	logPrefs[OUT_File].begin("LFile", true);
 	for (uint_fast8_t c = 0; c < LogOutputMax; c++) {
@@ -66,7 +89,9 @@ void BCLogger::setup() {
 	// null-checks each File before using it), so set them up unconditionally -- previously an
 	// early return here for a missing SD card also silently disabled the live web log stream,
 	// which has nothing to do with SD presence.
-	xTaskCreate(+[](void* thisInstance){((BCLogger*)thisInstance)->flushAllFiles();}, "FlusherTask", 3072, this, 5, &flushTaskHandle);
+	// 4096 byte (ESP-IDF's xTaskCreate takes byte, not words): 3072 was already tight for
+	// logf()'s 256-byte stack buffer, and this task now also runs WebInstr::report()/drain().
+	xTaskCreate(+[](void* thisInstance){((BCLogger*)thisInstance)->flushAllFiles();}, "FlusherTask", 4096, this, 5, &flushTaskHandle);
 	webserver.getServer().addHandler(&logevents);
 
 	uint8_t cardType = SD_MMC.cardType();
@@ -148,12 +173,19 @@ void BCLogger::flushAllFiles() {
 			printf("%d: !!!!! File flush blocked !!!!!", millis());
 		}
 	};
+	uint32_t cycle = 0;
 	do {
-		// DMA-capable internal RAM is what SD_MMC needs for its transfer buffers (PSRAM can't
-		// substitute) and it's shared with WiFi/BLE -- log it here so a shrinking pool shows up
-		// in our own logs instead of only as untagged "allocate_dma_buf: not enough mem" lines
-		// straight from ESP-IDF on Serial (see nav_debug.log incident, 2026-09).
-		bclog.logf(Log_Debug, TAG_SD, "Flush (DMA-capable heap free: %u byte)", heap_caps_get_free_size(MALLOC_CAP_DMA));
+		// Memory report. This replaces the old "Flush (DMA-capable heap free: ...)" line, which
+		// had three problems: it logged at Log_Debug under TAG_SD, whose default level is
+		// Log_Info, so it was never actually emitted; it reported only MALLOC_CAP_DMA, a subset
+		// of the pool that really runs out; and it showed neither the largest free block
+		// (fragmentation) nor the low-water mark. WebInstr::report() covers all of it under
+		// TAG_WEB at Log_Info -- DMA included, since SD_MMC's transfer buffers still need it and
+		// PSRAM cannot substitute (see the starvation incident in 3cb6293).
+		// This task is the only place the web instrumentation is allowed to log from: recording
+		// happens on async_tcp, which is watchdog-guarded and must never touch the SD card.
+		WebInstr::report(++cycle % 12 == 0);		// stack watermarks every 12th cycle = 60s
+		WebInstr::drain();
 		flushLocked(fdebug);
 		yield();
 		flushLocked(fnmea);

@@ -60,7 +60,11 @@ BLEDevices::BLEDevices()
 
 void BLEDevices::setup() {
 	  BLEDevice::init("TRGB_BTTacho BLE");
-	  xTaskCreate(+[](void* thisInstance){((BLEDevices*)thisInstance)->scanAndConnectTask();}, "BLEScanUndConnectTask", 3072, this, 5, &scanTaskHandle);
+	  // Task names must stay under configMAX_TASK_NAME_LEN (16), i.e. 15 chars max.
+	  // xTaskCreate() silently truncates past that, but xTaskGetHandle() asserts on an
+	  // over-long query string and aborts -- which is how the old 21-char
+	  // "BLEScanUndConnectTask" crashed the stack-watermark report in WebInstrument.cpp.
+	  xTaskCreate(+[](void* thisInstance){((BLEDevices*)thisInstance)->scanAndConnectTask();}, "BLEScanConnect", 3072, this, 5, &scanTaskHandle);
 
 //	  scanCB = [this](BLEScanResults result) {
 //		  bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "🔵 ✔️ BLE scan completed: %d devices found.", result.getCount());

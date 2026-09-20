@@ -16,6 +16,8 @@
 #include <version.h>
 #include <nvs.h>
 #include <ESPmDNS.h>
+#include <esp_heap_caps.h>
+#include "WebInstrument.h"
 
 //TODO: Read this from preferences
 const char* ntpServer = "pool.ntp.org";
@@ -23,6 +25,50 @@ const char* ntpServer = "pool.ntp.org";
 //const char* password = "SwieSecurity";
 
 static const BCLogger::LogTag TAG = BCLogger::TAG_WIFI;
+
+// --- path extraction for the prefix routes below ------------------------------------
+// These replace three regex routes. ASYNCWEBSERVER_REGEX looks cheap but isn't:
+// AsyncCallbackWebHandler::canHandle() constructs a std::regex on EVERY request for
+// EVERY regex route (WebHandlers.cpp), so a plain GET /stylesheet.css used to build
+// three NFAs first -- dozens of small allocations each, all from the internal heap,
+// which is the pool that actually runs out here (measured: 21KB free idle, ~300 byte
+// under load). Prefix matching costs a string compare.
+//
+// canHandle() matches a non-regex _uri when it equals the url or the url starts with
+// _uri + "/", so registering "/del" catches "/del/<path>". request->url() is already
+// URL-decoded and has the query string stripped (WebRequest.cpp::_parseReqHead), so
+// validating it here is validating what we will actually use.
+
+// Tail after "<prefix>/", or an empty String if the url is just the prefix itself.
+static String pathTail(AsyncWebServerRequest *request, const char* prefixWithSlash) {
+	const String& url = request->url();
+	const size_t len = strlen(prefixWithSlash);
+	if (!url.startsWith(prefixWithSlash)) return String();
+	return url.substring(len);
+}
+
+// Character classes of the old regexes: [A-Za-z0-9_./] for file paths, [A-Za-z0-9] for
+// device commands. PLUS a ".." rejection the regexes did not have -- "[A-Za-z0-9_./]+"
+// matched "../../etc/passwd" just fine, so /del/ and /replay/ could reach outside
+// /BIKECOMP/. Keep that rejection if these routes are ever touched again.
+static bool isSafeRelPath(const String& p) {
+	if (p.isEmpty()) return false;
+	if (p.indexOf("..") >= 0) return false;
+	if (p.startsWith("/")) return false;			// must stay relative to LOGDIR
+	for (size_t i = 0; i < p.length(); i++) {
+		const char c = p.charAt(i);
+		if (!(isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '.' || c == '/')) return false;
+	}
+	return true;
+}
+
+static bool isSafeDevCmd(const String& p) {
+	if (p.isEmpty()) return false;
+	for (size_t i = 0; i < p.length(); i++) {
+		if (!isalnum(static_cast<unsigned char>(p.charAt(i)))) return false;
+	}
+	return true;
+}
 
 WifiWebserver::WifiWebserver():
 	server(80)
@@ -177,12 +223,49 @@ void WifiWebserver::scanResult() {
 }
 
 void WifiWebserver::setupWebserver() {
+	// checkLoop() calls this on every WiFi (re)connect -- wifiWasConnected is reset in
+	// enableWifi() and in the /wifi/connect handler. AsyncServer::begin() is idempotent
+	// ("if (_pcb) return;"), but server.on(), addMiddleware() and ElegantOTA.begin() are
+	// not: they new + append unconditionally. Without this guard every reconnect leaked
+	// ~21 handler objects AND made _attachHandler() walk a longer list on every request.
+	if (webserverStarted) {
+		server.begin();
+		return;
+	}
+	webserverStarted = true;
+
+	// Request instrumentation. AsyncWebServer derives from AsyncMiddlewareChain and runs
+	// _runChain() for EVERY request -- static files and 404s included -- so one middleware
+	// covers all routes instead of a line in each of the ~20 handlers.
+	{
+		WebInstr::setup();
+		server.addMiddleware([](AsyncWebServerRequest* request, ArMiddlewareNext next) {
+			const uint32_t startMs = millis();
+			const size_t internalFree = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+			WebInstr::onStart(request);
+			// onDisconnect() fires after the response is done (or the client gave up), and
+			// _onDisconnect() invokes it before the request object is deleted, so url() is
+			// still readable in there. NOTE: _onDisconnectfn is a single slot -- a handler
+			// that calls request->onDisconnect() itself silently replaces this hook.
+			request->onDisconnect([request, startMs, internalFree]() {
+				WebInstr::onEnd(request, startMs, internalFree);
+			});
+			next();
+		});
+	}
+
 	// Enable file deletion
     // using DELETE method on the same URI as for "serveStatic" would be more elegant, but is not possible to create links that result in making the browser use DELETE method. So use special "del" uri
-	server.on("^\\/del\\/([A-Za-z0-9_\\.\\/]+)$", HTTP_GET, [](AsyncWebServerRequest *request) {
-		// using DELETE method on the same URI as for "serveStatic" would be more elegant, but is not possible to create links that result in making the browser use DELETE method. So use special "del" uri
-		bclog.logf(BCLogger::Log_Info, TAG, "💻 Request on /del/: %s\n\tPath-Arg: %s", request->url().c_str(), request->pathArg(0).c_str());
-		String dUri = String("/BIKECOMP/") + request->pathArg(0);
+	server.on("/del", HTTP_GET, [](AsyncWebServerRequest *request) {
+		// DELETE on the serveStatic URI would be more elegant, but a link can't make the
+		// browser use the DELETE method -- hence this separate "/del/" prefix.
+		const String rel = pathTail(request, "/del/");
+		bclog.logf(BCLogger::Log_Info, TAG, "💻 Request on /del/: %s\n\tPath: %s", request->url().c_str(), rel.c_str());
+		if (!isSafeRelPath(rel)) {
+			request->send(400, "text/plain", "Invalid path");
+			return;
+		}
+		const String dUri = BCLogger::LOGDIR + "/" + rel;
 		uint16_t http_code = 500;
 		String html_resp("<html><body>");
 		if (bclog.deleteFile(dUri)) {
@@ -195,9 +278,14 @@ void WifiWebserver::setupWebserver() {
 		html_resp += "</body></html>";
 		request->send(http_code, "text/html", html_resp.c_str());
 	});
-	server.on("^\\/replay\\/([A-Za-z0-9_\\.\\/]+)$", HTTP_GET, [](AsyncWebServerRequest *request) {
-		bclog.logf(BCLogger::Log_Info, TAG, "💻 Request on /replay/: %s\n\tPath-Arg: %s", request->url().c_str(), request->pathArg(0).c_str());
-		String dUri = String("/BIKECOMP/") + request->pathArg(0);
+	server.on("/replay", HTTP_GET, [](AsyncWebServerRequest *request) {
+		const String rel = pathTail(request, "/replay/");
+		bclog.logf(BCLogger::Log_Info, TAG, "💻 Request on /replay/: %s\n\tPath: %s", request->url().c_str(), rel.c_str());
+		if (!isSafeRelPath(rel)) {
+			request->send(400, "text/plain", "Invalid path");
+			return;
+		}
+		const String dUri = BCLogger::LOGDIR + "/" + rel;
 		uint16_t http_code = 500;
 		String html_resp("<html><body>");
 		if (bclog.replayFile(dUri)) {
@@ -265,14 +353,19 @@ void WifiWebserver::setupWebserver() {
 		request->send(200, "text/html", htmlresponse.c_str());
 	});
 
-	server.on("^\\/dev\\/([A-Za-z0-9]+)$", HTTP_GET, [this] (AsyncWebServerRequest *request) {
+	// Registered AFTER the "/dev/" index route above: _attachHandler() takes the first
+	// match in registration order, and "/dev" would otherwise swallow "/dev/" as well.
+	server.on("/dev", HTTP_GET, [this] (AsyncWebServerRequest *request) {
 		htmlresponse.clear();
+		const String cmd = pathTail(request, "/dev/");
 		const AsyncWebParameter* para = request->getParam((size_t)0);
-		bclog.logf(BCLogger::Log_Info, TAG, "💻 Request on /dev/: %s\n\tPath-Arg: %s - %s", request->url().c_str(), request->pathArg(0).c_str(), para ? para->value().c_str() : "n/a");
-		if (!para) {
+		bclog.logf(BCLogger::Log_Info, TAG, "💻 Request on /dev/: %s\n\tCmd: %s - %s", request->url().c_str(), cmd.c_str(), para ? para->value().c_str() : "n/a");
+		if (!isSafeDevCmd(cmd)) {
+			request->send(400, "text/plain", "Invalid command");
+		} else if (!para) {
 			request->send(400, "text/plain", "Missing parameter");
 		} else {
-			int16_t code = bleDevs.procHTMLCmd(htmlresponse, request->pathArg(0), para->value());
+			int16_t code = bleDevs.procHTMLCmd(htmlresponse, cmd, para->value());
 			request->send(code, "text/plain", htmlresponse.c_str());
 		}
 	});

@@ -34,6 +34,7 @@ public:
 		TAG_OP,
 		TAG_CLI,
 		TAG_UI,
+		TAG_WEB,		// HTTP server: requests, and the memory diagnostics that go with them
 		LogTagMax
 	};
 private:
@@ -90,9 +91,9 @@ private:
 		LogOutputMax
 	};
 
-	//                                         TAG_RAW_NMEA TAG_FL    TAG_BLE   TAG_STAT  TAG_WIFI 	TAG_SD    TAG_OP,    TAG_CLI,  TAG_UI
-	LogType loglevel[LogOutputMax][LogTagMax] = {{Log_Info, Log_Info, Log_Info, Log_Info, Log_Info, Log_Info, Log_Debug, Log_Info, Log_Info},   // Terminal
-			                                     {Log_Info, Log_Info, Log_Info, Log_Info, Log_Info, Log_Info, Log_Info, Log_Error, Log_Info}};   // File
+	//                                         TAG_RAW_NMEA TAG_FL    TAG_BLE   TAG_STAT  TAG_WIFI 	TAG_SD    TAG_OP,    TAG_CLI,  TAG_UI    TAG_WEB
+	LogType loglevel[LogOutputMax][LogTagMax] = {{Log_Info, Log_Info, Log_Info, Log_Info, Log_Info, Log_Info, Log_Debug, Log_Info, Log_Info, Log_Info},   // Terminal
+			                                     {Log_Info, Log_Info, Log_Info, Log_Info, Log_Info, Log_Info, Log_Info, Log_Error, Log_Info, Log_Info}};   // File
 
 
 	Preferences logPrefs[LogOutputMax];
@@ -105,6 +106,7 @@ private:
 
 	void storeLoglevel(LogType level, LogTag tag, bool file, bool serial);
 	void printLoglevels();
+	void checkTagTablesComplete() const;
 
 	Ticker replayTicker;
 	File fileReplay;
