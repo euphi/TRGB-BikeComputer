@@ -1,0 +1,15 @@
+# Grosse Dateien, die bewusst nicht im Repo liegen.
+
+# Hersteller-STEPs des Displaymoduls (~3,8 MB). Werden nur zum Ausmessen
+# gebraucht, nicht zur Laufzeit -- model.py baut ohne sie. Die daraus
+# abgelesenen Masse stehen mit Quellenangabe in dimensions.py.
+# Bezugsquelle des runden 2.1"-Moduls:
+# https://github.com/Xinyuan-LilyGO/LilyGo-T-RGB/blob/main/dimensions/T-RGB-FULL-3D-2.1-Inches.stp
+references/
+
+# Fotos der Vermessung am Rad (~150 MB). Die Auswertung steht in
+# COCKPIT_ANALYSIS.md, die Bilder selbst gehoeren nicht in die Historie.
+TEMP_Fotos/
+
+# FreeCAD-Sicherungskopien
+*.FCBak
