@@ -2,6 +2,8 @@
 .settings
 .cproject
 coredump.*
+*/__pycache__
+
 SquareLine/exported_files/
 SquareLine/backup/
 # CMakeLists auto-generated from platformio if buildig for IDF
@@ -36,6 +38,7 @@ SquareLine/assets/
 # CAD build environment / generated exports (regenerate via cad/*.py)
 cad/.venv/
 cad/export/
+cad/TEMP_Fotos/
 
 # Local archive of flashable firmware builds (binaries only, kept out of git
 # history on purpose -- see firmware-archive/INDEX.md)
@@ -47,4 +50,10 @@ cad/export/
 EEZStudio/*.eez-project-ui-state
 EEZStudio/*.bak.*
 
+# Scratch serial-log capture (see chat) -- open in the editor for a live
+# tail while debugging, never meant to be committed.
+/nav_debug.log
 
+
+
+EEZStudio/tmp

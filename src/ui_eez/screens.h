@@ -11,39 +11,14 @@ extern "C" {
 
 enum ScreensEnum {
     _SCREEN_ID_FIRST = 1,
-    SCREEN_ID_MAIN_NO_FL = 1,
-    SCREEN_ID_RIM_RIDGE = 2,
-    SCREEN_ID_BOOT_LOGO = 3,
-    _SCREEN_ID_LAST = 3
+    SCREEN_ID_RIM_RIDGE = 1,
+    SCREEN_ID_RIM_RIDGE_NAV = 2,
+    _SCREEN_ID_LAST = 2
 };
 
 typedef struct _objects_t {
-    lv_obj_t *main_no_fl;
     lv_obj_t *rim_ridge;
-    lv_obj_t *boot_logo;
-    lv_obj_t *panel_nav;
-    lv_obj_t *img_nav;
-    lv_obj_t *bar_nav;
-    lv_obj_t *label_nav_dist;
-    lv_obj_t *arc_speed;
-    lv_obj_t *arc_avg;
-    lv_obj_t *arc_cad;
-    lv_obj_t *label_speed;
-    lv_obj_t *bar_hr;
-    lv_obj_t *label_dist;
-    lv_obj_t *panel_clock;
-    lv_obj_t *label_clock;
-    lv_obj_t *label_clock_mode;
-    lv_obj_t *label_cad;
-    lv_obj_t *bar_batt;
-    lv_obj_t *img_wifi;
-    lv_obj_t *img_settings;
-    lv_obj_t *label_spd_avg;
-    lv_obj_t *cont_height;
-    lv_obj_t *label_gradient;
-    lv_obj_t *label_height;
-    lv_obj_t *label_temp;
-    lv_obj_t *img_state;
+    lv_obj_t *rim_ridge_nav;
     lv_obj_t *rr_speed_arc;
     lv_obj_t *rr_ic_wifi;
     lv_obj_t *rr_ic_gps;
@@ -71,24 +46,35 @@ typedef struct _objects_t {
     lv_obj_t *rr_btn_pause;
     lv_obj_t *rr_ic_pause;
     lv_obj_t *rr_tour_pill;
+    lv_obj_t *rr_ic_state;
     lv_obj_t *rr_distance_val;
     lv_obj_t *rr_tour_label;
     lv_obj_t *rr_btn_settings;
     lv_obj_t *rr_ic_settings;
     lv_obj_t *rr_battery_fill;
-    lv_obj_t *img_bootlogo;
+    lv_obj_t *rr_lane_row;
+    lv_obj_t *rrnav_dist_arc;
+    lv_obj_t *rrnav_ic_turn;
+    lv_obj_t *rrnav_dist_val;
+    lv_obj_t *rrnav_street;
+    lv_obj_t *rrnav_ic_next;
+    lv_obj_t *rrnav_next_dist;
+    lv_obj_t *rrnav_speed_val;
+    lv_obj_t *rrnav_speed_unit;
+    lv_obj_t *rrnav_ic_gradient;
+    lv_obj_t *rrnav_gradient_val;
+    lv_obj_t *rrnav_ic_heart;
+    lv_obj_t *rrnav_hr_val;
+    lv_obj_t *rrnav_lane_row;
 } objects_t;
 
 extern objects_t objects;
 
-void create_screen_main_no_fl();
-void tick_screen_main_no_fl();
-
 void create_screen_rim_ridge();
 void tick_screen_rim_ridge();
 
-void create_screen_boot_logo();
-void tick_screen_boot_logo();
+void create_screen_rim_ridge_nav();
+void tick_screen_rim_ridge_nav();
 
 void tick_screen_by_id(enum ScreensEnum screenId);
 void tick_screen(int screen_index);

@@ -7,8 +7,8 @@
 extern "C" {
 #endif
 
-extern const lv_font_t ui_font_font_schild;
 extern const lv_font_t ui_font_by7x128;
+extern const lv_font_t ui_font_font_schild22;
 
 #ifndef EXT_FONT_DESC_T
 #define EXT_FONT_DESC_T

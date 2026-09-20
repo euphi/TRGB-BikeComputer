@@ -30,8 +30,34 @@ typedef enum {
 	NAV_TAG_NEXT_MANEUVER_DISTANCE_M = 0x06,	// uint32 LE, meters (from the *next* maneuver on)
 	NAV_TAG_NEXT_STREET_NAME = 0x07,		// UTF-8
 	NAV_TAG_REMAINING_DISTANCE_M = 0x08,	// uint32 LE, meters to destination
-	NAV_TAG_REMAINING_TIME_S = 0x09			// uint32 LE, seconds to destination
+	NAV_TAG_REMAINING_TIME_S = 0x09,			// uint32 LE, seconds to destination
+	NAV_TAG_LANES = 0x0A,					// N (multiple of 4) bytes, lane list, see NavLane below
+	NAV_TAG_NEXT_LANES = 0x0B,				// like 0x0A, but for the maneuver after next (like 0x05/0x06/0x07)
+	NAV_TAG_LANE_DISTANCE_M = 0x0C,			// uint32 LE, meters - only present alongside tag 0x0A. Independent
+												// of NAV_TAG_MANEUVER_DISTANCE_M: the point where a lane choice
+												// becomes relevant (road forks into lanes) is typically well
+												// before the maneuver itself, do not conflate the two.
+	NAV_TAG_NEXT_LANE_DISTANCE_M = 0x0D		// uint32 LE, meters - like 0x0C, only present alongside tag 0x0B
 } ENavTlvTag;
+
+// One entry of a LANES/NEXT_LANES list (tag 0x0A/0x0B), left-to-right as in
+// OsmAnd's own lane array. 4 bytes per lane - see PROTOCOL.md "Fahrspur-
+// Informationen" for the full rationale (this deliberately does NOT mirror
+// OsmAnd's bit-packed int[] layout, each direction is already translated to
+// our own ENavManeuver codes on the app side).
+typedef struct {
+	uint8_t primary;	// ENavManeuver, main arrow direction for this lane - never NAV_MANEUVER_NONE
+	uint8_t secondary;	// ENavManeuver, NAV_MANEUVER_NONE if this lane has no second direction
+	uint8_t tertiary;	// ENavManeuver, NAV_MANEUVER_NONE if this lane has no third direction
+	uint8_t flags;		// bit 0 = NAV_LANE_FLAG_ACTIVE, bits 1-7 reserved (currently 0)
+} NavLane;
+
+#define NAV_LANE_FLAG_ACTIVE 0x01
+
+// PROTOCOL.md allows up to 63 lanes (1-byte TLV length / 4), real roads
+// rarely exceed 6-8 - cap storage here rather than allocating for the
+// theoretical worst case. Extra lanes beyond this are dropped, not an error.
+#define NAV_LANES_MAX 8
 
 // Maneuver codes, independent of the old 32-slot Komoot icon index and of
 // OsmAnd's internal TurnType constants. Reference implementation on the

@@ -69,29 +69,6 @@ Eigener Abschnitt "GPS-Positions-Service" in PROTOCOL.md, Kurzfassung hier:
 
 ## Verifizierte Fakten (aus dem tatsächlichen Code hier geprüft)
 
-- **Komoot nutzte in diesem Code gar kein Notify/Indicate, sondern reines
-  Polling:** `komootPollingTask()` liest zyklisch per Task mit
-  `pKomootRemoteChar->readValue()`. Die einzige echte
-  `registerForNotify(...)`-Registrierung in `BLEDevices.cpp` ist die für die
-  CSC-Sensoren (~Zeile 539) -- **keine** auskommentierte
-  CCCD-Descriptor-Stelle für Komoot im Code gefunden, anders als eine
-  ältere Notiz in BikeNavRelays `CLAUDE.md` vermuten lässt. Grund fürs
-  Polling laut Nutzer: **das Notify-Problem lag an der Komoot-App selbst**
-  (Komoot hat als Peripheral offenbar nicht sauber notifiziert), nicht am
-  ESP32-BLE-Stack hier -- Notify/Indicate funktioniert bei den CSC-Sensoren
-  auf demselben Stack einwandfrei. Für die neue Characteristic ist das
-  also kein bekanntes Risiko: TrailBridge ist eine eigene, kontrollierte
-  Android-Peripheral-Implementierung (kein Closed-Source-Verhalten wie bei
-  Komoot), daher spricht nichts dagegen, direkt auf Indicate zu setzen.
-  Trotzdem beim Umbau kurz mit nRF Connect verifizieren (siehe
-  TrailBridge-README), ob Indicate ankommt, bevor der TLV-Parser
-  draufgesetzt wird -- normale Vorsicht, kein spezielles Warnsignal mehr.
-  Für Indicate reicht bei dieser BLE-Lib (`#include <BLEDevice.h>`,
-  ESP32-Arduino-Core-BLE, kein NimBLE in `platformio.ini`/`lib_deps`)
-  voraussichtlich `registerForNotify(callback, false)` -- der zweite
-  bool-Parameter unterscheidet Notify (`true`, Default) von Indicate
-  (`false`). Vor dem Umbau kurz gegen die tatsächlich installierte
-  Lib-Version prüfen, nicht blind übernehmen.
 - BLE-Rollen bewusst so: **TrailBridge (Handy) = Peripheral/GATT-Server,
   dieser ESP32 = Central/GATT-Client** (wie bisher bei Komoot) -- nicht
   umdrehen ohne Rücksprache mit dem Nutzer, betrifft auch die bestehende
@@ -100,10 +77,6 @@ Eigener Abschnitt "GPS-Positions-Service" in PROTOCOL.md, Kurzfassung hier:
 - `src/BLEConnections/` existiert als Verzeichnis, ist aber leer --
   vermutlich Rest eines angefangenen Refactorings (siehe Commit "Refactor
   BLE Connection Management (WIP!)"), kein Code darin.
-- `platformio.ini` hat mehrere Build-Environments
-  (`trgb-esp32-s3`, `trgb-esp32-s3-FL`, `trgb-esp32-s3-no-usb`,
-  `trgb-esp32-s3-idf`) -- vor dem Bauen mit dem Nutzer klären, welches
-  gerade relevant ist.
 
 ## Build
 

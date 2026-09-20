@@ -7,7 +7,6 @@
 extern "C" {
 #endif
 
-extern const lv_img_dsc_t img_nav_no_nav;
 extern const lv_img_dsc_t img_settings_icon;
 extern const lv_img_dsc_t img_rr_icon_wifi;
 extern const lv_img_dsc_t img_rr_icon_gps;
@@ -20,7 +19,12 @@ extern const lv_img_dsc_t img_rr_icon_height;
 extern const lv_img_dsc_t img_rr_icon_gradient;
 extern const lv_img_dsc_t img_rr_icon_heart;
 extern const lv_img_dsc_t img_rr_icon_pause;
-extern const lv_img_dsc_t img_boot_logo_rim_ridge;
+extern const lv_img_dsc_t img_rr_icon_state_stop;
+extern const lv_img_dsc_t img_rr_icon_state_break;
+extern const lv_img_dsc_t img_rr_icon_state_power;
+extern const lv_img_dsc_t img_rr_icon_state_coasting;
+extern const lv_img_dsc_t img_rr_icon_turn_large;
+extern const lv_img_dsc_t img_rr_icon_turn_64;
 
 #ifndef EXT_IMG_DESC_T
 #define EXT_IMG_DESC_T
@@ -30,7 +34,7 @@ typedef struct _ext_img_desc_t {
 } ext_img_desc_t;
 #endif
 
-extern const ext_img_desc_t images[14];
+extern const ext_img_desc_t images[18];
 
 #ifdef __cplusplus
 }

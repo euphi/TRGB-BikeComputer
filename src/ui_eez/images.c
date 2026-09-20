@@ -1,7 +1,6 @@
 #include "images.h"
 
-const ext_img_desc_t images[14] = {
-    { "Nav_noNav", &img_nav_no_nav },
+const ext_img_desc_t images[18] = {
     { "SettingsIcon", &img_settings_icon },
     { "rr_icon_wifi", &img_rr_icon_wifi },
     { "rr_icon_gps", &img_rr_icon_gps },
@@ -14,5 +13,10 @@ const ext_img_desc_t images[14] = {
     { "rr_icon_gradient", &img_rr_icon_gradient },
     { "rr_icon_heart", &img_rr_icon_heart },
     { "rr_icon_pause", &img_rr_icon_pause },
-    { "BootLogoRimRidge", &img_boot_logo_rim_ridge },
+    { "rr_icon_state_stop", &img_rr_icon_state_stop },
+    { "rr_icon_state_break", &img_rr_icon_state_break },
+    { "rr_icon_state_power", &img_rr_icon_state_power },
+    { "rr_icon_state_coasting", &img_rr_icon_state_coasting },
+    { "rr_icon_turn_large", &img_rr_icon_turn_large },
+    { "rr_icon_turn_64", &img_rr_icon_turn_64 },
 };
