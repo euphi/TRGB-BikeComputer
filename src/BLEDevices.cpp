@@ -35,6 +35,22 @@ const char* BLEDevices::CONN_STRING[CONN_COUNT] = {"Not Found","Advertised (not 
 
 const uint8_t twoByteOn[] = {0x01,0x00};
 
+/**
+ * @brief Compares two BLE addresses by their 6 address bytes only.
+ *
+ * Deliberately NOT BLEAddress::equals(): since Arduino-ESP32 3.x that also compares
+ * m_addrType, which NimBLE reports inconsistently for the same sensor (PUBLIC 0 vs
+ * PUBLIC_ID 2 once the identity address is resolved) -- the type is not a stable identity
+ * marker. To actually connect, the type is taken live from the advertisement
+ * (BLEClient::connect(BLEAdvertisedDevice*)), never from the stored address.
+ *
+ * Taken by value because getNative() is non-const while getAddress()/getPeerAddress()
+ * return temporaries; a BLEAddress is 7 bytes, so the copy is free.
+ */
+static bool sameAddress(BLEAddress a, BLEAddress b) {
+	return memcmp(a.getNative(), b.getNative(), ESP_BD_ADDR_LEN) == 0;
+}
+
 //std::function<void(BLEScanResults)> scanCB;
 
 BLEDevices::BLEDevices()
@@ -192,7 +208,7 @@ void BLEDevices::onDisconnect(BLEClient *pClient) {
 	if (xSemaphoreTake(xDevMutex, static_cast<TickType_t>(500 / portTICK_PERIOD_MS)) == pdTRUE) {
 		// Find the client in the array
 		auto it = std::find_if(clients.begin(), clients.end(), [&](const std::unique_ptr<BLEClient> &client) {
-			return client && client->getPeerAddress() == discAddr;
+			return client && sameAddress(client->getPeerAddress(), discAddr);
 		});
 		// Remove the client if found
 		if (it != clients.end()) {
@@ -223,7 +239,7 @@ BLEDevices::EDevType BLEDevices::filterDevice(BLEAdvertisedDevice& dev) {
 				// Now, we found a interesting device and we need to check if we want to connect it.
 
 				// Is the device address stored for this type? (Note, if no adress is stored, pStoredAddress is nullptr
-				if (pStoredAddress[d] && dev.getAddress().equals(*pStoredAddress[d])) {
+				if (pStoredAddress[d] && sameAddress(dev.getAddress(), *pStoredAddress[d])) {
 					bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "Filter: Found stored address %s --> connect", pStoredAddress[d]->toString().c_str());
 					connState[d] = CONN_ADVERTISED;
 					return static_cast<EDevType>(d);
@@ -267,7 +283,7 @@ BLEDevices::EDevType BLEDevices::filterDevice(BLEAdvertisedDevice& dev) {
 bool BLEDevices::isAlreadyConnected(BLEAdvertisedDevice& newDevice) {
     auto it = std::find_if(clients.begin(), clients.end(),
         [&newDevice](const std::unique_ptr<BLEClient>& client) {
-            return client && client->getPeerAddress().equals(newDevice.getAddress());
+            return client && sameAddress(client->getPeerAddress(), newDevice.getAddress());
         });
     return it != clients.end();  // true, wenn Gerät bereits verbunden ist
 }
@@ -338,12 +354,34 @@ void BLEDevices::updateDisconnectedDev(const EDevType dt) {
 void BLEDevices::restoreAdresses() {
 	StatPreferences.begin("BLEConn");
 	for (uint16_t c = 0; c < DEV_NAV; c++) {
-		uint8_t bit128[16];
-		if (StatPreferences.getBytes(DEV_STRING[c], &bit128, 16) > 0) {
-			pStoredAddress[c] = new BLEAddress(bit128);
-			bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "Addr of %s: %s", DEV_STRING[c], pStoredAddress[c]->toString().c_str());
+		const char* key = DEV_STRING[c];
+		// getType() probes quietly; getBytesLength()/getBytes() emit a log_e on a missing key
+		// or an undersized buffer, which CORE_DEBUG_LEVEL=1 would print on every boot.
+		PreferenceType pt = StatPreferences.getType(key);
+		if (pt == PT_INVALID) {
+			bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "No BLE address stored in preferences for %s", key);
+			continue;
+		}
+
+		uint8_t raw[ESP_BD_ADDR_LEN];
+		if (pt == PT_BLOB && StatPreferences.getBytesLength(key) == ESP_BD_ADDR_LEN
+				&& StatPreferences.getBytes(key, raw, sizeof(raw)) == ESP_BD_ADDR_LEN) {
+			// Deliberately NOT BLEAddress(uint8_t[6]): under NimBLE that constructor
+			// reverse-copies (it expects display order), while storeAdress() wrote the raw
+			// native bytes -- the asymmetric pair is what flipped the address on every boot.
+			// Writing straight back into getNative() is the exact inverse of the store, in
+			// either BT stack. The default constructor zeroes m_address/m_addrType first.
+			BLEAddress* pAddr = new BLEAddress();
+			memcpy(pAddr->getNative(), raw, ESP_BD_ADDR_LEN);
+			pStoredAddress[c] = pAddr;
+			bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "Addr of %s: %s", key, pStoredAddress[c]->toString().c_str());
 		} else {
-			bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "No BLE address stored in preferences for %s", DEV_STRING[c]);
+			// Pre-NimBLE 16-byte blob (or one written by the broken NimBLE round-trip -- the
+			// two are indistinguishable), so it can't be interpreted: drop it once. The slot
+			// is free afterwards, the sensor is re-learned on the next scan and re-stored in
+			// the new format. Same effect as the manual /dev/reset?dev=N, just automatic.
+			StatPreferences.remove(key);
+			bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_BLE, "Dropped stale pre-NimBLE address for %s - will be re-learned on next scan", key);
 		}
 	}
 	StatPreferences.remove(DEV_STRING[DEV_NAV]);  // no need to store, because address is random. This line deletes existing stored adresses and can be deleted soon
@@ -363,7 +401,9 @@ void BLEDevices::restoreAdresses() {
 void BLEDevices::storeAdress(EDevType type, BLEAddress &addr) {
 	if (type == DEV_NAV) return;	// BikeNavRelay (Android peripheral) likely uses a random/rotating address, like Komoot before it
 	StatPreferences.begin("BLEConn");
-	size_t rc = StatPreferences.putBytes(DEV_STRING[type], addr.getNative(), 16);
+	// ESP_BD_ADDR_LEN, not 16: m_address is a 6-byte array, so the old length read 10 bytes
+	// past the end of the BLEAddress object. restoreAdresses() reverses this exactly.
+	size_t rc = StatPreferences.putBytes(DEV_STRING[type], addr.getNative(), ESP_BD_ADDR_LEN);
 	bclog.logf(rc > 0 ? BCLogger::Log_Debug : BCLogger::Log_Error, BCLogger::TAG_BLE, "Stored %d bytes to pref %s: %s", rc, DEV_STRING[type],	addr.toString().c_str());
 	StatPreferences.end();
 }
@@ -519,11 +559,23 @@ void BLEDevices::notifyCallbackCSC(BLERemoteCharacteristic *pBLERemoteCharacteri
 		if (isSpeed) {
 //#ifndef  BC_FL_SUPPORT
 			cscIsSpeed[ctype==DEV_CSC_1?1:2] = true;
-			speed_rev = (pData[4] << 24) + (pData[3] << 16) + (pData[2] << 8) + pData[1];		// LSB first
+			speed_rev = ((uint32_t)pData[4] << 24) + (pData[3] << 16) + (pData[2] << 8) + pData[1];		// LSB first (cast: uint8_t would promote to int and shift into its sign bit)
 			speed_time = (pData[6] << 8) + pData[5];	// LSB first
 			stats.getDistHandler().updateRevs(speed_rev, speed_time);
-			uint32_t d = nav_distance - (stats.getDistance(Statistics::SUM_ESP_START, true) - nav_distance_int);
-			ui.updateNaviDist(d);
+			// Signed arithmetic throughout, then clamp - stats.getDistance() returns
+			// uint32_t, so "nav_distance - (getDistance() - nav_distance_int)" done as
+			// written (nav_distance/nav_distance_int are int32_t, but usual arithmetic
+			// conversions promote the WHOLE expression to unsigned the moment the
+			// uint32_t getDistance() is involved) silently underflows to a huge bogus
+			// value the moment traveled-since-reference exceeds nav_distance - i.e.
+			// almost guaranteed once you're close to (or a few meters past) the
+			// maneuver, exactly where an accurate distance estimate matters most for
+			// UIFacade::evaluateNaviAutoSwitch()'s 300m/350m thresholds. Found
+			// 2026-09-20 after the auto-switch state machine was reported unreliable.
+			int32_t traveledSinceRef = (int32_t) stats.getDistance(Statistics::SUM_ESP_START, true) - nav_distance_int;
+			int32_t d = nav_distance - traveledSinceRef;
+			if (d < 0) d = 0;
+			ui.updateNaviDist((uint32_t) d);
 //#endif
 		} else {
 			cscIsSpeed[ctype==DEV_CSC_1?1:2] = false;
@@ -651,7 +703,7 @@ void BLEDevices::handleNavData(const uint8_t* pData, size_t length) {
 				if (len >= 1) maneuver = val[0];
 				break;
 			case NAV_TAG_MANEUVER_DISTANCE_M:
-				if (len >= 4) maneuverDist = val[0] | (val[1] << 8) | (val[2] << 16) | (val[3] << 24);
+				if (len >= 4) maneuverDist = val[0] | (val[1] << 8) | (val[2] << 16) | ((uint32_t)val[3] << 24);
 				break;
 			case NAV_TAG_ROUNDABOUT_EXIT:
 				if (len >= 1) roundaboutExit = val[0];
@@ -663,16 +715,16 @@ void BLEDevices::handleNavData(const uint8_t* pData, size_t length) {
 				if (len >= 1) nextManeuver = val[0];
 				break;
 			case NAV_TAG_NEXT_MANEUVER_DISTANCE_M:
-				if (len >= 4) nextManeuverDist = val[0] | (val[1] << 8) | (val[2] << 16) | (val[3] << 24);
+				if (len >= 4) nextManeuverDist = val[0] | (val[1] << 8) | (val[2] << 16) | ((uint32_t)val[3] << 24);
 				break;
 			case NAV_TAG_NEXT_STREET_NAME:
 				nextStreet = String(val, len);
 				break;
 			case NAV_TAG_REMAINING_DISTANCE_M:
-				if (len >= 4) remainingDist = val[0] | (val[1] << 8) | (val[2] << 16) | (val[3] << 24);
+				if (len >= 4) remainingDist = val[0] | (val[1] << 8) | (val[2] << 16) | ((uint32_t)val[3] << 24);
 				break;
 			case NAV_TAG_REMAINING_TIME_S:
-				if (len >= 4) remainingTime = val[0] | (val[1] << 8) | (val[2] << 16) | (val[3] << 24);
+				if (len >= 4) remainingTime = val[0] | (val[1] << 8) | (val[2] << 16) | ((uint32_t)val[3] << 24);
 				break;
 			case NAV_TAG_LANES:
 				laneCount = parseLanes(val, len, lanes);
@@ -681,10 +733,10 @@ void BLEDevices::handleNavData(const uint8_t* pData, size_t length) {
 				nextLaneCount = parseLanes(val, len, nextLanes);
 				break;
 			case NAV_TAG_LANE_DISTANCE_M:
-				if (len >= 4) laneDist = val[0] | (val[1] << 8) | (val[2] << 16) | (val[3] << 24);
+				if (len >= 4) laneDist = val[0] | (val[1] << 8) | (val[2] << 16) | ((uint32_t)val[3] << 24);
 				break;
 			case NAV_TAG_NEXT_LANE_DISTANCE_M:
-				if (len >= 4) nextLaneDist = val[0] | (val[1] << 8) | (val[2] << 16) | (val[3] << 24);
+				if (len >= 4) nextLaneDist = val[0] | (val[1] << 8) | (val[2] << 16) | ((uint32_t)val[3] << 24);
 				break;
 			default:
 				break;	// unknown tag: length already respected below, value ignored
@@ -801,16 +853,16 @@ void BLEDevices::handleGpsData(const uint8_t* pData, size_t length) {
 			const uint8_t* val = pData + pos;
 			switch (tag) {
 			case GPS_TAG_LATITUDE_E7:
-				if (len >= 4) fix.latitudeE7 = (int32_t)(val[0] | (val[1] << 8) | (val[2] << 16) | (val[3] << 24));
+				if (len >= 4) fix.latitudeE7 = (int32_t)(val[0] | (val[1] << 8) | (val[2] << 16) | ((uint32_t)val[3] << 24));
 				break;
 			case GPS_TAG_LONGITUDE_E7:
-				if (len >= 4) fix.longitudeE7 = (int32_t)(val[0] | (val[1] << 8) | (val[2] << 16) | (val[3] << 24));
+				if (len >= 4) fix.longitudeE7 = (int32_t)(val[0] | (val[1] << 8) | (val[2] << 16) | ((uint32_t)val[3] << 24));
 				break;
 			case GPS_TAG_ALTITUDE_M:
-				if (len >= 4) { fix.hasAltitude = true; fix.altitudeM = (int32_t)(val[0] | (val[1] << 8) | (val[2] << 16) | (val[3] << 24)); }
+				if (len >= 4) { fix.hasAltitude = true; fix.altitudeM = (int32_t)(val[0] | (val[1] << 8) | (val[2] << 16) | ((uint32_t)val[3] << 24)); }
 				break;
 			case GPS_TAG_SPEED_CMS:
-				if (len >= 4) { fix.hasSpeed = true; fix.speedCms = val[0] | (val[1] << 8) | (val[2] << 16) | (val[3] << 24); }
+				if (len >= 4) { fix.hasSpeed = true; fix.speedCms = val[0] | (val[1] << 8) | (val[2] << 16) | ((uint32_t)val[3] << 24); }
 				break;
 			case GPS_TAG_BEARING_DEG_X100:
 				if (len >= 2) { fix.hasBearing = true; fix.bearingDegX100 = val[0] | (val[1] << 8); }
@@ -819,7 +871,7 @@ void BLEDevices::handleGpsData(const uint8_t* pData, size_t length) {
 				if (len >= 2) { fix.hasAccuracy = true; fix.accuracyMX10 = val[0] | (val[1] << 8); }
 				break;
 			case GPS_TAG_FIX_AGE_MS:
-				if (len >= 4) fix.fixAgeMs = val[0] | (val[1] << 8) | (val[2] << 16) | (val[3] << 24);
+				if (len >= 4) fix.fixAgeMs = val[0] | (val[1] << 8) | (val[2] << 16) | ((uint32_t)val[3] << 24);
 				break;
 			default:
 				break;	// unknown tag: length already respected below, value ignored

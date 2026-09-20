@@ -51,7 +51,7 @@ private:
 	std::vector<SDevToConnect> connectDevices;		// Devices to be connected (filtered results from scan)
 	//std::unique_ptr<BLEClient> clients[DEV_COUNT];						// BLEClients objects of connected devices
 	std::array<std::unique_ptr<BLEClient>, DEV_COUNT> clients;
-	BLEAddress *pStoredAddress[DEV_COUNT];
+	BLEAddress *pStoredAddress[DEV_COUNT] = {nullptr};	// filterDevice() treats nullptr as "slot free" - don't leave this indeterminate
 
 	SemaphoreHandle_t xDevMutex = nullptr;		// Mutex to control access to data structures for device handling
 
