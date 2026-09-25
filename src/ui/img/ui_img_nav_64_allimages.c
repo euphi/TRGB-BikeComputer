@@ -1255,11 +1255,7 @@ const lv_img_dsc_t nav_64_right90 = {
 #define LV_ATTRIBUTE_MEM_ALIGN
 #endif
 
-/* Converted from doc/Resources/Images/nav_64_righ45.png (source file name has a typo, "righ45" --
- * that's very likely why this one alone was never converted along with its 10 siblings back in
- * 2023). Generated with a small alpha-threshold script, same LV_IMG_CF_INDEXED_1BIT / 64x64
- * layout as the rest of this file; bit-packing round-tripped and visually verified against the
- * source PNG before inserting here. */
+/* Same LV_IMG_CF_INDEXED_1BIT / 64x64 layout as the rest of this file. */
 #ifndef LV_ATTRIBUTE_IMG_NAV_64_RIGHT45
 #define LV_ATTRIBUTE_IMG_NAV_64_RIGHT45
 #endif

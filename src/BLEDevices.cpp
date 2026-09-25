@@ -18,7 +18,7 @@
 
 #include <task.h>
 
-// HRM, CSC, FL, BikeNavRelay Navigation (see ../BikeNavRelay/PROTOCOL.md)
+// HRM, CSC, FL, TrailBridge Navigation (see ../TrailBridge/PROTOCOL.md)
 const BLEUUID BLEDevices::serviceUUID[DEV_COUNT] = { BLEUUID((uint16_t)0x180D), BLEUUID((uint16_t)0x1816), BLEUUID((uint16_t)0x1816), BLEUUID("e62efa94-afa8-11ed-afa1-0242ac120002"), BLEUUID("f7ac2b76-986b-45fd-8e44-f116a61f319d")};
 const BLEUUID BLEDevices::serviceUUIDBat = BLEUUID((uint16_t) 0x180F);
 const BLEUUID BLEDevices::serviceUUIDExposure = BLEUUID((uint16_t) 0xFD6F);
@@ -31,7 +31,7 @@ const BLEUUID BLEDevices::gpsServiceUUID = BLEUUID("66b5835c-9be6-43d1-b24a-f933
 const BLEUUID BLEDevices::gpsCharUUID = BLEUUID("10c49e7b-4808-4d63-9b68-9ba6c385db0d");
 
 const char* BLEDevices::DEV_EMOJI[DEV_COUNT] = {"❤️","🚴","🚴","⚡", "🧭"};
-const char* BLEDevices::DEV_STRING[DEV_COUNT] = {"HeartRate","CSC1","CSC2","Forumslader", "BikeNavRelay"};
+const char* BLEDevices::DEV_STRING[DEV_COUNT] = {"HeartRate","CSC1","CSC2","Forumslader", "TrailBridge"};
 const char* BLEDevices::CONN_STRING[CONN_COUNT] = {"Not Found","Advertised (not yet connected)","Connected","Lost"};
 
 const uint8_t twoByteOn[] = {0x01,0x00};
@@ -389,7 +389,6 @@ void BLEDevices::restoreAdresses() {
 			bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_BLE, "Dropped stale pre-NimBLE address for %s - will be re-learned on next scan", key);
 		}
 	}
-	StatPreferences.remove(DEV_STRING[DEV_NAV]);  // no need to store, because address is random. This line deletes existing stored adresses and can be deleted soon
 	StatPreferences.end();
 }
 
@@ -397,14 +396,14 @@ void BLEDevices::restoreAdresses() {
  * @brief Stores a BLE device address in NVS (persistent memory).
  *
  * This method saves the BLE address of a given device type to non-volatile storage (NVS)
- * for later retrieval. The function does not store addresses for the BikeNavRelay device, as
+ * for later retrieval. The function does not store addresses for the TrailBridge device, as
  * Android peripherals typically use a random/rotating address.
  *
  * @param type The device type whose address should be stored.
  * @param addr The BLE address to be stored.
  */
 void BLEDevices::storeAdress(EDevType type, BLEAddress &addr) {
-	if (type == DEV_NAV) return;	// BikeNavRelay (Android peripheral) likely uses a random/rotating address, like Komoot before it
+	if (type == DEV_NAV) return;	// TrailBridge (Android peripheral) likely uses a random/rotating address, like Komoot before it
 	StatPreferences.begin("BLEConn");
 	// ESP_BD_ADDR_LEN, not 16: m_address is a 6-byte array, so the old length read 10 bytes
 	// past the end of the BLEAddress object. restoreAdresses() reverses this exactly.
@@ -511,7 +510,7 @@ bool BLEDevices::connectToServer(SDevToConnect& dev) {
 		stats.setConnected(true);  // "Connected" for Stats means that a speed sensor is connected (used for avg calculation). For CSC sensors this is done in the NotifyCallback, because here it is not yet known if sensor is speed or cadence
 	}
 
-	// BikeNavRelay's characteristic is INDICATE (confirmed ack per frame, see PROTOCOL.md "Warum Indicate statt Notify"), all others use plain Notify.
+	// TrailBridge's characteristic is INDICATE (confirmed ack per frame, see PROTOCOL.md "Warum Indicate statt Notify"), all others use plain Notify.
 	bool useNotify = (dt != DEV_NAV);
 	pRemoteCharacteristic->registerForNotify([&, dt](BLERemoteCharacteristic* pBLERemoteCharacteristic, uint8_t* pData, size_t length, bool isNotify) {notifyCallbackCSC(pBLERemoteCharacteristic, pData, length, isNotify, dt);}, useNotify);
 	bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "🔵%s %s registered\n", DEV_EMOJI[dt], useNotify ? "Notify" : "Indicate");
@@ -651,9 +650,9 @@ static uint8_t parseLanes(const uint8_t* val, uint8_t len, NavLane* out) {
 }
 
 /**
- * @brief Parses one BikeNavRelay frame (Indicate payload or Read fallback) and updates the nav UI.
+ * @brief Parses one TrailBridge frame (Indicate payload or Read fallback) and updates the nav UI.
  *
- * Frame layout per ../BikeNavRelay/PROTOCOL.md: byte 0 = protocol version, byte 1 = message type,
+ * Frame layout per ../TrailBridge/PROTOCOL.md: byte 0 = protocol version, byte 1 = message type,
  * followed by TLV entries (tag 1 byte | length 1 byte | value) when the message is NAV_UPDATE.
  * Unknown tags are skipped by length, not interpreted -- that's the whole point of TLV over the
  * old fixed Komoot byte layout: future protocol additions won't break this parser.
@@ -672,7 +671,7 @@ void BLEDevices::handleNavData(const uint8_t* pData, size_t length) {
 
 	switch (msgType) {
 	case NAV_MSG_HELLO:
-		bclog.log(BCLogger::Log_Info, BCLogger::TAG_BLE, "🧭 BikeNavRelay HELLO");
+		bclog.log(BCLogger::Log_Info, BCLogger::TAG_BLE, "🧭 TrailBridge HELLO");
 		break;
 
 	case NAV_MSG_NAV_NONE:

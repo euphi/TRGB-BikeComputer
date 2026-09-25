@@ -1,95 +1,76 @@
-# TRGB-BikeComputer -- Projektkontext für Claude Code (BLE-Empfangsseite für TrailBridge)
+# TRGB-BikeComputer -- Projektkontext für Claude Code
 
-Die Companion-App heißt "TrailBridge" -- Paket `com.euphi.trailbridge`.
+ESP32-S3-Fahrradcomputer auf LilyGO T-RGB (480×480 rundes RGB-Display,
+LVGL 8.4). Sensoren: Herzfrequenz, CSC (Speed/Cadence), Forumslader
+(nur FL-Variante), BME280, BMI160. Navigation und GPS-Position kommen von
+der Android-Companion-App [TrailBridge](../TrailBridge/) (Paket
+`com.euphi.trailbridge`).
 
-ESP32-Fahrradcomputer (LVGL-UI; Sensoren: Herzfrequenz, CSC, Forumslader,
-ehemals Komoot-BLE-Navigation). Firmware-Gegenstück zur Android-Companion-App
-[TrailBridge](../TrailBridge/) -- ersetzt Komoots eingestellten
-BLE-Navigationsdienst durch einen TLV-Parser nach dem dort definierten
-Protokoll.
+**Bekannte Fallstricke (PSRAM/Display-Flackern, NimBLE, USB, ...):
+[`doc/PITFALLS.md`](doc/PITFALLS.md) -- vor Änderungen an Speicherlayout,
+BLE-Adressen oder beim Debuggen von Anzeige-Artefakten lesen.**
 
-**Vor jeder Änderung an der BLE-Navigation lesen:**
+## BLE-Anbindung an TrailBridge
+
+**Vor jeder Änderung an Navigation oder GPS lesen:**
 [`../TrailBridge/PROTOCOL.md`](../TrailBridge/PROTOCOL.md) -- verbindlicher
-Wire-Format-Vertrag zwischen der App (Peripheral/GATT-Server) und diesem
-Firmware-Code (Central/GATT-Client). Nicht auf eigene Faust vom Protokoll
-abweichen -- Änderungswünsche zuerst mit dem Nutzer und im
-TrailBridge-Repo klären, dort ist das Protokoll die Quelle der Wahrheit.
+Wire-Format-Vertrag. Nicht auf eigene Faust vom Protokoll abweichen --
+Änderungswünsche zuerst mit dem Nutzer und im TrailBridge-Repo klären, dort
+ist das Protokoll die Quelle der Wahrheit.
 
-## Aufgabe (Meilenstein 3 von TrailBridge)
+- Rollen: **TrailBridge (Handy) = Peripheral/GATT-Server, dieser ESP32 =
+  Central/GATT-Client** -- wie bei allen anderen Sensoren in
+  `src/BLEDevices.cpp`. Nicht umdrehen ohne Rücksprache.
+- Zwei unabhängige Services auf demselben Peer, beide Indicate + Read, je
+  eigene Subscription:
+  - **Navigation** (`f7ac2b76-986b-45fd-8e44-f116a61f319d` /
+    `7473da02-2de8-4f48-9e46-21b36380c176`) -- wird beworben, darüber wird
+    der Peer gefunden. Parser: `BLEDevices::handleNavData()`, Konstanten in
+    `src/BikeNavProtocol.h`, Manöver→Icon in `src/ui/img/nav_icons.h`.
+  - **GPS-Position** (`66b5835c-9be6-43d1-b24a-f9337c0fcb7f` /
+    `10c49e7b-4808-4d63-9b68-9ba6c385db0d`) -- wird **nicht** beworben,
+    taucht erst bei der Service-Discovery nach dem Connect auf.
+    `subscribeGpsPosition()`/`handleGpsData()`, Konstanten in
+    `src/BikeGpsProtocol.h`. `FIX_AGE_MS` beachten, sonst wird ein
+    veralteter Heartbeat-Fix als aktuell angezeigt.
+- Frames: Byte 0 Version, Byte 1 Message-Type, danach TLV (Tag 1 Byte |
+  Länge 1 Byte | Wert). Unbekannte Tags über die Länge überspringen, nie
+  als Fehler behandeln.
+- Die TrailBridge-Adresse wird nicht gespeichert (Android rotiert sie).
 
-`src/BLEDevices.cpp`/`.h`: den alten, größtenteils schon auskommentierten
-Komoot-Client-Code (`DEV_KOMOOT`, `readKomootDataAfterNotification()`,
-`komootPollingTask()`/`pollKomootData()`, das tote `komootLoop()`) entfernen
-und durch einen TLV-Parser nach PROTOCOL.md ersetzen:
+## UI
 
-- Neue Service-/Characteristic-UUID abonnieren
-  (`f7ac2b76-986b-45fd-8e44-f116a61f319d` /
-  `7473da02-2de8-4f48-9e46-21b36380c176`, siehe PROTOCOL.md).
-- Frame parsen: Byte 0 Versionsnummer, Byte 1 Message-Type
-  (HELLO/NAV_UPDATE/NAV_NONE), bei NAV_UPDATE TLV-Einträge
-  (Tag 1 Byte | Länge 1 Byte | Wert). Unbekannte Tags überspringen
-  (Länge respektieren, Wert ignorieren) -- das ist der Sinn von TLV statt
-  eines starren Byte-Layouts wie bei Komoot.
-- Neue Icon-/Text-Tabelle für die erweiterten Manöver-Codes aus
-  PROTOCOL.md (Referenz-Enum drüben: `Maneuver.java`) -- unabhängig vom
-  alten 32-Slot-Komoot-Icon-Index und von OsmAnds internen
-  `TurnType`-Konstanten.
-
-### Zusätzlich (Stand 2026-09-16): zweiter Service, GPS-Position
-
-TrailBridge hat neben dem Nav-Service jetzt einen **zweiten, unabhängigen**
-BLE-Service, der die rohe Handy-GPS-Position liefert (direkt vom
-GPS-Chip, nicht von OsmAnd -- läuft also auch ohne laufendes OsmAnd).
-Eigener Abschnitt "GPS-Positions-Service" in PROTOCOL.md, Kurzfassung hier:
-
-- Service-/Characteristic-UUID: `66b5835c-9be6-43d1-b24a-f9337c0fcb7f` /
-  `10c49e7b-4808-4d63-9b68-9ba6c385db0d`, Properties Indicate + Read --
-  eigene Subscription/CCCD-Write nötig, unabhängig von der Nav-Characteristic.
-- **Wird nicht beworben** (Advertising-Paket bleibt beim Nav-Service allein,
-  31-Byte-Legacy-Limit auf App-Seite) -- dieser Service taucht erst nach dem
-  Verbindungsaufbau bei der GATT-Service-Discovery auf, nicht im Scan/
-  Advertising-Response. Also: nach dem Connect zum Nav-Service ganz normal
-  alle Services discovern, nicht nur die eine beworbene UUID erwarten.
-- Frame-Format wie beim Nav-Service (Byte 0 Version, Byte 1 Message-Type:
-  HELLO/POSITION_UPDATE/POSITION_NONE), aber eigener TLV-Tag-Satz:
-  Latitude/Longitude als int32-LE-E7-Fixpunkt (Grad × 1e7), optional Höhe/
-  Speed/Kurs/Genauigkeit, plus FIX_AGE_MS (uint32 LE, ms seit dem Fix --
-  wichtig, damit die Firmware einen veralteten Heartbeat-Wert erkennt statt
-  ihn als aktuell anzuzeigen). Exaktes Tag-Layout inkl. durchgerechnetem
-  Byte-Beispiel: PROTOCOL.md, Abschnitt "GPS-Positions-Service".
-- Praktisch heißt das für `BLEDevices.cpp`: zwei parallele
-  Indicate-Subscriptions auf zwei Characteristics desselben zentralen
-  Peers, zwei kleine TLV-Parser (können sich den Tag/Länge/Wert-Lesecode
-  teilen, nur die Tag-Tabelle unterscheidet sich), zwei
-  "zuletzt gesehen"-Zustände (Nav kann aktiv sein während Position noch auf
-  den ersten Fix wartet, oder umgekehrt).
-
-## Verifizierte Fakten (aus dem tatsächlichen Code hier geprüft)
-
-- BLE-Rollen bewusst so: **TrailBridge (Handy) = Peripheral/GATT-Server,
-  dieser ESP32 = Central/GATT-Client** (wie bisher bei Komoot) -- nicht
-  umdrehen ohne Rücksprache mit dem Nutzer, betrifft auch die bestehende
-  Verbindungslogik für die anderen Sensoren (HR, CSC, Forumslader) in
-  derselben Datei.
-- `src/BLEConnections/` existiert als Verzeichnis, ist aber leer --
-  vermutlich Rest eines angefangenen Refactorings (siehe Commit "Refactor
-  BLE Connection Management (WIP!)"), kein Code darin.
+- Aktiver Main-Screen ist **RimRidge** (EEZ Studio), dazu der
+  Navigations-Screen **RimRidgeNav**. Projekt:
+  `EEZStudio/TRGB-BikeComputer.eez-project`, Design-System:
+  [`doc/design/rim-ridge-design-system.md`](doc/design/rim-ridge-design-system.md).
+- `src/ui_eez/` ist **generiert** und wird bei jedem EEZ-Export komplett
+  ersetzt -- nie von Hand editieren. Handgeschriebene Logik liegt in
+  `src/ui/RimRidgeCustFunc.*` und `src/ui/RimRidgeNavCustFunc.*`,
+  angebunden über `src/UIFacade.cpp`.
+- EEZ-Projekt per Skript bearbeiten: Skill `.claude/skills/eezstudio/`
+  (Projekt-Deltas in `PROJECT-NOTES.md` dort). Der Nutzer prüft das
+  Ergebnis im EEZ-Canvas und exportiert selbst.
+- `src/ui/Screens/*` (Chart, MainNoFL, Settings, SNavi, SOTA, SWLAN) und
+  `src/ui/ui*.c` sind alter SquareLine-generierter Code. Die Screens werden
+  noch initialisiert, aber nicht mehr angezeigt -- **abgeschaltet, nicht
+  gelöscht**, bis es jeweils einen RimRidge-Ersatz gibt. Teile davon sind
+  noch aktiv verdrahtet (MsgBox, Akku-Mittelwert via
+  `ui_ScrChartUpdateBat()`, FL-Screen in der FL-Variante). Fonts/Bilder
+  unter `src/ui/font/` und `src/ui/img/` werden teils von RimRidge
+  mitbenutzt.
 
 ## Build
 
-PlatformIO (`platformio.ini`, Board `esp32s3box`/ESP32-S3).
-PlatformIO ist aktuell (Stand 2026-09-14) --
-`pio`-Befehle können jetzt normal ausgeführt werden, wenn ein Build/Flash
-ansteht. 
+PlatformIO (`platformio.ini`, Board `esp32s3box`, pioarduino-Plattform,
+Arduino-Framework). Environments:
 
-Environments: 
-
-* trgb-esp32-s3 - Default für die "Gravel"-Variante 
-
-* trgb-esp32-s3-FL - für den Forumslader am Touren/Pendler-Rad. Aktuell von zweiter Priorität. Nur auf explizite Anfrage bauen
-
+* `trgb-esp32-s3` -- Default, "Gravel"-Variante (runder Touch-Controller).
+* `trgb-esp32-s3-FL` -- Forumslader am Touren-/Pendlerrad. Zweite
+  Priorität, nur auf explizite Anfrage bauen.
 
 ## Programmiersprachen-Präferenz
 
-C++/PlatformIO für die ESP32-Firmware, wie im restlichen Repo. Kein
-Java/Kotlin hier -- das ist die Android-Seite in `../TrailBridge/`.
+C++/PlatformIO für die Firmware. Python für Tools unter `Tools/` und
+Skripte. Kein Java/Kotlin hier -- das ist die Android-Seite in
+`../TrailBridge/`.

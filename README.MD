@@ -11,7 +11,17 @@ A bike computer based on [LilyGO T-RGB](https://www.lilygo.cc/products/t-rgb):
 
 ## Build
 
-Compile and upload with platformio. 
+Compile and upload with PlatformIO:
+
+- `trgb-esp32-s3` (default) -- round T-RGB, sensors via BLE + I2C
+- `trgb-esp32-s3-FL` -- oval T-RGB variant with Forumslader support
+
+## Documentation
+
+- [doc/PITFALLS.md](doc/PITFALLS.md) -- known pitfalls (PSRAM/display flicker, NimBLE, ...), German
+- [doc/DEBUG.md](doc/DEBUG.md) -- reading core dumps
+- [doc/design/rim-ridge-design-system.md](doc/design/rim-ridge-design-system.md) -- UI design system, German
+- [Tools/README.md](Tools/README.md) -- binary log tools (CSV/GPX export, upload service), German
 
 ## Roadmap
 
@@ -52,7 +62,7 @@ Compile and upload with platformio.
 - [X] Initialize RGB display
 - [X] Merge and refactor existing UI from my [T-RGB Experiments](https://github.com/euphi/T-RGB-Experiments) (speed, FL batterie, heart rate, FL details, IP Adress)
 - [X] Add Navigation Screen
-- [ ] **WIP:** Implement all navigation items (roundabouts are still missing, all others ok)
+- [X] Implement all navigation items (incl. roundabouts and lane guidance)
 - [ ] **WIP:** Show basic statistics
 - [X] Add very simple screen (in bright theme for better readability in direct sunlight)
 - [ ] Add screen for more detailed information
@@ -98,8 +108,7 @@ Compile and upload with platformio.
 Navigation comes from [TrailBridge](https://github.com/euphi/TrailBridge), a companion
 Android app that reads OsmAnd's turn-by-turn instructions and forwards them to the bike
 computer over BLE using a documented TLV protocol (see TrailBridge's
-[PROTOCOL.md](https://github.com/euphi/TrailBridge/blob/main/PROTOCOL.md)). It replaces
-Komoot's now-discontinued BLE navigation service, which this project used originally.
+[PROTOCOL.md](https://github.com/euphi/TrailBridge/blob/main/PROTOCOL.md)).
 
 TrailBridge also exposes the phone's raw GPS position over a second, independent BLE
 service (works even without OsmAnd running), which the bike computer logs to its binary
@@ -109,7 +118,8 @@ datalog alongside its own sensors.
 
 - TRGB-Bikecomputer connects to the first TrailBridge instance it sees (its BLE address
   isn't persisted/locked, since Android peripherals use a rotating address).
-- no manual change to nav screen yet (automatic change if new navigation instruction arrives or if distance is < 250m)
+- The nav screen opens automatically when the next maneuver comes close. Manually: tap the
+  nav pill on the main screen to open it, swipe right to close it.
 
 ### Licences and Attributions
 

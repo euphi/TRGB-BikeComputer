@@ -8,7 +8,7 @@
  * (peripheral) and this firmware (central).
  *
  * This is a second, independent service on the same peer as the
- * BikeNavRelay/TrailBridge nav service (see BikeNavProtocol.h) -- it is not
+ * TrailBridge nav service (see BikeNavProtocol.h) -- it is not
  * advertised and only shows up via GATT service discovery once connected to
  * the nav service.
  */

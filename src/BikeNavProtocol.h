@@ -1,10 +1,10 @@
 /*
  * BikeNavProtocol.h
  *
- * Wire format constants for the BikeNavRelay BLE navigation protocol v1.
- * Authoritative source: ../BikeNavRelay/PROTOCOL.md -- do not change these
+ * Wire format constants for the TrailBridge BLE navigation protocol v1.
+ * Authoritative source: ../TrailBridge/PROTOCOL.md -- do not change these
  * values without updating that spec first, it is the contract between the
- * BikeNavRelay Android app (peripheral) and this firmware (central).
+ * TrailBridge Android app (peripheral) and this firmware (central).
  */
 
 #pragma once

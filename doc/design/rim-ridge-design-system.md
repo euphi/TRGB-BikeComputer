@@ -9,8 +9,8 @@ selbst ist die Felge.
 
 | Screen | Datei | Zustand |
 |---|---|---|
-| Mainscreen | [`mainscreen.svg`](mainscreen.svg) | **implementiert**, `EEZStudio/TRGB-BikeComputer.eez-project`, Screen `rim_ridge` — bis auf die Fahrzeit/Uhrzeit (siehe §4), die ist noch nicht als Widget angelegt |
-| Navigationsscreen | [`navscreen.svg`](navscreen.svg) | **implementiert**, Screen `rim_ridge_nav` (`SCREEN_ID_RIM_RIDGE_NAV`) — diese Datei war ursprünglich nur die Spezifikation, zwischenzeitlich aber real gebaut worden; bei Abweichungen zählt der EEZ-Screen, nicht diese SVG |
+| Mainscreen | [`mainscreen.svg`](mainscreen.svg) | **implementiert**, `EEZStudio/TRGB-BikeComputer.eez-project`, Screen `rim_ridge` |
+| Navigationsscreen | [`navscreen.svg`](navscreen.svg) | **implementiert**, Screen `rim_ridge_nav` (`SCREEN_ID_RIM_RIDGE_NAV`) |
 | Einstellungen | [`settings.svg`](settings.svg) | Spezifikation, noch nicht in EEZ Studio angelegt |
 
 Jede SVG-Datei ist 1:1 im Ziel-Koordinatensystem (480×480 Einheiten =
@@ -19,8 +19,8 @@ Jede SVG-Datei ist 1:1 im Ziel-Koordinatensystem (480×480 Einheiten =
 Pixelgröße prüfen — bei einem runden 480px-Display mit wenig Fläche ist das
 kein optionaler Schritt, siehe „Lektion: Icon-Größe" unten.
 
-Dieses Dokument beschreibt den *aktuellen* Stand des Designs, nicht seine
-Entstehung. Es soll reichen, um einen weiteren Screen im selben System zu
+Bei Abweichungen zwischen SVG und implementiertem Screen zählt der
+EEZ-Screen. Dieses Dokument beschreibt den aktuellen Stand des Designs. Es soll reichen, um einen weiteren Screen im selben System zu
 bauen, ohne das gesamte Bild neu erfinden zu müssen.
 
 ## 1. Farbpalette
@@ -49,15 +49,8 @@ EEZ — beim Anlegen ergänzen oder auf `MUTED` mappen).
 
 In `theme_colors[]` liegen zusätzlich 16 nicht-`RR_`-präfixte Farb-IDs
 (`NAV_ICON_RECOLOR`, `ARC_SPEED_TRACK`, `GRADIENT_GOOD_GREEN` …) mit
-grellen Platzhalterwerten (reines Grün/Rot/Blau) — sehen nach
-Scaffolding-Resten aus einer früheren Iteration aus, nicht Teil dieses
-Systems. Vor dem nächsten Screen ggf. aufräumen. Eine Ausnahme:
-`COLOR_ID_PANEL_CLOCK_BG` liest sich wie ein früher, nie fertiggestellter
-Versuch genau an diesem Fahrzeit/Uhrzeit-Widget (§4) — die aktuelle
-Spezifikation kommt ohne eigene Chip-Fläche aus (Icon+Wert direkt auf
-Anthrazit, wie Cadence/Watt/Temp), aber falls beim Umsetzen doch ein
-Panel-Hintergrund gewünscht ist, ist das der naheliegende Token dafür statt
-einen neuen anzulegen.
+grellen Platzhalterwerten (reines Grün/Rot/Blau) — nicht Teil dieses
+Systems, bei Gelegenheit aufräumen.
 
 ## 2. Typografie
 
@@ -180,7 +173,7 @@ Teil dieser Spezifikation. Icon und Wert wechseln immer zusammen:
   Krone) — aktuelle Tageszeit, Format `HH:MM`
 
 Sitzt zwischen Nav-Pille/Spur-Anzeige (y≈132) und der Speed-Zahl (Ziffern
-beginnen ≈y177) — eine Lücke, die vorher ungenutzt war. Icon fest bei
+beginnen ≈y177). Icon fest bei
 `x=210`, Wert linksbündig ab `x=224` (nicht als Gruppe zentriert), damit die
 unterschiedliche Zeichenbreite von `1:24:07` gegenüber `14:32` nicht bei
 jedem Wechsel neu zentriert werden muss — dieselbe Technik wie beim
@@ -248,19 +241,16 @@ Sattel/Lenker-Kappen: M-4.2,-4.6 L-1.8,-4   M2.8,-5.6 L4.8,-4.2
 | Pause (Button) | `img_rr_icon_pause` | zwei vertikale Balken |
 | Einstellungen (Button) | — (noch kein eigenes `rr_icon_`-Asset, siehe unten) | Kreis + Nabe + 6 radiale Zähne, 60°-Abstand |
 | Fahrzustand ×4 | `img_rr_icon_state_{power,coasting,stop,break}` | siehe §4 |
-| Neustart (neu, Settings) | noch nicht exportiert | identisch zum Cadence-Icon (Kreisbogen + Pfeilspitze) — Wiederverwendung als „rotierend/zurücksetzen" |
-| Tiefschlaf (neu, Settings) | noch nicht exportiert | Vollkreis + versetzter Kreis in Flächenfarbe („ausgestanzte" Mondsichel) |
-| Stoppuhr (neu, Fahrzeit) | noch nicht exportiert | Kreis + kleine Krone/Taste oben + zwei Zeiger — siehe §4 „Fahrzeit / Uhrzeit" |
-| Uhr (neu, Uhrzeit) | noch nicht exportiert | wie Stoppuhr, aber ohne Krone — teilt sich denselben Widget-Slot mit dem Stoppuhr-Icon |
+| Neustart (Settings) | noch nicht exportiert | identisch zum Cadence-Icon (Kreisbogen + Pfeilspitze) — Wiederverwendung als „rotierend/zurücksetzen" |
+| Tiefschlaf (Settings) | noch nicht exportiert | Vollkreis + versetzter Kreis in Flächenfarbe („ausgestanzte" Mondsichel) |
+| Stoppuhr (Fahrzeit) | `img_rr_icon_stopwatch` | Kreis + kleine Krone/Taste oben + zwei Zeiger — siehe §4 „Fahrzeit / Uhrzeit" |
+| Uhr (Uhrzeit) | `img_rr_icon_clock` | wie Stoppuhr, aber ohne Krone — teilt sich denselben Widget-Slot mit dem Stoppuhr-Icon |
 
 `img_settings_icon` existiert bereits (48×48, `TRUE_COLOR_ALPHA` — anderes
-Format als der Rest, volltonig statt Alpha-Maske), vermutlich das Icon des
-Settings-Buttons auf dem Mainscreen. Beim Dekodieren zu Testzwecken kam nur
-im unteren Drittel ein sauberes Zahnrad-Fragment heraus, der obere Teil
-wirkte wie Streifenrauschen — könnte an meinem Decoder liegen oder an einem
-fehlerhaften Export. Bitte einmal direkt in EEZ Studio ansehen, bevor darauf
-aufgebaut wird; die Zahnrad-Konstruktion oben in §4/hier ist der sichere
-Ersatz, falls nötig.
+Format als der Rest, volltonig statt Alpha-Maske), das Icon des
+Settings-Buttons auf dem Mainscreen. Vor Wiederverwendung in EEZ Studio
+prüfen, ob der Export sauber ist (ein Test-Dekodieren ergab Streifen im
+oberen Teil); die Zahnrad-Konstruktion oben ist der Ersatz, falls nötig.
 
 ## 6. Screens
 
@@ -277,11 +267,9 @@ zwischen Nav-Pille und Speed-Zahl.
 
 ### Navigationsscreen — [`navscreen.svg`](navscreen.svg)
 
-Diese Datei war ursprünglich nur die Spezifikation, ist zwischenzeitlich
-aber als Screen `rim_ridge_nav` real gebaut worden (siehe Status-Tabelle
-oben) — bei Abweichungen zählt der tatsächliche EEZ-Screen. Blendet sich
-laut Firmware-Verhalten automatisch als Vollbild ein, wenn eine
-Nav-Anweisung ansteht, und wieder aus danach (zurück zum Mainscreen).
+Blendet sich automatisch als Vollbild ein, wenn eine Nav-Anweisung
+ansteht, und danach wieder aus (zurück zum Mainscreen). Manuell: Tipp auf
+die Nav-Pille öffnet ihn, Wischen nach rechts schließt ihn.
 
 Aufbau: Distanz-Ring (gleicher Mechanismus wie der Speed-Arc, siehe §4) →
 großes Abbiege-Icon + Entfernung (Zahl in zwei Größen: `84px` Wert + `34px`
@@ -298,7 +286,7 @@ anstehende Abbiegung zugeschnitten, und für die ambiente Info „wie lange
 fahre ich schon" ist der kurz eingeblendete Nav-Screen der falsche Ort —
 die gehört auf den Mainscreen, wo sie durchgehend sichtbar ist.
 
-### Einstellungen — [`settings.svg`](settings.svg) *(neu)*
+### Einstellungen — [`settings.svg`](settings.svg)
 
 Erster Ausbauschritt, bewusst minimal: Zahnrad + Screen-Titel oben, zwei
 Info-Zeilen (Build, IP-Adresse) als Label/Wert-Paar, zwei Aktions-Pillen
@@ -349,12 +337,8 @@ aber vor dem Verdrahten in EEZ Studio zu klären):
   Buttons, `_val`/`_unit`-Suffix für Wert/Einheit-Paare, `_pill`/`_bg` für
   Chip-Flächen. Für die neuen Screens fortführen, z. B. `rr_settings_build`,
   `rr_btn_reset`, `rr_btn_deepsleep`.
-- **Neuer Screen `SCREEN_ID_SETTINGS`:** `screens.h` kennt inzwischen
-  `SCREEN_ID_RIM_RIDGE` und `SCREEN_ID_RIM_RIDGE_NAV` — nur der
-  Einstellungen-Screen fehlt noch als eigener EEZ-Screen.
-- **Fahrzeit/Uhrzeit-Widget:** `rr_ic_time` (Icon) + `rr_time_val` (Text),
-  gehört zusammen zu `rim_ridge` wie die anderen Stat-Gruppen. Welcher der
-  beiden Icon-Zustände (Stoppuhr/Uhr) gerade sichtbar ist und welcher Text
-  im Feld steht, ist reine Anwendungslogik (Moduswechsel, Formatierung,
-  Umschaltbedingung) — hier nicht festgelegt, das entscheidet die
-  Firmware-Seite.
+- **Neuer Screen `SCREEN_ID_SETTINGS`:** fehlt noch als EEZ-Screen
+  (vorhanden: `SCREEN_ID_RIM_RIDGE`, `SCREEN_ID_RIM_RIDGE_NAV`).
+- **Fahrzeit/Uhrzeit-Widget:** `rr_ic_time` (Icon) + `rr_time_val` (Text)
+  auf `rim_ridge`. Welcher Zustand gilt, entscheidet die Firmware
+  (`ui_RimRidgeUpdateTime()`).

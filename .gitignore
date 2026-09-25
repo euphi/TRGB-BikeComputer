@@ -5,10 +5,6 @@ coredump.*
 */__pycache__
 *.log
 
-SquareLine/exported_files/
-SquareLine/backup/
-# CMakeLists auto-generated from platformio if buildig for IDF
-CMakeLists.txt
 /versioning
 include/version.h
 
@@ -30,11 +26,7 @@ __pycache__/
 # outside the repo by default; this catches an explicitly relocated one.
 /Tools/BikeLogService/state/
 
-# Autosave and Backup of SquareLineStudio
-autosave/
-backup/
 /.pydevproject
-SquareLine/assets/
 
 # CAD build environment / generated exports (regenerate via cad/*.py)
 cad/.venv/
@@ -51,10 +43,5 @@ cad/TEMP_Fotos/
 EEZStudio/*.eez-project-ui-state
 EEZStudio/*.bak.*
 
-# Scratch serial-log capture (see chat) -- open in the editor for a live
-# tail while debugging, never meant to be committed.
-/nav_debug.log
-
-
-
+# EEZ Studio edit scripts (one-shot patches against the .eez-project)
 EEZStudio/tmp

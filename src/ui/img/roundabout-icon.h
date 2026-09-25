@@ -3,13 +3,10 @@
  *
  * Parametric "take the Nth roundabout exit" navigation icon.
  *
- * Background: the BikeNavRelay TLV protocol (../BikeNavRelay/PROTOCOL.md,
+ * Background: the TrailBridge TLV protocol (../TrailBridge/PROTOCOL.md,
  * tag 0x03 ROUNDABOUT_EXIT) only ever hands us a raw 1-based exit number --
- * unlike the old Komoot-era icon set in doc/Resources/Images/
- * (nav_64_rounda_<exit>_<totalExits>.png), there is no total-exit-count to
- * key a combinatorial (exit, totalExits) image lookup off. That old set was
- * also hand-baked and capped at 3 total exits, which is too low for a lot
- * of real-world roundabouts.
+ * there is no total-exit-count to key a combinatorial (exit, totalExits)
+ * image lookup off, and a fixed image set would cap the exit count anyway.
  *
  * Baking a new static image per exit number would cost flash (already at
  * ~91% on the esp32s3 build targets) for comparatively little benefit, so
