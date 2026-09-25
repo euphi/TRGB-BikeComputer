@@ -282,6 +282,17 @@ void Distance::setupWebserver() {
 		serializeJson(jsonDoc, jsonData);
 		request->send(200, "application/json", jsonData);
 	});
+	// Current calibration values, so the odometry page can pre-fill its inputs instead of
+	// showing empty boxes that silently overwrite whatever is stored when submitted.
+	webserver.getServer().on("/stat/calibration", HTTP_GET, [this](AsyncWebServerRequest *request) {
+		JsonDocument jsonDoc;
+		jsonDoc["wheelData"] = wheel_c;
+		jsonDoc["totalDistance"] = curTotalDistance[Statistics::SUM_ESP_TOTAL];
+		jsonDoc["totalDistanceLost"] = lostDistanceFromNVS[Statistics::SUM_ESP_TOTAL];
+		String jsonData;
+		serializeJson(jsonDoc, jsonData);
+		request->send(200, "application/json", jsonData);
+	});
 	// Endpoint for getting distance
 	webserver.getServer().on("/stat/getDistance", HTTP_GET, [this](AsyncWebServerRequest *request) {
 		JsonDocument jsonDoc;
@@ -325,10 +336,22 @@ void Distance::setupWebserver() {
 				lostDistanceFromNVS[Statistics::SUM_ESP_TOTAL] = dataValue;
 				storeDistanceAndResetRevs(true);
 				request->send(200, "text/plain", "Total LOST distance updated");
-			} if (dataType == "wheelData") {
-				bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Received new wheel circumference: %f mm", dataValue);
-				updateWheelCirc(dataValue);
-				request->send(200, "text/plain", "Wheel data updated");
+			// NOTE: this was "} if (...)" -- a missing else. Every totalDistance or
+			// totalDistanceLost update therefore fell through into the wheelData test,
+			// failed it, and called request->send() a SECOND time with 400, after having
+			// already answered 200. The client saw the 400 and the update looked broken.
+			} else if (dataType == "wheelData") {
+				// updateWheelCirc() takes METRES and rejects anything outside 0.2..5. The
+				// old page labelled its input "mm" and sent e.g. 2155, so every wheel
+				// calibration was silently refused by that plausibility check while the
+				// handler still answered "updated". The page converts mm->m now; this log
+				// line claimed mm as well and was just as wrong.
+				bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Received new wheel circumference: %.4f m", dataValue);
+				if (updateWheelCirc(dataValue)) {
+					request->send(200, "text/plain", "Wheel data updated");
+				} else {
+					request->send(400, "text/plain", "Implausible wheel circumference (expected 0.2..5 m)");
+				}
 			} else {
 				request->send(400, "text/plain", "Invalid data type");
 			}

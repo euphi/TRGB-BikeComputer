@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Odometry</title>
+  <link rel="stylesheet" href="/stylesheet.css">
+  <style>
+    .field { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:10px 0; }
+    .field label { min-width:190px; }
+    .field input { width:120px; }
+    /* Help bubble. Hover is a desktop convenience only -- on touch there is no hover, so
+       the same bubble is toggled by tap/click and by keyboard (the span is focusable). */
+    .help { position:relative; display:inline-flex; align-items:center; justify-content:center;
+            width:19px; height:19px; border-radius:50%; cursor:pointer; user-select:none;
+            border:1px solid var(--rr-brass,#CBA36B); color:var(--rr-brass,#CBA36B);
+            font-size:0.72rem; font-weight:600; line-height:1; }
+    .help-box { display:none; position:absolute; left:0; top:26px; z-index:30; width:260px;
+                padding:10px 12px; border-radius:10px; cursor:auto;
+                background:var(--rr-panel,#1E252B); border:1px solid var(--rr-line,#3A362E);
+                box-shadow:0 6px 20px rgba(0,0,0,.45); color:var(--rr-parchment,#E7E2D6);
+                font-size:0.78rem; font-weight:400; }
+    .help-box table { margin:0; font-size:0.78rem; }
+    .help-box td { padding:4px 6px; cursor:pointer; }
+    .help-box tr:hover td { background:var(--rr-panel-2,#282019); }
+    .help.open .help-box { display:block; }
+    @media (hover:hover) { .help:hover .help-box { display:block; } }
+    #toast { position:fixed; left:50%; bottom:26px; transform:translateX(-50%); max-width:88vw;
+             padding:10px 16px; border-radius:10px; border:1px solid var(--rr-line,#3A362E);
+             background:var(--rr-panel,#1E252B); color:var(--rr-parchment,#E7E2D6);
+             font-size:0.84rem; box-shadow:0 6px 20px rgba(0,0,0,.45); opacity:0;
+             pointer-events:none; transition:opacity .18s; z-index:50; cursor:pointer; }
+    #toast.show { opacity:1; pointer-events:auto; }
+    #toast.err { border-color:var(--rr-err,#C1604A); }
+  </style>
+</head>
+<body>
+  <div class="container" style="max-width:560px;">
+    <h2>Odometry</h2>
+
+    <h3>Distance</h3>
+    <table>
+      <thead><tr><th>Counter</th><th>Distance</th><th></th></tr></thead>
+      <tbody id="distBody"></tbody>
+    </table>
+    <p class="eyebrow" style="margin-top:10px;">
+      <a href="/stat/statistics.html">Ride statistics &rarr;</a>
+    </p>
+
+    <h3 style="margin-top:24px;">Calibration</h3>
+    <div class="field">
+      <label for="wheelData">Wheel circumference (mm)</label>
+      <input type="number" id="wheelData" step="1">
+      <span class="help" tabindex="0" role="button" aria-label="Typical tyre circumferences">?<span class="help-box" id="tyreBox">
+        <b>Typical tyre circumferences</b>
+        <table><tbody>
+          <tr data-c="2136"><td>28-622 (700x28c)</td><td>2136</td></tr>
+          <tr data-c="2155"><td>32-622 (700x32c)</td><td>2155</td></tr>
+          <tr data-c="2174"><td>35-622 (700x35c)</td><td>2174</td></tr>
+          <tr data-c="2200"><td>40-622 (700x40c)</td><td>2200</td></tr>
+          <tr data-c="2223"><td>45-622 (700x45c)</td><td>2223</td></tr>
+        </tbody></table>
+        <span class="eyebrow">Tap a row to use that value.</span>
+      </span></span>
+      <a class="btn btn-ghost" onclick="update('wheelData')">Update</a>
+    </div>
+    <div class="field">
+      <label for="totalDistance">Total distance (m)</label>
+      <input type="number" id="totalDistance" step="0.01">
+      <a class="btn btn-ghost" onclick="update('totalDistance')">Update</a>
+    </div>
+    <div class="field">
+      <label for="totalDistanceLost">Total lost distance (m)</label>
+      <input type="number" id="totalDistanceLost" step="0.01">
+      <a class="btn btn-ghost" onclick="update('totalDistanceLost')">Update</a>
+    </div>
+
+    <div class="row" style="margin-top:20px;">
+      <a class="btn btn-ghost" href="/" onclick="if(history.length>1){history.back();return false;}">Back</a>
+    </div>
+  </div>
+  <div id="toast" onclick="this.classList.remove('show')"></div>
+
+  <script>
+    let _t;
+    function toast(m, e) {
+      const o = document.getElementById('toast');
+      o.textContent = m; o.className = 'show' + (e ? ' err' : '');
+      clearTimeout(_t); _t = setTimeout(() => o.classList.remove('show'), 4000);
+    }
+
+    const RESET = '<svg viewBox="-11 -11 22 22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M-6,2 A7 7 0 1 1 3,7.5"/><path d="M3,7.5 L7,7 L4,3" fill="currentColor" stroke="none"/></svg>';
+
+    function km(m) { return (m / 1000).toFixed(2) + ' km'; }
+
+    async function loadDistance() {
+      try {
+        const d = await (await fetch('/stat/getDistance')).json();
+        document.getElementById('distBody').innerHTML =
+          `<tr><td>Total</td><td>${km(d.TOTAL.actualDistance)}</td><td></td></tr>
+           <tr><td>Tour</td><td>${km(d.TOUR.actualDistance)}</td><td><a class="icon-btn" onclick="reset('TOUR')">${RESET}</a></td></tr>
+           <tr><td>Trip</td><td>${km(d.TRIP.actualDistance)}</td><td><a class="icon-btn" onclick="reset('TRIP')">${RESET}</a></td></tr>`;
+      } catch (x) { /* transient while the device is busy; the next tick retries */ }
+    }
+
+    async function reset(mode) {
+      const r = await fetch('/stat/resetDistance?mode=' + mode).catch(() => null);
+      toast(r && r.ok ? mode + ' reset' : 'Reset failed', !(r && r.ok));
+      loadDistance();
+    }
+
+    // Pre-filled from the device so submitting a field cannot silently overwrite a
+    // stored value with a blank one.
+    async function loadCalibration() {
+      try {
+        const c = await (await fetch('/stat/calibration')).json();
+        // The device stores the circumference in METRES; the field asks for mm, because
+        // that is what tyre tables and sidewalls use. Convert on the way in and out.
+        for (const k of ['totalDistance', 'totalDistanceLost']) {
+          if (c[k] !== undefined && c[k] !== null && !isNaN(c[k])) {
+            document.getElementById(k).value = Math.round(c[k] * 100) / 100;
+          }
+        }
+        if (c.wheelData !== undefined && c.wheelData !== null && !isNaN(c.wheelData)) {
+          document.getElementById('wheelData').value = Math.round(c.wheelData * 1000);
+        }
+      } catch (x) { toast('Could not read current calibration', true); }
+    }
+
+    async function update(type) {
+      let v = parseFloat(document.getElementById(type).value);
+      if (isNaN(v)) { toast('Enter a number first', true); return; }
+      if (type === 'wheelData') v = v / 1000;      // field is mm, the endpoint wants metres
+      const r = await fetch(`/stat/setDistanceData?type=${type}&value=${v}`).catch(() => null);
+      toast(r && r.ok ? 'Updated' : 'Update failed', !(r && r.ok));
+      loadDistance(); loadCalibration();
+    }
+
+    // Tap toggles the bubble; hover handles it on pointer devices via CSS alone.
+    document.querySelectorAll('.help').forEach(h => {
+      h.addEventListener('click', e => {
+        if (e.target.closest('.help-box')) return;      // clicks inside the bubble are content
+        h.classList.toggle('open');
+      });
+      h.addEventListener('keydown', e => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); h.classList.toggle('open'); }
+        if (e.key === 'Escape') h.classList.remove('open');
+      });
+    });
+    document.addEventListener('click', e => {
+      if (!e.target.closest('.help')) document.querySelectorAll('.help.open').forEach(h => h.classList.remove('open'));
+    });
+    document.querySelectorAll('#tyreBox tr').forEach(tr => {
+      tr.addEventListener('click', () => {
+        document.getElementById('wheelData').value = tr.dataset.c;
+        document.querySelectorAll('.help.open').forEach(h => h.classList.remove('open'));
+        toast('Set to ' + tr.dataset.c + ' mm — press Update to store');
+      });
+    });
+
+    loadDistance(); loadCalibration();
+    setInterval(loadDistance, 2000);
+  </script>
+</body>
+</html>

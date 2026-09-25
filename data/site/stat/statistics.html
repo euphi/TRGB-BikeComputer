@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ride Statistics</title>
+  <link rel="stylesheet" href="/stylesheet.css">
+  <style>
+    .wrap { overflow-x:auto; }
+    td.num, th.num { text-align:right; white-space:nowrap; }
+  </style>
+</head>
+<body>
+  <div class="container" style="max-width:720px;">
+    <h2>Ride Statistics</h2>
+    <p class="eyebrow">Total is the lifetime odometer; Tour and Trip are the resettable
+      counters; Since Start covers this power-on.</p>
+
+    <div class="wrap">
+      <table>
+        <thead><tr><th></th><th class="num">Total</th><th class="num">Tour</th>
+          <th class="num">Trip</th><th class="num">Since Start</th></tr></thead>
+        <tbody id="body"></tbody>
+      </table>
+    </div>
+    <p class="eyebrow" id="cadence" style="margin-top:12px;"></p>
+
+    <div class="row" style="margin-top:20px;">
+      <a class="btn btn-ghost" href="/stat/odometry.html" onclick="if(history.length>1){history.back();return false;}">Back</a>
+    </div>
+  </div>
+
+  <script>
+    const COLS = ['TOTAL', 'TOUR', 'TRIP', 'START'];
+
+    function km(m)  { return (m / 1000).toFixed(2); }
+    function kmh(v) { return (v === null || v === undefined || isNaN(v)) ? '-' : v.toFixed(1); }
+    function hms(s) {
+      if (s === null || s === undefined || isNaN(s)) return '-';
+      const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
+      return h + ':' + String(m).padStart(2, '0') + ':' + String(Math.floor(s % 60)).padStart(2, '0');
+    }
+
+    // label -> how to pull that row's value out of one column's object
+    const ROWS = [
+      ['Distance (km)',            d => km(d.distance)],
+      ['Distance net (km)',        d => km(d.distanceNet)],
+      ['Max speed (km/h)',         d => kmh(d.maxSpeed)],
+      ['Avg speed, all (km/h)',    d => kmh(d.avgSpeed.ALL)],
+      ['Avg speed, moving (km/h)', d => kmh(d.avgSpeed.DRIVE)],
+      ['Avg speed, no break',      d => kmh(d.avgSpeed.NOBREAK)],
+      ['Time, all',                d => hms(d.time.ALL)],
+      ['Time, moving',             d => hms(d.time.DRIVE)],
+      ['Time, no break',           d => hms(d.time.NOBREAK)],
+      ['… powered',                d => hms(d.timeIn.DRIVE)],
+      ['… coasting',               d => hms(d.timeIn.COAST)],
+      ['… stopped',                d => hms(d.timeIn.STOP)],
+      ['… break',                  d => hms(d.timeIn.BREAK)],
+      ['… no connection',          d => hms(d.timeIn.NOCONN)],
+    ];
+
+    async function load() {
+      let s;
+      try { s = await (await fetch('/stat/summary')).json(); }
+      catch (x) { return; }
+      document.getElementById('body').innerHTML = ROWS.map(([label, get]) =>
+        '<tr><td>' + label + '</td>' +
+        COLS.map(c => '<td class="num">' + (s[c] ? get(s[c]) : '-') + '</td>').join('') +
+        '</tr>').join('');
+      document.getElementById('cadence').textContent =
+        'Average cadence — all: ' + kmh(s.cadence.ALL) +
+        ', moving: ' + kmh(s.cadence.DRIVE) +
+        ', no break: ' + kmh(s.cadence.NOBREAK) + ' rpm';
+    }
+
+    load();
+    setInterval(load, 5000);
+  </script>
+</body>
+</html>

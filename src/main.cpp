@@ -60,6 +60,9 @@ void setup() {
 	sensors.setup();
 #endif
 	batCheckTicker.attach(1, batCheck);
+	// Last: every module above has registered its web routes by now, so the server may
+	// start serving. Until this point checkLoop() holds it back even if WiFi is already up.
+	webserver.enableWebserver();
 }
 
 void loop() {

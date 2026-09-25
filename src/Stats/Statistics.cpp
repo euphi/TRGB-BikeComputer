@@ -9,6 +9,7 @@
 #include "Distance.h"
 #include "Singletons.h"
 #include "WebPage.h"
+#include <ArduinoJson.h>
 #include <esp_heap_caps.h>
 #include <new>				// placement new for the PSRAM-backed rb_timedata, see the constructor
 
@@ -98,6 +99,36 @@ void Statistics::setup() {
 	webserver.getServer().on("/stat/data", HTTP_GET, [this](AsyncWebServerRequest *request) {
 		String jsonArray = this->generateJSONArray();
 		request->send(200, "application/json", jsonArray);
+	});
+	// Ride statistics as one document. Used to live as never-populated <span>s on the
+	// wheel-calibration page: the markup was there, nothing ever filled it.
+	webserver.getServer().on("/stat/summary", HTTP_GET, [this](AsyncWebServerRequest *request) {
+		JsonDocument doc;
+		static const char* const kAvg[EAvgTypeMax] = { "ALL", "DRIVE", "NOBREAK" };
+		for (uint_fast8_t t = 0; t <= SUM_ESP_START; t++) {
+			const ESummaryType st = static_cast<ESummaryType>(t);
+			JsonObject o = doc[SUM_TYPE_STRING[t] + 3].to<JsonObject>();	// +3 skips "ST_"
+			o["distance"] = getDistance(st);
+			o["distanceNet"] = getDistance(st, false);		// without the "lost" correction
+			o["maxSpeed"] = getSpeedMax(st);
+			for (uint_fast8_t a = 0; a < EAvgTypeMax; a++) {
+				const EAvgType at = static_cast<EAvgType>(a);
+				o["avgSpeed"][kAvg[a]] = getAvg(st, at);
+				o["time"][kAvg[a]] = getTime(st, at);
+			}
+			for (uint_fast8_t d = 0; d < EDrivingStateMax; d++) {
+				// time_in[][] counts milliseconds (cycle() adds a millis() delta); getTime()
+				// divides by 1000 on the way out, so do the same here or the two sets of
+				// numbers in the same document would be off by a factor of 1000.
+				o["timeIn"][PREF_TIME_STRING[d] + 8] = time_in[d][t] / 1000;	// +8 skips "TIME_IN_"
+			}
+		}
+		for (uint_fast8_t a = 0; a < EAvgTypeMax; a++) {
+			doc["cadence"][kAvg[a]] = getAvgCadence(static_cast<EAvgType>(a));
+		}
+		String json;
+		serializeJson(doc, json);
+		request->send(200, "application/json", json);
 	});
 	setupWebserverDebug();
 }

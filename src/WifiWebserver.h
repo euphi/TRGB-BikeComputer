@@ -23,12 +23,19 @@ public:
 	void enableAPMode(bool enable);
 
 	AsyncWebServer& getServer() {return server;}
+	void enableWebserver() {startupComplete = true;}	// call once, after all routes are registered
 
 private:
 	void setupWebserver();
 	Ticker wifiCheckTicker;
 	bool wifiWasConnected = false;
-	bool webserverStarted = false;	// routes are registered exactly once, see setupWebserver()
+	bool webserverStarted = false;
+	// Routes are registered by several modules from main's setup() (stats, distance,
+	// bclog), but the server is started from checkLoop() as soon as WiFi is up -- which
+	// after a warm reboot is ~1s, long before setup() has got that far. Requests arriving
+	// in that window 404 on routes that simply do not exist yet. enableWebserver() closes
+	// that window; see the call at the end of main's setup().
+	volatile bool startupComplete = false;	// routes are registered exactly once, see setupWebserver()
 	time_t lostConnTimeStamp = 0;
 	AsyncWebServer server;
 

@@ -194,6 +194,10 @@ void WifiWebserver::checkLoop() {
 		bclog.log(BCLogger::Log_Debug, TAG, "Wifi check loop - try to connect");
 		if (WiFi.status() == WL_CONNECTED) {
 //		if (WiFi.status() != WL_CONNECTED && wifiMulti.run(10000) == WL_CONNECTED) {
+			// Wait for every module to have registered its routes -- see startupComplete.
+			// Deliberately before wifiWasConnected is set, so this retries on the next tick.
+			// NTP is unaffected: configTzTime() already ran in setup().
+			if (!startupComplete) return;
 			wifiWasConnected = true;
 			bclog.logf(BCLogger::Log_Info, TAG, "Wifi connected. IPv4: %s", WiFi.localIP().toString());
 			//bclog.logf(BCLogger::Log_Info, TAG, "Wifi connected. IPv4: %s IPv6: %s", WiFi.localIP().toString(), WiFi.localIPv6().toString());
@@ -409,9 +413,7 @@ void WifiWebserver::setupWebserver() {
 			{ "/debug/",              "Live Log",        "Log stream over SSE, as it happens" },
 			{ "/debug/nvs",           "NVS Contents",    "Every key stored in non-volatile storage" },
 			{ "/stat/debugarray",     "Chart Array",     "Raw heart-rate chart ring buffer" },
-			{ "/stat/distance.html",  "Distance",        "Distance counters and totals" },
 			{ "/stat/dist_debug.html","Distance Debug",  "Raw distance/wheel-revolution data" },
-			{ "/stat/dist_wheel.html","Wheel Calibration","Wheel circumference settings" },
 			{ "/log/",                "Raw SD Browser",  "Unformatted directory listing of the SD card" },
 		};
 		String html;
