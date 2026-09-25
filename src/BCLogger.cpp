@@ -513,7 +513,7 @@ TypeInfo typeOf(char c) {
 	switch (c) {
 		case 'L': return { "DATA",  "badge-info"  };		// telemetry, the one you usually want
 		case 'D': return { "DEBUG", "badge-debug" };
-		case 'N': return { "NMEA",  "badge-warn"  };
+		case 'N': return { "FL Data", "badge-warn" };		// raw NMEA from the Forumslader
 		default:  return { "?",     ""            };
 	}
 }
@@ -544,8 +544,10 @@ void formatTime(const char* key, char* out, size_t outLen) {
 
 }	// anonymous namespace
 
-// Renders one <table> for a single day directory. dayDir is "" for files sitting
-// directly in LOGDIR (legacy layout).
+// Renders one <table> for a single day directory, one row per SESSION rather than per
+// file: openFiles() creates the data/debug/FL logs together from the same timestamp, so
+// they share their HHMMSS and belong together. dayDir is "" for files sitting directly in
+// LOGDIR (legacy layout).
 void BCLogger::appendDayTable(String &rc, const char* dayDir, uint32_t& totalFiles, uint32_t& totalBytes) {
 	const String dirPath = dayDir[0] ? (LOGDIR + "/" + dayDir) : LOGDIR;
 	File dir = SD_MMC.open(dirPath);
@@ -561,13 +563,16 @@ void BCLogger::appendDayTable(String &rc, const char* dayDir, uint32_t& totalFil
 		return;
 	}
 	uint16_t count = 0;			// entries kept for display (capped)
-	uint32_t dayFiles = 0;		// files actually present, may exceed count
+	uint32_t dayFiles = 0;		// files actually shown, may exceed count when capped
 	uint32_t dayBytes = 0;
 	bool truncated = false;
 
 	for (File f = dir.openNextFile(); f; f = dir.openNextFile()) {
 		esp_task_wdt_reset();			// SD iteration is slow and this runs on async_tcp
-		if (!f.isDirectory() && f.name()[0] != 'x') {	// 'x' = manually hidden, see autoCleanUp
+		// Empty files are skipped outright: without a Forumslader the FL log stays 0 byte
+		// for the whole ride, and an empty log is nothing anyone wants a row for. Applies
+		// to every type, so a session that produced nothing disappears entirely.
+		if (!f.isDirectory() && f.name()[0] != 'x' && f.size() > 0) {	// 'x' = manually hidden
 			LogEntry e;
 			snprintf(e.name, sizeof(e.name), "%s", f.name());
 			e.size = f.size();
@@ -579,7 +584,7 @@ void BCLogger::appendDayTable(String &rc, const char* dayDir, uint32_t& totalFil
 				timeKey(a.name, ka, sizeof(ka));
 				timeKey(b.name, kb, sizeof(kb));
 				const int c = compareKey(ka, kb);
-				return c ? (c > 0) : (strcmp(a.name, b.name) < 0);	// same session: L, D, N
+				return c ? (c > 0) : (strcmp(a.name, b.name) < 0);	// same session stays adjacent
 			});
 		}
 		f.close();
@@ -606,41 +611,67 @@ void BCLogger::appendDayTable(String &rc, const char* dayDir, uint32_t& totalFil
 		rc += count;
 		rc += F(" only");
 	}
-	rc += F("</p>\n<table><thead><tr><th>Time</th><th>Type</th><th>Size</th><th>File</th></tr></thead><tbody>\n");
+	rc += F("</p>\n<table><thead><tr><th>Time</th><th>Logs</th><th></th></tr></thead><tbody>\n");
 
-	for (uint16_t i = 0; i < count; i++) {
-		const LogEntry& e = entries[i];
-		const TypeInfo ti = typeOf(e.name[0]);
-		char key[FILE_NAME_LEN], timeBuf[16];
-		timeKey(e.name, key, sizeof(key));
+	// Badge order inside a row is fixed by type, not by the sort: telemetry first, then
+	// debug, then the Forumslader log -- so the columns line up across rows.
+	static const char kTypeOrder[] = { 'L', 'D', 'N' };
+
+	for (uint16_t i = 0; i < count; ) {
+		char key[FILE_NAME_LEN];
+		timeKey(entries[i].name, key, sizeof(key));
+		uint16_t j = i;
+		while (j < count) {
+			char k2[FILE_NAME_LEN];
+			timeKey(entries[j].name, k2, sizeof(k2));
+			if (strcmp(k2, key) != 0) break;
+			j++;
+		}
+
+		char timeBuf[16];
 		formatTime(key, timeBuf, sizeof(timeBuf));
-		formatSize(e.size, sizeBuf, sizeof(sizeBuf));
-		const String uri = dayDir[0] ? (String(dayDir) + "/" + e.name) : String(e.name);
-
 		rc += F("<tr><td>");
 		rc += timeBuf;
-		rc += F("</td><td><span class=\"badge ");
-		rc += ti.badge;
-		rc += F("\">");
-		rc += ti.label;
-		rc += F("</span></td><td>");
-		rc += sizeBuf;
-		rc += F("</td><td><a href=\"/log/");
-		rc += uri;
-		rc += F("\">");
-		rc += e.name;
-		rc += F("</a>");
-		// Replay only makes sense for raw NMEA. The old check indexed backwards from the
-		// end of the URI with two hardcoded offsets to cover both layouts; the type letter
-		// is right there at the start of the basename.
-		if (!fileReplay && e.name[0] == 'N') {
-			rc += F(" <a class=\"btn btn-ghost\" href=\"/replay/");
-			rc += uri;
-			rc += F("\">Replay</a>");
+		rc += F("</td><td>");
+
+		String paths;			// JS array literal for the row's delete button
+		String replayPath;
+		for (char type : kTypeOrder) {
+			for (uint16_t e = i; e < j; e++) {
+				if (entries[e].name[0] != type) continue;
+				const TypeInfo ti = typeOf(type);
+				formatSize(entries[e].size, sizeBuf, sizeof(sizeBuf));
+				String uri = dayDir[0] ? (String(dayDir) + "/") : String();
+				uri += entries[e].name;
+				// The badge IS the download link -- the filename adds nothing the time and
+				// type don't already say, and it made every row twice as wide.
+				rc += F("<a class=\"badge ");
+				rc += ti.badge;
+				rc += F("\" href=\"/log/");
+				rc += uri;
+				rc += F("\">");
+				rc += ti.label;
+				rc += ' ';
+				rc += sizeBuf;
+				rc += F("</a>");
+				if (paths.length()) paths += ',';
+				paths += '\'';
+				paths += uri;
+				paths += '\'';
+				if (type == 'N') replayPath = uri;
+			}
 		}
-		rc += F(" <a class=\"btn btn-ghost\" href=\"/del/");
-		rc += uri;
-		rc += F("\">DEL</a></td></tr>\n");
+
+		rc += F("</td><td style=\"white-space:nowrap;\">");
+		if (!fileReplay && replayPath.length()) {
+			rc += F("<a class=\"btn btn-ghost\" href=\"#\" onclick=\"replay('");
+			rc += replayPath;
+			rc += F("');return false;\">Replay</a> ");
+		}
+		rc += F("<a class=\"btn btn-ghost\" href=\"#\" onclick=\"del(this,[");
+		rc += paths;
+		rc += F("]);return false;\">DEL</a></td></tr>\n");
+		i = j;
 	}
 	rc += F("</tbody></table>\n");
 	free(entries);
@@ -655,7 +686,20 @@ uint16_t BCLogger::getAllFileLinks(String &rc) {
 	        "<meta charset=\"UTF-8\">\n"
 	        "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n"
 	        "<link rel=\"stylesheet\" href=\"/stylesheet.css\">\n"
-	        "<title>Logfiles</title>\n</head>\n<body>\n<div class=\"container\" style=\"max-width:760px;\">\n"
+	        "<title>Logfiles</title>\n"
+	        // Only the toast needs styling the shared sheet does not provide; everything
+	        // else reuses its classes. Tokens fall back so the page stays readable even
+	        // if /stylesheet.css cannot be loaded.
+	        "<style>"
+	        "#toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);max-width:88vw;"
+	        "padding:10px 16px;border-radius:10px;border:1px solid var(--rr-line,#3A362E);"
+	        "background:var(--rr-panel,#1E252B);color:var(--rr-parchment,#E7E2D6);font-size:0.84rem;"
+	        "box-shadow:0 6px 20px rgba(0,0,0,.45);opacity:0;pointer-events:none;"
+	        "transition:opacity .18s;z-index:50;cursor:pointer}"
+	        "#toast.show{opacity:1;pointer-events:auto}"
+	        "#toast.err{border-color:var(--rr-err,#C1604A)}"
+	        "td a.badge{margin-right:6px;text-decoration:none}"
+	        "</style>\n</head>\n<body>\n<div class=\"container\" style=\"max-width:760px;\">\n"
 	        "<h2>Logfiles</h2>\n");
 
 	File root = SD_MMC.open(LOGDIR);
@@ -714,10 +758,28 @@ uint16_t BCLogger::getAllFileLinks(String &rc) {
 		rc += F(" total</p>\n");
 	}
 
+	// Cleanup, delete and replay all used to navigate to a bare result page, throwing the
+	// listing away for a one-line confirmation. They post in the background now and report
+	// through a toast that auto-hides and can be clicked away.
 	rc += F("<div class=\"row\" style=\"margin-top:18px;\">"
 	        "<a class=\"btn btn-ghost\" href=\"/\">Back</a>"
-	        "<a class=\"btn btn-ghost\" href=\"/cleanup\">Cleanup</a>"
-	        "</div>\n</div>\n</body>\n</html>");
+	        "<a class=\"btn btn-ghost\" href=\"#\" onclick=\"cleanup();return false;\">Cleanup</a>"
+	        "</div>\n</div>\n"
+	        "<div id=\"toast\" onclick=\"this.classList.remove('show')\"></div>\n"
+	        "<script>\n"
+	        "let _t;\n"
+	        "function toast(m,e){const o=document.getElementById('toast');o.textContent=m;"
+	        "o.className='show'+(e?' err':'');clearTimeout(_t);"
+	        "_t=setTimeout(()=>o.classList.remove('show'),4000);}\n"
+	        "async function req(u,ok){try{const r=await fetch(u);"
+	        "toast(r.ok?ok:'Failed ('+r.status+')',!r.ok);return r.ok;}"
+	        "catch(x){toast('Request failed',true);return false;}}\n"
+	        "function cleanup(){req('/cleanup','Cleanup done');}\n"
+	        "function replay(p){req('/replay/'+p,'Replay started');}\n"
+	        "async function del(el,ps){for(const p of ps){const r=await fetch('/del/'+p).catch(()=>null);"
+	        "if(!r||!r.ok){toast('Delete failed',true);return;}}\n"
+	        "const r=el.closest('tr');if(r)r.remove();toast('Deleted');}\n"
+	        "</script>\n</body>\n</html>");
 	return 200;
 }
 
