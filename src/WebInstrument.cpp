@@ -186,7 +186,7 @@ void report(bool withStackWatermarks, bool walkPsramHeap) {
 	// on the 21-char "BLEScanUndConnectTask" (since renamed to "BLEScanConnect" in
 	// BLEDevices.cpp). xTaskCreate() truncates silently, so an over-long name is invisible
 	// everywhere else and only blows up here; hence the guard rather than just the rename.
-	static const char* const kTasks[] = {"async_tcp", "tiT", "esp_timer", "UI Task", "loopTask", "FlusherTask", "BLEScanConnect"};
+	static const char* const kTasks[] = {"async_tcp", "tiT", "esp_timer", "UI Task", "loopTask", "FlusherTask", "BLEScanConnect", "ImuTask"};
 	for (const char* name : kTasks) {
 		if (strlen(name) >= configMAX_TASK_NAME_LEN) {
 			bclog.logf(BCLogger::Log_Warn, TAG, "Task name '%s' is >= configMAX_TASK_NAME_LEN (%d) - skipped, xTaskGetHandle() would abort",

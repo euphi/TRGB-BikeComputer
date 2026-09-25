@@ -14,6 +14,7 @@
 #include <BMI160Gen.h>
 #include <Ticker.h>
 #include <Preferences.h>
+#include <atomic>
 
 class I2CSensors {
 public:
@@ -29,7 +30,14 @@ public:
 
 	//uint16_t procHTMLCmd(String& htmlresponse, const String& cmd, const String& arg);
 	void readBME280();
-	void readBMI160();
+
+	// BMI160 debug page (/debug/imu) and its live data (/debug/imu.json). Both only read a
+	// snapshot the ImuTask publishes -- no I2C access from the web server's context.
+	void getIMUDebugPage(String& html);
+	void getIMUJson(String& json);
+	// Only raise a flag; the ImuTask does the actual work (async_tcp's stack is tight).
+	bool requestIMUCalibration();		// false if the sensor isn't running or a calibration is already underway
+	void requestIMUMinMaxReset() {imuResetMinMaxRequest = true;}
 
 	float getHeight() const {return height;}
 	float getHumid() const {return humid;}
@@ -57,15 +65,87 @@ private:
 	    return P * exp((G * M * h) / (R * T0));
 	}
 
-	float convertRawGyro(int gRaw) {
-	  // since we are using 250 degrees/seconds range
-	  // -250 maps to a raw value of -32768
-	  // +250 maps to a raw value of 32767
-	  return (gRaw * 250.0) / 32768.0;
-	}
-
 	Ticker bme280Cycle;
 	Preferences sensorPreferences;
+
+	// ---------------- BMI160: FIFO acquisition and static calibration ----------------
+	// Accelerometer only, 400 Hz, +/-16 g, read in bursts from the sensor's 1024 byte FIFO
+	// (headerless: 6 byte per frame = 170 frames = 425 ms of buffer). The gyro is not in the
+	// FIFO; it is only offset-calibrated so its values are usable later.
+	static constexpr uint16_t IMU_ODR_HZ = 400;
+	static constexpr float IMU_LSB_PER_G = 2048.0f;			// +/-16 g range
+	static constexpr uint32_t IMU_POLL_MS = 50;				// ~20 frames = 120 byte per poll
+	static constexpr uint16_t IMU_FRAME_BYTES = 6;
+	// Arduino-ESP32's Wire buffer is 128 byte (I2C_BUFFER_LENGTH): a larger requestFrom() is
+	// silently truncated. Read in chunks of whole frames below that, so no frame is ever split.
+	static constexpr uint16_t IMU_CHUNK_BYTES = 20 * IMU_FRAME_BYTES;	// 120
+	// The FIFO holds 1024 byte; at or above this fill level it may already have dropped
+	// frames, so it is counted as an overflow and flushed.
+	static constexpr uint16_t IMU_FIFO_OVERFLOW_BYTES = 1024 - 2 * IMU_FRAME_BYTES;
+	static constexpr uint16_t IMU_CAL_SAMPLES = 3 * IMU_ODR_HZ;		// 3 s
+	static constexpr float IMU_CAL_MAX_SIGMA_G = 0.015f;			// stillness check per axis
+	static constexpr float IMU_CAL_SCALE_MIN = 0.9f, IMU_CAL_SCALE_MAX = 1.1f;
+
+	enum ImuCalState : uint8_t {CAL_NONE = 0, CAL_RUNNING, CAL_OK, CAL_ERR_MOTION, CAL_ERR_SCALE};
+	static const char* const CAL_STATE_STRING[];
+
+	// Everything the web page shows. Written by the ImuTask, copied out under imuMux.
+	struct ImuSnapshot {
+		bool running = false;			// sensor found and ImuTask started
+		uint8_t deviceId = 0;
+		float samplesPerSec = 0;
+		uint16_t fifoFill = 0, fifoFillMax = 0;
+		uint32_t overflows = 0;
+		uint32_t totalSamples = 0;
+		float last[3] = {0, 0, 0};		// [g], scale-corrected
+		float mean[3] = {0, 0, 0};		// last 1 s window
+		float sigma[3] = {0, 0, 0};
+		float magMean = 0;				// mean |a| over the last 1 s window
+		float min[3] = {0, 0, 0}, max[3] = {0, 0, 0};	// since last reset
+		float magMax = 0;
+		ImuCalState calState = CAL_NONE;
+		uint16_t calProgress = 0;		// samples collected in the running calibration
+		float calMeasuredSigma[3] = {0, 0, 0};	// of the last attempt, also a failed one
+	};
+	// Persisted in Preferences namespace "RoadQ" (shared with the later road-quality code).
+	struct ImuCalibration {
+		bool valid = false;
+		float g0[3] = {0, 0, 0};		// gravity vector at rest [g], before scale correction
+		float scale = 1.0f;				// 1 g / |g0|
+		float sigma[3] = {0, 0, 0};		// noise floor per axis [g]
+		int16_t gyroOffset[3] = {0, 0, 0};	// BMI160 offset registers, 0.061 deg/s per LSB
+		time_t calTime = 0;				// 0 = no valid wall-clock time at calibration
+	};
+
+	void imuTask();
+	void imuProcessSample(const int16_t raw[3]);
+	void imuFinishCalibration();
+	void loadIMUCalibration();
+	void storeIMUCalibration();
+
+	TaskHandle_t imuTaskHandle = nullptr;
+	portMUX_TYPE imuMux = portMUX_INITIALIZER_UNLOCKED;
+	ImuSnapshot imuSnap;				// guarded by imuMux
+	ImuCalibration imuCal;				// guarded by imuMux (written by ImuTask, read by the web page)
+	std::atomic<bool> imuCalRequest{false};
+	std::atomic<bool> imuResetMinMaxRequest{false};
+
+	// ImuTask-private working state (never touched by other tasks)
+	struct {
+		double sum[3], sumSq[3], sumMag;
+		uint32_t n;
+		uint32_t startMs;
+	} imuWin = {};
+	struct {
+		double sum[3], sumSq[3];
+		uint16_t n;
+	} imuCalAcc = {};
+	bool imuCalActive = false;
+	// Published to imuSnap once per poll rather than per sample (fewer critical sections)
+	float imuLast[3] = {0, 0, 0}, imuMin[3] = {0, 0, 0}, imuMax[3] = {0, 0, 0};
+	float imuMagMax = 0;
+	uint32_t imuTotalSamples = 0;
+	bool imuMinMaxValid = false;
 };
 
 #endif

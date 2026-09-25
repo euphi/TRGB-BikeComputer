@@ -503,6 +503,32 @@ void WifiWebserver::setupWebserver() {
 		int16_t code = sensors.procHTMLHeight(htmlresponse, heightValue);
 		request->send(200, "text/html", htmlresponse);
 	});
+
+	// BMI160 debug page. The action routes are registered before "/debug/imu" on purpose:
+	// a plain route also matches "<uri>/..." (AsyncCallbackWebHandler::canHandle), so the
+	// page handler would otherwise swallow them. The handlers only raise a flag -- the
+	// calibration itself runs in the ImuTask, not on async_tcp's tight stack.
+	server.on("/debug/imu/cal", HTTP_GET, [](AsyncWebServerRequest *request) {
+		if (sensors.requestIMUCalibration()) {
+			request->send(200, "text/plain", "Calibration started");
+		} else {
+			request->send(409, "text/plain", "IMU not running or calibration already in progress");
+		}
+	});
+	server.on("/debug/imu/reset", HTTP_GET, [](AsyncWebServerRequest *request) {
+		sensors.requestIMUMinMaxReset();
+		request->send(200, "text/plain", "Min/max reset");
+	});
+	server.on("/debug/imu.json", HTTP_GET, [](AsyncWebServerRequest *request) {
+		String json;
+		sensors.getIMUJson(json);
+		request->send(200, "application/json", json);
+	});
+	server.on("/debug/imu", HTTP_GET, [](AsyncWebServerRequest *request) {
+		String html;
+		sensors.getIMUDebugPage(html);
+		request->send(200, "text/html", html);
+	});
 #endif		//TODO: Add height (pressure) adjustment for FL
 
 
@@ -513,6 +539,9 @@ void WifiWebserver::setupWebserver() {
 		static const Entry kEntries[] = {
 			{ "/debug/",              "Live Log",        "Log stream over SSE, as it happens" },
 			{ "/debug/nvs",           "NVS Contents",    "Every key stored in non-volatile storage" },
+#ifdef TRGBBC_SENSORS_I2C
+			{ "/debug/imu",           "IMU (BMI160)",    "Live accelerometer data and calibration" },
+#endif
 			{ "/stat/debugarray",     "Chart Array",     "Raw heart-rate chart ring buffer" },
 			{ "/stat/dist_debug.html","Distance Debug",  "Raw distance/wheel-revolution data" },
 			{ "/log/",                "Raw SD Browser",  "Unformatted directory listing of the SD card" },
