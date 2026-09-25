@@ -6,6 +6,7 @@
  */
 
 #include <BLEDevices.h>
+#include "WebPage.h"
 #include <BLEDevice.h>
 
 #include <Arduino.h>
@@ -946,43 +947,114 @@ int8_t BLEDevices::readBatLevel(const EDevType dt) {
 }
 
 
+namespace {
+
+// Connection state -> badge class from the shared stylesheet, indexed by EBLEConnState.
+// Indexed rather than switched because EBLEConnState is private to BLEDevices and cannot
+// be named out here; keep this in the enum's order:
+//   CONN_DEV_NOTFOUND, CONN_ADVERTISED, CONN_CONNECTED, CONN_LOST
+// The stylesheet's class names go by severity, not meaning: badge-info is green,
+// badge-debug blue, badge-warn amber, badge-error red.
+const char* const kConnBadge[] = { "", "badge-warn", "badge-info", "badge-error" };
+
+const char* connBadge(int state) {
+	const int n = sizeof(kConnBadge) / sizeof(kConnBadge[0]);
+	return (state >= 0 && state < n) ? kConnBadge[state] : "";
+}
+
+// Battery as a drawn gauge rather than a bare number: colour and fill both carry the
+// level, so a row can be read at a glance. -1 means the device has no battery service
+// or the read failed.
+void appendBattery(String& out, int8_t level) {
+	if (level < 0) {
+		out += F("<span class=\"eyebrow\">n/a</span>");
+		return;
+	}
+	const char* colour = (level > 50) ? "var(--rr-ok,#6FA98C)"
+	                   : (level > 20) ? "var(--rr-warn,#D7B463)"
+	                                  : "var(--rr-err,#C1604A)";
+	out += F("<span class=\"bat\" style=\"color:");
+	out += colour;
+	out += F("\"><i><b style=\"width:");
+	out += level;
+	out += F("%\"></b></i>");
+	out += level;
+	out += F("%</span>");
+}
+
+}	// anonymous namespace
+
 uint16_t BLEDevices::getHTMLPage(String &htmlresponse) {
-	uint16_t rc = 200;
-    htmlresponse.reserve(2048);  // Pre-allocate memory to improve performance
+	// The battery gauge is the only thing the shared stylesheet has no class for.
+	// currentColor drives border and fill, so appendBattery() only sets one colour.
+	static const char* kCss =
+		".bat{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}"
+		".bat i{position:relative;display:inline-block;width:26px;height:12px;"
+		"border:1px solid currentColor;border-radius:3px}"
+		".bat i:after{content:'';position:absolute;right:-4px;top:3px;width:2px;height:6px;"
+		"background:currentColor;border-radius:0 1px 1px 0}"
+		".bat b{position:absolute;left:1px;top:1px;bottom:1px;background:currentColor;border-radius:1px}"
+		".addr{font-family:'IBM Plex Mono',monospace;font-size:0.76rem}"
+		".del-addr{color:var(--rr-err,#C1604A);text-decoration:none;margin-left:8px;font-size:0.95rem}";
 
-    htmlresponse += "<!DOCTYPE html><html lang=\"en\">\n<head>\n"
-                    "  <meta charset=\"UTF-8\">\n"
-                    "  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n"
-                    "  <title>Connected Devices</title>\n"
-                    "  <link rel=\"stylesheet\" href=\"/stylesheet.css\">\n"
-                    "</head>\n<body>\n"
-                    "  <h2>Connected Devices</h2>\n"
-                    "  <table>\n"
-                    "    <thead>\n"
-                    "      <tr><th>Device Type</th><th>Stored Address</th><th>Connection State</th>"
-                    "<th>Current Address</th><th>Additional Data 1</th><th>Additional Data 2</th>"
-                    "<th>Battery Level</th><th>Reconnect</th></tr>\n"
-                    "    </thead>\n<tbody>\n";
-    for (uint16_t c = 0; c < DEV_COUNT; c++) {
-        String reconnectLink = (pStoredAddress[c])
-            ? "<a class=\"reconnect-link\" href=\"reset?dev=" + String(c) + "\">↻</a>"
-            : "-";
+	WebPage::begin(htmlresponse, "BLE Devices", kCss);
+	htmlresponse += F("<p class=\"eyebrow\">Deleting a stored address frees the slot, so a "
+	                  "different device of that type can pair on the next scan.</p>\n"
+	                  "<table><thead><tr><th>Device</th><th>Stored Address</th><th>State</th>"
+	                  "<th>Battery</th><th>Data</th></tr></thead><tbody>\n");
 
-        htmlresponse += "<tr><td>" + String(DEV_STRING[c]) + "</td><td>"
-                     + (pStoredAddress[c] ? pStoredAddress[c]->toString().c_str() : "-empty-") + "</td><td>"
-                     + String(CONN_STRING[connState[c]]) + "</td><td>"
-                     + (clients[c] ? clients[c].get()->getPeerAddress().toString().c_str() : "-n/a-") + "</td><td>"
-                     + ((c == DEV_CSC_1 || c == DEV_CSC_2) ? (cscIsSpeed[c] ? "Speed" : "Cadence") : "-n/a-") + "</td><td>"
-                     + String((c == DEV_CSC_1 || c == DEV_CSC_2) ? (cscIsSpeed[c] ? speed_rev : crank_rev_last) : -1) + "</td><td>"
-                     + String(batLevel[c]) + "%</td><td>"
-                     + reconnectLink + "</td></tr>\n";
-    }
-    htmlresponse += "</tbody>\n</table>\n</body></html>";
-    return rc;
+	for (uint16_t c = 0; c < DEV_COUNT; c++) {
+		htmlresponse += F("<tr><td>");
+		htmlresponse += DEV_EMOJI[c];
+		htmlresponse += ' ';
+		htmlresponse += DEV_STRING[c];
+		htmlresponse += F("</td><td class=\"addr\">");
+		if (pStoredAddress[c]) {
+			htmlresponse += pStoredAddress[c]->toString().c_str();
+			// Directly behind the address it belongs to -- this used to sit in a far-right
+			// column labelled "Reconnect", which is not what it does: it forgets the paired
+			// peer so a NEW device can take the slot.
+			htmlresponse += F("<a class=\"del-addr\" href=\"#\" title=\"Delete stored address\" onclick=\"delAddr(");
+			htmlresponse += c;
+			htmlresponse += F(",'");
+			htmlresponse += DEV_STRING[c];
+			htmlresponse += F("');return false;\">&#10005;</a>");
+		} else {
+			htmlresponse += F("<span class=\"eyebrow\">not stored &mdash; open for pairing</span>");
+		}
+		htmlresponse += F("</td><td><span class=\"badge ");
+		htmlresponse += connBadge(connState[c]);
+		htmlresponse += F("\" title=\"");
+		// The live peer address is only interesting when something is actually connected,
+		// so it rides along as a tooltip instead of costing a whole column.
+		htmlresponse += clients[c] ? clients[c].get()->getPeerAddress().toString().c_str() : "-";
+		htmlresponse += F("\">");
+		htmlresponse += CONN_STRING[connState[c]];
+		htmlresponse += F("</span></td><td>");
+		appendBattery(htmlresponse, hasBatService[c] ? batLevel[c] : -1);
+		htmlresponse += F("</td><td class=\"eyebrow\">");
+		if (c == DEV_CSC_1 || c == DEV_CSC_2) {
+			htmlresponse += cscIsSpeed[c] ? F("Speed, ") : F("Cadence, ");
+				htmlresponse += static_cast<unsigned long>(cscIsSpeed[c] ? speed_rev : crank_rev_last);
+			htmlresponse += F(" rev");
+		} else {
+			htmlresponse += F("&mdash;");
+		}
+		htmlresponse += F("</td></tr>\n");
+	}
+	htmlresponse += F("</tbody></table>\n");
+
+	WebPage::end(htmlresponse,
+		"function delAddr(d,n){if(!confirm('Delete the stored address for '+n+'?\\n\\n"
+		"The slot is freed, so a different device can pair on the next scan.'))return;"
+		"req('/dev/delete?dev='+d,'Address deleted',()=>location.reload());}\n");
+	return 200;
 }
 
 uint16_t BLEDevices::procHTMLCmd(String& htmlresponse, const String& cmd, const String& arg) {
-	if (cmd.equals("reset")) {
+	// "delete" is what this actually does: forget the stored peer so the slot is free
+	// again. "reset" is the original spelling, kept so old links/bookmarks still work.
+	if (cmd.equals("delete") || cmd.equals("reset")) {
 		int8_t devNum = arg.toInt();
 		if (devNum < 0 || devNum >= DEV_COUNT) {
 			htmlresponse += "Invalid devices";

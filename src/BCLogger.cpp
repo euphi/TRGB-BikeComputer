@@ -14,6 +14,7 @@
 #include <esp_core_dump.h>
 #include <esp_heap_caps.h>
 #include "WebInstrument.h"
+#include "WebPage.h"
 
 
 const char *BCLogger::TAG_STRING[LogTagMax] = { "RAW", "FL", "BLE", "STAT", "WIFI", "SD", "OP", "CLI", "UI", "WEB" };
@@ -681,41 +682,24 @@ uint16_t BCLogger::getAllFileLinks(String &rc) {
 	// Reserve past CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL (4096) up front: the buffer then
 	// starts in PSRAM instead of ramping there through hundreds of 16-byte reallocs in
 	// the scarce internal heap. One cold allocation per manual page view.
-	rc.reserve(8192);
-	rc += F("<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n"
-	        "<meta charset=\"UTF-8\">\n"
-	        "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n"
-	        "<link rel=\"stylesheet\" href=\"/stylesheet.css\">\n"
-	        "<title>Logfiles</title>\n"
-	        // Only the toast needs styling the shared sheet does not provide; everything
-	        // else reuses its classes. Tokens fall back so the page stays readable even
-	        // if /stylesheet.css cannot be loaded.
-	        "<style>"
-	        "#toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);max-width:88vw;"
-	        "padding:10px 16px;border-radius:10px;border:1px solid var(--rr-line,#3A362E);"
-	        "background:var(--rr-panel,#1E252B);color:var(--rr-parchment,#E7E2D6);font-size:0.84rem;"
-	        "box-shadow:0 6px 20px rgba(0,0,0,.45);opacity:0;pointer-events:none;"
-	        "transition:opacity .18s;z-index:50;cursor:pointer}"
-	        "#toast.show{opacity:1;pointer-events:auto}"
-	        "#toast.err{border-color:var(--rr-err,#C1604A)}"
-	        "td a.badge{margin-right:6px;text-decoration:none}"
-	        "</style>\n</head>\n<body>\n<div class=\"container\" style=\"max-width:760px;\">\n"
-	        "<h2>Logfiles</h2>\n");
-
+	rc.reserve(24576);		// a full card easily reaches 25KB of table
+	WebPage::begin(rc, "Logfiles");
 	File root = SD_MMC.open(LOGDIR);
 	if (!root || !root.isDirectory()) {
 		if (root) root.close();
 		log(Log_Warn, TAG_SD, "Logfile listing: " + LOGDIR + " missing or not a directory");
 		rc += F("<p class=\"badge badge-error\">Cannot open ");
 		rc += LOGDIR;
-		rc += F("</p>\n</div>\n</body>\n</html>");
+		rc += F("</p>\n");
+		WebPage::end(rc);
 		return 500;
 	}
 
 	DayName* days = static_cast<DayName*>(malloc(sizeof(DayName) * MAX_DAYS));
 	if (!days) {
 		root.close();
-		rc += F("<p class=\"badge badge-error\">Out of memory</p>\n</div>\n</body>\n</html>");
+		rc += F("<p class=\"badge badge-error\">Out of memory</p>\n");
+		WebPage::end(rc);
 		return 500;
 	}
 	uint16_t dayCount = 0;
@@ -760,26 +744,14 @@ uint16_t BCLogger::getAllFileLinks(String &rc) {
 
 	// Cleanup, delete and replay all used to navigate to a bare result page, throwing the
 	// listing away for a one-line confirmation. They post in the background now and report
-	// through a toast that auto-hides and can be clicked away.
-	rc += F("<div class=\"row\" style=\"margin-top:18px;\">"
-	        "<a class=\"btn btn-ghost\" href=\"/\">Back</a>"
-	        "<a class=\"btn btn-ghost\" href=\"#\" onclick=\"cleanup();return false;\">Cleanup</a>"
-	        "</div>\n</div>\n"
-	        "<div id=\"toast\" onclick=\"this.classList.remove('show')\"></div>\n"
-	        "<script>\n"
-	        "let _t;\n"
-	        "function toast(m,e){const o=document.getElementById('toast');o.textContent=m;"
-	        "o.className='show'+(e?' err':'');clearTimeout(_t);"
-	        "_t=setTimeout(()=>o.classList.remove('show'),4000);}\n"
-	        "async function req(u,ok){try{const r=await fetch(u);"
-	        "toast(r.ok?ok:'Failed ('+r.status+')',!r.ok);return r.ok;}"
-	        "catch(x){toast('Request failed',true);return false;}}\n"
-	        "function cleanup(){req('/cleanup','Cleanup done');}\n"
-	        "function replay(p){req('/replay/'+p,'Replay started');}\n"
-	        "async function del(el,ps){for(const p of ps){const r=await fetch('/del/'+p).catch(()=>null);"
-	        "if(!r||!r.ok){toast('Delete failed',true);return;}}\n"
-	        "const r=el.closest('tr');if(r)r.remove();toast('Deleted');}\n"
-	        "</script>\n</body>\n</html>");
+	// through the shared toast.
+	rc += F("<a class=\"btn btn-ghost\" href=\"#\" onclick=\"cleanup();return false;\">Cleanup</a>\n");
+	WebPage::end(rc,
+		"function cleanup(){req('/cleanup','Cleanup done');}\n"
+		"function replay(p){req('/replay/'+p,'Replay started');}\n"
+		"async function del(el,ps){for(const p of ps){const r=await fetch('/del/'+p).catch(()=>null);"
+		"if(!r||!r.ok){toast('Delete failed',true);return;}}\n"
+		"const r=el.closest('tr');if(r)r.remove();toast('Deleted');}\n");
 	return 200;
 }
 

@@ -8,6 +8,7 @@
 
 
 #include <I2CSensors.h>
+#include "WebPage.h"
 #include <Singletons.h>
 #include <LittleFS.h>
 
@@ -19,20 +20,26 @@ I2CSensors::I2CSensors() {
 }
 
 uint16_t I2CSensors::getHTMLPage(String &htmlresponse) {
-	uint16_t rc = 200;
-	htmlresponse += "<html><head><meta charset=\"UTF-8\"><title>Sensors</title><link rel=\"stylesheet\" href=\"/stylesheet.css\"></head><body>\n <div class=\"container\"><h1>Sensors</h1>\n";
-	//BME 280
-	htmlresponse += " <div class=\"sensor-box\"><h2>BME 280</h2>\n<p><ul>\n";
-	char buffer[255];
-	snprintf(buffer, 254,
-			"      <li>Luftdruck: %.2f mbar</li>\n<li>Height: %.2f m NHN</li>\n<li>Reference-Luftdruck (0m): %.2f mbar</li>\n<li>Luftfeuchte: %.2f rel%%</li>\n<li>Temperatur: %.2f °C</li>",
-			press,height, bme280.getReferencePressure()/100, humid, temp);
+	WebPage::begin(htmlresponse, "Sensors (I2C)");
+	htmlresponse += F("<div class=\"sensor-box\"><h3>BME 280</h3>\n<table><tbody>\n");
+	char buffer[320];
+	snprintf(buffer, sizeof(buffer) - 1,
+	         "<tr><td>Pressure</td><td>%.2f mbar</td></tr>\n"
+	         "<tr><td>Height</td><td>%.2f m NHN</td></tr>\n"
+	         "<tr><td>Reference pressure (0m)</td><td>%.2f mbar</td></tr>\n"
+	         "<tr><td>Humidity</td><td>%.2f %%rel</td></tr>\n"
+	         "<tr><td>Temperature</td><td>%.2f &deg;C</td></tr>\n",
+	         press, height, bme280.getReferencePressure() / 100, humid, temp);
 	htmlresponse += buffer;
-	htmlresponse += "</ul>\n  <form action='/sensor/submit' method='post'>Calibrate to known actual height: <input type='text' name='height'><input type='submit' value='Submit'></form></p></div>\n";
+	htmlresponse += F("</tbody></table>\n"
+	                  "<form action=\"/sensor/submit\" method=\"post\" style=\"margin-top:12px;\">"
+	                  "<label for=\"height\">Calibrate to known actual height (m):</label> "
+	                  "<input type=\"text\" id=\"height\" name=\"height\" size=\"8\"> "
+	                  "<input class=\"btn\" type=\"submit\" value=\"Submit\">"
+	                  "</form></div>\n");
 	//TODO: Add other sensors here
-
-	htmlresponse += "</div></body></html>";
-	return rc;
+	WebPage::end(htmlresponse);
+	return 200;
 }
 
 uint16_t I2CSensors::procHTMLHeight(String& htmlresponse, const float actHeight) {
@@ -42,11 +49,12 @@ uint16_t I2CSensors::procHTMLHeight(String& htmlresponse, const float actHeight)
 	sensorPreferences.putFloat("RefPressure", refPres );
 	sensorPreferences.end();
 
-	htmlresponse += "<html><body>";
+	WebPage::begin(htmlresponse, "Calibration");
 	char buffer[255];
-	snprintf(buffer, 254, "Ok - new pressure %.2f mbar for height %.2f.<br /><button onclick=\"window.history.back()\">Go Back</button>", refPres, actHeight);
+	snprintf(buffer, sizeof(buffer) - 1,
+	         "<p>New reference pressure <b>%.2f mbar</b> stored for height %.2f m.</p>\n", refPres, actHeight);
 	htmlresponse += buffer;
-	htmlresponse += "</body></html>";
+	WebPage::end(htmlresponse);
 	return 200;
 }
 

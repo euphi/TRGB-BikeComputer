@@ -8,6 +8,7 @@
 #include "Statistics.h"
 #include "Distance.h"
 #include "Singletons.h"
+#include "WebPage.h"
 #include <esp_heap_caps.h>
 #include <new>				// placement new for the PSRAM-backed rb_timedata, see the constructor
 
@@ -624,46 +625,38 @@ float Statistics::getAvgCadence(EAvgType avgtype) const {
 
 void Statistics::setupWebserverDebug() {
 	webserver.getServer().on("/stat/debugarray", HTTP_GET, [this](AsyncWebServerRequest *request) {
-		String htmlPage = "<!DOCTYPE html>\n";
-		htmlPage += "<html lang=\"en\">\n";
-		htmlPage += "<head>\n";
-		htmlPage += "  <meta charset=\"UTF-8\">\n";
-		htmlPage += "  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n";
-		htmlPage += "  <title>Array Viewer</title>\n";
-		htmlPage += "</head>\n";
-		htmlPage += "<body>\n";
-		htmlPage += "  <h1>Array Viewer</h1>\n";
-
-		htmlPage += "  <table>\n";
-		htmlPage += "    <tr>\n";
-		htmlPage += "      <th>Index</th>\n";
-		htmlPage += "      <th>DataArray</th>\n";
-		htmlPage += "      <th>Min</th>\n";
-		htmlPage += "      <th>Avg</th>\n";
-		htmlPage += "      <th>Max</th>\n";
-		htmlPage += "    </tr>\n";
-
-		htmlPage += "    <tr>\n";
-		htmlPage += "      <td>Current</td>\n";
-		htmlPage += "      <td>Count: " + String(timeData.curCountHr) + "</td>\n";
-		htmlPage += "      <td>" + String(timeData.currentMinMax.hr.min) + "</td>\n";
-		htmlPage += "      <td>" + String(timeData.currentMinMax.hr.avg) + "</td>\n";
-		htmlPage += "      <td>" + String(timeData.currentMinMax.hr.max) + "</td>\n";
-		htmlPage += "    </tr>\n";
-
-		for (int i = 0; i < sizeof(this->chart_array[1]) / sizeof(this->chart_array[1][0]); i++) {
-			S_DataPoint data = timeData.data[i].hr;
-			htmlPage += "    <tr>\n";
-			htmlPage += "      <td>" + ((chart_array_startPos[1] == i) ? String("-->") : String("")) + String(i) + "</td>\n";
-			htmlPage += "      <td>" + String(chart_array[1][i]) + "</td>\n";
-			htmlPage += "      <td>" + String(data.min) + "</td>\n";
-			htmlPage += "      <td>" + String(data.avg) + "</td>\n";
-			htmlPage += "      <td>" + String(data.max) + "</td>\n";
-			htmlPage += "    </tr>\n";
+		String htmlPage;
+		htmlPage.reserve(65536);		// ~400 rows; see WebPage::begin() on why this is reserved up front
+		WebPage::begin(htmlPage, "Chart Array");
+		htmlPage += F("<p class=\"eyebrow\">Raw contents of the heart-rate chart ring buffer. "
+		              "The arrow marks the current write position.</p>\n"
+		              "<table><thead><tr><th>Index</th><th>Chart</th><th>Min</th><th>Avg</th><th>Max</th>"
+		              "</tr></thead><tbody>\n<tr><td>Current</td><td>Count: ");
+		htmlPage += timeData.curCountHr;
+		htmlPage += F("</td><td>");
+		htmlPage += timeData.currentMinMax.hr.min;
+		htmlPage += F("</td><td>");
+		htmlPage += timeData.currentMinMax.hr.avg;
+		htmlPage += F("</td><td>");
+		htmlPage += timeData.currentMinMax.hr.max;
+		htmlPage += F("</td></tr>\n");
+		for (size_t i = 0; i < sizeof(this->chart_array[1]) / sizeof(this->chart_array[1][0]); i++) {
+			const S_DataPoint& data = timeData.data[i].hr;
+			htmlPage += F("<tr><td>");
+			if (chart_array_startPos[1] == static_cast<int>(i)) htmlPage += F("&rarr; ");
+			htmlPage += i;
+			htmlPage += F("</td><td>");
+			htmlPage += chart_array[1][i];
+			htmlPage += F("</td><td>");
+			htmlPage += data.min;
+			htmlPage += F("</td><td>");
+			htmlPage += data.avg;
+			htmlPage += F("</td><td>");
+			htmlPage += data.max;
+			htmlPage += F("</td></tr>\n");
 		}
-		htmlPage += "</body>\n";
-		htmlPage += "</html>\n";
-
+		htmlPage += F("</tbody></table>\n");
+		WebPage::end(htmlPage);
 		request->send(200, "text/html", htmlPage);
 	});
 }

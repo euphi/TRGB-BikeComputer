@@ -16,6 +16,7 @@
 #include <version.h>
 #include <nvs.h>
 #include <ESPmDNS.h>
+#include "WebPage.h"
 #include <esp_heap_caps.h>
 #include "WebInstrument.h"
 
@@ -267,15 +268,18 @@ void WifiWebserver::setupWebserver() {
 		}
 		const String dUri = BCLogger::LOGDIR + "/" + rel;
 		uint16_t http_code = 500;
-		String html_resp("<html><body>");
+		String html_resp;
+		// Normally fetched by the listing's JavaScript, which only looks at the status --
+		// this page is what you get when the URL is opened directly.
+		WebPage::begin(html_resp, "Delete");
 		if (bclog.deleteFile(dUri)) {
 			http_code = 200;
-			html_resp += "OK - file deleted.";
+			html_resp += F("<p>OK - file deleted.</p>\n");
 		} else {
 			http_code = 403;
-			html_resp += "Forbidden - file can't be deleted (probably because it does not exist).";
+			html_resp += F("<p class=\"badge badge-error\">Forbidden - file can't be deleted (probably because it does not exist).</p>\n");
 		}
-		html_resp += "</body></html>";
+		WebPage::end(html_resp);
 		request->send(http_code, "text/html", html_resp.c_str());
 	});
 	server.on("/replay", HTTP_GET, [](AsyncWebServerRequest *request) {
@@ -287,15 +291,18 @@ void WifiWebserver::setupWebserver() {
 		}
 		const String dUri = BCLogger::LOGDIR + "/" + rel;
 		uint16_t http_code = 500;
-		String html_resp("<html><body>");
+		String html_resp;
+		// Normally fetched by the listing's JavaScript, which only looks at the status --
+		// this page is what you get when the URL is opened directly.
+		WebPage::begin(html_resp, "Replay");
 		if (bclog.replayFile(dUri)) {
 			http_code = 200;
-			html_resp += "OK - file replay started";
+			html_resp += F("<p>OK - file replay started</p>\n");
 		} else {
 			http_code = 403;
-			html_resp += "Forbidden - file can't be openend for replay (probably because it does not exist).";
+			html_resp += F("<p class=\"badge badge-error\">Forbidden - file can't be openend for replay (probably because it does not exist).</p>\n");
 		}
-		html_resp += "</body></html>";
+		WebPage::end(html_resp);
 		request->send(http_code, "text/html", html_resp.c_str());
 	});
 
@@ -321,30 +328,36 @@ void WifiWebserver::setupWebserver() {
 
 	// Serve the system resources page
 	server.on("/system", HTTP_GET, [](AsyncWebServerRequest *request) {
-	    String html = "<html><head><link rel='stylesheet' type='text/css' href='/stylesheet.css'></head>\n<body>\n<div class='container'>\n<h1>ESP32 System Resources</h1>";
-
-		// Get free heap memory
-		html += "<p>Free Heap : " + String(ESP.getFreeHeap() / 1024 ) + " kilobytes</p>";
-		html += "<p>Free PSRAM: " + String(ESP.getFreePsram() / 1024 ) + " kilobytes</p>";
-
-		// Calculate free space on LittleFS
-		size_t totalBytes = LittleFS.totalBytes();
-		size_t usedBytes = LittleFS.usedBytes();
-		html += "<p>Used space on LitteFS: " + String(usedBytes / (1024) ) + " kB of " + String(totalBytes / (1024)) + " kB.</p>";
-
-
-		// Check if an SD card is present
-		sdcard_type_t ctype = SD_MMC.cardType();
+		String html;
+		WebPage::begin(html, "System");
+		html += F("<table><tbody>\n<tr><td>Version</td><td>" VERSION "</td></tr>\n<tr><td>Free heap</td><td>");
+		html += ESP.getFreeHeap() / 1024;
+		html += F(" kB</td></tr>\n<tr><td>Free internal</td><td>");
+		html += heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT) / 1024;
+		html += F(" kB</td></tr>\n<tr><td>Free PSRAM</td><td>");
+		html += ESP.getFreePsram() / 1024;
+		html += F(" kB</td></tr>\n<tr><td>Open requests</td><td>");
+		html += WebInstr::open();
+		html += F(" (peak ");
+		html += WebInstr::openPeak();
+		html += F(")</td></tr>\n<tr><td>Uptime</td><td>");
+		html += millis() / 1000;
+		html += F(" s</td></tr>\n<tr><td>LittleFS</td><td>");
+		html += LittleFS.usedBytes() / 1024;
+		html += F(" kB of ");
+		html += LittleFS.totalBytes() / 1024;
+		html += F(" kB</td></tr>\n<tr><td>SD card</td><td>");
+		const sdcard_type_t ctype = SD_MMC.cardType();
 		if (ctype != CARD_UNKNOWN && ctype != CARD_NONE) {
-			// Get free space on the SD card
-			uint64_t cardSize = SD_MMC.cardSize() / (1024 * 1024);
-			uint64_t totalSpace = SD_MMC.usedBytes() / (1024 * 1024);
-			html += "<p>Used space on SD card: " + String(totalSpace) + " MB of " + String(cardSize) + " MB.</p>";
+			html += static_cast<unsigned long>(SD_MMC.usedBytes() / (1024 * 1024));
+			html += F(" MB of ");
+			html += static_cast<unsigned long>(SD_MMC.cardSize() / (1024 * 1024));
+			html += F(" MB");
 		} else {
-			html += "<p>No SD card detected</p>";
+			html += F("not detected");
 		}
-		html += "<p>Version: " VERSION "</p>";
-		html += "</div></body></html>";
+		html += F("</td></tr>\n</tbody></table>\n");
+		WebPage::end(html);
 		request->send(200, "text/html", html);
 	});
 
@@ -387,6 +400,42 @@ void WifiWebserver::setupWebserver() {
 	});
 #endif		//TODO: Add height (pressure) adjustment for FL
 
+
+	// Debug menu: these pages exist but were reachable only by typing the URL.
+	// Registered as "/debug/menu" because "/debug/" is the static live-log page.
+	server.on("/debug/menu", HTTP_GET, [](AsyncWebServerRequest *request) {
+		struct Entry { const char* href; const char* name; const char* desc; };
+		static const Entry kEntries[] = {
+			{ "/debug/",              "Live Log",        "Log stream over SSE, as it happens" },
+			{ "/debug/nvs",           "NVS Contents",    "Every key stored in non-volatile storage" },
+			{ "/stat/debugarray",     "Chart Array",     "Raw heart-rate chart ring buffer" },
+			{ "/stat/distance.html",  "Distance",        "Distance counters and totals" },
+			{ "/stat/dist_debug.html","Distance Debug",  "Raw distance/wheel-revolution data" },
+			{ "/stat/dist_wheel.html","Wheel Calibration","Wheel circumference settings" },
+			{ "/log/",                "Raw SD Browser",  "Unformatted directory listing of the SD card" },
+		};
+		String html;
+		WebPage::begin(html, "Debug");
+		html += F("<div class=\"tiles\">\n");
+		for (const Entry& e : kEntries) {
+			html += F("<a class=\"link-box\" href=\"");
+			html += e.href;
+			html += F("\">");
+			html += e.name;
+			html += F("<span class=\"eyebrow\" style=\"display:block;margin-top:4px;\">");
+			html += e.desc;
+			html += F("</span></a>\n");
+		}
+		html += F("</div>\n<h3 style=\"margin-top:24px;\">Danger zone</h3>\n"
+		          "<p class=\"eyebrow\">Forces a crash so a coredump is written. The device reboots.</p>\n"
+		          "<a class=\"btn btn-ghost\" href=\"#\" style=\"border-color:var(--rr-err,#C1604A);\" "
+		          "onclick=\"crash();return false;\">Force coredump</a>\n");
+		WebPage::end(html,
+			"function crash(){if(!confirm('Crash the device now to write a coredump?\\n\\n"
+			"It will reboot and any unflushed log data is lost.'))return;"
+			"req('/coredump_now','Crashing...');}\n");
+		request->send(200, "text/html", html);
+	});
 
 	server.on("/log/set", HTTP_GET, [](AsyncWebServerRequest *request) {
 		// getParam() returns nullptr for a missing param -- log.html didn't send "output" at all
@@ -574,25 +623,40 @@ static const char *type_to_str(nvs_type_t type)
 
 void WifiWebserver::setupNvsDebug() {
 	server.on("/debug/nvs", HTTP_GET, [](AsyncWebServerRequest *request) {
-		String respString("NVS Iterator\n\n");
+		String resp;
+		WebPage::begin(resp, "NVS Contents");
 		nvs_iterator_t it = NULL;
 		esp_err_t res = nvs_entry_find("nvs", NULL, NVS_TYPE_ANY, &it);
 		if (res != ESP_OK) {
 			bclog.log(BCLogger::Log_Warn, TAG, "Can't iterate over NVS");
-			request->send(500, "text/plain", "Can't iterate over NVS");
+			resp += F("<p class=\"badge badge-error\">Cannot iterate over NVS</p>\n");
+			WebPage::end(resp);
+			request->send(500, "text/html", resp);
 			return;
 		}
+		resp += F("<table><thead><tr><th>Namespace</th><th>Key</th><th>Type</th></tr></thead><tbody>\n");
+		uint16_t entries = 0;
 		while (res == ESP_OK) {
 			nvs_entry_info_t info;
 			nvs_entry_info(it, &info);
-			char buffer[400];
-			snprintf(buffer, sizeof(buffer) - 1, "namespace '%s', key '%s', type '%s' \n", info.namespace_name, info.key, type_to_str(info.type));
-			respString += buffer;
+			resp += F("<tr><td>");
+			resp += info.namespace_name;
+			resp += F("</td><td>");
+			resp += info.key;
+			resp += F("</td><td><span class=\"badge badge-debug\">");
+			resp += type_to_str(info.type);
+			resp += F("</span></td></tr>\n");
+			entries++;
 			res = nvs_entry_next(&it);
 		}
 		nvs_release_iterator(it);
-		request->send(200, "text/plain", respString);
+		resp += F("</tbody></table>\n<p class=\"eyebrow\" style=\"margin-top:12px;\">");
+		resp += entries;
+		resp += F(" entries</p>\n");
+		WebPage::end(resp);
+		request->send(200, "text/html", resp);
 	});
+
 }
 
 #endif
