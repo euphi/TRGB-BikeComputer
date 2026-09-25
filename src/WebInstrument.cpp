@@ -29,7 +29,9 @@ namespace {
 // On overflow we drop the NEWEST record and count it, rather than evicting the oldest:
 // evicting would mean the producer moves the consumer's index and this stops being a
 // clean SPSC ring. For diagnostics either is fine; this one can't race.
-constexpr uint8_t RING_SIZE = 16;		// power of two, see the & (RING_SIZE-1) below
+// Drained every 5s by FlusherTask. One page load alone is ~9 requests (HTML, CSS, five
+// fonts, favicon, JSON), so 16 overflowed on two quick navigations. 32 * 56 byte.
+constexpr uint8_t RING_SIZE = 32;		// power of two, see the & (RING_SIZE-1) below
 constexpr size_t  URL_LEN   = 40;
 
 struct Entry {
@@ -170,9 +172,12 @@ void report(bool withStackWatermarks, bool walkPsramHeap) {
 		           psramInfo.largest_free_block);
 	}
 
-	const uint32_t dropped = ringDropped.load(std::memory_order_relaxed);
+	// exchange(0), not load(): this runs every 5s, and the counter used to be cumulative,
+	// so a single burst after boot was re-reported as the same "N dropped" every cycle
+	// forever. Report only what was lost since the last report.
+	const uint32_t dropped = ringDropped.exchange(0, std::memory_order_relaxed);
 	if (dropped) {
-		bclog.logf(BCLogger::Log_Warn, TAG, "Request ring overflowed - %u record(s) dropped", dropped);
+		bclog.logf(BCLogger::Log_Warn, TAG, "Request ring overflowed - %u record(s) dropped since last report", dropped);
 	}
 
 	if (!withStackWatermarks) return;
