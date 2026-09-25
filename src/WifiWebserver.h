@@ -27,6 +27,10 @@ public:
 
 private:
 	void setupWebserver();
+	void setupOta();					// own OTA, replaces the ElegantOTA dependency
+	uint32_t otaRebootAt = 0;			// millis() deadline, 0 = no restart pending
+	size_t   otaTotal = 0;				// Content-Length of the running upload, for progress
+	uint8_t  otaLastPerc = 255;			// throttles ui.otaProgress() to actual changes
 	Ticker wifiCheckTicker;
 	bool wifiWasConnected = false;
 	bool webserverStarted = false;

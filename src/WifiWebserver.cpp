@@ -10,7 +10,7 @@
 #include <SD_MMC.h>
 #include <LittleFS.h>
 #include <FS.h>
-#include <ElegantOTA.h>
+#include <Update.h>
 //#include <PrettyOTA.h>
 #include <ArduinoJson.h>
 #include <version.h>
@@ -220,17 +220,118 @@ void WifiWebserver::checkLoop() {
 		bclog.log(BCLogger::Log_Warn, TAG, "Wifi connection lost - disabling it to save power");
 		disableWifi();
 	}
-	ElegantOTA.loop();		// check loop for ElegantOTA (seems to only check for reboot-flag for now)
+	// A successful OTA cannot restart from the upload handler -- that runs on async_tcp
+	// and the client still has to receive the response. The flag is set there and acted
+	// on here, one tick later, by which time the reply has gone out.
+	if (otaRebootAt && millis() >= otaRebootAt) {
+		bclog.log(BCLogger::Log_Info, TAG, "OTA complete - restarting");
+		ESP.restart();
+	}
 }
 
 void WifiWebserver::scanResult() {
 
 }
 
+// ---------------------------------------------------------------------------
+// OTA update
+// ---------------------------------------------------------------------------
+// Replaces the ElegantOTA dependency. Everything it did for this project is here:
+// a GET page to pick a file, a POST that streams into the Update partition, and a
+// restart once the client has its answer. In exchange the page follows the rest of the
+// UI (ElegantOTA ships its own gzipped HTML, which cannot be restyled) and the progress
+// shown is the browser's own upload progress rather than a server-side estimate.
+void WifiWebserver::setupOta() {
+	server.on("/update", HTTP_GET, [](AsyncWebServerRequest *request) {
+		String html;
+		WebPage::begin(html, "Firmware Update",
+			"#bar{height:10px;border-radius:5px;background:var(--rr-panel-2,#282019);"
+			"border:1px solid var(--rr-line,#3A362E);overflow:hidden;margin-top:14px;display:none}"
+			"#bar i{display:block;height:100%;width:0;background:var(--rr-brass,#CBA36B);transition:width .2s}");
+		html += F("<p class=\"eyebrow\">Pick a firmware binary (<code>firmware.bin</code>) or a "
+		          "filesystem image (a name containing <code>littlefs</code> or <code>spiffs</code> "
+		          "selects the filesystem partition). The device restarts when the upload verifies.</p>\n"
+		          "<div class=\"row\" style=\"margin-top:14px;gap:10px;flex-wrap:wrap;\">"
+		          "<input type=\"file\" id=\"f\" accept=\".bin\">"
+		          "<a class=\"btn\" id=\"go\" onclick=\"upload()\">Upload</a>"
+		          "</div>\n<div id=\"bar\"><i id=\"fill\"></i></div>\n"
+		          "<p class=\"eyebrow\" id=\"state\" style=\"margin-top:10px;\">Version " VERSION "</p>\n");
+		WebPage::end(html,
+			"function upload(){const f=document.getElementById('f').files[0];"
+			"if(!f){toast('Choose a file first',true);return;}\n"
+			"const fd=new FormData();fd.append('update',f,f.name);\n"
+			"const x=new XMLHttpRequest();document.getElementById('bar').style.display='block';\n"
+			"document.getElementById('go').style.pointerEvents='none';\n"
+			"x.upload.onprogress=e=>{if(!e.lengthComputable)return;"
+			"const p=Math.round(e.loaded/e.total*100);"
+			"document.getElementById('fill').style.width=p+'%';"
+			"document.getElementById('state').textContent='Uploading '+p+'%';};\n"
+			"x.onload=()=>{if(x.status===200){document.getElementById('state').textContent="
+			"'Done - the device is restarting.';toast('Update complete, restarting');}"
+			"else{document.getElementById('state').textContent=x.responseText||('Failed ('+x.status+')');"
+			"toast(x.responseText||'Update failed',true);"
+			"document.getElementById('go').style.pointerEvents='';}};\n"
+			"x.onerror=()=>{toast('Upload failed',true);document.getElementById('go').style.pointerEvents='';};\n"
+			"x.open('POST','/update');x.send(fd);}\n");
+		request->send(200, "text/html", html);
+	});
+
+	server.on("/update", HTTP_POST,
+		// Runs once the body is fully consumed by the upload callback below.
+		[this](AsyncWebServerRequest *request) {
+			const bool ok = !Update.hasError();
+			AsyncWebServerResponse* resp = request->beginResponse(ok ? 200 : 400, "text/plain",
+			                                                      ok ? "OK" : Update.errorString());
+			resp->addHeader("Connection", "close");		// the socket dies with the restart anyway
+			request->send(resp);
+			if (ok) {
+				ui.otaProgress(100);
+				otaRebootAt = millis() + 1500;			// let the response drain first
+			} else {
+				bclog.logf(BCLogger::Log_Error, TAG, "OTA failed: %s", Update.errorString());
+			}
+		},
+		// Body chunks, in order, on the async_tcp task.
+		[this](AsyncWebServerRequest *request, const String& filename, size_t index,
+		       uint8_t* data, size_t len, bool final) {
+			if (index == 0) {
+				// A filesystem image has to go to the other partition; anything else is
+				// treated as application firmware.
+				String lower = filename;
+				lower.toLowerCase();
+				const int partition = (lower.indexOf("littlefs") >= 0 || lower.indexOf("spiffs") >= 0)
+				                      ? U_SPIFFS : U_FLASH;
+				otaTotal = request->contentLength();
+				bclog.logf(BCLogger::Log_Info, TAG, "OTA start: %s -> %s partition, %u byte",
+				           filename.c_str(), partition == U_SPIFFS ? "filesystem" : "app", otaTotal);
+				ui.otaStart();
+				if (!Update.begin(UPDATE_SIZE_UNKNOWN, partition)) {
+					bclog.logf(BCLogger::Log_Error, TAG, "OTA begin failed: %s", Update.errorString());
+					return;
+				}
+			}
+			if (Update.isRunning() && len && Update.write(data, len) != len) {
+				bclog.logf(BCLogger::Log_Error, TAG, "OTA write failed: %s", Update.errorString());
+				return;
+			}
+			if (Update.isRunning() && otaTotal) {
+				// Coarse, because this fires per TCP chunk and the UI redraw is not free.
+				const uint8_t perc = static_cast<uint8_t>(((index + len) * 100) / otaTotal);
+				if (perc != otaLastPerc) {
+					otaLastPerc = perc;
+					ui.otaProgress(perc);
+				}
+			}
+			if (final && Update.isRunning() && !Update.end(true)) {
+				bclog.logf(BCLogger::Log_Error, TAG, "OTA end failed: %s", Update.errorString());
+			}
+		});
+}
+
 void WifiWebserver::setupWebserver() {
 	// checkLoop() calls this on every WiFi (re)connect -- wifiWasConnected is reset in
 	// enableWifi() and in the /wifi/connect handler. AsyncServer::begin() is idempotent
-	// ("if (_pcb) return;"), but server.on(), addMiddleware() and ElegantOTA.begin() are
+	// ("if (_pcb) return;"), but server.on() and addMiddleware() are
 	// not: they new + append unconditionally. Without this guard every reconnect leaked
 	// ~21 handler objects AND made _attachHandler() walk a longer list on every request.
 	if (webserverStarted) {
@@ -560,19 +661,7 @@ void WifiWebserver::setupWebserver() {
 //		ui.otaProgress(perc);
 //	});
 
-	// -- Allow OTA via Web ("ElegantOTA" library)
-	ElegantOTA.begin(&server); // Start ElegantOTA - it listens on "/update/"
-	ElegantOTA.setAutoReboot(true);
-	ElegantOTA.onStart([]() {
-		bclog.log(BCLogger::Log_Info, TAG, "Start OTA Update");
-		ui.otaStart();
-	});
-	ElegantOTA.onProgress([](size_t current, size_t total) {
-		uint8_t perc = (current * 100) / total;
-		bclog.logf(BCLogger::Log_Debug, TAG, "OTA Update: %d %% [%d byte from %d byte].", perc, current, total);
-		ui.otaProgress(perc);
-	});
-
+	setupOta();
 
 	// -- download Binary Logfile
 	server.serveStatic("/log/", SD_MMC, "/BIKECOMP/");

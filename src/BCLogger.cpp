@@ -154,7 +154,32 @@ void BCLogger::setup() {
 
 // Method to send log messages as events
 void BCLogger::sendLogEvent(const String& logMessage, const String& tag) {
-  logevents.send(logMessage.c_str(), tag.c_str(), millis());
+	// The tag used to go in AsyncEventSource::send()'s second parameter, which is the SSE
+	// *event name* -- so every line arrived as "event: BLE", "event: WIFI" and so on,
+	// while the page listened with onmessage, which only ever sees unnamed "message"
+	// events. The live log was therefore always empty.
+	//
+	// The tag rides in the payload now: one handler on the client, and no need to mirror
+	// BCLogger's tag list in JavaScript (it is already duplicated in data/site/log.html).
+	String payload;
+	payload.reserve(logMessage.length() + 32);
+	payload += F("{\"t\":\"");
+	payload += tag;
+	payload += F("\",\"m\":\"");
+	for (size_t i = 0; i < logMessage.length(); i++) {
+		const char c = logMessage.charAt(i);
+		// Minimal JSON escaping. Log lines carry file paths and quoted names, and a bare
+		// quote would break the client's JSON.parse for that line.
+		if (c == '"' || c == '\\') {
+			payload += '\\';
+			payload += c;
+		} else if (static_cast<unsigned char>(c) >= 0x20) {
+			payload += c;			// UTF-8 continuation bytes pass through untouched
+		}
+		// control characters (including the newlines logf() can produce) are dropped
+	}
+	payload += F("\"}");
+	logevents.send(payload.c_str(), nullptr, millis());
 }
 
 

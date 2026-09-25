@@ -16,37 +16,49 @@
 </div>
 
 <script>
+  var BADGE = { DEBUG: 'badge-debug', INFO: 'badge-info', WARN: 'badge-warn', ERROR: 'badge-error' };
+
   // Wraps a leading DEBUG/INFO/WARN/ERROR token in the matching colored badge,
   // if the log line happens to start with one -- purely cosmetic, falls back
   // to plain text for anything else.
   function formatLine(text) {
     var m = text.match(/^\s*(DEBUG|INFO|WARN|ERROR)\b(.*)$/);
-    if (!m) return text;
-    var cls = { DEBUG: 'badge-debug', INFO: 'badge-info', WARN: 'badge-warn', ERROR: 'badge-error' }[m[1]];
-    return '<span class="badge ' + cls + '">' + m[1] + '</span>' + m[2];
+    if (!m) return escapeHtml(text);
+    return '<span class="badge ' + BADGE[m[1]] + '">' + m[1] + '</span>' + escapeHtml(m[2]);
   }
 
-  // Create an EventSource object for the 'debug/log' endpoint
-  var eventSource = new EventSource('/debug/logevent');
+  function escapeHtml(t) {
+    return t.replace(/[&<>]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]; });
+  }
 
-  // Function to handle incoming log messages
-  eventSource.onmessage = function(event) {
+  function append(tag, text) {
     var line = document.createElement('div');
     line.className = 'line';
-    line.innerHTML = formatLine(event.data);
+    line.innerHTML = (tag ? '<span class="badge">' + escapeHtml(tag) + '</span> ' : '') + formatLine(text);
     var out = document.getElementById('logOutput');
     out.insertBefore(line, out.firstChild);
-  };
+    while (out.childElementCount > 300) out.removeChild(out.lastChild);   // keep the DOM bounded
+  }
 
-  // Function to handle errors
-  eventSource.onerror = function(error) {
-    console.error('EventSource failed:', error);
-    // Attempt to reconnect after a short delay
-    setTimeout(function() {
-      eventSource.close();
-      eventSource = new EventSource('/debug/logevent');
-    }, 3000);
-  };
+  // The firmware sends {"t":tag,"m":message} as an unnamed event, so one handler covers
+  // every tag. Older firmware sent the raw text with the tag as the event name, which is
+  // why this used to show nothing -- fall back to printing whatever arrives.
+  var eventSource;
+  function connect() {
+    eventSource = new EventSource('/debug/logevent');
+    eventSource.onmessage = function (event) {
+      try {
+        var d = JSON.parse(event.data);
+        append(d.t, d.m);
+      } catch (x) {
+        append(null, event.data);
+      }
+    };
+    // EventSource reconnects on its own; closing and rebuilding it here used to drop the
+    // handlers with it, so after the first hiccup the page stayed silent for good.
+    eventSource.onerror = function () { console.warn('EventSource interrupted, browser will retry'); };
+  }
+  connect();
 </script>
 
 <div class="container" style="margin-top:14px;"><div class="row" style="margin-top:18px;"><a class="btn btn-ghost" href="/" onclick="if(history.length>1){history.back();return false;}">Back</a></div>
