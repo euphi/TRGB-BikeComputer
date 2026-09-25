@@ -9,6 +9,7 @@
 #include "ui_eez/screens.h"
 #include "ui_eez/ui.h"
 #include "ui_eez/actions.h"
+#include "ui_eez/images.h"	// img_rr_icon_stopwatch/img_rr_icon_clock, referenced directly below
 #include "RimRidgeCustFunc.h"
 #include "BikeNavProtocol.h"
 #include "ui/img/nav_icons.h"
@@ -137,6 +138,27 @@ void ui_RimRidgeUpdateStateIcon(const lv_img_dsc_t* pIcon, lv_color_t color) {
 	lv_obj_set_style_img_recolor(objects.rr_ic_state, color, LV_PART_MAIN | LV_STATE_DEFAULT);
 	lv_obj_set_style_img_recolor_opa(objects.rr_ic_state, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
 	lv_obj_clear_flag(objects.rr_ic_state, LV_OBJ_FLAG_HIDDEN);
+}
+
+void ui_RimRidgeUpdateTime(bool stopwatchMode, uint32_t elapsedS, const char* clockStr) {
+	// img_recolor (brass) is baked into rr_ic_time's own JSON style - unlike
+	// rr_ic_state above, the color here never varies, so no C override for
+	// it (see add_rimridge_time_widget.py).
+	static int8_t modeLast = -1;
+	if ((int8_t) stopwatchMode != modeLast) {
+		modeLast = stopwatchMode;
+		lv_img_set_src(objects.rr_ic_time, stopwatchMode ? &img_rr_icon_stopwatch : &img_rr_icon_clock);
+	}
+	if (stopwatchMode) {
+		uint32_t h = elapsedS / 3600, m = (elapsedS % 3600) / 60, s = elapsedS % 60;
+		if (h > 0) {
+			lv_label_set_text_fmt(objects.rr_time_val, "%u:%02u:%02u", (unsigned) h, (unsigned) m, (unsigned) s);
+		} else {
+			lv_label_set_text_fmt(objects.rr_time_val, "%u:%02u", (unsigned) m, (unsigned) s);
+		}
+	} else {
+		lv_label_set_text(objects.rr_time_val, clockStr);
+	}
 }
 
 // EEZ Studio action, wired to rr_tour_pill's GESTURE event (see

@@ -9,8 +9,8 @@ selbst ist die Felge.
 
 | Screen | Datei | Zustand |
 |---|---|---|
-| Mainscreen | [`mainscreen.svg`](mainscreen.svg) | **implementiert**, `EEZStudio/TRGB-BikeComputer.eez-project`, Screen `rim_ridge` |
-| Navigationsscreen | [`navscreen.svg`](navscreen.svg) | Spezifikation, noch nicht in EEZ Studio angelegt |
+| Mainscreen | [`mainscreen.svg`](mainscreen.svg) | **implementiert**, `EEZStudio/TRGB-BikeComputer.eez-project`, Screen `rim_ridge` — bis auf die Fahrzeit/Uhrzeit (siehe §4), die ist noch nicht als Widget angelegt |
+| Navigationsscreen | [`navscreen.svg`](navscreen.svg) | **implementiert**, Screen `rim_ridge_nav` (`SCREEN_ID_RIM_RIDGE_NAV`) — diese Datei war ursprünglich nur die Spezifikation, zwischenzeitlich aber real gebaut worden; bei Abweichungen zählt der EEZ-Screen, nicht diese SVG |
 | Einstellungen | [`settings.svg`](settings.svg) | Spezifikation, noch nicht in EEZ Studio angelegt |
 
 Jede SVG-Datei ist 1:1 im Ziel-Koordinatensystem (480×480 Einheiten =
@@ -51,7 +51,13 @@ In `theme_colors[]` liegen zusätzlich 16 nicht-`RR_`-präfixte Farb-IDs
 (`NAV_ICON_RECOLOR`, `ARC_SPEED_TRACK`, `GRADIENT_GOOD_GREEN` …) mit
 grellen Platzhalterwerten (reines Grün/Rot/Blau) — sehen nach
 Scaffolding-Resten aus einer früheren Iteration aus, nicht Teil dieses
-Systems. Vor dem nächsten Screen ggf. aufräumen.
+Systems. Vor dem nächsten Screen ggf. aufräumen. Eine Ausnahme:
+`COLOR_ID_PANEL_CLOCK_BG` liest sich wie ein früher, nie fertiggestellter
+Versuch genau an diesem Fahrzeit/Uhrzeit-Widget (§4) — die aktuelle
+Spezifikation kommt ohne eigene Chip-Fläche aus (Icon+Wert direkt auf
+Anthrazit, wie Cadence/Watt/Temp), aber falls beim Umsetzen doch ein
+Panel-Hintergrund gewünscht ist, ist das der naheliegende Token dafür statt
+einen neuen anzulegen.
 
 ## 2. Typografie
 
@@ -163,6 +169,24 @@ daneben in Big Shoulders Display 600, Einheit klein in IBM Plex Mono,
 außerhalb der Speed-Zahl platzieren, nicht auf gleicher Höhe daneben — sonst
 Kollisionsgefahr mit der großen Zahl (siehe §3).
 
+### Fahrzeit / Uhrzeit
+
+Ein Slot, zwei mögliche Inhalte — welcher gerade gilt, ist App-Logik, nicht
+Teil dieser Spezifikation. Icon und Wert wechseln immer zusammen:
+
+- **Fahrzeit** (Stoppuhr-Icon: Kreis + Krone oben + Zeiger) — verstrichene
+  Zeit der aktuellen Fahrt/Tour, Format `H:MM:SS` bzw. `MM:SS`
+- **Uhrzeit** (schlichtes Zifferblatt-Icon: Kreis + zwei Zeiger, keine
+  Krone) — aktuelle Tageszeit, Format `HH:MM`
+
+Sitzt zwischen Nav-Pille/Spur-Anzeige (y≈132) und der Speed-Zahl (Ziffern
+beginnen ≈y177) — eine Lücke, die vorher ungenutzt war. Icon fest bei
+`x=210`, Wert linksbündig ab `x=224` (nicht als Gruppe zentriert), damit die
+unterschiedliche Zeichenbreite von `1:24:07` gegenüber `14:32` nicht bei
+jedem Wechsel neu zentriert werden muss — dieselbe Technik wie beim
+Nav-Chip-Icon+Text. Big Shoulders Display 600, 28px, `PARCHMENT` — wie alle
+anderen Werte auf dem Screen, keine Sonderbehandlung.
+
 ### Spur-Anzeige (Lane-Widget)
 
 Ein gemeinsamer Rahmen (`rx≈9`, `PANEL_BG`, `BRASS`-Kontur 30–45%
@@ -226,6 +250,8 @@ Sattel/Lenker-Kappen: M-4.2,-4.6 L-1.8,-4   M2.8,-5.6 L4.8,-4.2
 | Fahrzustand ×4 | `img_rr_icon_state_{power,coasting,stop,break}` | siehe §4 |
 | Neustart (neu, Settings) | noch nicht exportiert | identisch zum Cadence-Icon (Kreisbogen + Pfeilspitze) — Wiederverwendung als „rotierend/zurücksetzen" |
 | Tiefschlaf (neu, Settings) | noch nicht exportiert | Vollkreis + versetzter Kreis in Flächenfarbe („ausgestanzte" Mondsichel) |
+| Stoppuhr (neu, Fahrzeit) | noch nicht exportiert | Kreis + kleine Krone/Taste oben + zwei Zeiger — siehe §4 „Fahrzeit / Uhrzeit" |
+| Uhr (neu, Uhrzeit) | noch nicht exportiert | wie Stoppuhr, aber ohne Krone — teilt sich denselben Widget-Slot mit dem Stoppuhr-Icon |
 
 `img_settings_icon` existiert bereits (48×48, `TRUE_COLOR_ALPHA` — anderes
 Format als der Rest, volltonig statt Alpha-Maske), vermutlich das Icon des
@@ -246,14 +272,16 @@ Temp/Höhe/Steigung (Reihe bei y≈325) → HF-Wert + Zonenband (y≈353–380) 
 Fußzeile (Pause-Taste, Fahrzustand-Icon 34px, Distanz, Modus-Chip,
 Einstellungen-Taste) → außen der Speed-Arc mit Ø-Marker → oben
 Statuszeile (WLAN/GPS/Akku) und Nav-Pille, links davon konditional die
-Spur-Anzeige.
+Spur-Anzeige, darunter die Fahrzeit/Uhrzeit (y≈157, siehe §4) in der Lücke
+zwischen Nav-Pille und Speed-Zahl.
 
 ### Navigationsscreen — [`navscreen.svg`](navscreen.svg)
 
-Noch nicht in EEZ Studio angelegt — diese Datei ist die Spezifikation, kein
-Abbild eines bestehenden Screens. Blendet sich laut bestehendem
-Firmware-Verhalten automatisch als Vollbild ein, wenn eine Nav-Anweisung
-ansteht, und wieder aus danach (zurück zum Mainscreen).
+Diese Datei war ursprünglich nur die Spezifikation, ist zwischenzeitlich
+aber als Screen `rim_ridge_nav` real gebaut worden (siehe Status-Tabelle
+oben) — bei Abweichungen zählt der tatsächliche EEZ-Screen. Blendet sich
+laut Firmware-Verhalten automatisch als Vollbild ein, wenn eine
+Nav-Anweisung ansteht, und wieder aus danach (zurück zum Mainscreen).
 
 Aufbau: Distanz-Ring (gleicher Mechanismus wie der Speed-Arc, siehe §4) →
 großes Abbiege-Icon + Entfernung (Zahl in zwei Größen: `84px` Wert + `34px`
@@ -264,6 +292,11 @@ Steigung als mittelgroßes Paar → Herzfrequenz ganz unten, hier nur Farbe +
 Zahl, kein Zonenband (auf diesem Screen sekundär). Spur-Anzeige oben,
 gleiches Widget wie auf dem Mainscreen, hier bei voller Größe (`scale
 1.2` statt `0.75`, mehr Platz vorhanden).
+
+Bewusst **ohne** Fahrzeit/Uhrzeit-Widget: der Screen ist eng auf die
+anstehende Abbiegung zugeschnitten, und für die ambiente Info „wie lange
+fahre ich schon" ist der kurz eingeblendete Nav-Screen der falsche Ort —
+die gehört auf den Mainscreen, wo sie durchgehend sichtbar ist.
 
 ### Einstellungen — [`settings.svg`](settings.svg) *(neu)*
 
@@ -316,6 +349,12 @@ aber vor dem Verdrahten in EEZ Studio zu klären):
   Buttons, `_val`/`_unit`-Suffix für Wert/Einheit-Paare, `_pill`/`_bg` für
   Chip-Flächen. Für die neuen Screens fortführen, z. B. `rr_settings_build`,
   `rr_btn_reset`, `rr_btn_deepsleep`.
-- **Neuer Screen `SCREEN_ID_SETTINGS`:** aktuell existiert nur
-  `SCREEN_ID_RIM_RIDGE` in `screens.h` — Navigationsscreen und Einstellungen
-  fehlen noch als eigene EEZ-Screens.
+- **Neuer Screen `SCREEN_ID_SETTINGS`:** `screens.h` kennt inzwischen
+  `SCREEN_ID_RIM_RIDGE` und `SCREEN_ID_RIM_RIDGE_NAV` — nur der
+  Einstellungen-Screen fehlt noch als eigener EEZ-Screen.
+- **Fahrzeit/Uhrzeit-Widget:** `rr_ic_time` (Icon) + `rr_time_val` (Text),
+  gehört zusammen zu `rim_ridge` wie die anderen Stat-Gruppen. Welcher der
+  beiden Icon-Zustände (Stoppuhr/Uhr) gerade sichtbar ist und welcher Text
+  im Feld steht, ist reine Anwendungslogik (Moduswechsel, Formatierung,
+  Umschaltbedingung) — hier nicht festgelegt, das entscheidet die
+  Firmware-Seite.

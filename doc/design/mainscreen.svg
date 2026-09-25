@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 480" role="img" aria-label="Rim &amp; Ridge Mainscreen: zentrale Geschwindigkeit, Speed-Arc, Spur-Anzeige, Navigationshinweis, Statuszeile, Trittfrequenz, Watt, Temperatur, Höhe, Steigung, Herzfrequenz-Zonenband, Fahrzustand-Icon, Distanz, Modus-Chip, Pause- und Einstellungen-Tasten">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 480" role="img" aria-label="Rim &amp; Ridge Mainscreen: zentrale Geschwindigkeit, Speed-Arc, Spur-Anzeige, Navigationshinweis, Fahrzeit/Uhrzeit, Statuszeile, Trittfrequenz, Watt, Temperatur, Höhe, Steigung, Herzfrequenz-Zonenband, Fahrzustand-Icon, Distanz, Modus-Chip, Pause- und Einstellungen-Tasten">
   <title>Rim &amp; Ridge — Mainscreen</title>
 
   <circle cx="240" cy="240" r="240" fill="#161B1F"/>
@@ -55,6 +55,22 @@
       <path d="M-9,-4 L-4,-8 M-9,-4 L-4,0"/>
     </g>
     <text x="203" y="120" font-family="'IBM Plex Mono',monospace" font-size="21" fill="#E7E2D6">180 m</text>
+  </g>
+
+  <!-- ride time / clock: one shared slot, icon+value both swap together depending on mode
+       (elapsed ride time with the stopwatch icon, or time-of-day with the clock-face icon;
+       that switch is app logic, not covered here). Sits in the gap between the nav row and
+       the hero speed number; icon fixed at x=210 so the value can grow (ride time) or shrink
+       (clock) without re-centering the pair. -->
+  <g id="timeGroup">
+    <g transform="translate(210,157)" fill="none" stroke="#CBA36B" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="-1.6" y="-9.6" width="3.2" height="2.6" rx="1" fill="#CBA36B" stroke="none"/>
+      <circle cx="0" cy="1" r="7" fill="none"/>
+      <line x1="0" y1="1" x2="0" y2="-4"/>
+      <line x1="0" y1="1" x2="3.6" y2="-2.2" stroke-width="1.3"/>
+      <circle cx="0" cy="1" r="0.9" fill="#CBA36B" stroke="none"/>
+    </g>
+    <text x="224" y="163" font-family="'Big Shoulders Display'" font-weight="600" font-size="28" fill="#E7E2D6">1:24:07</text>
   </g>
 
   <!-- cadence / watts -->

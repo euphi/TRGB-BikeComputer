@@ -237,9 +237,33 @@ void UIFacade::updateHandler() {
 void UIFacade::updateClock(const time_t now) {
 	String strClock = DateFormatter::format(DateFormatter::TIME_ONLY,now);
 	String strDate = DateFormatter::format(DateFormatter::DATE_ONLY,now);
-	// ui_ScrMainUpdateClock removed 2026-09-18 (old S1Main screen disabled,
-	// RimRidge has no clock widget - confirmed leave-out for this step).
+	// ui_ScrMainUpdateClock removed 2026-09-18 (old S1Main screen disabled).
 	uifl.updateClock(strClock, strDate);
+
+	// Ride time / clock widget (rr_ic_time + rr_time_val), added 2026-09-25
+	// per doc/design/mainscreen.svg's timeGroup. Mode switch rule (this
+	// firmware's own choice - the design doc explicitly leaves it open):
+	// stopwatch showing elapsed ride time while a ride is actually
+	// connected/running (same isConnected() signal updateStateIcon()'s
+	// caller uses to decide DS_NO_CONN), clock-face showing time-of-day the
+	// rest of the time (e.g. before a ride starts). elapsedS uses AVG_ALL
+	// so it counts wall-clock time since ride start including stops -
+	// that's "Fahrzeit" here, not moving time.
+	bool stopwatchMode = stats.isConnected();
+	uint32_t elapsedS = stats.getTime(Statistics::SUM_ESP_START, Statistics::AVG_ALL);
+	struct tm *lt = localtime(&now);
+	char clockStr[6];
+	snprintf(clockStr, sizeof(clockStr), "%02d:%02d", lt->tm_hour, lt->tm_min);
+
+	// Not the isDrawTask() bypass: updateClock() runs from updateHandler()'s
+	// loop AFTER that iteration's own lv_timer_handler() mutex block already
+	// released xUIDrawMutex (same reasoning as evaluateNaviAutoSwitch()'s
+	// 1Hz-fallback call just below in this file) - a plain blocking take is
+	// correct and safe here.
+	if (xSemaphoreTake(xUIDrawMutex, 50 / portTICK_PERIOD_MS) == pdTRUE) {
+		ui_RimRidgeUpdateTime(stopwatchMode, elapsedS, clockStr);
+		xSemaphoreGive(xUIDrawMutex);
+	}
 }
 
 void UIFacade::updateStats() {

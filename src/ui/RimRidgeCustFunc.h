@@ -11,8 +11,11 @@
  * memory ui-tooling-eez-studio-migration - restore once RimRidge grows a
  * widget for it):
  *   - rr_power_val (no data source in the firmware at all yet)
- *   - average speed + clock/time (no widgets on RimRidge for these)
- *   - driving-state icon (coasting/power/braking/stopped - no widget)
+ *   - average speed (no widget on RimRidge for this)
+ *
+ * Ride time / clock (rr_ic_time + rr_time_val) and the driving-state icon
+ * (rr_ic_state) got their widgets 2026-09-19/25 - see
+ * ui_RimRidgeUpdateTime()/ui_RimRidgeUpdateStateIcon() below.
  */
 
 #pragma once
@@ -64,6 +67,19 @@ void ui_RimRidgeUpdateStateIcon(const lv_img_dsc_t* pIcon, lv_color_t color);
 // brightness comes entirely from each lane's own content, see
 // lane_icon.h's lane_row_get() doc comment.
 void ui_RimRidgeUpdateLanes(const NavLane* lanes, uint8_t laneCount);
+
+// Fahrzeit/Uhrzeit widget (rr_ic_time + rr_time_val), see
+// doc/design/mainscreen.svg's #timeGroup and rim-ridge-design-system.md §4.
+// One shared slot: stopwatchMode selects the icon (stopwatch = elapsed ride
+// time, clock-face = time-of-day) and which of elapsedS/clockStr is used
+// for the text - icon and text always swap together, per the design doc.
+// elapsedS is formatted here as H:MM:SS (or MM:SS under an hour); clockStr
+// is used verbatim (already formatted HH:MM by the caller). The decision of
+// WHICH mode applies right now is UIFacade::updateClock()'s job, not this
+// function's - see its comment for the actual rule (kept out of this
+// extern "C" header to avoid pulling Statistics.h in here, same reasoning
+// as ui_RimRidgeUpdateStateIcon() above).
+void ui_RimRidgeUpdateTime(bool stopwatchMode, uint32_t elapsedS, const char* clockStr);
 
 #ifdef __cplusplus
 } /*extern "C"*/
