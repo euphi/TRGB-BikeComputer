@@ -14,7 +14,10 @@
     #logOutput .line { display:flex; gap:8px; align-items:baseline; padding:1px 0; }
     #logOutput .line.hide { display:none; }
     .t-time { color:var(--rr-muted,#9BA097); font-size:0.74rem; white-space:nowrap; }
-    .t-tag  { white-space:nowrap; }
+    /* Icon only, fixed width: tag names differ in length and made every column after
+       them jitter from line to line. The name lives on the filter chip above, which
+       doubles as the legend, and in the tooltip here. */
+    .t-tag  { white-space:nowrap; width:1.6em; text-align:center; flex:none; }
     .t-msg  { word-break:break-word; }
     .lvl { min-width:52px; text-align:center; }
   </style>
@@ -74,11 +77,22 @@
   // this page having to know the list. /log/get seeds them so the filter is complete
   // before the first line of that tag ever arrives.
   function ensureChip(tag, icon) {
-    if (tag in tagOn) return;
+    if (tag in tagOn) {
+      // A chip seeded before its icon was known gets it on the first line that carries
+      // one -- without this it would stay icon-less for good, and the legend with it.
+      const old = document.querySelector(`#tags .chip[data-tag="${tag}"]`);
+      if (icon && old && !old.dataset.icon) {
+        old.dataset.icon = icon;
+        old.textContent = icon + ' ' + tag;
+      }
+      return;
+    }
     tagOn[tag] = true;
     const c = document.createElement('span');
     c.className = 'badge chip on';
+    c.dataset.tag = tag;
     c.textContent = (icon ? icon + ' ' : '') + tag;
+    c.dataset.icon = icon || '';
     c.title = 'Show/hide ' + tag;
     c.onclick = () => { tagOn[tag] = !tagOn[tag]; c.classList.toggle('on', tagOn[tag]); applyFilter(); };
     document.getElementById('tags').appendChild(c);
@@ -93,7 +107,7 @@
     line.dataset.tag = d.t || '';
     line.innerHTML =
       `<span class="t-time" title="${esc(d.ts || '')}">${esc(hhmmss(d.ts))}</span>` +
-      `<span class="t-tag badge">${esc((d.i || '') + ' ' + (d.t || ''))}</span>` +
+      `<span class="t-tag" title="${esc(d.t || '')}">${esc(d.i || '')}</span>` +
       `<span class="badge lvl ${BADGE[d.l] || ''}">${esc(d.l || '')}</span>` +
       `<span class="t-msg">${esc(d.m || '')}</span>`;
     if (!visible(line)) line.classList.add('hide');
@@ -112,7 +126,7 @@
 
   // Seed the chips from the authoritative tag list the log-level API already exposes.
   fetch('/log/get').then(r => r.json())
-    .then(d => Object.keys(d).forEach(t => ensureChip(t, '')))
+    .then(d => Object.keys(d).forEach(t => ensureChip(t, d[t].icon || '')))
     .catch(() => { /* chips will appear as their tags arrive */ });
 
   // One unnamed event type carries every tag, so a single handler is enough.

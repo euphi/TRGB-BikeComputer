@@ -596,6 +596,11 @@ void WifiWebserver::setupWebserver() {
 			JsonObject tagLevels = doc[BCLogger::TAG_STRING[t]].to<JsonObject>();
 			tagLevels["file"] = BCLogger::LEVEL_STRING[bclog.getLogLevel(static_cast<BCLogger::LogTag>(t), false)];
 			tagLevels["serial"] = BCLogger::LEVEL_STRING[bclog.getLogLevel(static_cast<BCLogger::LogTag>(t), true)];
+			// The live log shows only the icon per line to keep the columns aligned, so its
+			// filter chips carry the icon/name pairing and act as the legend. Serving the
+			// icon here means every tag has one from the start, instead of only those that
+			// happened to emit a line already. Additive: log.html reads file/serial only.
+			tagLevels["icon"] = BCLogger::TAG_SYMBOL[t];
 		}
 		// Serialize JSON document to a string
 		String jsonString;
