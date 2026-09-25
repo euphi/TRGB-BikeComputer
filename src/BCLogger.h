@@ -162,5 +162,5 @@ private:
 	void replayNextLine();
 
 	AsyncEventSource logevents;
-	void sendLogEvent(const String& logMessage, const String& tag);
+	void sendLogEvent(LogType type, LogTag tag, const String& timeStr, const String& logMessage);
 };

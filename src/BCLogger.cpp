@@ -153,18 +153,30 @@ void BCLogger::setup() {
 }
 
 // Method to send log messages as events
-void BCLogger::sendLogEvent(const String& logMessage, const String& tag) {
+void BCLogger::sendLogEvent(LogType type, LogTag tag, const String& timeStr, const String& logMessage) {
 	// The tag used to go in AsyncEventSource::send()'s second parameter, which is the SSE
 	// *event name* -- so every line arrived as "event: BLE", "event: WIFI" and so on,
 	// while the page listened with onmessage, which only ever sees unnamed "message"
 	// events. The live log was therefore always empty.
 	//
-	// The tag rides in the payload now: one handler on the client, and no need to mirror
-	// BCLogger's tag list in JavaScript (it is already duplicated in data/site/log.html).
+	// Everything the serial output shows travels in the payload now, so the web log can
+	// render the same information and filter on it, and so none of these tables have to
+	// be mirrored in JavaScript (the tag list is already duplicated in log.html):
+	//   t  tag name      i  tag icon     l  level name     ts timestamp    m  message
 	String payload;
-	payload.reserve(logMessage.length() + 32);
+	payload.reserve(logMessage.length() + 72);
 	payload += F("{\"t\":\"");
-	payload += tag;
+	payload += TAG_STRING[tag];
+	payload += F("\",\"i\":\"");
+	payload += TAG_SYMBOL[tag];
+	payload += F("\",\"l\":\"");
+	payload += LEVEL_STRING[type];
+	payload += F("\",\"ts\":\"");
+	// timeStr carries the ": " separator the serial/file sinks want appended; the web log
+	// formats its own, so hand over just the stamp.
+	size_t tsLen = timeStr.length();
+	if (tsLen >= 2 && timeStr.charAt(tsLen - 2) == ':' && timeStr.charAt(tsLen - 1) == ' ') tsLen -= 2;
+	for (size_t i = 0; i < tsLen; i++) payload += timeStr.charAt(i);
 	payload += F("\",\"m\":\"");
 	for (size_t i = 0; i < logMessage.length(); i++) {
 		const char c = logMessage.charAt(i);
@@ -357,7 +369,7 @@ void BCLogger::log(LogType type, LogTag tag, const String& str) {
 			Serial.print(symbolStr);
 			Serial.print(timeStr);
 			Serial.println(str);
-			sendLogEvent(str, TAG_STRING[tag]);
+			sendLogEvent(type, tag, timeStr, str);
 			xSemaphoreGive(xPrintMutex);
 		} else {
 			printf("%d: !!!!! Serial Log output blocked !!!!!", millis());

@@ -3,65 +3,127 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Debug Log</title>
+  <title>Live Log</title>
   <link rel="stylesheet" href="/stylesheet.css">
+  <style>
+    #controls { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:10px; }
+    #tags { display:flex; gap:5px; flex-wrap:wrap; }
+    /* Tag chips double as the legend: same icon and name that appear on every line. */
+    .chip { cursor:pointer; user-select:none; opacity:0.35; border:1px solid transparent; }
+    .chip.on { opacity:1; border-color:var(--rr-brass-dim,rgba(203,163,107,.32)); }
+    #logOutput .line { display:flex; gap:8px; align-items:baseline; padding:1px 0; }
+    #logOutput .line.hide { display:none; }
+    .t-time { color:var(--rr-muted,#9BA097); font-size:0.74rem; white-space:nowrap; }
+    .t-tag  { white-space:nowrap; }
+    .t-msg  { word-break:break-word; }
+    .lvl { min-width:52px; text-align:center; }
+  </style>
 </head>
 <body>
+<div class="container" style="max-width:820px;">
+  <h2>Live Log</h2>
 
-<div class="container" style="max-width:640px;">
-  <h1 style="font-size:1.4rem;">Debug Log</h1>
-  <div class="console" id="logContainer">
-    <div id="logOutput"></div>
+  <div id="controls">
+    <label for="lvl">Min level</label>
+    <select id="lvl">
+      <option value="0">DEBUG</option>
+      <option value="1" selected>INFO</option>
+      <option value="2">WARN</option>
+      <option value="3">ERROR</option>
+    </select>
+    <span id="tags"></span>
+    <a class="btn btn-ghost" id="pause" onclick="togglePause()">Pause</a>
+    <a class="btn btn-ghost" onclick="clearLog()">Clear</a>
+  </div>
+
+  <div class="console" id="logContainer"><div id="logOutput"></div></div>
+
+  <div class="row" style="margin-top:18px;">
+    <a class="btn btn-ghost" href="/" onclick="if(history.length>1){history.back();return false;}">Back</a>
   </div>
 </div>
 
 <script>
-  var BADGE = { DEBUG: 'badge-debug', INFO: 'badge-info', WARN: 'badge-warn', ERROR: 'badge-error' };
+  const LEVELS = ['DEBUG', 'INFO', 'WARN', 'ERROR'];
+  const BADGE  = { DEBUG: 'badge-debug', INFO: 'badge-info', WARN: 'badge-warn', ERROR: 'badge-error' };
+  const MAX_LINES = 400;
 
-  // Wraps a leading DEBUG/INFO/WARN/ERROR token in the matching colored badge,
-  // if the log line happens to start with one -- purely cosmetic, falls back
-  // to plain text for anything else.
-  function formatLine(text) {
-    var m = text.match(/^\s*(DEBUG|INFO|WARN|ERROR)\b(.*)$/);
-    if (!m) return escapeHtml(text);
-    return '<span class="badge ' + BADGE[m[1]] + '">' + m[1] + '</span>' + escapeHtml(m[2]);
+  let minLevel = 1, paused = false, skipped = 0;
+  const tagOn = {};                       // tag name -> shown?
+
+  function esc(t) {
+    return String(t).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
   }
 
-  function escapeHtml(t) {
-    return t.replace(/[&<>]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]; });
+  // The device sends "YYYYMMDD_HHMMSS"; the time is what matters while watching live, the
+  // full stamp stays available as a tooltip.
+  function hhmmss(ts) {
+    const m = /^\d{8}_(\d{2})(\d{2})(\d{2})$/.exec(ts || '');
+    return m ? `${m[1]}:${m[2]}:${m[3]}` : (ts || '');
   }
 
-  function append(tag, text) {
-    var line = document.createElement('div');
+  function visible(el) {
+    return LEVELS.indexOf(el.dataset.lvl) >= minLevel && tagOn[el.dataset.tag] !== false;
+  }
+
+  function applyFilter() {
+    document.querySelectorAll('#logOutput .line').forEach(el => el.classList.toggle('hide', !visible(el)));
+  }
+
+  // Chips are created on demand, so a tag added to the firmware shows up here without
+  // this page having to know the list. /log/get seeds them so the filter is complete
+  // before the first line of that tag ever arrives.
+  function ensureChip(tag, icon) {
+    if (tag in tagOn) return;
+    tagOn[tag] = true;
+    const c = document.createElement('span');
+    c.className = 'badge chip on';
+    c.textContent = (icon ? icon + ' ' : '') + tag;
+    c.title = 'Show/hide ' + tag;
+    c.onclick = () => { tagOn[tag] = !tagOn[tag]; c.classList.toggle('on', tagOn[tag]); applyFilter(); };
+    document.getElementById('tags').appendChild(c);
+  }
+
+  function append(d) {
+    ensureChip(d.t, d.i);
+    if (paused) { skipped++; document.getElementById('pause').textContent = `Resume (${skipped})`; return; }
+    const line = document.createElement('div');
     line.className = 'line';
-    line.innerHTML = (tag ? '<span class="badge">' + escapeHtml(tag) + '</span> ' : '') + formatLine(text);
-    var out = document.getElementById('logOutput');
-    out.insertBefore(line, out.firstChild);
-    while (out.childElementCount > 300) out.removeChild(out.lastChild);   // keep the DOM bounded
+    line.dataset.lvl = d.l || 'INFO';
+    line.dataset.tag = d.t || '';
+    line.innerHTML =
+      `<span class="t-time" title="${esc(d.ts || '')}">${esc(hhmmss(d.ts))}</span>` +
+      `<span class="t-tag badge">${esc((d.i || '') + ' ' + (d.t || ''))}</span>` +
+      `<span class="badge lvl ${BADGE[d.l] || ''}">${esc(d.l || '')}</span>` +
+      `<span class="t-msg">${esc(d.m || '')}</span>`;
+    if (!visible(line)) line.classList.add('hide');
+    const out = document.getElementById('logOutput');
+    out.insertBefore(line, out.firstChild);                 // newest first, no scrolling needed
+    while (out.childElementCount > MAX_LINES) out.removeChild(out.lastChild);
   }
 
-  // The firmware sends {"t":tag,"m":message} as an unnamed event, so one handler covers
-  // every tag. Older firmware sent the raw text with the tag as the event name, which is
-  // why this used to show nothing -- fall back to printing whatever arrives.
-  var eventSource;
-  function connect() {
-    eventSource = new EventSource('/debug/logevent');
-    eventSource.onmessage = function (event) {
-      try {
-        var d = JSON.parse(event.data);
-        append(d.t, d.m);
-      } catch (x) {
-        append(null, event.data);
-      }
-    };
-    // EventSource reconnects on its own; closing and rebuilding it here used to drop the
-    // handlers with it, so after the first hiccup the page stayed silent for good.
-    eventSource.onerror = function () { console.warn('EventSource interrupted, browser will retry'); };
+  function togglePause() {
+    paused = !paused; skipped = 0;
+    document.getElementById('pause').textContent = paused ? 'Resume' : 'Pause';
   }
-  connect();
+  function clearLog() { document.getElementById('logOutput').innerHTML = ''; }
+
+  document.getElementById('lvl').onchange = e => { minLevel = +e.target.value; applyFilter(); };
+
+  // Seed the chips from the authoritative tag list the log-level API already exposes.
+  fetch('/log/get').then(r => r.json())
+    .then(d => Object.keys(d).forEach(t => ensureChip(t, '')))
+    .catch(() => { /* chips will appear as their tags arrive */ });
+
+  // One unnamed event type carries every tag, so a single handler is enough.
+  const es = new EventSource('/debug/logevent');
+  es.onmessage = ev => {
+    try { append(JSON.parse(ev.data)); }
+    catch (x) { append({ t: '?', l: 'INFO', m: ev.data }); }
+  };
+  // EventSource reconnects by itself; the old handler here closed it and built a new one
+  // without reattaching anything, so after the first hiccup the page stayed silent.
+  es.onerror = () => console.warn('EventSource interrupted, browser will retry');
 </script>
-
-<div class="container" style="margin-top:14px;"><div class="row" style="margin-top:18px;"><a class="btn btn-ghost" href="/" onclick="if(history.length>1){history.back();return false;}">Back</a></div>
-</div>
 </body>
 </html>
