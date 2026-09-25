@@ -24,8 +24,9 @@ const String BCLogger::TAG_SYMBOL[LogTagMax] = { String("📜"), String("📟"),
 const String BCLogger::LEVEL_SYMBOL[LogTypeMax] = { String("🐛"), String("ℹ️"), String("⚠️"), String("❌") };
 
 // Adding a tag or level means extending, in lockstep: the enum in BCLogger.h, the four
-// arrays above, the loglevel[][] default matrix in BCLogger.h, and the <select> in
-// data/site/log.html. The array bounds come from the enum, so a forgotten entry is NOT a
+// arrays above, and the loglevel[][] default matrix in BCLogger.h. The web pages take the
+// tag list and icons from /log/get, so nothing under data/site/ needs touching (log.html
+// used to carry its own copy). The array bounds come from the enum, so a forgotten entry is NOT a
 // compile error -- it just leaves a nullptr that blows up the first "%s" that hits it.
 // A static_assert can't see that (the elements aren't constant expressions), so check at
 // boot instead; see the call at the top of setup().
@@ -161,7 +162,7 @@ void BCLogger::sendLogEvent(LogType type, LogTag tag, const String& timeStr, con
 	//
 	// Everything the serial output shows travels in the payload now, so the web log can
 	// render the same information and filter on it, and so none of these tables have to
-	// be mirrored in JavaScript (the tag list is already duplicated in log.html):
+	// be mirrored in JavaScript -- the pages read tags and icons from here and /log/get:
 	//   t  tag name      i  tag icon     l  level name     ts timestamp    m  message
 	String payload;
 	payload.reserve(logMessage.length() + 72);

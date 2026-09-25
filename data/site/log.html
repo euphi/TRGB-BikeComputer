@@ -4,146 +4,95 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="stylesheet" href="/stylesheet.css">
-  <title>Set Log Levels</title>
-
-  <script>
-    function badgeClass(level) {
-      switch ((level || '').toUpperCase()) {
-        case 'DEBUG': return 'badge-debug';
-        case 'INFO':  return 'badge-info';
-        case 'WARN':  return 'badge-warn';
-        case 'ERROR': return 'badge-error';
-        default:      return '';
-      }
-    }
-    function levelBadge(level) {
-      return '<span class="badge ' + badgeClass(level) + '">' + level + '</span>';
-    }
-
-    function setLogLevels() {
-      // Get values from the input fields
-      var tag = document.getElementById("tagSelect").value;
-      var level = document.getElementById("levelSelect").value;
-      var output = document.getElementById("outputSelect").value;
-
-      // Make a GET request to set log levels
-      var xhr = new XMLHttpRequest();
-      xhr.onreadystatechange = function() {
-        if (xhr.readyState === XMLHttpRequest.DONE) {
-          if (xhr.status === 200) {
-            // Display success message
-            getLogLevels();
-            alert(xhr.responseText);
-          } else {
-            // Display error message
-            getLogLevels();
-            alert('Error: ' + xhr.status);
-          }
-        }
-      };
-
-      // Replace 'your-device-ip' with the actual IP address of your device
-      xhr.open('GET', '/log/set?tag=' + tag + '&level=' + level + '&output=' + output, true);
-
-      xhr.send();
-    }
-    function getLogLevels() {
-        // Make a GET request to retrieve current log levels
-        var xhr = new XMLHttpRequest();
-        xhr.onreadystatechange = function() {
-          if (xhr.readyState === XMLHttpRequest.DONE) {
-            if (xhr.status === 200) {
-              // Parse the JSON response
-              var logLevels = JSON.parse(xhr.responseText);
-              // Update the log levels table
-              updateLogLevelsTable(logLevels);
-            } else {
-              // Display error message
-              alert('Error: ' + xhr.status);
-            }
-          }
-        };
-
-        // Replace 'your-device-ip' with the actual IP address of your device
-        xhr.open('GET', '/log/get', true);
-        xhr.send();
-      }
-
-      function updateLogLevelsTable(logLevels) {
-        // Get the table body element
-        var tableBody = document.getElementById("logLevelsTableBody");
-        // Clear existing rows
-        tableBody.innerHTML = "";
-
-        // Iterate through logLevels and add rows to the table -- Serial and File can differ,
-        // so /log/get reports both per tag now.
-        for (var tag in logLevels) {
-          var row = tableBody.insertRow();
-          var cellTag = row.insertCell(0);
-          var cellFile = row.insertCell(1);
-          var cellSerial = row.insertCell(2);
-          cellTag.innerHTML = tag;
-          cellFile.innerHTML = levelBadge(logLevels[tag].file);
-          cellSerial.innerHTML = levelBadge(logLevels[tag].serial);
-        }
-      }
-
-      function goBack() {
-        // Go back to the previous page in the browser's history
-        window.history.back();
-      }
-
-      // Initial call to get current log levels when the page loads
-      getLogLevels();
-
-  </script>
+  <title>Log Levels</title>
+  <style>
+    td.icon { width:1.8em; text-align:center; }
+    /* Each level is its own select, dressed as the badge it used to be. A native select
+       keeps it one tap on touch and fully keyboard-accessible, with no popover to build. */
+    select.lv { appearance:none; -webkit-appearance:none; border:1px solid transparent;
+                cursor:pointer; text-align:center; text-align-last:center; min-width:64px;
+                padding:3px 10px; border-radius:8px; font-family:'IBM Plex Mono',monospace;
+                font-size:0.72rem; letter-spacing:0.03em; }
+    select.lv:hover, select.lv:focus { border-color:var(--rr-brass-dim,rgba(203,163,107,.32)); outline:none; }
+    select.lv option { background:var(--rr-panel,#1E252B); color:var(--rr-parchment,#E7E2D6); }
+    select.lv.busy { opacity:0.45; }
+    #toast { position:fixed; left:50%; bottom:26px; transform:translateX(-50%); max-width:88vw;
+             padding:10px 16px; border-radius:10px; border:1px solid var(--rr-line,#3A362E);
+             background:var(--rr-panel,#1E252B); color:var(--rr-parchment,#E7E2D6);
+             font-size:0.84rem; box-shadow:0 6px 20px rgba(0,0,0,.45); opacity:0;
+             pointer-events:none; transition:opacity .18s; z-index:50; cursor:pointer; }
+    #toast.show { opacity:1; pointer-events:auto; }
+    #toast.err { border-color:var(--rr-err,#C1604A); }
+  </style>
 </head>
 <body>
   <div class="container" style="max-width:560px;">
-   <!-- Table to display current log levels -->
-  <h2>Current Log Levels</h2>
-  <table border="1">
-    <thead>
-      <tr>
-        <th>Tag</th>
-        <th>File</th>
-        <th>Serial</th>
-      </tr>
-    </thead>
-    <tbody id="logLevelsTableBody"></tbody>
-  </table>
-  <h2 style="margin-top:22px;">Set Log Levels</h2>
-  <label for="tagSelect">Tag:</label>
-  <select id="tagSelect">
-    <option value="RAW">RAW</option>
-    <option value="FL">FL</option>
-    <option value="BLE">BLE</option>
-    <option value="STAT">STAT</option>
-    <option value="WIFI">WIFI</option>
-    <option value="SD">SD</option>
-    <option value="OP">OP</option>
-    <option value="CLI">CLI</option>
-    <option value="UI">UI</option>
-    <option value="WEB">WEB</option>
-  </select>
-  <label for="levelSelect">Level:</label>
-  <select id="levelSelect">
-    <option value="DEBUG">DEBUG</option>
-    <option value="INFO">INFO</option>
-    <option value="WARN">WARN</option>
-    <option value="ERROR">ERROR</option>
-  </select>
-  <label for="outputSelect">Output:</label>
-  <select id="outputSelect">
-    <option value="File">File</option>
-    <option value="Serial">Serial</option>
-  </select>
-  <div class="row" style="margin-top:14px;">
-    <a class="btn" onclick="setLogLevels()">Set Log Levels</a>
-    <a class="btn btn-ghost" onclick="goBack()">Back</a>
-    <a class="btn btn-ghost" href="/cleanup">Cleanup logfiles</a>
+    <h2>Log Levels</h2>
+    <p class="eyebrow">Click a level to change it. Lines below the level are dropped for
+      that tag and output; changes are stored on the device.</p>
+    <table>
+      <thead><tr><th></th><th>Tag</th><th>File</th><th>Serial / Web</th></tr></thead>
+      <tbody id="body"></tbody>
+    </table>
+    <div class="row" style="margin-top:18px;">
+      <a class="btn btn-ghost" href="/" onclick="if(history.length>1){history.back();return false;}">Back</a>
+      <a class="btn btn-ghost" onclick="cleanup()">Cleanup logfiles</a>
+    </div>
+    <p class="eyebrow" style="margin-top:10px;">Cleanup deletes empty and very small logfiles.</p>
   </div>
-  <p style="font-size:0.78rem; color:var(--rr-muted); margin-top:10px;">Cleanup deletes empty and very small logfiles.</p>
-  </div>
+  <div id="toast" onclick="this.classList.remove('show')"></div>
+
+  <script>
+    const LEVELS = ['DEBUG', 'INFO', 'WARN', 'ERROR'];
+    const BADGE  = { DEBUG: 'badge-debug', INFO: 'badge-info', WARN: 'badge-warn', ERROR: 'badge-error' };
+
+    let _t;
+    function toast(m, e) {
+      const o = document.getElementById('toast');
+      o.textContent = m; o.className = 'show' + (e ? ' err' : '');
+      clearTimeout(_t); _t = setTimeout(() => o.classList.remove('show'), 4000);
+    }
+    function esc(t) { return String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+
+    // output: "File" or "Serial" -- exactly what /log/set expects. The serial level also
+    // governs the live web log, which is fed from the serial path.
+    function levelSelect(tag, output, current) {
+      return `<select class="lv badge ${BADGE[current] || ''}" data-tag="${esc(tag)}" data-out="${output}"
+                title="${esc(tag)} ${output === 'File' ? 'file' : 'serial/web'} level">` +
+             LEVELS.map(l => `<option${l === current ? ' selected' : ''}>${l}</option>`).join('') +
+             '</select>';
+    }
+
+    // The tag list comes from the device rather than being hardcoded here: this page used
+    // to carry its own copy of BCLogger's tag table, which had to be edited in lockstep
+    // whenever a tag was added.
+    async function load() {
+      let d;
+      try { d = await (await fetch('/log/get')).json(); }
+      catch (x) { toast('Could not read log levels', true); return; }
+      document.getElementById('body').innerHTML = Object.keys(d).map(tag =>
+        `<tr><td class="icon">${esc(d[tag].icon || '')}</td><td>${esc(tag)}</td>` +
+        `<td>${levelSelect(tag, 'File', d[tag].file)}</td>` +
+        `<td>${levelSelect(tag, 'Serial', d[tag].serial)}</td></tr>`).join('');
+    }
+
+    document.getElementById('body').addEventListener('change', async e => {
+      const s = e.target;
+      if (!s.classList.contains('lv')) return;
+      const { tag, out } = s.dataset, level = s.value;
+      s.classList.add('busy'); s.disabled = true;
+      const r = await fetch(`/log/set?tag=${encodeURIComponent(tag)}&level=${level}&output=${out}`).catch(() => null);
+      if (r && r.ok) toast(`${tag} ${out === 'File' ? 'file' : 'serial/web'} → ${level}`);
+      else toast('Setting level failed', true);
+      load();              // re-read, so the badge shows what the device actually stored
+    });
+
+    async function cleanup() {
+      const r = await fetch('/cleanup').catch(() => null);
+      toast(r && r.ok ? 'Cleanup done' : 'Cleanup failed', !(r && r.ok));
+    }
+
+    load();
+  </script>
 </body>
 </html>
