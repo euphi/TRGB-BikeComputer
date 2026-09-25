@@ -157,7 +157,7 @@ public:
 
 
 private:
-	void getFileHTML(String &rc, File &root, uint8_t strip_front);
+	void appendDayTable(String &rc, const char* dayDir, uint32_t& totalFiles, uint32_t& totalBytes);
 	bool cleanUp(File& root, uint32_t minsize);
 	void replayNextLine();
 

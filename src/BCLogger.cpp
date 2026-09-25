@@ -440,59 +440,285 @@ int16_t BCLogger::listDir(const String &dirname, uint8_t levels) {
 }
 
 
-uint16_t BCLogger::getAllFileLinks(String &rc) {
-	rc += "<html><body><h1>Logfiles</h1>\n<p>\n";
-	File root = SD_MMC.open(LOGDIR);
+namespace {
 
-	  if(!root){
-	    rc += "Failed to open directory";
-	    Serial.println("500 - Can't open file/dir");
-	    return 500;
-	  }
-	  if(!root.isDirectory()){
-	    rc += "Not a directory";
-	    Serial.println("500 - Not a directory");
-	    root.close();
-	    return 500;
-	  }
-	  getFileHTML(rc, root, 9);  // 9 chars for "/BIKECOMP"
+// ---------------------------------------------------------------------------
+// Logfile listing helpers
+// ---------------------------------------------------------------------------
+// The on-disk layout already carries both things the listing wants to show, so
+// neither has to be parsed out of a flat filename list:
+//
+//   /BIKECOMP/20260920/L_143012.bin     directory = date, first letter = type
+//                     D_143012.log      L data (binary), D debug, N raw NMEA
+//                     N_143012.log      files of one session share the HHMMSS
+//   /BIKECOMP/NO_TIME/L7.bin            fallback while NTP has not landed yet
+//
+// SD hands entries out in FAT order, so showing them newest-first means holding
+// them in memory. Both collections are bounded and freed before the response is
+// built -- this page must not turn into another unbounded buffer.
+constexpr uint16_t MAX_DAYS            = 96;	// ~3 months of riding days
+constexpr uint16_t MAX_FILES_PER_DAY   = 128;	// 3 files per session -> ~42 sessions
+constexpr size_t   DAY_NAME_LEN        = 12;	// "20260920" / "NO_TIME"
+constexpr size_t   FILE_NAME_LEN       = 24;	// "L_143012.bin"
 
-	rc += "</p></body></html>";
-	root.close();
-	return 200;
+struct LogEntry {
+	char     name[FILE_NAME_LEN];
+	uint32_t size;
+};
+
+struct DayName { char n[DAY_NAME_LEN]; };
+
+// Sort key of a logfile: everything after the type letter and an optional '_', up to
+// the extension. "L_143012.bin" -> "143012", "N7.log" -> "7". Compared by length first
+// and only then lexicographically, so the zero-padded HHMMSS stamps AND the unpadded
+// NO_TIME counters both end up in chronological order.
+void timeKey(const char* name, char* out, size_t outLen) {
+	const char* p = name;
+	if (*p) p++;					// type letter
+	if (*p == '_') p++;
+	size_t i = 0;
+	while (*p && *p != '.' && i + 1 < outLen) out[i++] = *p++;
+	out[i] = '\0';
 }
 
-void BCLogger::getFileHTML(String &rc, File &root, uint8_t strip_front) {
-    File file = root.openNextFile();  // First file in root-DIR
-	while (file) {
-		esp_task_wdt_reset();
-		log(Log_Info, TAG_SD, file.name());
-		if (file.name()[0] == 'x' || file.name()[0] == 'x') {  // D / N ->x to temporarily access nmea/debug files
-			file = root.openNextFile();   // next file in root-DIR
-			continue;
+int compareKey(const char* a, const char* b) {
+	const size_t la = strlen(a), lb = strlen(b);
+	if (la != lb) return (la < lb) ? -1 : 1;
+	return strcmp(a, b);
+}
+
+// NO_TIME has no date and belongs at the bottom, below every dated day.
+int compareDay(const char* a, const char* b) {
+	const bool na = (strcmp(a, "NO_TIME") == 0), nb = (strcmp(b, "NO_TIME") == 0);
+	if (na != nb) return na ? -1 : 1;			// "smaller" = shown last
+	return strcmp(a, b);
+}
+
+// Insert into a descending-sorted array, evicting the smallest once full. Needed
+// because the newest entries tend to come LAST out of the FAT iterator -- simply
+// stopping at the cap would drop exactly the ones worth looking at.
+template <typename T, typename Cmp>
+void insertDesc(T* arr, uint16_t& count, uint16_t cap, const T& item, Cmp greaterThan) {
+	uint16_t pos = count;
+	while (pos > 0 && greaterThan(item, arr[pos - 1])) pos--;
+	if (pos >= cap) return;						// smaller than everything we keep
+	if (count < cap) count++;
+	for (uint16_t i = count - 1; i > pos; i--) arr[i] = arr[i - 1];
+	arr[pos] = item;
+}
+
+struct TypeInfo { const char* label; const char* badge; };
+
+TypeInfo typeOf(char c) {
+	switch (c) {
+		case 'L': return { "DATA",  "badge-info"  };		// telemetry, the one you usually want
+		case 'D': return { "DEBUG", "badge-debug" };
+		case 'N': return { "NMEA",  "badge-warn"  };
+		default:  return { "?",     ""            };
+	}
+}
+
+void formatSize(uint32_t bytes, char* out, size_t outLen) {
+	if (bytes >= 1024UL * 1024UL)  snprintf(out, outLen, "%.1f MB", bytes / (1024.0 * 1024.0));
+	else if (bytes >= 1024UL)      snprintf(out, outLen, "%.1f kB", bytes / 1024.0);
+	else                           snprintf(out, outLen, "%u B", static_cast<unsigned>(bytes));
+}
+
+// "20260920" -> "2026-09-20"; anything else (NO_TIME, legacy names) passes through.
+void formatDay(const char* day, char* out, size_t outLen) {
+	if (strlen(day) == 8 && strspn(day, "0123456789") == 8) {
+		snprintf(out, outLen, "%.4s-%.2s-%.2s", day, day + 4, day + 6);
+	} else {
+		snprintf(out, outLen, "%s", day);
+	}
+}
+
+// "143012" -> "14:30:12"; the unpadded NO_TIME counter is shown as "#7".
+void formatTime(const char* key, char* out, size_t outLen) {
+	if (strlen(key) == 6 && strspn(key, "0123456789") == 6) {
+		snprintf(out, outLen, "%.2s:%.2s:%.2s", key, key + 2, key + 4);
+	} else {
+		snprintf(out, outLen, "#%s", key);
+	}
+}
+
+}	// anonymous namespace
+
+// Renders one <table> for a single day directory. dayDir is "" for files sitting
+// directly in LOGDIR (legacy layout).
+void BCLogger::appendDayTable(String &rc, const char* dayDir, uint32_t& totalFiles, uint32_t& totalBytes) {
+	const String dirPath = dayDir[0] ? (LOGDIR + "/" + dayDir) : LOGDIR;
+	File dir = SD_MMC.open(dirPath);
+	if (!dir || !dir.isDirectory()) {
+		if (dir) dir.close();
+		return;
+	}
+
+	LogEntry* entries = static_cast<LogEntry*>(malloc(sizeof(LogEntry) * MAX_FILES_PER_DAY));
+	if (!entries) {
+		rc += F("<p class=\"badge badge-error\">Out of memory while listing this day</p>\n");
+		dir.close();
+		return;
+	}
+	uint16_t count = 0;			// entries kept for display (capped)
+	uint32_t dayFiles = 0;		// files actually present, may exceed count
+	uint32_t dayBytes = 0;
+	bool truncated = false;
+
+	for (File f = dir.openNextFile(); f; f = dir.openNextFile()) {
+		esp_task_wdt_reset();			// SD iteration is slow and this runs on async_tcp
+		if (!f.isDirectory() && f.name()[0] != 'x') {	// 'x' = manually hidden, see autoCleanUp
+			LogEntry e;
+			snprintf(e.name, sizeof(e.name), "%s", f.name());
+			e.size = f.size();
+			dayBytes += e.size;
+			dayFiles++;
+			if (count >= MAX_FILES_PER_DAY) truncated = true;
+			insertDesc(entries, count, MAX_FILES_PER_DAY, e, [](const LogEntry& a, const LogEntry& b) {
+				char ka[FILE_NAME_LEN], kb[FILE_NAME_LEN];
+				timeKey(a.name, ka, sizeof(ka));
+				timeKey(b.name, kb, sizeof(kb));
+				const int c = compareKey(ka, kb);
+				return c ? (c > 0) : (strcmp(a.name, b.name) < 0);	// same session: L, D, N
+			});
 		}
-		String filehtml;
-		if (file.isDirectory()) {
-			rc += "<h2>";
-			rc += file.name();
-			rc += "</h2>\n";
-			String fh;
-			getFileHTML(fh, file, strip_front);
-			rc += fh;
-			rc += "\n";
-		} else {
-			String uri= (file.path()+ strip_front+1);
-			rc = rc + "<a href=\"/log/"+uri+"\">" + uri + "</a>";
-			rc = rc + " (" + file.size() + ")";
-			if (!fileReplay && (uri.charAt(uri.length()-9) == 'N' || uri.charAt(uri.length()-12) == 'N')) { 	//RAW_NMEA-File
-					rc = rc + " <a href=\"/replay/"+uri+"\">Replay</a> ";
-			}
-			rc = rc + " <a href=\"/del/"+uri+"\">DEL</a><br />\n";
-		}
-		file = root.openNextFile();   // next file in root-DIR
+		f.close();
 		yield();
 	}
-	file.close();
+	dir.close();
+
+	if (count == 0) { free(entries); return; }
+	totalFiles += dayFiles;
+	totalBytes += dayBytes;
+
+	char dayLabel[24], sizeBuf[16];
+	formatDay(dayDir[0] ? dayDir : "(no date)", dayLabel, sizeof(dayLabel));
+	formatSize(dayBytes, sizeBuf, sizeof(sizeBuf));
+
+	rc += F("<h3 style=\"margin-top:22px;\">");
+	rc += dayLabel;
+	rc += F("</h3>\n<p class=\"eyebrow\">");
+	rc += dayFiles;
+	rc += F(" files, ");
+	rc += sizeBuf;
+	if (truncated) {
+		rc += F(" &mdash; showing newest ");
+		rc += count;
+		rc += F(" only");
+	}
+	rc += F("</p>\n<table><thead><tr><th>Time</th><th>Type</th><th>Size</th><th>File</th></tr></thead><tbody>\n");
+
+	for (uint16_t i = 0; i < count; i++) {
+		const LogEntry& e = entries[i];
+		const TypeInfo ti = typeOf(e.name[0]);
+		char key[FILE_NAME_LEN], timeBuf[16];
+		timeKey(e.name, key, sizeof(key));
+		formatTime(key, timeBuf, sizeof(timeBuf));
+		formatSize(e.size, sizeBuf, sizeof(sizeBuf));
+		const String uri = dayDir[0] ? (String(dayDir) + "/" + e.name) : String(e.name);
+
+		rc += F("<tr><td>");
+		rc += timeBuf;
+		rc += F("</td><td><span class=\"badge ");
+		rc += ti.badge;
+		rc += F("\">");
+		rc += ti.label;
+		rc += F("</span></td><td>");
+		rc += sizeBuf;
+		rc += F("</td><td><a href=\"/log/");
+		rc += uri;
+		rc += F("\">");
+		rc += e.name;
+		rc += F("</a>");
+		// Replay only makes sense for raw NMEA. The old check indexed backwards from the
+		// end of the URI with two hardcoded offsets to cover both layouts; the type letter
+		// is right there at the start of the basename.
+		if (!fileReplay && e.name[0] == 'N') {
+			rc += F(" <a class=\"btn btn-ghost\" href=\"/replay/");
+			rc += uri;
+			rc += F("\">Replay</a>");
+		}
+		rc += F(" <a class=\"btn btn-ghost\" href=\"/del/");
+		rc += uri;
+		rc += F("\">DEL</a></td></tr>\n");
+	}
+	rc += F("</tbody></table>\n");
+	free(entries);
+}
+
+uint16_t BCLogger::getAllFileLinks(String &rc) {
+	// Reserve past CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL (4096) up front: the buffer then
+	// starts in PSRAM instead of ramping there through hundreds of 16-byte reallocs in
+	// the scarce internal heap. One cold allocation per manual page view.
+	rc.reserve(8192);
+	rc += F("<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n"
+	        "<meta charset=\"UTF-8\">\n"
+	        "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n"
+	        "<link rel=\"stylesheet\" href=\"/stylesheet.css\">\n"
+	        "<title>Logfiles</title>\n</head>\n<body>\n<div class=\"container\" style=\"max-width:760px;\">\n"
+	        "<h2>Logfiles</h2>\n");
+
+	File root = SD_MMC.open(LOGDIR);
+	if (!root || !root.isDirectory()) {
+		if (root) root.close();
+		log(Log_Warn, TAG_SD, "Logfile listing: " + LOGDIR + " missing or not a directory");
+		rc += F("<p class=\"badge badge-error\">Cannot open ");
+		rc += LOGDIR;
+		rc += F("</p>\n</div>\n</body>\n</html>");
+		return 500;
+	}
+
+	DayName* days = static_cast<DayName*>(malloc(sizeof(DayName) * MAX_DAYS));
+	if (!days) {
+		root.close();
+		rc += F("<p class=\"badge badge-error\">Out of memory</p>\n</div>\n</body>\n</html>");
+		return 500;
+	}
+	uint16_t dayCount = 0;
+	bool hasLooseFiles = false;
+
+	for (File f = root.openNextFile(); f; f = root.openNextFile()) {
+		esp_task_wdt_reset();
+		if (f.isDirectory()) {
+			DayName d;
+			snprintf(d.n, sizeof(d.n), "%s", f.name());
+			insertDesc(days, dayCount, MAX_DAYS, d,
+			           [](const DayName& a, const DayName& b) { return compareDay(a.n, b.n) > 0; });
+		} else if (f.name()[0] != 'x') {
+			hasLooseFiles = true;
+		}
+		f.close();
+		yield();
+	}
+	root.close();
+
+	uint32_t totalFiles = 0, totalBytes = 0;
+	for (uint16_t i = 0; i < dayCount; i++) appendDayTable(rc, days[i].n, totalFiles, totalBytes);
+	if (hasLooseFiles) appendDayTable(rc, "", totalFiles, totalBytes);
+	free(days);
+
+	// Summary goes at the BOTTOM on purpose: splicing it in at the top would mean
+	// substring() + concat over the whole page, i.e. three full-size copies of a 20KB+
+	// String -- the exact pattern this listing was rewritten to get rid of.
+	if (totalFiles == 0) {
+		rc += F("<p class=\"eyebrow\">No logfiles.</p>\n");
+	} else {
+		char sizeBuf[16];
+		formatSize(totalBytes, sizeBuf, sizeof(sizeBuf));
+		rc += F("<p class=\"eyebrow\" style=\"margin-top:18px;\">");
+		rc += totalFiles;
+		rc += F(" files on ");
+		rc += dayCount + (hasLooseFiles ? 1 : 0);
+		rc += F(" days, ");
+		rc += sizeBuf;
+		rc += F(" total</p>\n");
+	}
+
+	rc += F("<div class=\"row\" style=\"margin-top:18px;\">"
+	        "<a class=\"btn btn-ghost\" href=\"/\">Back</a>"
+	        "<a class=\"btn btn-ghost\" href=\"/cleanup\">Cleanup</a>"
+	        "</div>\n</div>\n</body>\n</html>");
+	return 200;
 }
 
 bool BCLogger::deleteFile(const String& path){

@@ -302,9 +302,10 @@ void WifiWebserver::setupWebserver() {
 	// -- generate Logfile Index
 	server.on("/logfiles/", HTTP_GET, [this](AsyncWebServerRequest *request) {
 		htmlresponse.clear();
-		bclog.getAllFileLinks(htmlresponse);
-		Serial.println(htmlresponse);
-		request->send(200, "text/html", htmlresponse.c_str());
+		// No Serial.println(htmlresponse) here any more: dumping the whole ~20KB page over
+		// USB CDC blocks the async_tcp task, which is watchdog-guarded with a 5s panic.
+		const uint16_t code = bclog.getAllFileLinks(htmlresponse);
+		request->send(code, "text/html", htmlresponse.c_str());
 	});
 	// -- offer cleanup
 	server.on("/cleanup", HTTP_GET, [](AsyncWebServerRequest *request) {
