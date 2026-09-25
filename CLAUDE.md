@@ -1,9 +1,6 @@
 # TRGB-BikeComputer -- Projektkontext für Claude Code (BLE-Empfangsseite für TrailBridge)
 
-(Die Companion-App hieß ursprünglich "BikeNavRelay", wurde aber in
-"TrailBridge" umbenannt -- Paket `com.euphi.trailbridge`. Das lokale
-Ordner-Verzeichnis heißt jetzt ebenfalls `TrailBridge`, nicht mehr
-`BikeNavRelay`; alle Pfade unten sind entsprechend aktuell.)
+Die Companion-App heißt "TrailBridge" -- Paket `com.euphi.trailbridge`.
 
 ESP32-Fahrradcomputer (LVGL-UI; Sensoren: Herzfrequenz, CSC, Forumslader,
 ehemals Komoot-BLE-Navigation). Firmware-Gegenstück zur Android-Companion-App

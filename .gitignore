@@ -3,6 +3,7 @@
 .cproject
 coredump.*
 */__pycache__
+*.log
 
 SquareLine/exported_files/
 SquareLine/backup/
