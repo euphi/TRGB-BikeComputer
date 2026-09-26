@@ -364,7 +364,7 @@
 #define LV_FONT_MONTSERRAT_26 1
 #define LV_FONT_MONTSERRAT_28 1
 #define LV_FONT_MONTSERRAT_30 0
-#define LV_FONT_MONTSERRAT_32 1
+#define LV_FONT_MONTSERRAT_32 0
 #define LV_FONT_MONTSERRAT_34 0
 #define LV_FONT_MONTSERRAT_36 1
 #define LV_FONT_MONTSERRAT_38 0
@@ -462,6 +462,11 @@
 
 /*Documentation of the widgets: https://docs.lvgl.io/latest/en/html/widgets/index.html*/
 
+/* Memory/flash review 2026-09: widgets, layouts and fonts that nothing in src/ (neither
+ * RimRidge/EEZ nor the SquareLine leftovers) creates are switched off -- the default theme and
+ * lv_extra_init() reference every enabled one, so --gc-sections cannot drop them on its own.
+ * Off: TABLE, ANIMIMG, LIST, MENU, METER, SPAN, SPINBOX, SPINNER, SWITCH, GRID, MSG,
+ * MONTSERRAT_32. Re-enable one here before using it in a screen. */
 #define LV_USE_ARC        1
 
 #define LV_USE_BAR        1
@@ -493,14 +498,14 @@
 
 #define LV_USE_SLIDER     1   /*Requires: lv_bar*/
 
-#define LV_USE_SWITCH     1
+#define LV_USE_SWITCH     0
 
 #define LV_USE_TEXTAREA   1   /*Requires: lv_label*/
 #if LV_USE_TEXTAREA != 0
     #define LV_TEXTAREA_DEF_PWD_SHOW_TIME 1500    /*ms*/
 #endif
 
-#define LV_USE_TABLE      1
+#define LV_USE_TABLE      0
 
 /*==================
  * EXTRA COMPONENTS
@@ -509,7 +514,7 @@
 /*-----------
  * Widgets
  *----------*/
-#define LV_USE_ANIMIMG    1
+#define LV_USE_ANIMIMG    0
 
 #define LV_USE_CALENDAR   0
 #if LV_USE_CALENDAR
@@ -535,23 +540,23 @@
 
 #define LV_USE_LED        0
 
-#define LV_USE_LIST       1
+#define LV_USE_LIST       0
 
-#define LV_USE_MENU       1
+#define LV_USE_MENU       0
 
-#define LV_USE_METER      1
+#define LV_USE_METER      0
 
 #define LV_USE_MSGBOX     1
 
-#define LV_USE_SPAN       1
+#define LV_USE_SPAN       0
 #if LV_USE_SPAN
     /*A line text can contain maximum num of span descriptor */
     #define LV_SPAN_SNIPPET_STACK_SIZE 64
 #endif
 
-#define LV_USE_SPINBOX    1
+#define LV_USE_SPINBOX    0
 
-#define LV_USE_SPINNER    1
+#define LV_USE_SPINNER    0
 
 #define LV_USE_TABVIEW    0
 
@@ -591,7 +596,7 @@
 #define LV_USE_FLEX 1
 
 /*A layout similar to Grid in CSS.*/
-#define LV_USE_GRID 1
+#define LV_USE_GRID 0
 
 /*---------------------
  * 3rd party libraries
@@ -694,7 +699,7 @@
 #define LV_USE_IMGFONT 0
 
 /*1: Enable a published subscriber based messaging system */
-#define LV_USE_MSG 1
+#define LV_USE_MSG 0
 
 /*1: Enable Pinyin input method*/
 /*Requires: lv_keyboard*/

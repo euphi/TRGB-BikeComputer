@@ -164,7 +164,7 @@ private:
 
 	struct S_timeComplete {		// 18459 Byte
 		time_t startTime;
-		// 400-entry history ring -- PSRAM-backed (allocated in the constructor, see
+		// 400-entry history ring -- PSRAM-backed (allocated in allocPsramBuffers(), see
 		// Statistics.cpp), 18.4KB is too much to tie up in internal DRAM permanently, which
 		// BLE/SD_MMC need DMA-capable room in (see the SD-logging DMA starvation fix). Only
 		// touched every ~5-15s (updateTimeSeries()/createChartArray()), never from the hot path
@@ -200,8 +200,9 @@ private:
 	float tempC    = NAN;
 
 	// PSRAM-backed for the same reason as distanceData.data (~12.3KB of internal .bss).
-	// Currently unused -- it belongs to the charts that are to come back; kept, not deleted.
-	// Allocated with placement new in the constructor because Ringbuffer is a real object
+	// Currently unused -- it belongs to the charts that are to come back; kept, not deleted,
+	// but also not allocated (stays nullptr) until then, see allocPsramBuffers().
+	// To be allocated with placement new because Ringbuffer is a real object
 	// (two atomics + the element array), not a plain buffer. When the charts do return, do
 	// NOT hand a PSRAM pointer straight to LVGL (no lv_chart_set_ext_y_array on this) --
 	// copy into an internal staging buffer first, or the panel tearing from 7051e56 is back.

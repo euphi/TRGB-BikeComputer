@@ -19,7 +19,7 @@ public:
 	void init();
 	bool redraw();
 
-	void updateClock(const String& clock, const String& date);
+	void updateClock(const char* clock, const char* date);
 
 	// Callback-Methods for FLClassicParser
 	void updateFLPower(uint16_t batVoltage, uint8_t batPerc, uint16_t _batFullCap, int8_t powerStage, int16_t CurBat, int16_t CurConsumer, bool ConsumerOn);

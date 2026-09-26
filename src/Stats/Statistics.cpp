@@ -12,7 +12,6 @@
 #include "LogRecords.h"
 #include <ArduinoJson.h>
 #include <esp_heap_caps.h>
-#include <new>				// placement new for the PSRAM-backed rb_timedata, see the constructor
 
 // State names for the log and /stat/summary (after "TIME_IN_"). They were the NVS keys
 // before the statistics became one blob, StatsStore::migrateLegacy() still reads them.
@@ -45,16 +44,11 @@ const char* Statistics::AVG_TYPE_STRING[Statistics::EAvgTypeMax] = {
 };
 
 Statistics::Statistics(): distHandler(* new Distance())  {
-	// PSRAM-backed (see S_timeComplete::data's comment in Statistics.h for why only this field,
-	// not the whole struct). heap_caps_calloc (not _malloc) so it starts zeroed, matching what
-	// this got for free before as a plain .bss-resident array.
-	timeData.data = static_cast<S_timeData*>(heap_caps_calloc(400, sizeof(S_timeData), MALLOC_CAP_SPIRAM));
-	assert(timeData.data);		// same fail-fast convention as TRGBSuppport.cpp's own PSRAM draw-buffer allocations
-
-	// NOTE: distanceData.data and rb_timedata are deliberately NOT allocated here -- see
+	// NOTE: no PSRAM here -- timeData.data and distanceData.data are allocated in
 	// allocPsramBuffers(), called from setup(). This constructor runs during static init,
 	// i.e. before trgb.init(), and anything allocated here shifts every later PSRAM
-	// allocation, including LVGL's two 460KB draw buffers.
+	// allocation, including LVGL's two 460KB draw buffers (doc/PITFALLS.md, rule 2).
+	// timeData.data was the last one still allocated here until 2026-09.
 	timestamp_last = millis();
 	timestamp_stop = timestamp_last;
 }
@@ -72,20 +66,25 @@ Statistics::Statistics(): distHandler(* new Distance())  {
 // left-shift (distinct from the right-shift-with-wraparound in commit 7051e56, which had
 // a different cause).
 //
-// setup() runs after trgb.init() and ui.initDisplay(), so allocating here leaves the
-// display buffers at exactly the addresses they had before these two fields existed.
+// setup() runs after trgb.init() and ui.initDisplay(), so allocating here cannot move the
+// display buffers. Since timeData.data moved here too (2026-09), none of this firmware's own
+// static objects takes PSRAM before trgb.init() any more (check with "mem" after touching this).
 // Keep it that way: do not move PSRAM allocations into a statically constructed object.
 void Statistics::allocPsramBuffers() {
+	// PSRAM-backed (see S_timeComplete::data's comment in Statistics.h for why only this field,
+	// not the whole struct). heap_caps_calloc (not _malloc) so it starts zeroed.
+	timeData.data = static_cast<S_timeData*>(heap_caps_calloc(400, sizeof(S_timeData), MALLOC_CAP_SPIRAM));
+	assert(timeData.data);		// same fail-fast convention as TRGBSuppport.cpp's own PSRAM draw-buffer allocations
+
 	distanceData.data = static_cast<S_distanceData*>(
 			heap_caps_calloc(DISTANCE_SERIES_LEN, sizeof(S_distanceData), MALLOC_CAP_SPIRAM));
 	assert(distanceData.data);
 
-	// Ringbuffer has no state beyond its two atomics and the element array, so plain
-	// placement new over zeroed PSRAM is enough -- no destructor is ever needed either,
-	// this lives for the whole runtime like every other singleton member here.
-	void* rbMem = heap_caps_calloc(1, sizeof(*rb_timedata), MALLOC_CAP_SPIRAM);
-	assert(rbMem);
-	rb_timedata = new (rbMem) jnk0le::Ringbuffer<S_timeData, 256>();
+	// rb_timedata (~12KB) is not allocated while nothing uses it -- see its declaration. When the
+	// charts come back: Ringbuffer has no state beyond its two atomics and the element array, so
+	// placement new over zeroed PSRAM is enough:
+	//   void* rbMem = heap_caps_calloc(1, sizeof(*rb_timedata), MALLOC_CAP_SPIRAM);
+	//   rb_timedata = new (rbMem) jnk0le::Ringbuffer<S_timeData, 256>();
 }
 
 void Statistics::setup() {
@@ -111,7 +110,11 @@ void Statistics::setup() {
 String Statistics::generateJSONArray() {
 	time_t timenow;
 	time(&timenow);		// TODO: timestamp is a bit off, because its not synced with data storage
-	String jsonArray = "[[";
+	String jsonArray;
+	// ~11KB in the end. Reserved up front so it lands in PSRAM right away (> 4KB,
+	// see WebPage::begin()) instead of growing through reallocs in the internal heap on async_tcp.
+	jsonArray.reserve(12288);
+	jsonArray += "[[";
 	for (size_t i = 0; i < 400; i++) {
 		jsonArray += String(timenow - (400-i) * 5);
 		if (i < 399) jsonArray += ",";

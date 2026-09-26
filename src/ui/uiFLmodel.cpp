@@ -49,8 +49,8 @@ bool UiFLModel::redraw() {
 	return updateDone;
 }
 
-void UiFLModel::updateClock(const String &clock, const String &date) {
-	ui_ScrFLUpdateClock(clock.c_str(), date.c_str());
+void UiFLModel::updateClock(const char* clock, const char* date) {
+	ui_ScrFLUpdateClock(clock, date);
 }
 
 void UiFLModel::updateFLState(FLClassicParser::EFLConnState _cstate, uint32_t _flags, int16_t _timeout) {

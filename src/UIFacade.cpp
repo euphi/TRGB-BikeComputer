@@ -273,8 +273,13 @@ void UIFacade::updateHandler() {
 
 // ---------------- Internal (private) data updater ----------------
 void UIFacade::updateClock(const time_t now) {
-	String strClock = DateFormatter::format(DateFormatter::TIME_ONLY,now);
-	String strDate = DateFormatter::format(DateFormatter::DATE_ONLY,now);
+	// Once a second: stack buffers instead of two DateFormatter Strings (internal heap churn).
+	// Same formats and the same localtime() conversion DateFormatter::format() uses.
+	struct tm ltNow;
+	localtime_r(&now, &ltNow);
+	char strClock[12], strDate[16];
+	if (strftime(strClock, sizeof(strClock), DateFormatter::TIME_ONLY, &ltNow) == 0) strClock[0] = '\0';
+	if (strftime(strDate, sizeof(strDate), DateFormatter::DATE_ONLY, &ltNow) == 0) strDate[0] = '\0';
 	// ui_ScrMainUpdateClock removed 2026-09-18 (old S1Main screen disabled).
 #ifdef BC_FL_SUPPORT
 	uifl.updateClock(strClock, strDate);
@@ -291,9 +296,8 @@ void UIFacade::updateClock(const time_t now) {
 	// that's "Fahrzeit" here, not moving time.
 	bool stopwatchMode = stats.isRideSessionOpen();
 	uint32_t elapsedS = stats.getTime(Statistics::SUM_ESP_START, Statistics::AVG_ALL);
-	struct tm *lt = localtime(&now);
 	char clockStr[6];
-	snprintf(clockStr, sizeof(clockStr), "%02d:%02d", lt->tm_hour, lt->tm_min);
+	snprintf(clockStr, sizeof(clockStr), "%02d:%02d", ltNow.tm_hour, ltNow.tm_min);
 
 	// Not the isDrawTask() bypass: updateClock() runs from updateHandler()'s
 	// loop AFTER that iteration's own lv_timer_handler() mutex block already
