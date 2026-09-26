@@ -168,7 +168,9 @@
        line_width=5 — shown here at its real shipped geometry, not the
        original 5-squares sketch, which was superseded before being built).
        Color is the current class's HF-zone-band token (§1), shown here as
-       class 2/"good" (ZONE_GREEN); class 0 hides the line entirely instead
-       of showing a neutral color. -->
+       class 2/"good" (ZONE_GREEN); class 0 (no data yet / too slow) keeps
+       the line visible in plain BRASS instead of one of the five zone
+       colors or hiding it — ui_RimRidgeUpdateRoadQuality() never sets the
+       HIDDEN flag, confirmed against src/ui/RimRidgeCustFunc.cpp. -->
   <line x1="184.5" y1="461.5" x2="299.5" y2="461.5" stroke="#6FA98C" stroke-width="5"/>
 </svg>

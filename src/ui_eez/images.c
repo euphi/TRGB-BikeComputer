@@ -1,6 +1,6 @@
 #include "images.h"
 
-const ext_img_desc_t images[20] = {
+const ext_img_desc_t images[21] = {
     { "SettingsIcon", &img_settings_icon },
     { "rr_icon_wifi", &img_rr_icon_wifi },
     { "rr_icon_gps", &img_rr_icon_gps },
@@ -21,4 +21,5 @@ const ext_img_desc_t images[20] = {
     { "rr_icon_turn_64", &img_rr_icon_turn_64 },
     { "rr_icon_stopwatch", &img_rr_icon_stopwatch },
     { "rr_icon_clock", &img_rr_icon_clock },
+    { "rr_icon_ruler", &img_rr_icon_ruler },
 };

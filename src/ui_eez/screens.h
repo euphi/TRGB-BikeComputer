@@ -13,12 +13,14 @@ enum ScreensEnum {
     _SCREEN_ID_FIRST = 1,
     SCREEN_ID_RIM_RIDGE = 1,
     SCREEN_ID_RIM_RIDGE_NAV = 2,
-    _SCREEN_ID_LAST = 2
+    SCREEN_ID_RIM_RIDGE_RQ = 3,
+    _SCREEN_ID_LAST = 3
 };
 
 typedef struct _objects_t {
     lv_obj_t *rim_ridge;
     lv_obj_t *rim_ridge_nav;
+    lv_obj_t *rim_ridge_rq;
     lv_obj_t *rr_speed_arc;
     lv_obj_t *rr_ic_wifi;
     lv_obj_t *rr_ic_gps;
@@ -28,7 +30,6 @@ typedef struct _objects_t {
     lv_obj_t *rr_btn_pause;
     lv_obj_t *rr_ic_pause;
     lv_obj_t *rr_tour_pill;
-    lv_obj_t *rr_ic_state;
     lv_obj_t *rr_distance_val;
     lv_obj_t *rr_tour_label;
     lv_obj_t *rr_btn_settings;
@@ -64,13 +65,15 @@ typedef struct _objects_t {
     lv_obj_t *rr_grp_battery;
     lv_obj_t *rr_ic_battery;
     lv_obj_t *rr_battery_fill;
+    lv_obj_t *rr_group_rq_mode;
+    lv_obj_t *rr_ic_state;
     lv_obj_t *rr_line_rq;
     lv_obj_t *rrnav_dist_arc;
     lv_obj_t *rrnav_lane_row;
+    lv_obj_t *rrnav_street;
     lv_obj_t *rrnav_grp_turn;
     lv_obj_t *rrnav_ic_turn;
     lv_obj_t *rrnav_dist_val;
-    lv_obj_t *rrnav_street;
     lv_obj_t *rrnav_grp_next;
     lv_obj_t *rrnav_ic_next;
     lv_obj_t *rrnav_next_dist;
@@ -83,6 +86,43 @@ typedef struct _objects_t {
     lv_obj_t *rrnav_grp_heart;
     lv_obj_t *rrnav_ic_heart;
     lv_obj_t *rrnav_hr_val;
+    lv_obj_t *rq_nav_pill;
+    lv_obj_t *rq_ic_turn;
+    lv_obj_t *rq_nav_dist;
+    lv_obj_t *rq_speed_val;
+    lv_obj_t *rq_speed_unit;
+    lv_obj_t *rq_ic_heart;
+    lv_obj_t *rq_hr_val;
+    lv_obj_t *rq_ic_dist;
+    lv_obj_t *rq_dist_val;
+    lv_obj_t *rq_rq_val;
+    lv_obj_t *rq_rq_caption;
+    lv_obj_t *rq_surf_caption;
+    lv_obj_t *rq_surf_asphalt;
+    lv_obj_t *rq_surf_asphalt_lbl;
+    lv_obj_t *rq_surf_schotter;
+    lv_obj_t *rq_surf_schotter_lbl;
+    lv_obj_t *rq_surf_waldweg;
+    lv_obj_t *rq_surf_waldweg_lbl;
+    lv_obj_t *rq_surf_feldweg;
+    lv_obj_t *rq_surf_feldweg_lbl;
+    lv_obj_t *rq_surf_pflaster;
+    lv_obj_t *rq_surf_pflaster_lbl;
+    lv_obj_t *rq_surf_sonstiges;
+    lv_obj_t *rq_surf_sonstiges_lbl;
+    lv_obj_t *rq_qual_caption;
+    lv_obj_t *rq_qual_track;
+    lv_obj_t *rq_qual_1;
+    lv_obj_t *rq_qual_1_lbl;
+    lv_obj_t *rq_qual_2;
+    lv_obj_t *rq_qual_2_lbl;
+    lv_obj_t *rq_qual_3;
+    lv_obj_t *rq_qual_3_lbl;
+    lv_obj_t *rq_qual_4;
+    lv_obj_t *rq_qual_4_lbl;
+    lv_obj_t *rq_btn_record;
+    lv_obj_t *rq_btn_record_ring;
+    lv_obj_t *rq_btn_record_dot;
 } objects_t;
 
 extern objects_t objects;
@@ -92,6 +132,9 @@ void tick_screen_rim_ridge();
 
 void create_screen_rim_ridge_nav();
 void tick_screen_rim_ridge_nav();
+
+void create_screen_rim_ridge_rq();
+void tick_screen_rim_ridge_rq();
 
 void tick_screen_by_id(enum ScreensEnum screenId);
 void tick_screen(int screen_index);

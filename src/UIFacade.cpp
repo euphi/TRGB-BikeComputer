@@ -12,23 +12,12 @@
 
 // Screens
 
-#include "ui/Screens/SNavi/ui.h"
-#include "ui/Screens/SNavi/ui_NaviCustFunc.h"
-
 #include "ui/img/state-icons.h"
 
 #include "ui/Screens/Settings/ui_Settings.h"
 
-#include <ui/Screens/MainNoFL/ui.h>
-#include <ui/Screens/MainNoFL/ui_MainNoFL_CustFunc.h>
-
-#include <ui/Screens/SWLAN/ui.h>
-#include <ui/Screens/SWLAN/ui_SWLAN_CustFunc.h>
-
 #include <ui/Screens/Chart/ui.h>
 #include <ui/Screens/Chart/ui_Chart_CustFunc.h>
-
-#include <ui/Screens/SOTA/ui.h>
 
 #include "ui/ui.h"  // FL main and chart screen
 #include "ui/ui_custFunc.h"
@@ -45,6 +34,7 @@
 #include "ui_eez/images.h"
 #include "ui/RimRidgeCustFunc.h"
 #include "ui/RimRidgeNavCustFunc.h"
+#include "ui/RimRidgeRQCustFunc.h"
 
 #include <DateTime.h>
 
@@ -80,15 +70,7 @@ void UIFacade::initDisplay() {
     ui_ScreenChart_screen_init();		// old chart (included in SQS main screen project)
     ui_SChart_screen_init();			// new chart (own SQS project)
 
-    ui_SMainNoFL_screen_init();
-    ui_SMainNoFLExtraInit(); // GPS fix status icon
-    ui_SWLAN_screen_init();
-    ui_SWLAN_extra_init(); // QR Code
-    ui_SNavi_screen_init();
-    ui_ScrNaviExtraInit(); // next-maneuver preview
     ui_ScrSettings_screen_init();
-
-    ui_SOTA_screen_init();
 
     // .. add init of new screens here
 
@@ -97,18 +79,19 @@ void UIFacade::initDisplay() {
     ui_RimRidgeUpdateLanes(nullptr, 0); // rr_lane_row starts visible in the EEZ canvas - hide it and confirm rr_nav_pill is at rest
     create_screen_rim_ridge_nav();
     ui_RimRidgeNavUpdateLanes(nullptr, 0); // rrnav_lane_row starts visible in the EEZ canvas - hide it
+    create_screen_rim_ridge_rq();
+    ui_RimRidgeRQUpdateNav(0, NAV_MANEUVER_NONE, 0); // same "no nav" boot fixup as rr_ic_turn above
 
     // 3. set main screen
-    // RimRidge is now the permanent main/boot screen (2026-09-18). The old
-    // SquareLine screens above are still initialized - some of their update
-    // functions are still called from the update loop below for hidden
-    // dependencies (see updateIntBatteryInt()) - but none of them are ever
-    // shown anymore; see memory ui-tooling-eez-studio-migration for the
-    // full list of what's disabled-not-deleted and needs restoring once
-    // RimRidge-style replacements exist for OTA/Nav/WLAN/Settings/Chart.
+    // RimRidge is now the permanent main/boot screen (2026-09-18).
+    // MainNoFL/SNavi/SOTA/SWLAN were disabled-not-deleted then, and fully
+    // removed 2026-09-26 once nothing outside their own folders referenced
+    // them any more (see memory ui-tooling-eez-studio-migration). Chart and
+    // Settings are still initialized (Chart's ui_ScrChartUpdateBat() has a
+    // live dependency - see updateIntBatteryInt(); Settings has no RimRidge
+    // replacement screen yet).
     ui_MainScreen = objects.rim_ridge;
 
-    ui_ScrNaviSetBackScreen(ui_MainScreen);
     ui_ScrChartSetBackScreen(ui_MainScreen);
 
     // init data model
@@ -162,9 +145,11 @@ void UIFacade::updateHandler() {
 	while (true) {
 		// Fast update - use this only for data that should be shown with no (further) delay
 		if (xSemaphoreTake(xUpdateFast, static_cast<TickType_t>(0) ) == pdTRUE) {		// Semaphore is used for message "please update" only. So there is no reason to wait.
-			// Old-screen fan-out (ui_ScrMain*/ui_ScrNavi*/ui_ScrChart*/ui_SMainNoFL*)
-			// removed 2026-09-18 - those screens are disabled, not deleted, see
-			// memory ui-tooling-eez-studio-migration for the restore list.
+			// Old-screen fan-out (ui_ScrMain*/ui_ScrNavi*/ui_SMainNoFL*) removed
+			// 2026-09-18 when those screens were disabled, then the screens
+			// themselves removed 2026-09-26 (see memory
+			// ui-tooling-eez-studio-migration). ui_ScrChart* stays - Chart is
+			// still initialized (see updateIntBatteryInt()).
 			ui_RimRidgeUpdateSpeed(speed);
 			ui_RimRidgeUpdateCadence(cad);
 			ui_RimRidgeUpdateHR(hr);
@@ -175,6 +160,9 @@ void UIFacade::updateHandler() {
 			ui_RimRidgeNavUpdateSpeed(speed);
 			ui_RimRidgeNavUpdateGrad(grad);
 			ui_RimRidgeNavUpdateHR(hr);
+			// RimRidgeRQ shows the same speed/HR too (no gradient widget there).
+			ui_RimRidgeRQUpdateSpeed(speed);
+			ui_RimRidgeRQUpdateHR(hr);
 		}
 
 		int32_t next_ms = 20; // wait 20ms if Mutex can't be taken within 100ms (this should never happen)
@@ -280,6 +268,7 @@ void UIFacade::updateStats() {
 //TODO: Check if heigt is also updated in non-FL mode at standstill (no gradient calculation)
 	ui_RimRidgeUpdateStats(Statistics::SUM_TYPE_STRING[t] + 3, Statistics::AVG_TYPE_STRING[statTimeMode] + 3,
 			stats.getAvg(t, statTimeMode), stats.getSpeedMax(t), stats.getTemp(), stats.getDistance(t), timeTot);
+	ui_RimRidgeRQUpdateDist(stats.getDistance(t));
 }
 
 void UIFacade::updateIntBatteryInt() {
@@ -326,21 +315,22 @@ void UIFacade::updateHeight(float _height) { // height only update,
 
 
 void UIFacade::updateIP(const String& ipStr) {
-	// SWLAN screen disabled 2026-09-18, no RimRidge equivalent (no IP
-	// display) - restore once WLAN gets a RimRidge-style screen.
+	// SWLAN screen removed 2026-09-26 (was already disabled since
+	// 2026-09-18) - no RimRidge equivalent yet (no IP display), wire this
+	// up once WLAN gets a RimRidge-style screen.
 	(void) ipStr;
 }
 
 void UIFacade::updateSSIDList(const String& ssidStr) {
-	// SWLAN screen disabled 2026-09-18, no RimRidge equivalent - restore
-	// once WLAN gets a RimRidge-style screen.
+	// SWLAN screen removed 2026-09-26 - no RimRidge equivalent yet, wire
+	// this up once WLAN gets a RimRidge-style screen.
 	(void) ssidStr;
 }
 
 void UIFacade::updateWiFiState(bool wifiEnabled, bool APModeActive, bool disableAPMode, uint8_t apStaCount) {
-	// SWLAN-specific update removed 2026-09-18 (screen disabled, not
-	// deleted) - RimRidge only gets the simple show/hide for now, the
-	// AP-mode/client-count detail lived on SWLAN only and has no home yet.
+	// SWLAN-specific update removed 2026-09-18, screen itself removed
+	// 2026-09-26 - RimRidge only gets the simple show/hide for now, the
+	// AP-mode/client-count detail had no RimRidge home and is gone with it.
 	bool uiTask = isDrawTask();
 	if (uiTask || xSemaphoreTake(xUIDrawMutex, 250 / portTICK_PERIOD_MS) == pdTRUE) {
 		ui_RimRidgeUpdateWiFiState(wifiEnabled, APModeActive, disableAPMode, apStaCount);
@@ -554,6 +544,7 @@ void UIFacade::updateNavi(const String& navStr, uint32_t dist, uint8_t maneuver,
 		// nextStreet belongs to the maneuver after that and isn't shown
 		// anywhere on this screen (see ui_RimRidgeNavUpdateNav's doc comment).
 		ui_RimRidgeNavUpdateNav(dist, maneuver, roundaboutExit, navStr.c_str(), nextManeuver, nextManeuverDist);
+		ui_RimRidgeRQUpdateNav(dist, maneuver, roundaboutExit);
 		xSemaphoreGive(xUIDrawMutex);
 	} else {
 		bclog.log(BCLogger::Log_Warn, BCLogger::TAG_UI, "Nav blocked by mutex");
@@ -578,6 +569,31 @@ void UIFacade::showNavScreen() {
 		if (!uiTask) xSemaphoreGive(xUIDrawMutex);
 	} else {
 		bclog.log(BCLogger::Log_Warn, BCLogger::TAG_UI, "Show nav screen blocked by mutex");
+	}
+}
+
+void UIFacade::showRQScreen() {
+	// Manual open (rr_line_rq tap on RimRidge) - no auto-popup logic on
+	// this screen at all, so unlike showNavScreen() there's no extra state
+	// to keep in sync. Same same-task mutex re-entrancy note applies (see
+	// showNavScreen() above).
+	bool uiTask = isDrawTask();
+	if (uiTask || xSemaphoreTake(xUIDrawMutex, 150 / portTICK_PERIOD_MS) == pdTRUE) {
+		lv_disp_load_scr(objects.rim_ridge_rq);
+		if (!uiTask) xSemaphoreGive(xUIDrawMutex);
+	} else {
+		bclog.log(BCLogger::Log_Warn, BCLogger::TAG_UI, "Show RQ screen blocked by mutex");
+	}
+}
+
+void UIFacade::hideRQScreen() {
+	// Manual close (swipe on RimRidgeRQ).
+	bool uiTask = isDrawTask();
+	if (uiTask || xSemaphoreTake(xUIDrawMutex, 150 / portTICK_PERIOD_MS) == pdTRUE) {
+		lv_disp_load_scr(ui_MainScreen);
+		if (!uiTask) xSemaphoreGive(xUIDrawMutex);
+	} else {
+		bclog.log(BCLogger::Log_Warn, BCLogger::TAG_UI, "Hide RQ screen blocked by mutex");
 	}
 }
 
@@ -614,6 +630,7 @@ void UIFacade::updateNaviDist(uint32_t dist) {
 		evaluateNaviAutoSwitch();
 		// ui_ScrNaviUpdateNavDist removed 2026-09-18 (SNavi popup disabled).
 		ui_RimRidgeUpdateNavDist(dist);
+		ui_RimRidgeRQUpdateNavDist(dist);
 		xSemaphoreGive(xUIDrawMutex);
 	} else {
 		bclog.log(BCLogger::Log_Warn, BCLogger::TAG_UI, "Nav dist blocked by mutex");
@@ -686,13 +703,13 @@ void UIFacade::msgCBFct(bool ok) {
 }
 
 void UIFacade::otaStart() {
-	// SOTA screen disabled 2026-09-18 (confirmed with user) - RimRidge stays
-	// visible during an OTA update, no progress feedback on screen until
-	// SOTA gets a RimRidge-style replacement. RESTORE lv_disp_load_scr(ui_SOTA)
-	// below once that exists.
+	// SOTA screen removed 2026-09-26 (was already disabled since 2026-09-18)
+	// - RimRidge stays visible during an OTA update, no on-device progress
+	// feedback. The web-based OTA flow (WifiWebserver.cpp, replaced
+	// ElegantOTA) has its own progress UI in the browser; a RimRidge screen
+	// for this would need building fresh, not restoring the old SOTA code.
 }
 
 void UIFacade::otaProgress(uint8_t perc) {
-	// ui_SOTA_updatePerc removed 2026-09-18 (SOTA screen disabled, see otaStart()).
-	(void) perc;
+	(void) perc; // no on-device widget - see otaStart()'s comment
 }

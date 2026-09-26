@@ -195,6 +195,13 @@ void action_go_to_nav(lv_event_t * e) {
 	ui.showNavScreen();
 }
 
+// EEZ Studio action, wired to rr_line_rq's CLICKED event - opens the
+// RQ-Ride-Screen (see UIFacade::showRQScreen()).
+void action_go_to_rq(lv_event_t * e) {
+	(void) e;
+	ui.showRQScreen();
+}
+
 // rr_nav_pill's two positions - REST is this project's shipped, EEZ-
 // authored (140,85,200,78); SHOWN only exists here in C, see
 // ui_RimRidgeUpdateLanes()'s doc comment in RimRidgeCustFunc.h for why.

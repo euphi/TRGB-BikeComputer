@@ -58,6 +58,14 @@ public:
 	void showNavScreen();
 	void hideNavScreen();
 
+	// Manual RimRidgeRQ show/hide - tap on rr_line_rq (the road-quality
+	// indicator, RimRidge) / swipe gesture on the RQ screen itself. No
+	// auto-popup logic here (unlike the Nav screen) - this screen only
+	// ever opens on a deliberate tap, so no extra bookkeeping is needed
+	// to keep it from fighting anything else.
+	void showRQScreen();
+	void hideRQScreen();
+
 	// Received (BLE TLV tags 0x0A-0x0D, PROTOCOL.md "Fahrspur-
 	// Informationen") and rendered on BOTH RimRidge's compact lane-row
 	// chip (rr_lane_row) and RimRidgeNav's own strip (rrnav_lane_row) -

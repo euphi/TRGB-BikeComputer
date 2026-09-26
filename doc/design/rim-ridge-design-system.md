@@ -9,9 +9,10 @@ selbst ist die Felge.
 
 | Screen | Datei | Zustand |
 |---|---|---|
-| Mainscreen | [`mainscreen.svg`](mainscreen.svg) | **implementiert**, `EEZStudio/TRGB-BikeComputer.eez-project`, Screen `rim_ridge` — bis auf den Straßenqualität-Indikator (§4), der ist Spezifikation, Platz dafür ist aber bereits geschaffen (`rr_tour_pill` reicht bis y=480) |
+| Mainscreen | [`mainscreen.svg`](mainscreen.svg) | **implementiert**, `EEZStudio/TRGB-BikeComputer.eez-project`, Screen `rim_ridge`, inkl. Straßenqualität-Indikator (`rr_line_rq`, §4) |
 | Navigationsscreen | [`navscreen.svg`](navscreen.svg) | **implementiert**, Screen `rim_ridge_nav` (`SCREEN_ID_RIM_RIDGE_NAV`) |
 | Einstellungen | [`settings.svg`](settings.svg) | Spezifikation, noch nicht in EEZ Studio angelegt |
+| RQ-Ride-Screen | [`rqscreen.svg`](rqscreen.svg) | **Widgets angelegt** (Screen `RimRidgeRQ`) — Nav-Pille, Speed, RQ-Index, Puls, Wegzähler, Untergrund-Pillen, Qualitäts-Regler, Aufnahme-Taste; bewusst noch ohne jede Logik (kein Datenanschluss, keine Events/Actions, "ausgewählt" ist überall nur der statische Beispielzustand aus der SVG) |
 
 Jede SVG-Datei ist 1:1 im Ziel-Koordinatensystem (480×480 Einheiten =
 480×480 physische Pixel) und lässt sich direkt im Browser oder per
@@ -153,6 +154,18 @@ Text nötig. Der Einstellungen-Screen nutzt breitere Pillen (`210×40`,
 nicht eindeutig genug wären und hier deutlich mehr Platz ist als im
 gedrängten Mainscreen-Fuß.
 
+### Segmentierter Wähler (diskrete Stufen)
+
+Für eine kleine, feste Anzahl Stufen (z. B. Qualität 1–4) statt eines
+kontinuierlichen `lv_slider`: `n` Kreise (`r=20`, Fläche `PANEL_BG`,
+Rahmen `BRASS` 2px) im festen Abstand `60px` nebeneinander, verbunden durch
+eine dünne Linie (`BRASS` 25 % Deckkraft, `stroke-width=3`) als optische
+Klammer. Gewählte Stufe: Kreis voll `BRASS`, Ziffer in `BACKGROUND`
+(dunkel-auf-hell statt hell-auf-dunkel) statt Rahmen — derselbe
+Auswahl-Kontrast wie beim gefüllten Modus-Chip unten. `r=20` ist bewusst
+in derselben Größenordnung wie die runden Icon-Buttons (`r=25`, §4) — große
+Ziele, einhändig bedienbar. Erster Einsatzort: RQ-Ride-Screen (§6).
+
 ### Stat-Gruppe (Icon + Wert + Einheit)
 
 Wiederkehrendes Muster für Cadence/Watt/Temp/Höhe/Steigung: kleines
@@ -276,6 +289,8 @@ Konzeptdokument liegt außerhalb des Repos unter
 | Tiefschlaf (Settings) | noch nicht exportiert | Vollkreis + versetzter Kreis in Flächenfarbe („ausgestanzte" Mondsichel) |
 | Stoppuhr (Fahrzeit) | `img_rr_icon_stopwatch` | Kreis + kleine Krone/Taste oben + zwei Zeiger — siehe §4 „Fahrzeit / Uhrzeit" |
 | Uhr (Uhrzeit) | `img_rr_icon_clock` | wie Stoppuhr, aber ohne Krone — teilt sich denselben Widget-Slot mit dem Stoppuhr-Icon |
+| Wegzähler (RQ-Ride) | noch nicht exportiert | Lineal-Motiv: waagrechte Linie + vier senkrechte Teilstriche (bewusst abstrakt wie das Cadence-/Steigungs-Icon, nicht wörtlich „Kilometerzähler") |
+| Aufnahme-Taste (RQ-Ride) | noch nicht exportiert | Bereit-Zustand: Kreis + Ring + kleiner roter Punkt (Kamera-/Record-Sprache); Aufnahme-Zustand (nicht als Bild gezeichnet, nur beschrieben): Kreis voll rot + helles Stopp-Quadrat, dickerer roter Rahmen statt `BRASS`. Rot = `ZONE_RED`/`#C1604A`, dieselbe Zweitverwendung wie bei den Log-Level-Badges im Web-Dashboard (`--rr-err`) |
 
 `img_settings_icon` existiert bereits (48×48, `TRUE_COLOR_ALPHA` — anderes
 Format als der Rest, volltonig statt Alpha-Maske), das Icon des
@@ -358,6 +373,48 @@ aber vor dem Verdrahten in EEZ Studio zu klären):
   genau — OTA? Web-Interface? `WifiWebserver.cpp` existiert im Repo) — Screen
   sollte einen Leerzustand („nicht verbunden") vorsehen, nicht nur die
   Erfolgs-Anzeige.
+
+### RQ-Ride-Screen — [`rqscreen.svg`](rqscreen.svg)
+
+Ein eigener Ride-Screen fürs gezielte Sammeln von Referenzdaten zur
+Straßenqualität: Untergrund und subjektive Qualität von Hand markieren,
+während optional eine Detailaufzeichnung läuft — ergänzt die automatische
+Klassifikation (§4 „Straßenqualität-Indikator") um echte Ground-Truth-Daten,
+z. B. für `osm_validate.py` (Konzeptdokument, siehe dort) oder zum
+Nachschärfen der Schwellwerte in `RQ::Config::classThr`. Wie beim
+Einstellungen-Screen bewusst **ohne** Statuszeile (WLAN/GPS/Akku) — der
+Platz geht an die Bedienelemente unten, die auf diesem Screen den Vorrang
+haben.
+
+Aufbau von oben nach unten:
+
+| Element | y (Zentrum/Baseline) | Größe/Wert | Hinweis |
+|---|---|---|---|
+| Nav-Pille | 30–70 | wie Mainscreen | von y=92 auf y=30 verschoben (§3-Formel an der neuen Höhe geprüft) |
+| Geschwindigkeit | 140 (Wert) / 163 (Einheit) | 60px, `PARCHMENT_BRIGHT` | „mittelgroß", gleichrangig mit RQ-Index |
+| RQ-Index | 140 (Wert) / 163 (Caption) | 60px, Zonenfarbe (§1) | Ziffer 1–5 in der Farbe der aktuellen Klasse, kein Ausblenden bei 0 (Konvention wie `rr_line_rq`) |
+| Puls | 185 (Icon) / 215 (Wert) | 22px | Herz-Icon wiederverwendet, kein Zonenband (zu klein für diesen Screen) |
+| Wegzähler | 184 (Icon) / 215 (Wert) | 20px | neues Lineal-Icon (§5), Wert+Einheit ein String wie die Mainscreen-Distanz |
+| Untergrund-Pillen | 240–318 | 6× `100×36`, `rx=18` | Text-Pillen ohne Icon (Begründung: §2-Lektion zur Icon-Mindestgröße), 2×3-Raster: Asphalt/Schotter/Waldweg/Feldweg/Pflaster/Sonstiges |
+| Qualität | 360 | 4× `r=20` | Segmentierter Wähler (§4), Stufen 1–4 |
+| Aufnahme-Taste | 418 | `r=28` | Pol-Ausnahme (§3): mittig auf x=240, daher gilt die physische Kreisgrenze (`r=234`), nicht die `r_sicher=205`-Formel |
+
+**Warum ein 4-stufiger Wähler statt der automatischen 5 Klassen:** die
+automatische Klassifikation (`RQ::IntervalResult::roadClass`, 1–5) und die
+subjektive Nutzerbewertung hier sind bewusst getrennte Skalen — vermischen
+würde verschleiern, ob eine Abweichung an der Wahrnehmung oder am Algorithmus
+liegt. 4 statt 5 Stufen, weil eine Nutzerbewertung „exakt in der Mitte"
+ohnehin selten trennscharf ist; falls sich in der Praxis zeigt, dass 5
+Stufen für den Soll/Ist-Vergleich nötig sind, lässt sich ein fünfter Kreis
+mit gleichem Abstand (60px) ergänzen, ohne das Muster zu ändern.
+
+**Offene Punkte vor der Umsetzung** (Firmware-seitig, nicht Teil dieser
+Spezifikation): wo die Auswahl (Untergrund + Qualität) landet, ist noch
+offen — vermutlich zusätzliche Felder in `LogRec::RoadQuality` oder ein
+eigener Log-Record-Typ (`FORMAT_VERSION`-Bump nötig, siehe `LogRecords.h`),
+plus die Verbindung zu `R_*.bin`/`rq raw` fürs Start/Stopp der
+Detailaufzeichnung. Reine UI-Frage, ob Start/Stopp ein Tap oder ein
+Long-Press ist, ist dieselbe offene Frage wie beim Einstellungen-Screen.
 
 ## 7. Hinweise für die EEZ-Studio-Umsetzung
 
