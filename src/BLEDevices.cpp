@@ -194,9 +194,11 @@ void BLEDevices::startBLEScan() {
 		//pBLEScan->stop(); not necessary, scan is called blocking
 		pBLEScan->clearResults();
 	}
-	bclog.log(BCLogger::Log_Info, BCLogger::TAG_BLE, "🔵 Start BLE scan");
+	// Debug: this loop rescans every ~28 s for as long as not all device types are connected,
+	// which is the normal state -- found devices are logged at Info in onResult()/filter.
+	bclog.log(BCLogger::Log_Debug, BCLogger::TAG_BLE, "🔵 Start BLE scan");
 	pBLEScan->start(scanTime); // No callback -> sync (blocking) scan
-	bclog.log(BCLogger::Log_Info, BCLogger::TAG_BLE, "🏁 BLE scan finished");
+	bclog.log(BCLogger::Log_Debug, BCLogger::TAG_BLE, "🏁 BLE scan finished");
 }
 
 
@@ -658,13 +660,14 @@ void BLEDevices::notifyCallbackCSC(BLERemoteCharacteristic *pBLERemoteCharacteri
 	switch (ctype) {
 #ifdef BC_FL_SUPPORT
 	case DEV_FL:
-		bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_FL, "Received %d bytes:\n\t%s", length, pData);
+		bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_FL, "Received %d bytes:\n\t%.*s", (int)length, (int)length, pData);	// pData is not 0-terminated
 		bufferFL.concat(pData, length);
 		if (bufferFL.indexOf('\n') >0) {
 			// Debug, not Info: fires on every BLE notify, and FLClassicParser::updateFromString()
 			// below logs the same sentence again as TAG_RAW_NMEA -- no need for two copies active
 			// by default.
-			bclog.log(BCLogger::Log_Debug, BCLogger::TAG_FL, bufferFL.substring(0, bufferFL.length()-1));
+			if (bclog.checkLogLevel(BCLogger::Log_Debug, BCLogger::TAG_FL))	// don't build the substring for nothing
+				bclog.log(BCLogger::Log_Debug, BCLogger::TAG_FL, bufferFL.substring(0, bufferFL.length()-1));
 			flparser.updateFromString(bufferFL);
 			bufferFL.clear();
 		}
@@ -719,7 +722,7 @@ void BLEDevices::notifyCallbackCSC(BLERemoteCharacteristic *pBLERemoteCharacteri
 				if (millis() - crank_time_last_received > 1200) {
 					cadence = 0;
 				} else {
-					bclog.log(BCLogger::Log_Info, BCLogger::TAG_BLE, "Ignore 0 revolutions since last update is less than 1200ms");
+					bclog.log(BCLogger::Log_Debug, BCLogger::TAG_BLE, "Ignore 0 revolutions since last update is less than 1200ms");
 				}
 			}
 			crank_rev_last = crank_rev;

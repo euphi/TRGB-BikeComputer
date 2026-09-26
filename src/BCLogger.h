@@ -124,7 +124,8 @@ private:
 public:
 	BCLogger();
 	void setup();
-	void log(LogType type, LogTag tag, const String& str);
+	void log(LogType type, LogTag tag, const char* str);
+	void log(LogType type, LogTag tag, const String& str);	// forwards to the const char* version
 	void logf(LogType type, LogTag tag, const char* format, ...);
 	inline bool checkLogLevel(LogType type, LogTag tag, bool write_file) const {return loglevel[write_file?OUT_File:OUT_Serial][tag] <= type;}
 	inline bool checkLogLevel(LogType type, LogTag tag) const {return (loglevel[OUT_File][tag] <= type)  ||  (loglevel[OUT_Serial][tag] <= type);  }
@@ -189,8 +190,8 @@ public:
 	static const char* TAG_STRING[LogTagMax];
 	static const char* LEVEL_STRING[LogTypeMax];
 
-	static const String TAG_SYMBOL[LogTagMax];
-	static const String LEVEL_SYMBOL[LogTypeMax];
+	static const char* TAG_SYMBOL[LogTagMax];
+	static const char* LEVEL_SYMBOL[LogTypeMax];
 	static const String LOGDIR;
 
 	uint16_t getAllFileLinks(String &rc);
@@ -211,5 +212,5 @@ private:
 	void replayNextLine();
 
 	AsyncEventSource logevents;
-	void sendLogEvent(LogType type, LogTag tag, const String& timeStr, const String& logMessage);
+	void sendLogEvent(LogType type, LogTag tag, const char* timeStr, const char* logMessage);
 };

@@ -142,10 +142,17 @@ void Statistics::restoreStats() {
 	}
 	for (uint_fast8_t c = 0 ; c < SUM_ESP_START; c++) {
 		const StatsStore::Summary& s = blob.sum[c];
+		// One line per summary type instead of one per (type, state) -- 15 lines at every boot before
+		char line[128];
+		int len = snprintf(line, sizeof(line), "Loaded times for %s [s]:", SUM_TYPE_STRING[c]);
 		for (uint_fast8_t d = 0 ; d < EDrivingStateMax ; d++) {
 			time_in[d][c] = s.timeMs[d];
-			bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Loaded time in %s for %s: %d", PREF_TIME_STRING[d] + 8, SUM_TYPE_STRING[c], time_in[d][c]);
+			if (len > 0 && static_cast<size_t>(len) < sizeof(line)) {
+				len += snprintf(line + len, sizeof(line) - len, " %s=%lu", PREF_TIME_STRING[d] + 8,		// +8 skips "TIME_IN_"
+				                static_cast<unsigned long>(time_in[d][c] / 1000));
+			}
 		}
+		bclog.log(BCLogger::Log_Info, BCLogger::TAG_STAT, line);
 		distFree[c] = s.distFree;
 		speed_max[c] = s.speedMax;
 		cadMilliRevs[c] = s.cadMilliRevs;
@@ -568,7 +575,7 @@ void Statistics::addGradientHeight(float _grad, float _height) {
 void Statistics::updateDistanceSeries() {
 	float distance = distHandler.getDistance();
 	if ( (distance - distanceData.curDistance) >= 100) {		// every 100m
-		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "100m step - distance: %.1fm", distance);
+		bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_STAT, "100m step - distance: %.1fm", distance);
 		distanceData.curDistance = distance;
 
 		setDatapointAvg(distanceData.currentMinMax.cadence, distanceData.curCountCadence);
@@ -612,7 +619,7 @@ void Statistics::updateTimeSeries() {
 	time_t now;
 	time(&now);
 	//if ( (now - timeData.startTime) >= 5000) {
-		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "10s step @ %d", now);
+		bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_STAT, "Time series step @ %lld", static_cast<long long>(now));	// every 15 s (autoStore ticker)
 		timeData.startTime = now;
 
 		setDatapointAvg(timeData.currentMinMax.cadence, timeData.curCountCadence);
@@ -737,7 +744,8 @@ void Statistics::calculateGradient(float newDist) {
 		sensors.feedBaroGradient(gradient_new, delta_dist);
 		sensors.imuGradientForDisplay(gradient_shown);
 #endif
-		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Gradient: %.2f (barometric %.2f)", gradient_shown, gradient_new);
+		// Debug: every 2.5-5 s, standing still included, from the esp_timer task
+		bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_STAT, "Gradient: %.2f (barometric %.2f)", gradient_shown, gradient_new);
 		addGradientHeight(gradient_shown, height_new);
 	}
 #endif

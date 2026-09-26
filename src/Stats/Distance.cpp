@@ -219,7 +219,7 @@ float Distance::calculateSpeed(const uint32_t revs, const uint16_t duration) {
 		if (millis() - last_speedUpdate > 1200) {
 			return 0.0;
 		} else {
-			bclog.log(BCLogger::Log_Info, BCLogger::TAG_STAT, "Ignore 0 revolutions (speed) since last update is less than 1200ms");
+			bclog.log(BCLogger::Log_Debug, BCLogger::TAG_STAT, "Ignore 0 revolutions (speed) since last update is less than 1200ms");
 			return NAN;
 		}
 	}

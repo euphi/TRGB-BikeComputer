@@ -53,6 +53,10 @@ std::atomic<uint8_t>  ringHead{0};		// producer writes
 std::atomic<uint8_t>  ringTail{0};		// consumer writes
 std::atomic<uint32_t> ringDropped{0};
 
+// drain(): thresholds above which a finished request is logged at Info
+constexpr uint16_t SLOW_REQ_MS    = 1000;
+constexpr int32_t  HEAVY_REQ_HEAP = 8192;		// internal heap still held at the end of the request
+
 // ---------------------------------------------------------------------------
 // In-flight bookkeeping
 // ---------------------------------------------------------------------------
@@ -141,7 +145,7 @@ uint16_t open()     { return openCount.load(std::memory_order_relaxed); }
 uint16_t openPeak() { return openPeakCount.load(std::memory_order_relaxed); }
 void     resetPeak() { openPeakCount.store(openCount.load(std::memory_order_relaxed), std::memory_order_relaxed); }
 
-void report(bool withStackWatermarks, bool walkPsramHeap) {
+void report(bool full, bool walkPsramHeap) {
 	// Which of these are cheap matters a lot here, because this runs every 5 seconds:
 	//   heap_caps_get_free_size()         -> sums a stored per-heap counter, O(1)
 	//   heap_caps_get_minimum_free_size() -> stored counter, O(1)
@@ -152,18 +156,24 @@ void report(bool withStackWatermarks, bool walkPsramHeap) {
 	// the panel is DMAing its framebuffer from the same bus with no bounce buffer -- that
 	// tears a frame ("shifted right with wraparound"). So PSRAM is reported with the O(1)
 	// calls only, and the block walk is opt-in for the on-demand "mem" command.
-	multi_heap_info_t internalInfo;
-	heap_caps_get_info(&internalInfo, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+	// The full report (every 60 s, and "mem") at Info; the 5 s cycles in between at Debug. A MEM
+	// line every 5 s at Info was 720 lines an hour into the SD debug log, standing still included.
+	// If nobody wants the Debug line, skip the internal heap walk as well.
+	const BCLogger::LogType memLevel = full ? BCLogger::Log_Info : BCLogger::Log_Debug;
+	if (bclog.checkLogLevel(memLevel, TAG)) {
+		multi_heap_info_t internalInfo;
+		heap_caps_get_info(&internalInfo, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
 
-	// int=free/largest is the fragmentation view: a large total with a small largest block
-	// is what makes a 1.5KB per-ACK malloc fail while "free heap" still looks healthy.
-	// min= is the low-water mark since boot, i.e. what a load spike actually cost us.
-	bclog.logf(BCLogger::Log_Info, TAG,
-	           "MEM int=%u/%u min=%u | dma=%u/%u | psram=%u min=%u | req=%u peak=%u",
-	           internalInfo.total_free_bytes, internalInfo.largest_free_block, internalInfo.minimum_free_bytes,
-	           heap_caps_get_free_size(MALLOC_CAP_DMA), heap_caps_get_largest_free_block(MALLOC_CAP_DMA),
-	           heap_caps_get_free_size(MALLOC_CAP_SPIRAM), heap_caps_get_minimum_free_size(MALLOC_CAP_SPIRAM),
-	           open(), openPeak());
+		// int=free/largest is the fragmentation view: a large total with a small largest block
+		// is what makes a 1.5KB per-ACK malloc fail while "free heap" still looks healthy.
+		// min= is the low-water mark since boot, i.e. what a load spike actually cost us.
+		bclog.logf(memLevel, TAG,
+		           "MEM int=%u/%u min=%u | dma=%u/%u | psram=%u min=%u | req=%u peak=%u",
+		           internalInfo.total_free_bytes, internalInfo.largest_free_block, internalInfo.minimum_free_bytes,
+		           heap_caps_get_free_size(MALLOC_CAP_DMA), heap_caps_get_largest_free_block(MALLOC_CAP_DMA),
+		           heap_caps_get_free_size(MALLOC_CAP_SPIRAM), heap_caps_get_minimum_free_size(MALLOC_CAP_SPIRAM),
+		           open(), openPeak());
+	}
 
 	if (walkPsramHeap) {
 		multi_heap_info_t psramInfo;
@@ -180,7 +190,7 @@ void report(bool withStackWatermarks, bool walkPsramHeap) {
 		bclog.logf(BCLogger::Log_Warn, TAG, "Request ring overflowed - %u record(s) dropped since last report", dropped);
 	}
 
-	if (!withStackWatermarks) return;
+	if (!full) return;
 	// xTaskGetHandle() walks the task lists with the scheduler suspended, so keep this rare.
 	// uxTaskGetStackHighWaterMark() returns byte on ESP-IDF FreeRTOS (not words).
 	// The three tasks this firmware creates itself run on 3-4KB stacks and were never observed.
@@ -223,12 +233,15 @@ void reportDisplayBuffers() {
 	           db->buf1, align(db->buf1), db->buf2, align(db->buf2), (unsigned)db->size);
 }
 
-void drain() {
+void drain(bool all) {
 	const uint8_t head = ringHead.load(std::memory_order_acquire);
 	uint8_t tail = ringTail.load(std::memory_order_relaxed);
 	while (tail != head) {
 		const Entry& e = ring[tail & (RING_SIZE - 1)];
-		bclog.logf(BCLogger::Log_Info, TAG, "REQ %-32s %ums %d byte heap, %u byte body",
+		// One page load is ~9 requests. Only the ones worth a look go out at Info: slow, or
+		// holding on to a lot of internal heap. The rest at Debug; "mem" shows all of them.
+		const bool notable = e.durMs > SLOW_REQ_MS || e.heapDelta < -HEAVY_REQ_HEAP;
+		bclog.logf((all || notable) ? BCLogger::Log_Info : BCLogger::Log_Debug, TAG, "REQ %-32s %ums %d byte heap, %u byte body",
 		           e.url, e.durMs, e.heapDelta, e.bytes);
 		tail++;
 		ringTail.store(tail, std::memory_order_release);

@@ -125,10 +125,10 @@ void setup() {
     	Serial.printf("Battery: %u%% (~%u min) [%d mV] - charging [%c] - bare curve %u%%\r\n",
     	              batGauge.percent(), batGauge.remainingMinutes(), mv, mv > 4150 ? 'x' : ' ',
     	              BatGauge::curvePercent(mv));});	// 4150: same threshold as batCheck()
-    // Same output FlusherTask emits every 5s, but on demand -- so a memory reading right
+    // Same output FlusherTask emits every 60s (at Debug every 5s), but on demand -- so a memory reading right
     // after a request doesn't have to wait for the next flush cycle. Stack watermarks
     // included here (the periodic report only prints them every 60s).
-    cmdMem = console.addCmd("mem", [](cmd* c) {WebInstr::report(true, true); WebInstr::reportDisplayBuffers(); WebInstr::drain();});
+    cmdMem = console.addCmd("mem", [](cmd* c) {WebInstr::report(true, true); WebInstr::reportDisplayBuffers(); WebInstr::drain(true);});
     cmdMem.setDescription("Log free internal/DMA/PSRAM heap, open requests and task stack watermarks");
 	ui.initDisplay();
     stats.setup();

@@ -40,14 +40,18 @@ void     resetPeak();
 // --- called from FlusherTask (and the "mem" CLI command) ---
 // report() writes the MEM summary line; drain() writes one line per finished request.
 //
+// full: MEM line at Info plus the task stack watermarks (FlusherTask every 60 s, and "mem").
+// Otherwise the MEM line goes out at Debug only, and is not even computed if Debug is off.
+//
 // walkPsramHeap: include the largest free PSRAM block. This costs a full block walk of
 // the PSRAM heap (heap_caps_get_info -> multi_heap_info -> iterates every block), i.e. a
 // scattered read burst across PSRAM -- and this board's RGB panel DMAs its framebuffer
 // straight out of PSRAM with no bounce buffer, so it WILL tear a frame. Never pass true
 // from anything periodic; it exists for the on-demand "mem" CLI command only.
 // The other figures are all O(1) counter reads and safe to poll.
-void report(bool withStackWatermarks, bool walkPsramHeap = false);
-void drain();
+void report(bool full, bool walkPsramHeap = false);
+// all: every request at Info (for "mem"); otherwise only slow/heap-heavy ones, the rest at Debug
+void drain(bool all = false);
 
 // One-shot diagnostic: addresses and alignment of LVGL's two draw buffers and of the
 // panel framebuffer. TRGBSuppport.cpp allocates the draw buffers with a plain

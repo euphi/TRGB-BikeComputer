@@ -377,10 +377,10 @@ void ui_RimRidgeUpdateLanes(const NavLane* lanes, uint8_t laneCount) {
 void action_tour_pill_gesture(lv_event_t * e) {
 	(void) e;
 	lv_indev_t * indev = lv_indev_get_act();
-	bclog.logf(BCLogger::Log_Info, BCLogger::TAG_UI, "rr_tour_pill GESTURE fired, indev=%p", (void*) indev);
+	bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_UI, "rr_tour_pill GESTURE fired, indev=%p", (void*) indev);
 	if (!indev) return;
 	lv_dir_t dir = lv_indev_get_gesture_dir(indev);
-	bclog.logf(BCLogger::Log_Info, BCLogger::TAG_UI, "rr_tour_pill gesture dir=%d", (int) dir);
+	bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_UI, "rr_tour_pill gesture dir=%d", (int) dir);
 	lv_indev_wait_release(indev);
 	switch (dir) {
 	case LV_DIR_LEFT:

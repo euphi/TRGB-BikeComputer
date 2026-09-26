@@ -25,8 +25,8 @@
 const char *BCLogger::TAG_STRING[LogTagMax] = { "RAW", "FL", "BLE", "STAT", "WIFI", "SD", "OP", "CLI", "UI", "WEB" };
 const char *BCLogger::LEVEL_STRING[LogTypeMax] = { "DEBUG", "INFO", "WARN", "ERROR" };
 
-const String BCLogger::TAG_SYMBOL[LogTagMax] = { String("📜"), String("📟"), String("🔵"), String("📊"), String("📶"), String("💾"), String("🎮"), String("⌨"), String("🖥️"), String("🌐") };
-const String BCLogger::LEVEL_SYMBOL[LogTypeMax] = { String("🐛"), String("ℹ️"), String("⚠️"), String("❌") };
+const char *BCLogger::TAG_SYMBOL[LogTagMax] = { "📜", "📟", "🔵", "📊", "📶", "💾", "🎮", "⌨", "🖥️", "🌐" };
+const char *BCLogger::LEVEL_SYMBOL[LogTypeMax] = { "🐛", "ℹ️", "⚠️", "❌" };
 
 // Adding a tag or level means extending, in lockstep: the enum in BCLogger.h, the four
 // arrays above, and the loglevel[][] default matrix in BCLogger.h. The web pages take the
@@ -37,14 +37,14 @@ const String BCLogger::LEVEL_SYMBOL[LogTypeMax] = { String("🐛"), String("ℹ�
 // boot instead; see the call at the top of setup().
 void BCLogger::checkTagTablesComplete() const {
 	for (uint_fast8_t t = 0; t < LogTagMax; t++) {
-		if (TAG_STRING[t] == nullptr || TAG_SYMBOL[t].isEmpty()) {
+		if (TAG_STRING[t] == nullptr || TAG_SYMBOL[t] == nullptr || TAG_SYMBOL[t][0] == '\0') {
 			// Can't route this through log() -- that would use the very table that's broken.
 			Serial.printf("!!! BCLogger: tag table incomplete at index %u (LogTagMax=%u) -- "
 			              "extend TAG_STRING/TAG_SYMBOL in BCLogger.cpp\n", t, LogTagMax);
 		}
 	}
 	for (uint_fast8_t l = 0; l < LogTypeMax; l++) {
-		if (LEVEL_STRING[l] == nullptr || LEVEL_SYMBOL[l].isEmpty()) {
+		if (LEVEL_STRING[l] == nullptr || LEVEL_SYMBOL[l] == nullptr || LEVEL_SYMBOL[l][0] == '\0') {
 			Serial.printf("!!! BCLogger: level table incomplete at index %u (LogTypeMax=%u)\n", l, LogTypeMax);
 		}
 	}
@@ -292,7 +292,10 @@ void BCLogger::checkRotate() {
 }
 
 // Method to send log messages as events
-void BCLogger::sendLogEvent(LogType type, LogTag tag, const String& timeStr, const String& logMessage) {
+void BCLogger::sendLogEvent(LogType type, LogTag tag, const char* timeStr, const char* logMessage) {
+	// Nobody watching the live log (the normal case) -> build nothing. The payload is a String
+	// in the internal heap; with this check it only costs while the web log page is open.
+	if (logevents.count() == 0) return;
 	// The tag used to go in AsyncEventSource::send()'s second parameter, which is the SSE
 	// *event name* -- so every line arrived as "event: BLE", "event: WIFI" and so on,
 	// while the page listened with onmessage, which only ever sees unnamed "message"
@@ -302,8 +305,9 @@ void BCLogger::sendLogEvent(LogType type, LogTag tag, const String& timeStr, con
 	// render the same information and filter on it, and so none of these tables have to
 	// be mirrored in JavaScript -- the pages read tags and icons from here and /log/get:
 	//   t  tag name      i  tag icon     l  level name     ts timestamp    m  message
+	const size_t msgLen = strlen(logMessage);
 	String payload;
-	payload.reserve(logMessage.length() + 72);
+	payload.reserve(msgLen + 72);
 	payload += F("{\"t\":\"");
 	payload += TAG_STRING[tag];
 	payload += F("\",\"i\":\"");
@@ -311,14 +315,10 @@ void BCLogger::sendLogEvent(LogType type, LogTag tag, const String& timeStr, con
 	payload += F("\",\"l\":\"");
 	payload += LEVEL_STRING[type];
 	payload += F("\",\"ts\":\"");
-	// timeStr carries the ": " separator the serial/file sinks want appended; the web log
-	// formats its own, so hand over just the stamp.
-	size_t tsLen = timeStr.length();
-	if (tsLen >= 2 && timeStr.charAt(tsLen - 2) == ':' && timeStr.charAt(tsLen - 1) == ' ') tsLen -= 2;
-	for (size_t i = 0; i < tsLen; i++) payload += timeStr.charAt(i);
+	payload += timeStr;		// just the stamp -- the web log formats its own separator
 	payload += F("\",\"m\":\"");
-	for (size_t i = 0; i < logMessage.length(); i++) {
-		const char c = logMessage.charAt(i);
+	for (size_t i = 0; i < msgLen; i++) {
+		const char c = logMessage[i];
 		// Minimal JSON escaping. Log lines carry file paths and quoted names, and a bare
 		// quote would break the client's JSON.parse for that line.
 		if (c == '"' || c == '\\') {
@@ -377,7 +377,7 @@ void BCLogger::flushAllFiles() {
 		// PSRAM cannot substitute (see the starvation incident in 3cb6293).
 		// This task is the only place the web instrumentation is allowed to log from: recording
 		// happens on async_tcp, which is watchdog-guarded and must never touch the SD card.
-		WebInstr::report(++cycle % 12 == 0);		// stack watermarks every 12th cycle = 60s
+		WebInstr::report(++cycle % 12 == 0);		// full report (Info + stack watermarks) every 12th cycle = 60s, Debug in between
 		WebInstr::drain();
 		checkClockStep();
 		checkRotate();
@@ -542,10 +542,18 @@ BCLogger::LogType BCLogger::getLogLevel(LogTag tag, bool serial) {
 
 
 void BCLogger::log(LogType type, LogTag tag, const String& str) {
+	log(type, tag, str.c_str());
+}
+
+// The one real sink. No heap allocation on this path (except for the SSE payload while a web
+// client is connected): it runs for every line, from esp_timer, BLE and ImuTask, and every
+// small String here used to be a malloc/free in the scarce internal heap -- 5 to 6 per line.
+void BCLogger::log(LogType type, LogTag tag, const char* str) {
 	bool write_file = checkLogLevel(type, tag, true) && !file_debuglog.isEmpty();  // empty during init
 	bool write_serial = checkLogLevel(type, tag, false);
 	if (!(write_file || write_serial))
 		return;
+	if (!str) str = "";
 
 	File f;
 	if (write_file) {
@@ -557,16 +565,19 @@ void BCLogger::log(LogType type, LogTag tag, const String& str) {
 			//if (!write_serial) return;
 		}
 	}
+	// Same text DateFormatter::format(COMPAT) produced (ESPDateTime: localtime() + strftime()),
+	// followed by ": " -- replayNextLine() parses this prefix, so keep the format as it is.
 	time_t now;
 	time(&now);
-	String format = String(DateFormatter::COMPAT) + ": ";
-	String timeStr = DateFormatter::format(format.c_str(), now);
-
-	String symbolStr = LEVEL_SYMBOL[type] + TAG_SYMBOL[tag] + String(" ");
+	struct tm tmNow;
+	localtime_r(&now, &tmNow);
+	char timeStr[24];
+	if (strftime(timeStr, sizeof(timeStr), DateFormatter::COMPAT, &tmNow) == 0) timeStr[0] = '\0';
 
 	if (write_file) {
 		if (xSemaphoreTake(xPrintMutex, static_cast<TickType_t>(100 / portTICK_PERIOD_MS)) == pdTRUE) {
 			f.print(timeStr);
+			f.print(": ");
 			f.println(str);
 			xSemaphoreGive(xPrintMutex);
 		} else {
@@ -580,8 +591,11 @@ void BCLogger::log(LogType type, LogTag tag, const String& str) {
 		if (xSemaphoreTake(xPrintMutex, static_cast<TickType_t>(100 / portTICK_PERIOD_MS)) == pdTRUE) {
 			{
 				SerialConsole::Output out(console);		// above the half-typed command line
-				Serial.print(symbolStr);
+				Serial.print(LEVEL_SYMBOL[type]);
+				Serial.print(TAG_SYMBOL[tag]);
+				Serial.print(' ');
 				Serial.print(timeStr);
+				Serial.print(": ");
 				Serial.println(str);
 			}
 			sendLogEvent(type, tag, timeStr, str);
@@ -603,7 +617,7 @@ void BCLogger::logf(LogType type, LogTag tag, const char *format, ...) {
 	if (static_cast<size_t>(len) >= sizeof(temp)) {		
 		log(Log_Error, TAG_OP, "Logger: Log-String shortened from " + String(len) + " to " + String((int)sizeof(temp) - 1) + " byte");
 	}
-	log(type, tag, String(temp));
+	log(type, tag, static_cast<const char*>(temp));
 }
 
 
