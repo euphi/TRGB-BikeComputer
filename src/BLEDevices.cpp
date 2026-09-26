@@ -65,7 +65,10 @@ void BLEDevices::setup() {
 	  // xTaskCreate() silently truncates past that, but xTaskGetHandle() asserts on an
 	  // over-long query string and aborts -- which is how the old 21-char
 	  // "BLEScanUndConnectTask" crashed the stack-watermark report in WebInstrument.cpp.
-	  xTaskCreate(+[](void* thisInstance){((BLEDevices*)thisInstance)->scanAndConnectTask();}, "BLEScanConnect", 3072, this, 5, &scanTaskHandle);
+	  // 4096 byte (ESP-IDF counts byte): with 3072 only 268 byte were left once TrailBridge
+	  // was connected -- its connect runs the service discovery for both services (nav + GPS)
+	  // in this task.
+	  xTaskCreate(+[](void* thisInstance){((BLEDevices*)thisInstance)->scanAndConnectTask();}, "BLEScanConnect", 4096, this, 5, &scanTaskHandle);
 
 //	  scanCB = [this](BLEScanResults result) {
 //		  bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "🔵 ✔️ BLE scan completed: %d devices found.", result.getCount());
@@ -403,7 +406,7 @@ void BLEDevices::restoreAdresses() {
  * @param addr The BLE address to be stored.
  */
 void BLEDevices::storeAdress(EDevType type, BLEAddress &addr) {
-	if (type == DEV_NAV) return;	// TrailBridge (Android peripheral) likely uses a random/rotating address, like Komoot before it
+	if (type == DEV_NAV) return;	// TrailBridge (Android peripheral) likely uses a random/rotating address
 	StatPreferences.begin("BLEConn");
 	// ESP_BD_ADDR_LEN, not 16: m_address is a 6-byte array, so the old length read 10 bytes
 	// past the end of the BLEAddress object. restoreAdresses() reverses this exactly.
@@ -654,8 +657,8 @@ static uint8_t parseLanes(const uint8_t* val, uint8_t len, NavLane* out) {
  *
  * Frame layout per ../TrailBridge/PROTOCOL.md: byte 0 = protocol version, byte 1 = message type,
  * followed by TLV entries (tag 1 byte | length 1 byte | value) when the message is NAV_UPDATE.
- * Unknown tags are skipped by length, not interpreted -- that's the whole point of TLV over the
- * old fixed Komoot byte layout: future protocol additions won't break this parser.
+ * Unknown tags are skipped by length, not interpreted, so future protocol additions won't break
+ * this parser.
  */
 void BLEDevices::handleNavData(const uint8_t* pData, size_t length) {
 	if (length < 2) {

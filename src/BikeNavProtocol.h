@@ -59,8 +59,7 @@ typedef struct {
 // theoretical worst case. Extra lanes beyond this are dropped, not an error.
 #define NAV_LANES_MAX 8
 
-// Maneuver codes, independent of the old 32-slot Komoot icon index and of
-// OsmAnd's internal TurnType constants. Reference implementation on the
+// Maneuver codes, independent of OsmAnd's internal TurnType constants. Reference implementation on the
 // Android side: Maneuver.java.
 typedef enum {
 	NAV_MANEUVER_NONE = 0,
