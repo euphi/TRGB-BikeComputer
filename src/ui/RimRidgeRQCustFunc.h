@@ -65,6 +65,14 @@ void ui_RimRidgeRQUpdateNavDist(uint32_t dist);
 // once from UIFacade::initDisplay() after create_screen_rim_ridge_rq().
 void ui_RimRidgeRQInitLabelControls();
 
+// Tap on rq_nav_pill opens the full nav screen (UIFacade::showNavScreen()) -
+// same target as RimRidge's rr_nav_pill/GoToNav action, just reached via a
+// direct lv_obj_add_event_cb() instead of a second near-identical EEZ
+// action. Manual only, like every other screen switch in this app - does
+// NOT touch UIFacade's auto-show/auto-hide bookkeeping (evaluateNaviAuto
+// Switch()), so it never pops up or closes on its own from here.
+void ui_RimRidgeRQInitNavLink();
+
 // Refreshes the label controls' visual state - which pill/circle is
 // highlighted, the record button's idle/recording look - from
 // I2CSensors::getRoadLabelState(), never from the tap itself: a capture can

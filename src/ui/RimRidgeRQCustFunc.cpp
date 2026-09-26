@@ -65,24 +65,33 @@ void action_rq_screen_gesture(lv_event_t * e) {
 	ui.hideRQScreen();
 }
 
+// EEZ Studio makes every widget clickable by default, so a child sitting on
+// top of a clickable container (label text, an icon, ...) would otherwise
+// swallow the tap itself instead of it reaching the container's own event
+// handler - same bug and fix as rr_group_rq_mode's rr_ic_state/rr_line_rq
+// (RimRidgeCustFunc.cpp), just applied here at init time in C instead of
+// via an EEZ Studio JSON edit (LV_OBJ_FLAG_EVENT_BUBBLE is a runtime flag,
+// not layout - setting it here doesn't diverge from what the canvas shows).
+static void rqBubble(lv_obj_t* child) {
+	lv_obj_add_flag(child, LV_OBJ_FLAG_EVENT_BUBBLE);
+}
+
+static void rqNavPillClickedCb(lv_event_t* e) {
+	(void) e;
+	ui.showNavScreen();
+}
+
+void ui_RimRidgeRQInitNavLink() {
+	rqBubble(objects.rq_ic_turn);
+	rqBubble(objects.rq_nav_dist);
+	lv_obj_add_event_cb(objects.rq_nav_pill, rqNavPillClickedCb, LV_EVENT_CLICKED, nullptr);
+}
+
 // ---------------- Manual road label controls ----------------
 // Gravel variant only - the FL variant has no BMI160/I2CSensors at all, so
 // the buttons stay inert there (stub bodies below the #else).
 #ifdef TRGBBC_SENSORS_I2C
 #include "I2CSensors.h"
-
-// Surface pills / quality circles have a label nested on top for the text
-// (record button: a ring + a dot); EEZ Studio makes every widget clickable
-// by default, so without LV_OBJ_FLAG_EVENT_BUBBLE a tap landing on that
-// child would be swallowed there instead of reaching the pill/circle/button
-// that actually carries the event handler below - same bug and fix as
-// rr_group_rq_mode's rr_ic_state/rr_line_rq (RimRidgeCustFunc.cpp), just
-// applied here at init time in C instead of via an EEZ Studio JSON edit
-// (LV_OBJ_FLAG_EVENT_BUBBLE is a runtime flag, not layout - setting it here
-// doesn't diverge from what the canvas shows).
-static void rqBubble(lv_obj_t* child) {
-	lv_obj_add_flag(child, LV_OBJ_FLAG_EVENT_BUBBLE);
-}
 
 // A second tap on the already-active pill/circle clears it (0 = none) -
 // read the current value fresh from getRoadLabelState() rather than
@@ -146,8 +155,7 @@ void ui_RimRidgeRQUpdateLabel(uint8_t surface, uint8_t quality, bool capturing) 
 	// these widgets' two states (add_rimridge_rq_controls.py) - hardcoded
 	// hex for the same reason as ui_RimRidgeUpdateRoadQuality()'s zone
 	// colors: this file has no access to the generated theme_colors[].
-	static const lv_color_t SEL_BG = lv_color_hex(0xCBA36B);    // RRBrass
-	static const lv_color_t UNSEL_BG = lv_color_hex(0x1E252B);  // RRPanelBg
+	static const lv_color_t SEL_BG = lv_color_hex(0xCBA36B);    // RRBrass - unselected stays at bg_opa 0, its own JSON-authored border does the outline
 	static const lv_color_t SEL_TXT = lv_color_hex(0x161B1F);   // RRBackground
 	static const lv_color_t UNSEL_TXT = lv_color_hex(0xE7E2D6); // RRParchment
 	static const lv_color_t REC_COLOR = lv_color_hex(0xC1604A); // RRZoneRed, brighter than the idle ring's brass
@@ -162,7 +170,12 @@ void ui_RimRidgeRQUpdateLabel(uint8_t surface, uint8_t quality, bool capturing) 
 	};
 	for (auto& s : surf) {
 		bool sel = (s.value == surface);
-		lv_obj_set_style_bg_color(s.pill, sel ? SEL_BG : UNSEL_BG, LV_PART_MAIN | LV_STATE_DEFAULT);
+		// bg_opa is 0 in the exported JSON for every one of these pills
+		// (EEZ Studio's "default" useStyle, never overridden with a fill) -
+		// setting bg_color alone is invisible without also raising the
+		// opacity here; that's why the highlight didn't read as selected.
+		lv_obj_set_style_bg_opa(s.pill, sel ? LV_OPA_COVER : 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+		lv_obj_set_style_bg_color(s.pill, SEL_BG, LV_PART_MAIN | LV_STATE_DEFAULT);
 		lv_obj_set_style_text_color(s.lbl, sel ? SEL_TXT : UNSEL_TXT, LV_PART_MAIN | LV_STATE_DEFAULT);
 	}
 
@@ -174,7 +187,8 @@ void ui_RimRidgeRQUpdateLabel(uint8_t surface, uint8_t quality, bool capturing) 
 	};
 	for (auto& q : qual) {
 		bool sel = (q.value == quality);
-		lv_obj_set_style_bg_color(q.circle, sel ? SEL_BG : UNSEL_BG, LV_PART_MAIN | LV_STATE_DEFAULT);
+		lv_obj_set_style_bg_opa(q.circle, sel ? LV_OPA_COVER : 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+		lv_obj_set_style_bg_color(q.circle, SEL_BG, LV_PART_MAIN | LV_STATE_DEFAULT);
 		lv_obj_set_style_text_color(q.lbl, sel ? SEL_TXT : UNSEL_TXT, LV_PART_MAIN | LV_STATE_DEFAULT);
 	}
 

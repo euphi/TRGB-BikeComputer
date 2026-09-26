@@ -78,11 +78,13 @@ void UIFacade::initDisplay() {
     ui_RimRidgeUpdateNav(nullptr, 0, NAV_MANEUVER_NONE, 0); // start on the "no nav" icon, not rr_ic_turn's EEZ-authored default placeholder
     ui_RimRidgeUpdateLanes(nullptr, 0); // rr_lane_row starts visible in the EEZ canvas - hide it and confirm rr_nav_pill is at rest
     create_screen_rim_ridge_nav();
+    ui_RimRidgeNavUpdateNav(0, NAV_MANEUVER_NONE, 0, "", NAV_MANEUVER_NONE, 0); // same "no nav" boot fixup as rr_ic_turn above - otherwise this screen keeps showing its EEZ-authored example maneuver/street/distance until the first real update
     ui_RimRidgeNavUpdateLanes(nullptr, 0); // rrnav_lane_row starts visible in the EEZ canvas - hide it
     create_screen_rim_ridge_rq();
     ui_RimRidgeRQUpdateNav(0, NAV_MANEUVER_NONE, 0); // same "no nav" boot fixup as rr_ic_turn above
     ui_RimRidgeRQInitLabelControls();
     ui_RimRidgeRQUpdateLabel(0, 0, false); // nothing labeled/capturing yet - normalize away the JSON's static "Schotter/3 selected" example content
+    ui_RimRidgeRQInitNavLink(); // rq_nav_pill tap -> showNavScreen(), same target as rr_nav_pill's GoToNav action, but wired in C (see RimRidgeRQCustFunc.cpp)
 
     // 3. set main screen
     // RimRidge is now the permanent main/boot screen (2026-09-18).
