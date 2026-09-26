@@ -18,6 +18,11 @@ is which records are allowed into it:
 
 Gaps in time start a new <trkseg>, so map viewers draw a break instead of a
 straight line across a coffee stop.
+
+Shocks (log format v2) become <wpt> waypoints -- potholes and kerbs on the
+map -- subject to the same position/time checks as the track points. The
+road-quality intervals stay CSV-only, for the same reason as gradient: no
+extension that viewers read carries them.
 """
 
 from __future__ import annotations
@@ -26,7 +31,7 @@ import datetime
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 
-from .record import Record
+from .record import Record, ShockEvent
 
 GPX_NS = "http://www.topografix.com/GPX/1/1"
 TPX_NS = "http://www.garmin.com/xmlschemas/TrackPointExtension/v1"
@@ -57,6 +62,9 @@ class GpxOptions:
     #: Drop fixes whose reported accuracy is worse than this, in meters.
     #: 0 disables -- records without an accuracy value are never dropped.
     max_accuracy_m: float = 0.0
+    #: Write shocks (if given) as waypoints, from this severity (1..3) up.
+    shocks: bool = True
+    min_shock_severity: int = 1
     track_name: str | None = None
     track_type: str = "cycling"
     creator: str = CREATOR
@@ -76,6 +84,8 @@ class GpxStats:
     dropped_null_island: int = 0
     dropped_inaccurate: int = 0
     dropped_duplicate_time: int = 0
+    shocks_written: int = 0
+    shocks_dropped: int = 0
     first_time: datetime.datetime | None = None
     last_time: datetime.datetime | None = None
 
@@ -91,6 +101,9 @@ class GpxStats:
         ):
             if value:
                 parts.append(f"{value} verworfen ({label})")
+        if self.shocks_written or self.shocks_dropped:
+            parts.append(f"{self.shocks_written} Stoß-Wegpunkt(e)"
+                         + (f" ({self.shocks_dropped} ohne verwertbare Position)" if self.shocks_dropped else ""))
         return ", ".join(parts)
 
 
@@ -162,7 +175,31 @@ def _trackpoint(parent: ET.Element, rec: Record, opts: GpxOptions) -> None:
         ET.SubElement(tpx, f"{{{TPX_NS}}}{tag}").text = text
 
 
-def build_tree(records, opts: GpxOptions | None = None) -> tuple[ET.ElementTree, GpxStats]:
+def _shock_usable(shock: ShockEvent, opts: GpxOptions) -> bool:
+    if not shock.gps_valid or (shock.gps_lat_e7 == 0 and shock.gps_lon_e7 == 0):
+        return False
+    if opts.max_fix_age_ms and shock.gps_fix_age_ms > opts.max_fix_age_ms:
+        return False
+    return shock.utc().year >= opts.min_year
+
+
+def _waypoint(parent: ET.Element, shock: ShockEvent) -> None:
+    wpt = ET.SubElement(parent, f"{{{GPX_NS}}}wpt",
+                        {"lat": f"{shock.latitude:.7f}", "lon": f"{shock.longitude:.7f}"})
+    ET.SubElement(wpt, f"{{{GPX_NS}}}time").text = _iso(shock.utc())
+    ET.SubElement(wpt, f"{{{GPX_NS}}}name").text = f"Stoß {shock.peak_g:.1f} g".replace(".", ",")
+    desc = [f"Schwere {shock.severity}", f"Peak {shock.peak_g:.2f} g"]
+    if shock.second_peak_mg:
+        desc.append(f"2. Peak {shock.second_peak_mg / 1000:.2f} g nach {shock.second_peak_delay_ms} ms"
+                    + (" (Vorder- und Hinterrad)" if shock.wheelbase_match else ""))
+    if shock.speed_kmh is not None:
+        desc.append(f"{shock.speed_kmh:.1f} km/h")
+    ET.SubElement(wpt, f"{{{GPX_NS}}}desc").text = ", ".join(desc)
+    ET.SubElement(wpt, f"{{{GPX_NS}}}type").text = f"shock-{shock.severity}"
+
+
+def build_tree(records, opts: GpxOptions | None = None,
+               shocks: list[ShockEvent] | None = None) -> tuple[ET.ElementTree, GpxStats]:
     opts = opts or GpxOptions()
     stats = GpxStats()
 
@@ -177,6 +214,16 @@ def build_tree(records, opts: GpxOptions | None = None) -> tuple[ET.ElementTree,
             f"{GPX_NS} {GPX_NS}/gpx.xsd {TPX_NS} {TPX_NS}/TrackPointExtensionv1.xsd",
     })
     metadata = ET.SubElement(gpx, f"{{{GPX_NS}}}metadata")
+    # GPX 1.1 order: metadata, wpt*, rte*, trk*
+    if opts.shocks and shocks:
+        for shock in shocks:
+            if shock.severity < opts.min_shock_severity:
+                continue
+            if not _shock_usable(shock, opts):
+                stats.shocks_dropped += 1
+                continue
+            _waypoint(gpx, shock)
+            stats.shocks_written += 1
     trk = ET.SubElement(gpx, f"{{{GPX_NS}}}trk")
     ET.SubElement(trk, f"{{{GPX_NS}}}type").text = opts.track_type
 
@@ -222,14 +269,16 @@ def build_tree(records, opts: GpxOptions | None = None) -> tuple[ET.ElementTree,
     return ET.ElementTree(gpx), stats
 
 
-def to_string(records, opts: GpxOptions | None = None) -> tuple[str, GpxStats]:
-    tree, stats = build_tree(records, opts)
+def to_string(records, opts: GpxOptions | None = None,
+              shocks: list[ShockEvent] | None = None) -> tuple[str, GpxStats]:
+    tree, stats = build_tree(records, opts, shocks)
     xml = ET.tostring(tree.getroot(), encoding="unicode", xml_declaration=True)
     return xml + "\n", stats
 
 
-def write(path, records, opts: GpxOptions | None = None) -> GpxStats:
-    xml, stats = to_string(records, opts)
+def write(path, records, opts: GpxOptions | None = None,
+          shocks: list[ShockEvent] | None = None) -> GpxStats:
+    xml, stats = to_string(records, opts, shocks)
     with open(path, "w", encoding="utf-8") as fh:
         fh.write(xml)
     return stats

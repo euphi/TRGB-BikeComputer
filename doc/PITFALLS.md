@@ -160,3 +160,30 @@ internen Heap. Routen als Präfix-Routen anlegen (siehe
 eingestellt (Details im Kommentar in `platformio.ini`). Nach Änderungen an
 Web-Handlern oder OTA neu messen (`mem` auf der Serial-CLI), bevor der
 Wert weiter gesenkt wird.
+
+## Interner Heap ist das knappe Gut
+
+PSRAM ist reichlich da, aber alles unter `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL`
+(4 KB) sowie Task-Stacks, FreeRTOS-Queues/-Puffer, offene SD-Dateien (~4 KB
+je Datei), WLAN, BLE-Verbindungen und jede TCP-Verbindung des Webservers
+kommen aus dem **internen** Heap. Gemessen 2026-09-26 (`mem`, Zeile `MEM int=`):
+nach dem Boot mit WLAN + TrailBridge + HR ca. 50–64 KB frei; 8 parallele
+HTTP-Requests ziehen davon ~45–60 KB ab. Läuft der interne Heap leer,
+hängen Webserver/mDNS, und das Gerät kann abstürzen.
+
+Regel: Jeden neuen dauerhaften Puffer/Stack/offenen File im internen RAM mit
+`mem` vorher/nachher messen (Leerlauf und unter Web-Last). Dateien, die selten
+geschrieben werden, nicht die ganze Sitzung offen halten. Die Middleware in
+`WifiWebserver.cpp` lehnt Requests unter 20 KB freiem internem Heap mit 503
+ab -- das schützt aber erst nach dem Annehmen der Verbindung.
+
+## BMI160: Register-Reads nie ungeprüft
+
+`BMI160Gen::serial_buffer_transfer()` prüft nicht, ob `requestFrom()` alle
+Bytes geliefert hat, und lässt bei einem kurzen Read alte Pufferbytes stehen.
+Beim FIFO-Füllstand (2 Byte) ergab das sporadisch Werte von ~80 statt ~2
+Frames; der leere FIFO liefert dann `0x8000`-Frames (-16 g auf allen Achsen),
+die als 31-g-Stöße erkannt wurden. Regel: FIFO-Zähler und -Daten über
+`I2CSensors::imuRead()` lesen (Repeated Start, Längenprüfung) und
+`0x8000/0x8000/0x8000`-Frames verwerfen -- beides ist dort umgesetzt, die
+Zähler stehen auf `/debug/imu`.

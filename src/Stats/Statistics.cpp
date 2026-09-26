@@ -189,7 +189,8 @@ void Statistics::dataStore() {
 	tempC = sensors.getTemp();
 	height = sensors.getHeight();
 	ui.updateHeight(height);
-	bclog.appendDataLog(speed, sensors.getTemp(), gradient, distHandler.getDistance(), height, hr, cadence, gpsFix);
+	bclog.appendDataLog(speed, sensors.getTemp(), gradient, distHandler.getDistance(), height, hr, cadence, gpsFix,
+	                    gradientBaro, sensors.getImuGradient(), sensors.getRoadClass());
 #else
 	bclog.appendDataLog(speed, tempC, gradient, distHandler.getDistance(), height, hr, cadence, gpsFix);
 #endif
@@ -279,8 +280,32 @@ void Statistics::cycle() {
 	updateStateIcon();				// Always update in cycle, to support blinking and missed changes/init.
 #ifdef TRGBBC_SENSORS_I2C
 	sensors.readBME280();
+	updateRoadQualityUi();
+	// The accelerometer gradient (if selected) is current every second, unlike the
+	// barometric one -- refresh the display at that rate, not only per calculateGradient().
+	float g;
+	if (++gradUiCycles >= 2) {
+		gradUiCycles = 0;
+		if (sensors.imuGradientForDisplay(g)) {
+			gradient = g;
+			ui.updateGrad(gradient, height);
+		}
+	}
 #endif
 }
+
+#ifdef TRGBBC_SENSORS_I2C
+void Statistics::updateRoadQualityUi() {
+	uint8_t cls = sensors.getRoadClass();
+	uint32_t shocks = sensors.getShockCount();
+	if (cls != roadClassShown || shocks != shockCountShown || ++roadUiCycles >= 20) {
+		roadUiCycles = 0;
+		roadClassShown = cls;
+		shockCountShown = shocks;
+		ui.updateRoadQuality(cls, sensors.getRoughness(), shocks);
+	}
+}
+#endif
 
 void Statistics::delayStandby() {
 	time_t time_in_break = millis() - timestamp_stop;
@@ -390,6 +415,7 @@ void Statistics::addHR(int16_t _hr) {
 
 void Statistics::addSpeed(float _speed) {
 	speed = _speed;
+	speedUpdateMs = millis();
 	for (uint_fast8_t i = 0; i<= SUM_ESP_START; i++) {
 		if (speed_max[i] < speed) speed_max[i] = speed;
 	}
@@ -578,8 +604,16 @@ void Statistics::calculateGradient(float newDist) {
 		if (delta_dist > 0.2) {
 			gradient_new = delta_height / (delta_dist) * 100.0;		// simplified gradient calculation. Accurate enough for smaller gradients.
 		}
-		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Gradient: %.2f", gradient_new);
-		addGradientHeight(gradient_new, height_new);
+		gradientBaro = gradient_new;
+		float gradient_shown = gradient_new;
+#ifdef TRGBBC_SENSORS_I2C
+		// The barometric gradient is the reference the accelerometer learns its mounting
+		// offset against; the accelerometer's is shown instead only if selected ("rq gradsrc imu").
+		sensors.feedBaroGradient(gradient_new, delta_dist);
+		sensors.imuGradientForDisplay(gradient_shown);
+#endif
+		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Gradient: %.2f (barometric %.2f)", gradient_shown, gradient_new);
+		addGradientHeight(gradient_shown, height_new);
 	}
 #endif
 }

@@ -7,13 +7,13 @@ import struct
 import pytest
 
 from bikelog import fixtures
-from bikelog.record import (LAYOUTS, ReadStats, Record, UnknownLogFormat,
+from bikelog.record import (CURRENT_VERSION, LAYOUTS, ReadStats, Record, UnknownLogFormat,
                             read_stream, write_records)
 
 
 def test_v1_record_is_56_bytes():
-    # Mirrors the static_assert in src/BCLogger.h. If this fails, the
-    # firmware struct changed and LAYOUTS needs a new entry.
+    # The historic v1 layout (BCLogger::LogData before format v2) -- still
+    # read, never written by the firmware any more. v2: test_logformat.py.
     assert LAYOUTS[1].size == 56
 
 
@@ -29,7 +29,7 @@ def test_roundtrip_preserves_every_field(tmp_path):
     stats = ReadStats()
     with open(path, "rb") as fh:
         back = list(read_stream(fh, stats))
-    assert stats.version == 1
+    assert stats.version == CURRENT_VERSION
     assert len(back) == len(original)
     for before, after in zip(original, back):
         assert after.timestamp == before.timestamp

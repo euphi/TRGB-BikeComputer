@@ -14,7 +14,9 @@
 #include <BMI160Gen.h>
 #include <Ticker.h>
 #include <Preferences.h>
+#include <SimpleCLI.h>
 #include <atomic>
+#include "RoadQuality.h"
 
 class I2CSensors {
 public:
@@ -38,6 +40,24 @@ public:
 	// Only raise a flag; the ImuTask does the actual work (async_tcp's stack is tight).
 	bool requestIMUCalibration();		// false if the sensor isn't running or a calibration is already underway
 	void requestIMUMinMaxReset() {imuResetMinMaxRequest = true;}
+
+	// ---- Road quality and accelerometer gradient (see RoadQuality.h) ----
+	// For Statistics and the UI; all safe to call from any task.
+	enum GradSource : uint8_t {GRAD_BARO = 0, GRAD_IMU = 1};
+	uint8_t getRoadClass() const {return roadClass.load();}		// 0 = not rated, 1..5
+	float getRoughness();					// R of the last interval, NAN if not rated
+	uint32_t getShockCount();				// shock records written since boot
+	float getImuGradient();					// %, bias-corrected; NAN if no current estimate
+	// true (and pct set) if the display should show the accelerometer gradient right now:
+	// source set to IMU, and the estimate is current and its bias has converged.
+	bool imuGradientForDisplay(float& pct);
+	// Statistics::calculateGradient() hands over each barometric gradient: it is the
+	// reference the accelerometer's mounting offset is learned against.
+	void feedBaroGradient(float pct, float deltaDistM);
+	bool requestRefRide(bool start);		// false if the IMU isn't running
+	// Raw capture on demand (R_*.bin, RawCapture.h): seconds 1..600, 0 = stop.
+	bool requestRawCapture(uint16_t seconds);
+	void requestPitchReset() {pitchResetRequest = true;}
 
 	float getHeight() const {return height;}
 	float getHumid() const {return humid;}
@@ -72,6 +92,7 @@ private:
 	// Accelerometer only, 400 Hz, +/-16 g, read in bursts from the sensor's 1024 byte FIFO
 	// (headerless: 6 byte per frame = 170 frames = 425 ms of buffer). The gyro is not in the
 	// FIFO; it is only offset-calibrated so its values are usable later.
+	static constexpr uint8_t IMU_I2C_ADDR = 0x68;
 	static constexpr uint16_t IMU_ODR_HZ = 400;
 	static constexpr float IMU_LSB_PER_G = 2048.0f;			// +/-16 g range
 	static constexpr uint32_t IMU_POLL_MS = 50;				// ~20 frames = 120 byte per poll
@@ -97,6 +118,8 @@ private:
 		uint16_t fifoFill = 0, fifoFillMax = 0;
 		uint32_t overflows = 0;
 		uint32_t totalSamples = 0;
+		uint32_t i2cErrors = 0;			// short/failed FIFO reads
+		uint32_t invalidFrames = 0;		// 0x8000 "FIFO empty" frames dropped
 		float last[3] = {0, 0, 0};		// [g], scale-corrected
 		float mean[3] = {0, 0, 0};		// last 1 s window
 		float sigma[3] = {0, 0, 0};
@@ -118,7 +141,7 @@ private:
 	};
 
 	void imuTask();
-	void imuProcessSample(const int16_t raw[3]);
+	void imuProcessSample(const int16_t raw[3], int64_t sampleEpochMs);
 	void imuFinishCalibration();
 	void loadIMUCalibration();
 	void storeIMUCalibration();
@@ -145,7 +168,112 @@ private:
 	float imuLast[3] = {0, 0, 0}, imuMin[3] = {0, 0, 0}, imuMax[3] = {0, 0, 0};
 	float imuMagMax = 0;
 	uint32_t imuTotalSamples = 0;
+	uint32_t imuI2cErrors = 0, imuInvalidFrames = 0;
+	bool imuRead(uint8_t reg, uint8_t* buf, uint16_t n);
 	bool imuMinMaxValid = false;
+
+	// ---------------- Road quality, shocks, accelerometer gradient ----------------
+	// Settings the user can change (CLI "rq ..."), persisted in "RoadQ". Guarded by imuMux;
+	// the ImuTask picks changes up via rqSettingsChanged.
+	struct RqSettings {
+		uint8_t intervalS = 2;
+		float shockAbsG = 3.0f;
+		float wheelbaseM = 1.05f;
+		uint8_t gradSrc = GRAD_BARO;		// accelerometer gradient is opt-in until verified on real rides
+	};
+	// Everything the web page and the UI show. Written by the ImuTask, guarded by imuMux.
+	struct RqSnapshot {
+		bool haveInterval = false;
+		RQ::IntervalResult last;
+		bool haveShock = false;
+		RQ::ShockResult lastShock;
+		time_t lastShockTime = 0;
+		uint32_t shocks = 0, suppressed = 0, rqRecords = 0;
+		float rms1sG = 0;
+		bool still = false;
+		float speedKmh = NAN;
+		uint8_t speedSrc = 0;				// RQ::SpeedSource
+		RQ::RoadQuality::RefState refState = RQ::RoadQuality::RefState::IDLE;
+		uint16_t refProgressS = 0, refElapsedS = 0;
+		float baselineG = 0;
+		bool baselineCal = false;
+		time_t baselineTime = 0;
+		// pitch
+		bool efValid = false;
+		float ef[3] = {0, 0, 0};
+		float slope = 0, biasDeg = 0, biasDistM = 0;
+		bool biasConverged = false;
+		bool gradValid = false, frozen = false;
+		float gradImu = NAN, gradRaw = NAN, gradBaro = NAN;
+		uint32_t pitchUpdates = 0;
+	};
+	static constexpr uint32_t PITCH_SAVE_INTERVAL_MS = 10 * 60 * 1000;	// NVS wear: learned state at most every 10 min
+
+	RQ::RoadQuality roadq;					// ImuTask only
+	RQ::PitchEstimator pitch;				// ImuTask only
+	RqSettings rqSettings;					// guarded by imuMux
+	RqSnapshot rqSnap;						// guarded by imuMux
+	std::atomic<bool> rqSettingsChanged{false};
+	std::atomic<uint8_t> refRequest{0};		// 1 = start, 2 = cancel
+	std::atomic<bool> pitchResetRequest{false};
+	std::atomic<uint8_t> roadClass{0};
+	struct {bool pending; float pct; float distM;} baroMail = {};	// guarded by imuMux
+	time_t baselineTime = 0;				// ImuTask only (mirrored into rqSnap)
+
+	// ImuTask-private
+	float blockSum[3] = {0, 0, 0};
+	uint32_t blockN = 0;
+	uint32_t lastSpeedUpdateSeen = 0;
+	int64_t intervalStartEpochMs = 0;
+	uint32_t pitchSavedMs = 0;
+	RQ::PitchEstimator::State pitchSaved;
+	RQ::RoadQuality::RefState refPrev = RQ::RoadQuality::RefState::IDLE;
+	float curSpeedKmh = NAN;				// as set in rqBeforeBurst(), for the raw block headers
+	uint8_t curSpeedSrc = 0;				// RQ::SpeedSource
+	uint32_t curSpeedUpdMs = 0;
+
+	// ---------------- Raw data: capture on demand, shock snippets ----------------
+	static constexpr uint16_t RAW_MAX_CAPTURE_S = 600;
+	static constexpr uint16_t SNIP_PRE_MS = 250, SNIP_POST_MS = 500;
+	static constexpr uint16_t SNIP_PRE = SNIP_PRE_MS * IMU_ODR_HZ / 1000;		// 100 frames
+	static constexpr uint16_t SNIP_POST = SNIP_POST_MS * IMU_ODR_HZ / 1000;		// 200 frames
+	static constexpr uint16_t SNIP_FRAMES = SNIP_PRE + SNIP_POST;
+	static constexpr uint16_t RAW_RING = 320;	// frames of history (0.8 s): a snippet is taken right at peak + SNIP_POST, so SNIP_FRAMES suffice
+	std::atomic<int32_t> rawRequest{-1};	// -1 = none, 0 = stop, n = start n seconds
+	struct RawSnapshot {
+		bool capturing = false;
+		uint32_t captureFrames = 0, captureTarget = 0, captureBlocks = 0;
+		uint32_t snippets = 0, snippetsDropped = 0;
+	} rawSnap;								// guarded by imuMux
+	// ImuTask-private
+	bool rawCapturing = false;
+	uint32_t rawCaptureLeft = 0, rawCaptureFrames = 0, rawCaptureTarget = 0, rawBlockNo = 0;
+	bool rawGap = false;					// samples lost since the last capture block
+	bool snipFileOpen = false;
+	bool snipPending = false;
+	uint32_t snipPeakIdx = 0, snipSeq = 0;
+	float snipSpeedKmh = NAN;
+	uint32_t snippets = 0, snippetsDropped = 0;
+	int16_t rawRing[RAW_RING][3] = {};
+	void rawFileHeader(uint8_t kind, uint8_t* out);
+	void rawBeforeBurst();					// start/stop requests
+	void rawCaptureChunk(const uint8_t* frames, uint16_t n, int64_t firstEpochMs);
+	void rawAfterSample(const int16_t raw[3], int64_t sampleEpochMs);
+	void rawWriteSnippet(int64_t lastEpochMs);
+	void rawPublish();
+
+	void rqLoad();							// settings, baseline and learned pitch state from "RoadQ"
+	RQ::Config rqConfig(const RqSettings& s) const;
+	void rqSaveBaseline();
+	void rqSavePitch(uint32_t nowMs);
+	void rqBeforeBurst(uint32_t nowMs);		// once per poll: requests, speed, barometer
+	void rqAfterBurst(uint32_t nowMs);		// once per poll: pitch block, snapshot
+	void rqHandleResults(uint8_t ready, int64_t sampleEpochMs);
+	void rqPublish(uint32_t nowMs);
+
+	Command rqCmd;
+	void handleRqCommand(const Command& cmd);
+	void printRqStatus();
 };
 
 #endif

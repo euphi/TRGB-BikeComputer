@@ -9,7 +9,7 @@ selbst ist die Felge.
 
 | Screen | Datei | Zustand |
 |---|---|---|
-| Mainscreen | [`mainscreen.svg`](mainscreen.svg) | **implementiert**, `EEZStudio/TRGB-BikeComputer.eez-project`, Screen `rim_ridge` |
+| Mainscreen | [`mainscreen.svg`](mainscreen.svg) | **implementiert**, `EEZStudio/TRGB-BikeComputer.eez-project`, Screen `rim_ridge` — bis auf den Straßenqualität-Indikator (§4), der ist Spezifikation, Platz dafür ist aber bereits geschaffen (`rr_tour_pill` reicht bis y=480) |
 | Navigationsscreen | [`navscreen.svg`](navscreen.svg) | **implementiert**, Screen `rim_ridge_nav` (`SCREEN_ID_RIM_RIDGE_NAV`) |
 | Einstellungen | [`settings.svg`](settings.svg) | Spezifikation, noch nicht in EEZ Studio angelegt |
 
@@ -224,6 +224,37 @@ Rahmen:    M-5.5,3 L-0.8,3  M-0.8,3 L-3,-4.3  M-0.8,3 L3.8,-4.8
 Sattel/Lenker-Kappen: M-4.2,-4.6 L-1.8,-4   M2.8,-5.6 L4.8,-4.2
 ```
 
+### Straßenqualität-Indikator
+
+**Umgesetzt** als `rr_line_rq`, ein einzelnes `LVGLLineWidget`, vom Nutzer
+direkt in EEZ Studio angelegt (2026-09-26) — ersetzt eine ältere,
+nie gebaute Spezifikation mit fünf kleinen Quadraten unter dem
+Fahrzustand-Icon (siehe Git-Historie dieser Datei, falls die als Referenz
+noch mal interessant ist). Kein Icon, keine Beschriftung — die Farbe *ist*
+die Information, bewusst minimal wie im Konzept vorgesehen („nur die
+Qualitätsklasse als kleiner farbiger Indikator", BMI160-basiert,
+Konzeptdokument liegt außerhalb des Repos unter
+`~/.claude/plans/plane-mir-ein-konzept-linear-crayon.md`).
+
+- Direktes Kind des `rim_ridge`-Screens (nicht in `rr_tour_pill` verschachtelt),
+  `align=BOTTOM_MID`, Offset `(2,-16)`, `115×5`, `line_width=5` — ein dünner
+  Balken knapp über der Bildschirmkante, mittig unter der Distanz-/Modus-
+  Spalte.
+- Klasse `n` (1–5) → `line_color` auf die entsprechende der fünf
+  HF-Zonenfarben (§1, `ZONE_BLUE`…`ZONE_RED`, `theme_colors[26..30]`) —
+  glatt = blau, sehr rau = rot, dieselbe Reihenfolge wie die HF-Leiste.
+- Klasse 0 (noch keine Daten oder zu langsam/Stillstand) → Widget bleibt
+  sichtbar, `line_color` auf `RRBrass` (derselbe Messington wie der Rest
+  der UI) statt einer der fünf Zonenfarben — bewusst kein Ein-/Ausblenden
+  bei jeder Ampelpause, die Linie ist durchgehend präsent, nur die Farbe
+  trägt die Information. Identisch mit dem JSON-Default in EEZ Studio, vor
+  der ersten echten Klasse.
+- Verdrahtet in `ui_RimRidgeUpdateRoadQuality()`
+  (`src/ui/RimRidgeCustFunc.cpp`) — Datenkette
+  `RoadQuality`/`I2CSensors` → `Statistics::updateRoadQualityUi()` →
+  `UIFacade::updateRoadQuality()` stand schon vorher, nur der Widget-Teil
+  war der offene Punkt.
+
 ## 5. Icon-Bibliothek
 
 | Icon | EEZ-Asset | Konstruktion |
@@ -259,8 +290,11 @@ oberen Teil); die Zahnrad-Konstruktion oben ist der Ersatz, falls nötig.
 Reihenfolge von innen nach außen: Speed (Zentrum, 130px, dominant) →
 Cadence/Watt (flankierend, schmale Spalten bei x=80/400) →
 Temp/Höhe/Steigung (Reihe bei y≈325) → HF-Wert + Zonenband (y≈353–380) →
-Fußzeile (Pause-Taste, Fahrzustand-Icon 34px, Distanz, Modus-Chip,
-Einstellungen-Taste) → außen der Speed-Arc mit Ø-Marker → oben
+Fußzeile (Pause-Taste links, Settings-Taste rechts, dazwischen eine
+gemeinsame Spalte `rr_tour_pill` bei x173–307/y378–480: Distanz →
+Modus-Chip → Fahrzustand-Icon 34px → Straßenqualität-Indikator, alle
+vier senkrecht gestapelt statt nebeneinander — siehe §4 „Straßenqualität-
+Indikator" für die Begründung) → außen der Speed-Arc mit Ø-Marker → oben
 Statuszeile (WLAN/GPS/Akku) und Nav-Pille, links davon konditional die
 Spur-Anzeige, darunter die Fahrzeit/Uhrzeit (y≈157, siehe §4) in der Lücke
 zwischen Nav-Pille und Speed-Zahl.

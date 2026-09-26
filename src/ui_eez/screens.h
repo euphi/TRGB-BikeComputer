@@ -64,6 +64,7 @@ typedef struct _objects_t {
     lv_obj_t *rr_grp_battery;
     lv_obj_t *rr_ic_battery;
     lv_obj_t *rr_battery_fill;
+    lv_obj_t *rr_line_rq;
     lv_obj_t *rrnav_dist_arc;
     lv_obj_t *rrnav_lane_row;
     lv_obj_t *rrnav_grp_turn;

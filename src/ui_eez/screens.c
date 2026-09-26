@@ -155,8 +155,8 @@ void create_screen_rim_ridge() {
             // rr_tour_pill
             lv_obj_t *obj = lv_obj_create(parent_obj);
             objects.rr_tour_pill = obj;
-            lv_obj_set_pos(obj, 173, 383);
-            lv_obj_set_size(obj, 134, 92);
+            lv_obj_set_pos(obj, 173, 378);
+            lv_obj_set_size(obj, 134, 102);
             lv_obj_set_style_pad_left(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
             lv_obj_set_style_pad_top(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
             lv_obj_set_style_pad_right(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -172,7 +172,7 @@ void create_screen_rim_ridge() {
                     // rr_ic_state
                     lv_obj_t *obj = lv_img_create(parent_obj);
                     objects.rr_ic_state = obj;
-                    lv_obj_set_pos(obj, 51, 58);
+                    lv_obj_set_pos(obj, 51, 52);
                     lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
                     lv_img_set_src(obj, &img_rr_icon_state_power);
                     lv_obj_add_flag(obj, LV_OBJ_FLAG_CLICKABLE);
@@ -462,8 +462,8 @@ void create_screen_rim_ridge() {
             // rr_grp_height
             lv_obj_t *obj = lv_obj_create(parent_obj);
             objects.rr_grp_height = obj;
-            lv_obj_set_pos(obj, 192, 309);
-            lv_obj_set_size(obj, 90, 32);
+            lv_obj_set_pos(obj, 0, 80);
+            lv_obj_set_size(obj, 110, 32);
             lv_obj_set_style_pad_left(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
             lv_obj_set_style_pad_top(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
             lv_obj_set_style_pad_right(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -472,6 +472,7 @@ void create_screen_rim_ridge() {
             lv_obj_set_style_border_width(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
             lv_obj_set_style_radius(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
             lv_obj_clear_flag(obj, LV_OBJ_FLAG_SCROLLABLE);
+            lv_obj_set_style_align(obj, LV_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
             {
                 lv_obj_t *parent_obj = obj;
                 {
@@ -490,13 +491,14 @@ void create_screen_rim_ridge() {
                     // rr_height_val
                     lv_obj_t *obj = lv_label_create(parent_obj);
                     objects.rr_height_val = obj;
-                    lv_obj_set_pos(obj, 32, 7);
+                    lv_obj_set_pos(obj, 32, 5);
                     lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+                    lv_label_set_long_mode(obj, LV_LABEL_LONG_SCROLL_CIRCULAR);
                     lv_obj_add_flag(obj, LV_OBJ_FLAG_CLICKABLE);
                     lv_obj_clear_flag(obj, LV_OBJ_FLAG_SCROLLABLE);
                     lv_obj_set_style_text_color(obj, lv_color_hex(theme_colors[active_theme_index][21]), LV_PART_MAIN | LV_STATE_DEFAULT);
                     lv_obj_set_style_text_font(obj, &lv_font_montserrat_22, LV_PART_MAIN | LV_STATE_DEFAULT);
-                    lv_label_set_text_static(obj, "612m");
+                    lv_label_set_text_static(obj, "231m");
                 }
             }
         }
@@ -694,6 +696,21 @@ void create_screen_rim_ridge() {
                     lv_obj_set_style_radius(obj, 1, LV_PART_MAIN | LV_STATE_DEFAULT);
                 }
             }
+        }
+        {
+            // rr_line_rq
+            lv_obj_t *obj = lv_line_create(parent_obj);
+            objects.rr_line_rq = obj;
+            lv_obj_set_pos(obj, 2, -16);
+            lv_obj_set_size(obj, 115, 5);
+            static lv_point_t line_points[] = {
+                { 0, 0 },
+                { 115, 0 }
+            };
+            lv_line_set_points(obj, line_points, 2);
+            lv_obj_set_style_align(obj, LV_ALIGN_BOTTOM_MID, LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_obj_set_style_line_width(obj, 5, LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_obj_set_style_line_color(obj, lv_color_hex(theme_colors[active_theme_index][19]), LV_PART_MAIN | LV_STATE_DEFAULT);
         }
     }
     
@@ -1117,6 +1134,7 @@ void change_color_theme(uint32_t theme_index) {
         lv_obj_set_style_text_color(objects.rr_time_val, lv_color_hex(theme_colors[theme_index][21]), LV_PART_MAIN | LV_STATE_DEFAULT);
         lv_obj_set_style_img_recolor(objects.rr_ic_battery, lv_color_hex(theme_colors[theme_index][19]), LV_PART_MAIN | LV_STATE_DEFAULT);
         lv_obj_set_style_bg_color(objects.rr_battery_fill, lv_color_hex(theme_colors[theme_index][23]), LV_PART_MAIN | LV_STATE_DEFAULT);
+        lv_obj_set_style_line_color(objects.rr_line_rq, lv_color_hex(theme_colors[theme_index][19]), LV_PART_MAIN | LV_STATE_DEFAULT);
     }
     {
         lv_obj_set_style_bg_color(objects.rim_ridge_nav, lv_color_hex(theme_colors[theme_index][16]), LV_PART_MAIN | LV_STATE_DEFAULT);

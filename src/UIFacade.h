@@ -103,6 +103,12 @@ public:
 	// col signals fix quality (see Statistics::updateGpsFixIcon() for the thresholds).
 	void updateGpsFix(bool hasFix, UIColor col);
 
+	// Road-surface quality (BMI160, see RoadQuality.h). roadClass 0 = not rated (too slow, no
+	// speed, no sensor), 1 = smooth .. 5 = very rough; roughness is the index behind it (NAN
+	// if not rated), shockCount the hard hits logged since boot. Called from
+	// Statistics::cycle() when something changed, and every 10 s regardless.
+	void updateRoadQuality(uint8_t roadClass, float roughness, uint32_t shockCount);
+
 
 	typedef std::function<void(bool ok)> MsgBoxCallBack;
 	void showMsgBox(const String& msgText, const MsgBoxCallBack& cb);

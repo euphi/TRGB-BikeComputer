@@ -26,6 +26,8 @@ const char* ntpServer = "pool.ntp.org";
 //const char* password = "SwieSecurity";
 
 static const BCLogger::LogTag TAG = BCLogger::TAG_WIFI;
+// Refuse new HTTP requests below this much free internal heap (see the middleware in begin()).
+static const size_t LOW_HEAP_REJECT_BYTES = 20 * 1024;
 
 // --- path extraction for the prefix routes below ------------------------------------
 // These replace three regex routes. ASYNCWEBSERVER_REGEX looks cheap but isn't:
@@ -348,6 +350,16 @@ void WifiWebserver::setupWebserver() {
 		server.addMiddleware([](AsyncWebServerRequest* request, ArMiddlewareNext next) {
 			const uint32_t startMs = millis();
 			const size_t internalFree = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+			// Load shedding: every request in flight costs several KB of internal heap (TCP
+			// buffers, request object, handler strings below CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL).
+			// Measured 2026-09-26: 8 parallel requests took the free internal heap from ~49 KB
+			// down to 1.2 KB -- the point where WiFi/BLE/SD allocations fail and the device
+			// hangs or crashes. Below the threshold, refuse cheaply instead; the pages' pollers
+			// simply try again on their next tick.
+			if (internalFree < LOW_HEAP_REJECT_BYTES) {
+				request->send(503, "text/plain", "Busy (low memory) - retry");
+				return;
+			}
 			WebInstr::onStart(request);
 			// onDisconnect() fires after the response is done (or the client gave up), and
 			// _onDisconnect() invokes it before the request object is deleted, so url() is
@@ -519,6 +531,27 @@ void WifiWebserver::setupWebserver() {
 		sensors.requestIMUMinMaxReset();
 		request->send(200, "text/plain", "Min/max reset");
 	});
+	server.on("/debug/imu/ref", HTTP_GET, [](AsyncWebServerRequest *request) {
+		bool start = request->hasParam("start") && request->getParam("start")->value() == "1";
+		if (sensors.requestRefRide(start)) {
+			request->send(200, "text/plain", start ? "Reference ride started" : "Reference ride cancelled");
+		} else {
+			request->send(409, "text/plain", "IMU not running");
+		}
+	});
+	server.on("/debug/imu/raw", HTTP_GET, [](AsyncWebServerRequest *request) {
+		long sec = request->hasParam("s") ? request->getParam("s")->value().toInt() : 60;
+		if (sec < 0) sec = 0;
+		if (sensors.requestRawCapture(sec)) {
+			request->send(200, "text/plain", sec ? "Raw capture started" : "Raw capture stopped");
+		} else {
+			request->send(409, "text/plain", "IMU not running");
+		}
+	});
+	server.on("/debug/imu/pitchreset", HTTP_GET, [](AsyncWebServerRequest *request) {
+		sensors.requestPitchReset();
+		request->send(200, "text/plain", "Gradient learning reset");
+	});
 	server.on("/debug/imu.json", HTTP_GET, [](AsyncWebServerRequest *request) {
 		String json;
 		sensors.getIMUJson(json);
@@ -540,7 +573,7 @@ void WifiWebserver::setupWebserver() {
 			{ "/debug/",              "Live Log",        "Log stream over SSE, as it happens" },
 			{ "/debug/nvs",           "NVS Contents",    "Every key stored in non-volatile storage" },
 #ifdef TRGBBC_SENSORS_I2C
-			{ "/debug/imu",           "IMU (BMI160)",    "Live accelerometer data and calibration" },
+			{ "/debug/imu",           "IMU (BMI160)",    "Accelerometer, calibration, road quality, shocks, gradient" },
 #endif
 			{ "/stat/debugarray",     "Chart Array",     "Raw heart-rate chart ring buffer" },
 			{ "/stat/dist_debug.html","Distance Debug",  "Raw distance/wheel-revolution data" },

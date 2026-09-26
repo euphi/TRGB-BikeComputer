@@ -60,6 +60,23 @@ ist das Protokoll die Quelle der Wahrheit.
   unter `src/ui/font/` und `src/ui/img/` werden teils von RimRidge
   mitbenutzt.
 
+## Binärlog und Wegequalität
+
+- Binärlog `L_*.bin`: Format v2, 64-Byte-Sätze mit Typ-Byte (Fahrdaten /
+  Wegequalität / Stoß). Layout in `src/LogRecords.h`, Reader
+  `Tools/bikelog/record.py`. Beide nur gemeinsam ändern und
+  `FORMAT_VERSION` erhöhen; `Tools/tests/test_logformat.py` kompiliert den
+  Header auf dem Host und fängt Abweichungen.
+- BMI160 → `src/RoadQuality.*` (reiner Algorithmus: Rauheit, Stöße,
+  Referenzfahrt, Steigung aus Beschleunigung). Host-Test:
+  `test/native_roadquality/roadquality_test.cpp` (Build-Befehl im
+  Dateikopf). Anbindung, CLI `rq` und Debug-Seite `/debug/imu` in
+  `src/I2CSensors.cpp`.
+- Rohdaten (`R_*.bin` auf Anforderung, `S_*.bin` Stoß-Ausschnitte): Format
+  `src/RawCapture.h`, Reader `Tools/bikelog/raw.py`, Replay mit dem
+  unveränderten Firmware-Algorithmus `Tools/rqreplay/rq_replay.cpp`
+  (`bikelog raw replay`).
+
 ## Build
 
 PlatformIO (`platformio.ini`, Board `esp32s3box`, pioarduino-Plattform,

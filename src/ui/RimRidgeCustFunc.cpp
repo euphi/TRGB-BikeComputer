@@ -107,6 +107,26 @@ void ui_RimRidgeUpdateGpsFix(bool hasFix, lv_color_t color) {
 	lv_obj_clear_flag(objects.rr_ic_gps, LV_OBJ_FLAG_HIDDEN);
 }
 
+void ui_RimRidgeUpdateRoadQuality(uint8_t roadClass, float roughness, uint32_t shockCount) {
+	// roughness/shockCount have no widget yet (see RimRidgeCustFunc.h) - only
+	// the class drives rr_line_rq, a plain LVGLLineWidget the user added
+	// directly in EEZ Studio (replaces an earlier "5 small squares" design
+	// that never got built - see doc/design/rim-ridge-design-system.md).
+	(void) roughness; (void) shockCount;
+	// RRZoneBlue..RRZoneRed (theme_colors[26..30]) - same 5 tokens as the HR
+	// zone band, reused here for the same calm->harsh color meaning. Hardcoded
+	// hex rather than indexing theme_colors[] directly, matching how
+	// ui_RimRidgeUpdateStateIcon()'s caller resolves RRBrass - this file has
+	// no access to the generated theme_colors[]/active_theme_index globals.
+	// Class 0 (standstill/no data) is NOT hidden - it shows the same RRBrass
+	// neutral as the widget's own JSON default, so the line stays a constant
+	// presence rather than flickering in and out with every red light.
+	static const uint32_t ZONE_COLOR[5] = { 0x6C90B0, 0x6FA98C, 0xD7B463, 0xCE8A4C, 0xC1604A };
+	uint32_t color = (roadClass >= 1 && roadClass <= 5) ? ZONE_COLOR[roadClass - 1] : 0xCBA36B;
+	lv_obj_set_style_line_color(objects.rr_line_rq, lv_color_hex(color), LV_PART_MAIN | LV_STATE_DEFAULT);
+	lv_obj_clear_flag(objects.rr_line_rq, LV_OBJ_FLAG_HIDDEN);
+}
+
 void ui_RimRidgeUpdateWiFiState(bool wifiEnabled, bool APModeActive, bool disableAPMode, uint8_t apStaCount) {
 	// Only a simple show/hide for now - no RimRidge equivalent yet for
 	// MainNoFL's AP-mode/client-count distinction (that lived on SWLAN only).

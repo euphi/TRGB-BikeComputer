@@ -20,9 +20,11 @@ import datetime
 import math
 import xml.etree.ElementTree as ET
 
-from .record import (LOG_GPS_HAS_ACCURACY, LOG_GPS_HAS_ALTITUDE,
+from .record import (CURRENT_VERSION, IF_GPS_VALID, IF_NO_SPEED, IF_TOO_SLOW,
+                     IF_UNCALIBRATED, LOG_GPS_HAS_ACCURACY, LOG_GPS_HAS_ALTITUDE,
                      LOG_GPS_HAS_BEARING, LOG_GPS_HAS_SPEED, LOG_GPS_VALID,
-                     Record, write_records)
+                     SF_GPS_VALID, SF_WHEELBASE_MATCH, U16_INVALID, Record,
+                     RoadQualityRecord, ShockEvent, write_records)
 
 GPX_NS = "http://www.topografix.com/GPX/1/1"
 TPX_NS = "http://www.garmin.com/xmlschemas/TrackPointExtension/v1"
@@ -208,5 +210,83 @@ def from_gpx(path) -> list[Record]:
     return records
 
 
-def write_bin(path, records, version: int = 1) -> int:
+def _rough_section(i: int) -> bool:
+    """Every 100 s of ride, 30 s of cobbles."""
+    return i % 100 >= 70
+
+
+def with_road_quality(records: list[Record], interval_s: int = 2,
+                      shocks: tuple[tuple[int, float, bool], ...] = ((150, 6.2, True), (330, 4.1, False)),
+                      baseline_mg: float = 150.0) -> list:
+    """Interleave road-quality intervals and shocks into a ride (format v2).
+
+    ``records`` is a 1 Hz ride as from synthetic(); intervals follow its
+    timestamps, rough 30 s sections alternate with smooth road. ``shocks``
+    are (ride second, peak g, wheelbase match) -- a pothole crossed by both
+    wheels, or a single knock. The result is in time order, as the firmware
+    writes it.
+    """
+    out: list = []
+    current_class = 0                   # what the firmware puts into the data record: the latest class
+    for i, rec in enumerate(records):
+        rec.road_class = current_class
+        out.append(rec)
+        if i % interval_s == interval_s - 1:
+            rough = _rough_section(i)
+            rms = 620.0 if rough else 150.0
+            speed = rec.speed
+            flags = IF_UNCALIBRATED
+            roughness = None
+            road_class = 0
+            if speed < 0.5:
+                flags |= IF_NO_SPEED
+            elif speed < 6:
+                flags |= IF_TOO_SLOW
+            else:
+                roughness = rms / (baseline_mg * (speed / 20.0) ** 0.8)
+                road_class = next((c + 1 for c, thr in enumerate((1.5, 2.5, 4.0, 7.0)) if roughness < thr), 5)
+            rq = RoadQualityRecord(
+                timestamp=rec.timestamp, timestamp_ms=500, interval_ms=interval_s * 1000,
+                sample_count=interval_s * 400,
+                speed_cms=round(speed / 3.6 * 100) if speed else U16_INVALID,
+                rms_vert_mg=round(rms), rms_horiz_mg=round(rms * 0.45),
+                peak_vert_max_mg=round(rms * 3.1), peak_vert_min_mg=-round(rms * 2.9),
+                peak_total_mg=round(rms * 3.4),
+                roughness_x100=U16_INVALID if roughness is None else round(roughness * 100),
+                road_class=road_class, flags=flags | (IF_GPS_VALID if rec.gps_valid else 0),
+                vdv_vert=rms / 1000 * 9.81 * interval_s ** 0.25,
+                distance_m=speed / 3.6 * interval_s,
+                count_over_t1=6 if rough else 0, count_over_t2=1 if rough else 0,
+                gps_lat_e7=rec.gps_lat_e7, gps_lon_e7=rec.gps_lon_e7,
+                gps_fix_age_ms=rec.gps_fix_age_ms, gps_accuracy_m_x10=rec.gps_accuracy_m_x10,
+            )
+            out.append(rq)
+            current_class = road_class
+    seq = 0
+    for second, peak_g, pair in shocks:
+        if second >= len(records):
+            continue
+        rec = records[second]
+        seq += 1
+        speed = rec.speed
+        shock = ShockEvent(
+            timestamp=rec.timestamp, timestamp_ms=250, duration_ms=9,
+            peak_total_mg=round(peak_g * 1000), peak_vert_max_mg=round(peak_g * 950),
+            peak_vert_min_mg=-round(peak_g * 400), peak_horiz_mg=round(peak_g * 150),
+            pre_rms_mg=150, speed_cms=round(speed / 3.6 * 100),
+            second_peak_mg=round(peak_g * 500) if pair else 0,
+            second_peak_delay_ms=round(1.05 / (speed / 3.6) * 1000) if pair else 0,
+            severity=3 if peak_g >= 8 else (2 if peak_g >= 5 else 1),
+            flags=(SF_WHEELBASE_MATCH if pair else 0) | (SF_GPS_VALID if rec.gps_valid else 0),
+            vdv=0.4, samples_over_threshold=3, threshold_mg=3000,
+            gps_lat_e7=rec.gps_lat_e7, gps_lon_e7=rec.gps_lon_e7,
+            gps_fix_age_ms=rec.gps_fix_age_ms, gps_accuracy_m_x10=rec.gps_accuracy_m_x10,
+            event_seq=seq,
+        )
+        # right after the data record of that second
+        out.insert(next(k for k, x in enumerate(out) if x is rec) + 1, shock)
+    return out
+
+
+def write_bin(path, records, version: int = CURRENT_VERSION) -> int:
     return write_records(path, records, version)

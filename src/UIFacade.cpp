@@ -429,6 +429,16 @@ void UIFacade::updateGpsFix(bool hasFix, UIColor col) {
 	}
 }
 
+void UIFacade::updateRoadQuality(uint8_t roadClass, float roughness, uint32_t shockCount) {
+	bool uiTask = isDrawTask();
+	if (uiTask || xSemaphoreTake(xUIDrawMutex, 150 / portTICK_PERIOD_MS) == pdTRUE) {
+		ui_RimRidgeUpdateRoadQuality(roadClass, roughness, shockCount);
+		if (!uiTask) xSemaphoreGive(xUIDrawMutex);
+	} else {
+		bclog.log(BCLogger::Log_Warn, BCLogger::TAG_UI, "Update road quality blocked by mutex");
+	}
+}
+
 // Distance thresholds for evaluateNaviAutoSwitch() (2026-09-20, exact
 // values from the user): auto-show only once within this close to the
 // maneuver...

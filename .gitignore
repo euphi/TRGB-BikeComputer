@@ -45,3 +45,5 @@ EEZStudio/*.bak.*
 
 # EEZ Studio edit scripts (one-shot patches against the .eez-project)
 EEZStudio/tmp
+# bikelog raw replay: rq_replay, built on demand from src/RoadQuality.cpp
+Tools/.build/

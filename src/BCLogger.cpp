@@ -13,6 +13,7 @@
 #include <esp_task_wdt.h>
 #include <esp_core_dump.h>
 #include <esp_heap_caps.h>
+#include <sys/time.h>
 #include "WebInstrument.h"
 #include "WebPage.h"
 
@@ -91,9 +92,15 @@ void BCLogger::setup() {
 	// null-checks each File before using it), so set them up unconditionally -- previously an
 	// early return here for a missing SD card also silently disabled the live web log stream,
 	// which has nothing to do with SD presence.
-	// 4096 byte (ESP-IDF's xTaskCreate takes byte, not words): 3072 was already tight for
-	// logf()'s 256-byte stack buffer, and this task now also runs WebInstr::report()/drain().
-	xTaskCreate(+[](void* thisInstance){((BCLogger*)thisInstance)->flushAllFiles();}, "FlusherTask", 4096, this, 5, &flushTaskHandle);
+	// Before FlusherTask, which drains it, and before the early return for a missing SD card
+	// below: producers may enqueue regardless (writeRecord() drops without a data file).
+	recordQueue = xQueueCreate(RECORD_QUEUE_LEN, LogRec::RECORD_SIZE);
+	rawBuffer = xMessageBufferCreate(RAW_BUFFER_SIZE);
+	rawRx = static_cast<uint8_t*>(heap_caps_malloc(RAW_MAX_MSG, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+	// 4608 byte (ESP-IDF's xTaskCreate takes byte, not words): 3072 was already tight for
+	// logf()'s 256-byte stack buffer, this task also runs WebInstr::report()/drain(), and it now
+	// writes all binary and raw records to the card as well (5120 left 2448 byte free).
+	xTaskCreate(+[](void* thisInstance){((BCLogger*)thisInstance)->flushAllFiles();}, "FlusherTask", 4608, this, 5, &flushTaskHandle);
 	webserver.getServer().addHandler(&logevents);
 
 	uint8_t cardType = SD_MMC.cardType();
@@ -197,9 +204,9 @@ void BCLogger::sendLogEvent(LogType type, LogTag tag, const String& timeStr, con
 
 
 void BCLogger::flushAllFiles() {
-	// FlusherTask, Prio 5 -- a dedicated always-running task with its own vTaskDelay loop below,
-	// not actually a Ticker despite coincidentally also running every 5s.
-	// log()'s writes to fdebug/fnmea and appendDataLog()'s write to fdata are mutex-protected
+	// FlusherTask, Prio 5 -- a dedicated always-running task: flushes every 5 s and, in between,
+	// writes the binary records queued by appendRecord().
+	// log()'s writes to fdebug/fnmea and writeRecord()'s writes to fdata are mutex-protected
 	// (xPrintMutex); flush() on those same File handles needs the same protection, or it can
 	// race a concurrent write from another task. Same 100ms-timeout-and-skip pattern as log():
 	// a missed flush just retries next cycle rather than risking blocking this task indefinitely.
@@ -213,7 +220,23 @@ void BCLogger::flushAllFiles() {
 		}
 	};
 	uint32_t cycle = 0;
+	uint8_t rec[LogRec::RECORD_SIZE];
+	const TickType_t period = pdMS_TO_TICKS(5000);
+	TickType_t nextFlush = xTaskGetTickCount() + period;
 	do {
+		// Between flushes: write queued records as they come. The deadline is checked first, so
+		// a steady stream of records can never postpone the flush and the memory report.
+		// Producers wake this task with a notification (wakeFlusher()) after queueing
+		// something, so it sleeps until there is work or the flush is due -- no polling.
+		TickType_t now = xTaskGetTickCount();
+		if ((int32_t)(nextFlush - now) > 0) {
+			ulTaskNotifyTake(pdTRUE, nextFlush - now);
+			while (recordQueue && xQueueReceive(recordQueue, rec, 0) == pdTRUE) writeRecord(rec);
+			rawDrain();
+			continue;
+		}
+		nextFlush = now + period;
+
 		// Memory report. This replaces the old "Flush (DMA-capable heap free: ...)" line, which
 		// had three problems: it logged at Log_Debug under TAG_SD, whose default level is
 		// Log_Info, so it was never actually emitted; it reported only MALLOC_CAP_DMA, a subset
@@ -230,7 +253,8 @@ void BCLogger::flushAllFiles() {
 		flushLocked(fnmea);
 		yield();
 		flushLocked(fdata);
-		vTaskDelay(5000 / portTICK_PERIOD_MS);
+		flushLocked(fraw[RAW_CAPTURE]);
+		flushLocked(fraw[RAW_SNIPPETS]);
 	} while (true);
 }
 
@@ -393,12 +417,17 @@ void BCLogger::logf(LogType type, LogTag tag, const char *format, ...) {
 }
 
 
-void BCLogger::appendDataLog(float speed, float temp, float gradient, float distance, float height, uint8_t hr, uint8_t cadence, const SGpsFix& gps) {
-	LogData b;
-	time_t now;
-	time(&now);
+void BCLogger::nowEpoch(time_t& sec, uint16_t& ms) {
+	struct timeval tv;
+	gettimeofday(&tv, nullptr);
+	sec = tv.tv_sec;
+	ms = tv.tv_usec / 1000;
+}
 
-	b.timestamp = now;
+void BCLogger::appendDataLog(float speed, float temp, float gradient, float distance, float height, uint8_t hr, uint8_t cadence, const SGpsFix& gps,
+                             float gradBaro, float gradImu, uint8_t roadClass) {
+	LogRec::Data b = {};
+	nowEpoch(b.timestamp, b.timestampMs);
 	b.speed = speed;
 	b.temp = temp;
 	b.grad = gradient;
@@ -406,13 +435,14 @@ void BCLogger::appendDataLog(float speed, float temp, float gradient, float dist
 	b.height = height;
 	b.hr = hr;
 	b.cadence = cadence;
+	b.recordType = LogRec::TYPE_DATA;
+	b.formatVersion = LogRec::FORMAT_VERSION;
 
-	b.gpsFlags = (gps.valid ? LOG_GPS_VALID : 0)
-			| (gps.hasAltitude ? LOG_GPS_HAS_ALTITUDE : 0)
-			| (gps.hasSpeed ? LOG_GPS_HAS_SPEED : 0)
-			| (gps.hasBearing ? LOG_GPS_HAS_BEARING : 0)
-			| (gps.hasAccuracy ? LOG_GPS_HAS_ACCURACY : 0);
-	b.formatVersion = LOG_DATA_FORMAT_VERSION;
+	b.gpsFlags = (gps.valid ? LogRec::LOG_GPS_VALID : 0)
+			| (gps.hasAltitude ? LogRec::LOG_GPS_HAS_ALTITUDE : 0)
+			| (gps.hasSpeed ? LogRec::LOG_GPS_HAS_SPEED : 0)
+			| (gps.hasBearing ? LogRec::LOG_GPS_HAS_BEARING : 0)
+			| (gps.hasAccuracy ? LogRec::LOG_GPS_HAS_ACCURACY : 0);
 	b.gpsLatitudeE7 = gps.latitudeE7;
 	b.gpsLongitudeE7 = gps.longitudeE7;
 	b.gpsAltitudeM = gps.altitudeM;
@@ -421,22 +451,147 @@ void BCLogger::appendDataLog(float speed, float temp, float gradient, float dist
 	b.gpsAccuracyMX10 = gps.accuracyMX10;
 	b.gpsFixAgeMs = gps.fixAgeMs;
 
+	b.roadClass = roadClass;
+	b.gradBaroX100 = LogRec::gradX100(gradBaro);
+	b.gradImuX100 = LogRec::gradX100(gradImu);
+
+	appendRecord(b);
+}
+
+void BCLogger::wakeFlusher() {
+	if (flushTaskHandle) xTaskNotifyGive(flushTaskHandle);
+}
+
+bool BCLogger::enqueueRecord(const void* rec64) {
+	if (recordQueue && xQueueSend(recordQueue, rec64, 0) == pdTRUE) {
+		wakeFlusher();
+		return true;
+	}
+	uint32_t dropped = ++recordsDropped;
+	// No log() here: this runs in the ImuTask too, and a full queue means the card is already
+	// slow -- printf only, and only now and then.
+	if (dropped <= 3 || dropped % 100 == 0) printf("%lu: !!!!! Record queue full, %lu record(s) lost !!!!!\n", millis(), dropped);
+	return false;
+}
+
+void BCLogger::writeRecord(const uint8_t* rec) {
 	if (!fdata) {
-		log(Log_Warn, TAG_SD, "Data file not open");
+		if (++recordsDropped == 1) log(Log_Warn, TAG_SD, "Data file not open - binary records are dropped");
 		return;
 	}
-	// xPrintMutex also guards fdata against flushAllFiles()'s concurrent fdata.flush() (see
-	// flushAllFiles()) -- and unlike the old unconditional write, a short/failed write (SD full,
-	// card pulled mid-ride) is now surfaced instead of silently losing the record.
+	// xPrintMutex serialises this logger's SD access (log() writes fdebug/fnmea under it from
+	// any task). A short/failed write (SD full, card pulled mid-ride) is surfaced, not silently lost.
 	if (xSemaphoreTake(xPrintMutex, static_cast<TickType_t>(100 / portTICK_PERIOD_MS)) == pdTRUE) {
-		size_t written = fdata.write((byte*) &b, sizeof(b));
+		size_t written = fdata.write(rec, LogRec::RECORD_SIZE);
 		xSemaphoreGive(xPrintMutex);
-		if (written != sizeof(b)) {
-			log(Log_Error, TAG_SD, "Data record write incomplete: " + String(written) + "/" + String(sizeof(b)) + " byte");
+		if (written != LogRec::RECORD_SIZE) {
+			recordsDropped++;
+			log(Log_Error, TAG_SD, "Data record write incomplete: " + String(written) + "/" + String(LogRec::RECORD_SIZE) + " byte");
+		} else {
+			recordsWritten++;
 		}
 	} else {
-		printf("%d: !!!!! Data file write blocked, record lost !!!!!", millis());
+		recordsDropped++;
+		printf("%lu: !!!!! Data file write blocked, record lost !!!!!\n", millis());
 	}
+}
+
+// ******************** raw byte streams (RawCapture.h) ********************
+
+bool BCLogger::rawSend(uint8_t* msg, size_t len, uint8_t cmd, uint8_t stream) {
+	msg[0] = cmd;
+	msg[1] = stream;
+	if (rawBuffer && len <= RAW_MAX_MSG && xMessageBufferSend(rawBuffer, msg, len, 0) == len) {
+		wakeFlusher();
+		return true;
+	}
+	rawDropped += len;
+	return false;
+}
+
+void BCLogger::rawDrain() {
+	if (!rawBuffer || !rawRx) return;
+	size_t len;
+	while ((len = xMessageBufferReceive(rawBuffer, rawRx, RAW_MAX_MSG, 0)) > 0) {
+		rawHandle(rawRx, len);
+	}
+}
+
+// The raw files belong to the session of the data log: L_143012.bin -> R_143012_01.bin
+// (capture 1 of this session) and S_143012.bin (shock snippets); without a clock
+// L0040.bin -> R0040_01.bin / S0040.bin. The shared stem keeps them in the same row of
+// the log file list.
+String BCLogger::rawPath(uint8_t stream) {
+	if (file_data.isEmpty()) return String();
+	int slash = file_data.lastIndexOf('/');
+	int dot = file_data.lastIndexOf('.');
+	String dir = file_data.substring(0, slash + 1);
+	String stem = file_data.substring(slash + 2, dot > slash ? dot : file_data.length());	// without the 'L'
+	if (stream == RAW_SNIPPETS) return dir + "S" + stem + ".bin";
+	char nn[8];
+	snprintf(nn, sizeof(nn), "_%02u", ++rawCaptureCount);
+	return dir + "R" + stem + nn + ".bin";
+}
+
+void BCLogger::getRawFileName(RawStream s, char* out, size_t len) {
+	portENTER_CRITICAL(&rawNameMux);
+	snprintf(out, len, "%s", rawName[s]);
+	portEXIT_CRITICAL(&rawNameMux);
+}
+
+void BCLogger::rawHandle(const uint8_t* msg, size_t len) {
+	if (len < RAW_PREFIX || msg[1] > RAW_SNIPPETS) return;
+	const uint8_t cmd = msg[0];
+	const RawStream s = static_cast<RawStream>(msg[1]);
+	const uint8_t* payload = msg + RAW_PREFIX;
+	const size_t plen = len - RAW_PREFIX;
+	File& f = fraw[s];
+
+	// Same lock as all other SD access of this logger (see writeRecord()). A slow card only
+	// delays this task; the producer's 8 KB message buffer absorbs > 3 s of capture.
+	if (xSemaphoreTake(xPrintMutex, static_cast<TickType_t>(500 / portTICK_PERIOD_MS)) != pdTRUE) {
+		rawDropped += plen;
+		return;
+	}
+	String opened, closed;
+	uint32_t closedBytes = 0;
+	switch (cmd) {
+	case RAW_CMD_OPEN: {
+		if (f) {closed = f.name(); closedBytes = f.size(); f.close();}
+		const String path = rawPath(s);
+		if (path.length()) f = SD_MMC.open(path, FILE_WRITE, true);
+		rawFilePath[s] = f ? path : String();
+		if (f) {
+			rawBytes[s] = f.write(payload, plen);
+			opened = path;
+			portENTER_CRITICAL(&rawNameMux);
+			snprintf(rawName[s], sizeof(rawName[s]), "%s", path.substring(path.lastIndexOf('/') + 1).c_str());
+			portEXIT_CRITICAL(&rawNameMux);
+		} else {
+			rawDropped += plen;
+		}
+		break;
+	}
+	case RAW_CMD_WRITE:
+		if (!f && rawFilePath[s].length()) f = SD_MMC.open(rawFilePath[s], FILE_APPEND);
+		if (f) {
+			size_t w = f.write(payload, plen);
+			rawBytes[s] += w;
+			if (w != plen) rawDropped += plen - w;
+		} else {
+			rawDropped += plen;
+		}
+		break;
+	case RAW_CMD_CLOSE:
+		if (f) {closed = f.name(); closedBytes = f.size(); f.close();}
+		break;
+	}
+	xSemaphoreGive(xPrintMutex);
+	// log() takes xPrintMutex itself -- only after it was given back
+	if (opened.length()) logf(Log_Info, TAG_SD, "Raw %s file opened: %s", s == RAW_CAPTURE ? "capture" : "shock snippet", opened.c_str());
+	else if (cmd == RAW_CMD_OPEN) log(Log_Warn, TAG_SD, "Raw file could not be opened (no SD card / data log?) - data dropped");
+	// The snippet file is closed after every snippet -- only the capture's close is news
+	if (closed.length() && s == RAW_CAPTURE) logf(Log_Info, TAG_SD, "Raw file closed: %s, %u byte", closed.c_str(), closedBytes);
 }
 
 int16_t BCLogger::listDir(const String &dirname, uint8_t levels) {
@@ -508,7 +663,7 @@ struct LogEntry {
 struct DayName { char n[DAY_NAME_LEN]; };
 
 // Sort key of a logfile: everything after the type letter and an optional '_', up to
-// the extension. "L_143012.bin" -> "143012", "N7.log" -> "7". Compared by length first
+// the extension or a further '_'. "L_143012.bin" -> "143012", "N7.log" -> "7". Compared by length first
 // and only then lexicographically, so the zero-padded HHMMSS stamps AND the unpadded
 // NO_TIME counters both end up in chronological order.
 void timeKey(const char* name, char* out, size_t outLen) {
@@ -516,7 +671,8 @@ void timeKey(const char* name, char* out, size_t outLen) {
 	if (*p) p++;					// type letter
 	if (*p == '_') p++;
 	size_t i = 0;
-	while (*p && *p != '.' && i + 1 < outLen) out[i++] = *p++;
+	// stop at a second '_' too: R_143012_01.bin (raw capture 1 of session 143012) -> "143012"
+	while (*p && *p != '.' && *p != '_' && i + 1 < outLen) out[i++] = *p++;
 	out[i] = '\0';
 }
 
@@ -553,6 +709,8 @@ TypeInfo typeOf(char c) {
 		case 'L': return { "DATA",  "badge-info"  };		// telemetry, the one you usually want
 		case 'D': return { "DEBUG", "badge-debug" };
 		case 'N': return { "FL Data", "badge-warn" };		// raw NMEA from the Forumslader
+		case 'R': return { "IMU RAW", "badge-debug" };		// accelerometer capture on demand (RawCapture.h)
+		case 'S': return { "SHOCKS", "badge-warn" };		// raw snippets around shocks
 		default:  return { "?",     ""            };
 	}
 }
@@ -654,7 +812,7 @@ void BCLogger::appendDayTable(String &rc, const char* dayDir, uint32_t& totalFil
 
 	// Badge order inside a row is fixed by type, not by the sort: telemetry first, then
 	// debug, then the Forumslader log -- so the columns line up across rows.
-	static const char kTypeOrder[] = { 'L', 'D', 'N' };
+	static const char kTypeOrder[] = { 'L', 'D', 'N', 'S', 'R' };
 
 	for (uint16_t i = 0; i < count; ) {
 		char key[FILE_NAME_LEN];

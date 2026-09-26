@@ -8,7 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from bikelog import fixtures
-from bikelog.record import write_records
+from bikelog.record import CURRENT_VERSION, write_records
 from bikelogservice.app import create_app
 from bikelogservice.config import Settings
 
@@ -51,7 +51,7 @@ def test_upload_indexes_the_ride(client, ride_bytes):
     body = response.json()
     assert body["duplicate"] is False
     assert body["record_count"] == 240
-    assert body["format_version"] == 1
+    assert body["format_version"] == CURRENT_VERSION
     assert body["gps_points"] > 0
     assert body["device"] == "trgb-gravel"
     assert body["clock_unset"] is False

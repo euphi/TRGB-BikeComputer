@@ -156,7 +156,8 @@ private:
 #endif
 	Distance& distHandler;				// also the distance handler is only used without Forumslader because FL calculates distance (partly) on its own.
 
-	float gradient = 0.0;				//calculated gradient
+	float gradient = 0.0;				//gradient shown on the display (barometric, or the accelerometer's if selected, see calculateGradient())
+	float gradientBaro = NAN;			//last barometric gradient, logged next to the accelerometer's
 	float height   = NAN;
 	float tempC    = NAN;
 
@@ -173,6 +174,14 @@ private:
 	int16_t hr = -1;
 	int16_t cadence = 0, cadence_tot = -1;
 	float speed=0.0;
+	uint32_t speedUpdateMs = 0;			// millis() of the last addSpeed() -- the ImuTask derives dv/dt from these updates
+
+	// Road quality on the UI: pushed when it changes, and every 10 s regardless
+	uint8_t roadClassShown = 255;
+	uint32_t shockCountShown = 0;
+	uint8_t roadUiCycles = 0;
+	uint8_t gradUiCycles = 0;
+	void updateRoadQualityUi();
 
 	// Minutes stopped/disconnected before auto-off (deepSleep()); 255 = disabled. Starts
 	// disabled -- toggle via long-press on the drive-state icon (toggleStandbyMode()).
@@ -251,6 +260,8 @@ public:
 	float getAvg(ESummaryType type, EAvgType avgtype) const;
 	float getAvgCadence(EAvgType avgtype) const;
 	int16_t getHr() const {return hr;}
+	float getSpeed() const {return speed;}						// km/h, NAN while disconnected
+	uint32_t getSpeedUpdateMs() const {return speedUpdateMs;}
 	const float getSpeedMax(ESummaryType type) const {return speed_max[type];}
 	uint32_t getDistance(ESummaryType type, bool includeLost = true) const;
 	float getTemp() const {return tempC;}

@@ -13,6 +13,9 @@
 #include <Ticker.h>
 #include <AsyncEventSource.h>
 #include "BikeGpsProtocol.h"
+#include "LogRecords.h"
+#include <atomic>
+#include <freertos/message_buffer.h>
 
 class BCLogger {
 public:
@@ -38,52 +41,8 @@ public:
 		LogTagMax
 	};
 private:
-	// Bits of LogData::gpsFlags. GPS_LOG_VALID mirrors SGpsFix::valid (a POSITION_UPDATE was
-	// received at all); it does NOT mean the fix is fresh -- check gpsFixAgeMs for that
-	// (see BikeGpsProtocol.h). The other bits mirror SGpsFix's hasXxx flags: the corresponding
-	// value field is 0 when its bit is clear.
-	enum LogDataGpsFlags : uint8_t {
-		LOG_GPS_VALID        = 0x01,
-		LOG_GPS_HAS_ALTITUDE = 0x02,
-		LOG_GPS_HAS_SPEED    = 0x04,
-		LOG_GPS_HAS_BEARING  = 0x08,
-		LOG_GPS_HAS_ACCURACY = 0x10,
-	};
-
-	// Bumped whenever a field is added/removed/reordered below, so a future reader (e.g. a
-	// GPX-conversion script) can detect which layout it's looking at instead of silently
-	// desyncing -- see Tools/ReadTachoBin.py, which is already stale against the GPS-era format
-	// added in v1 for exactly this reason.
-	static const uint8_t LOG_DATA_FORMAT_VERSION = 1;
-
-	// Byte offsets below are the REAL, compiler-computed ones (verified via offsetof() against
-	// this exact toolchain, not counted by hand -- time_t is 8 bytes here, not 4, which is what
-	// desynced these comments and the static_asserts below in the first place. No padding gaps
-	// anywhere in this layout: the four single-byte fields (hr/cadence/gpsFlags/formatVersion)
-	// land back-to-back and total exactly 4 bytes, so gpsLatitudeE7 starts already 4-aligned.
-	struct LogData {
-		time_t timestamp;					//        8
-		float speed;						// + 4 = 12
-		float temp;  						// + 4 = 16
-		float grad;							// + 4 = 20
-		float height;						// + 4 = 24
-		float dist_m;						// + 4 = 28
-		uint8_t hr;							// + 1 = 29
-		uint8_t cadence;					// + 1 = 30
-		// GPS position from TrailBridge's GPS-Positions-Service (see ../TrailBridge/PROTOCOL.md
-		// and BikeGpsProtocol.h) -- added here, binary format bumped incompatibly.
-		uint8_t gpsFlags;					// + 1 = 31  (see LogDataGpsFlags)
-		uint8_t formatVersion;				// + 1 = 32, always written = LOG_DATA_FORMAT_VERSION
-		int32_t gpsLatitudeE7;				// + 4 = 36
-		int32_t gpsLongitudeE7;				// + 4 = 40
-		int32_t gpsAltitudeM;				// + 4 = 44
-		uint32_t gpsSpeedCms;				// + 4 = 48
-		uint16_t gpsBearingDegX100;			// + 2 = 50
-		uint16_t gpsAccuracyMX10;			// + 2 = 52
-		uint32_t gpsFixAgeMs;				// + 4 = 56
-	};
-	static_assert(sizeof(LogData) == 56, "LogData layout changed -- update the offset comments above and Tools/ReadTachoBin.py");
-
+	// The binary record layouts (format v2) live in LogRecords.h, shared with I2CSensors,
+	// which builds the road-quality and shock records itself.
 
 	enum LogOutput {
 		OUT_Serial,
@@ -119,6 +78,35 @@ private:
 	TaskHandle_t flushTaskHandle = nullptr;
 	SemaphoreHandle_t xPrintMutex = nullptr;
 
+	// Every binary record (data, road quality, shock) goes through this queue and is written
+	// by FlusherTask -- so the producers (esp_timer's 5 s data tick, the 400 Hz ImuTask) never
+	// wait for the SD card, and the records land in the file in the order they were made.
+	static constexpr UBaseType_t RECORD_QUEUE_LEN = 16;		// 1 KB internal RAM; the writer is woken per record, so a few suffice
+	QueueHandle_t recordQueue = nullptr;
+	std::atomic<uint32_t> recordsDropped{0};				// queue full or no data file
+	std::atomic<uint32_t> recordsWritten{0};
+	void writeRecord(const uint8_t* rec);
+
+	// Raw byte streams (RawCapture.h) -- same idea as the records: the producer (ImuTask) only
+	// puts messages into this buffer, FlusherTask writes them. A message is
+	// [RawCmd][RawStream][payload]; a message buffer keeps the boundaries.
+	static constexpr size_t RAW_BUFFER_SIZE = 4096;			// internal RAM (scarce!): ~1.6 s of capture at 2.4 KB/s
+	enum RawCmd : uint8_t {RAW_CMD_OPEN = 0, RAW_CMD_WRITE, RAW_CMD_CLOSE};
+	MessageBufferHandle_t rawBuffer = nullptr;
+	File fraw[2];
+	char rawName[2][40] = {};								// guarded by rawNameMux (read by the web page)
+	String rawFilePath[2];									// FlusherTask only: reopened for append after a close
+	portMUX_TYPE rawNameMux = portMUX_INITIALIZER_UNLOCKED;
+	std::atomic<uint32_t> rawBytes[2] = {};
+	std::atomic<uint32_t> rawDropped{0};
+	uint8_t rawCaptureCount = 0;
+	uint8_t* rawRx = nullptr;								// receive buffer, RAW_MAX_MSG, allocated in setup()
+	bool rawSend(uint8_t* msg, size_t len, uint8_t cmd, uint8_t stream);
+	void rawDrain();
+	void rawHandle(const uint8_t* msg, size_t len);
+	String rawPath(uint8_t stream);
+	void wakeFlusher();
+
 
 public:
 	BCLogger();
@@ -133,7 +121,40 @@ public:
 	LogType getLogLevel(LogTag tag, bool serial = false);
 
 	// DataLogger
-	void appendDataLog(const float speed, const float temp, const float gradient, const float distance, const float height, const uint8_t hr, const uint8_t cadence, const SGpsFix& gps);
+	// gradient is the value shown on the display; gradBaro/gradImu are the two sources behind
+	// it (NAN if unavailable), roadClass the latest road-quality class (0 = not rated).
+	void appendDataLog(const float speed, const float temp, const float gradient, const float distance, const float height, const uint8_t hr, const uint8_t cadence, const SGpsFix& gps,
+	                   const float gradBaro = NAN, const float gradImu = NAN, const uint8_t roadClass = 0);
+	// Queue one complete 64-byte record (LogRecords.h) for the data file. Non-blocking: safe
+	// from any task; returns false (and counts it) if the queue is full.
+	template <class T> bool appendRecord(const T& rec) {
+		static_assert(sizeof(T) == LogRec::RECORD_SIZE, "log records are 64 byte");
+		return enqueueRecord(&rec);
+	}
+	bool enqueueRecord(const void* rec64);
+	uint32_t getRecordsDropped() const {return recordsDropped;}
+	uint32_t getRecordsWritten() const {return recordsWritten;}
+	// Fills timestamp (s) and timestampMs from the system clock
+	static void nowEpoch(time_t& sec, uint16_t& ms);
+
+	// Raw byte streams into their own files next to the data log (see RawCapture.h):
+	// RAW_CAPTURE opens a new R_<session>_NN.bin each time, RAW_SNIPPETS the session's
+	// S_<session>.bin. A WRITE after a CLOSE reopens the stream's last file for appending --
+	// an open file holds ~4 KB of internal RAM, so the rarely written snippet file is closed
+	// after every snippet. Only one producer task may call these (the message buffer has a
+	// single-writer contract) -- that is the ImuTask. All non-blocking; false = dropped.
+	// msg must have RAW_PREFIX spare bytes in front of the payload (filled in here), so
+	// the payload needn't be copied once more on the producer's stack.
+	enum RawStream : uint8_t {RAW_CAPTURE = 0, RAW_SNIPPETS = 1};
+	static constexpr size_t RAW_PREFIX = 2;
+	static constexpr size_t RAW_MAX_MSG = 512;					// larger payloads are sent in pieces
+	size_t rawSpace() const {return rawBuffer ? xMessageBufferSpacesAvailable(rawBuffer) : 0;}
+	bool rawOpen(RawStream s, uint8_t* msg, size_t len) {return rawSend(msg, len, RAW_CMD_OPEN, s);}
+	bool rawWrite(RawStream s, uint8_t* msg, size_t len) {return rawSend(msg, len, RAW_CMD_WRITE, s);}
+	bool rawClose(RawStream s) {uint8_t m[RAW_PREFIX]; return rawSend(m, RAW_PREFIX, RAW_CMD_CLOSE, s);}
+	uint32_t getRawBytes(RawStream s) const {return rawBytes[s];}
+	uint32_t getRawDropped() const {return rawDropped;}
+	void getRawFileName(RawStream s, char* out, size_t len);
 
 	int16_t listDir(const String& dirname, uint8_t levels);
 

@@ -81,6 +81,20 @@ void ui_RimRidgeUpdateLanes(const NavLane* lanes, uint8_t laneCount);
 // as ui_RimRidgeUpdateStateIcon() above).
 void ui_RimRidgeUpdateTime(bool stopwatchMode, uint32_t elapsedS, const char* clockStr);
 
+// Road-surface quality (BMI160, src/RoadQuality.h) -- drives rr_line_rq, a
+// thin line near the bottom of the screen (only the class as a color; a
+// dedicated "Streckenqualität" screen may follow later).
+//   roadClass   0 = not rated (too slow / no speed / no sensor: shown as a
+//               neutral RRBrass line, not hidden),
+//               1 = smooth asphalt, 2 = good, 3 = moderate (fine gravel, paving),
+//               4 = rough (cobbles, coarse gravel), 5 = very rough (trail).
+//               Roughly OSM smoothness excellent .. very_bad.
+//   roughness   the speed-normalised index behind the class (1.0 = reference road),
+//               NAN if not rated. Class boundaries: 1.5 / 2.5 / 4 / 7.
+//   shockCount  hard hits logged since boot (increments by one per shock).
+// Called with xUIDrawMutex held, on change and at least every 10 s.
+void ui_RimRidgeUpdateRoadQuality(uint8_t roadClass, float roughness, uint32_t shockCount);
+
 #ifdef __cplusplus
 } /*extern "C"*/
 #endif
