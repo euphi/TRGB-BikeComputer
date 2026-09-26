@@ -1,15 +1,45 @@
 # DEBUG
 
-## Debug functions of TRGB-Bikecomputer
+## Debug pages (web interface)
 
-* Event log
-* Statistics Array
-* Distance Details
+Linked from `/debug/menu`:
+
+* **Live log** (`/debug/`) -- the same lines as the serial console, filterable by tag
+* **NVS contents** (`/debug/nvs`) -- stored settings (only with `-DDEBUG_APP`)
+* **Accelerometer** (`/debug/imu`) -- BMI160 state, calibration, road quality, shocks,
+  gradient, I²C error counters
+* **Chart array** (`/stat/debugarray`) and **distance details**
+  (`/stat/dist_debug.html`)
+* **Raw SD browser** (`/log/`)
+
+Log levels are set on `/log.html` (click a level) or on the serial console, see below.
 
 
 ## Logging
 
-* TBD
+Every line has a **tag** (`RAW FL BLE STAT WIFI SD OP CLI UI WEB`) and a **level**
+(`DEBUG INFO WARN ERROR`). The level is set per tag, separately for the serial console
+and the debug log file, and stored in NVS:
+
+```
+loglevel BLE DEBUG -serial        # BLE debug lines on the serial console
+loglevel STAT WARN -file          # only warnings and errors of STAT into the file
+showloglevel                      # current table
+```
+
+Files on the SD card, one set per session in `/BIKECOMP/<YYYYMMDD>/` (or
+`/BIKECOMP/NO_TIME/` before the clock is set):
+
+| File | Content |
+|---|---|
+| `L_<HHMMSS>.bin` | binary ride log (format: `src/LogRecords.h`, tools: [`Tools/`](../Tools/README.md)) |
+| `D_<HHMMSS>.log` | debug log (text) |
+| `N_<HHMMSS>.log` | raw Forumslader data (text, replayable with `replay <path>`) |
+| `R_<HHMMSS>_NN.bin`, `S_<HHMMSS>.bin` | raw accelerometer captures / shock snippets |
+
+`mem` on the serial console prints free internal/DMA/PSRAM heap, open HTTP requests,
+task stack watermarks and the LVGL draw buffer addresses (see
+[PITFALLS.md](PITFALLS.md) for why those matter).
 
 
 ## Core Dump
@@ -38,6 +68,8 @@ You can also use the command `debug_corefile` instead of `info_corefile`, which 
 
 
 ### Understand the core dump (Example)
+
+(The example is from an older firmware version; file names and line numbers differ today.)
 
 The first information you get from a coredump is why and where the software crashed.
 
