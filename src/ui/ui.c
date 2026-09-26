@@ -9,9 +9,13 @@
 
 // Screens that can be changed to
 #include "ui_FL.h"
-#include <ui/Screens/SNavi/ui.h>
-#include "Screens/SWLAN/ui.h"
 #include "Screens/Settings/ui_Settings.h"
+// font.h/nav_icons.h were pulled in transitively via the (removed 2026-09-26)
+// SNavi screen's own ui.h - this file genuinely uses both directly (S1Main/
+// ui_ScreenChart's fonts, S1Main's nav icon), so include them here now.
+#include "font/font.h"
+#include "img/nav_icons.h"
+LV_IMG_DECLARE(nav_64_reserved);	// S1Main's own fallback nav icon - not part of nav_icons.h's public API
 
 ///////////////////// VARIABLES ////////////////////
 lv_obj_t * ui_MainScreen;
@@ -95,7 +99,8 @@ void ui_event_S1PanelNav(lv_event_t * e)
     lv_event_code_t event_code = lv_event_get_code(e);
     lv_obj_t * target = lv_event_get_target(e);
     if(event_code == LV_EVENT_CLICKED) {
-        _ui_screen_change(ui_SNavi, LV_SCR_LOAD_ANIM_OVER_TOP, 500, 0);
+        // SNavi screen removed 2026-09-26 (RimRidgeNav replaced it) - S1Main
+        // itself is never shown, so this handler is unreachable anyway.
     }
 }
 
@@ -121,7 +126,8 @@ void ui_event_S1ImgIconWifi(lv_event_t * e)
     lv_event_code_t event_code = lv_event_get_code(e);
     lv_obj_t * target = lv_event_get_target(e);
     if(event_code == LV_EVENT_CLICKED) {
-        _ui_screen_change(ui_SWLAN, LV_SCR_LOAD_ANIM_OVER_BOTTOM, 500, 0);
+        // SWLAN screen removed 2026-09-26 - S1Main itself is never shown,
+        // so this handler is unreachable anyway.
     }
 }
 void ui_event_S1PanelStat(lv_event_t * e)

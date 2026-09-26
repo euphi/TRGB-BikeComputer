@@ -1,4 +1,5 @@
-#include <ui/Screens/SNavi/ui.h>
+#include "nav_icons.h"	// lvgl.h, transitively relied on since this file dropped its
+						// SquareLine-generated include of the (now-removed) SNavi screen's ui.h
 
 #ifndef LV_ATTRIBUTE_MEM_ALIGN
 #define LV_ATTRIBUTE_MEM_ALIGN

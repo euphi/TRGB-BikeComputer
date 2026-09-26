@@ -1,13 +1,48 @@
 /*
  * nav_icons.c
  *
- * See nav_icons.h. Icon assets themselves are declared (LV_IMG_DECLARE) in
- * ui/Screens/SNavi/ui.h and defined in ui_img_nav_64_allimages.c / ui_img_nav_allimages.c.
+ * See nav_icons.h. Icon assets themselves are defined in
+ * ui_img_nav_64_allimages.c / ui_img_nav_allimages.c - declared right here
+ * (used to pull these in via the now-removed SNavi screen's ui.h, which
+ * declared them for its own unrelated reasons; SNavi is gone as of
+ * 2026-09-26 but these two shared bitmap-definition files are not, they're
+ * genuinely used by RimRidge/RimRidgeNav/RimRidgeRQ via navIcon64()/
+ * navIconLarge()).
  */
 
 #include "nav_icons.h"
-#include "ui/Screens/SNavi/ui.h"
 #include "roundabout-icon.h"
+
+LV_IMG_DECLARE(nav_reserved)
+LV_IMG_DECLARE(nav_straight)
+LV_IMG_DECLARE(nav_start)
+LV_IMG_DECLARE(nav_finish)
+LV_IMG_DECLARE(nav_left45)
+LV_IMG_DECLARE(nav_left90)
+LV_IMG_DECLARE(nav_left135)
+LV_IMG_DECLARE(nav_right135)
+LV_IMG_DECLARE(nav_right90)
+LV_IMG_DECLARE(nav_right45)
+LV_IMG_DECLARE(nav_fork_r)
+LV_IMG_DECLARE(nav_fork_l)
+LV_IMG_DECLARE(nav_uturn)
+LV_IMG_DECLARE(nav_Kreisel_3_3)
+LV_IMG_DECLARE(nav_nonav)
+LV_IMG_DECLARE(nav_64_reserved)
+LV_IMG_DECLARE(nav_64_straight)
+LV_IMG_DECLARE(nav_64_start)
+LV_IMG_DECLARE(nav_64_finish)
+LV_IMG_DECLARE(nav_64_left45)
+LV_IMG_DECLARE(nav_64_left90)
+LV_IMG_DECLARE(nav_64_left135)
+LV_IMG_DECLARE(nav_64_right135)
+LV_IMG_DECLARE(nav_64_right90)
+LV_IMG_DECLARE(nav_64_right45)
+LV_IMG_DECLARE(nav_64_fork_r)
+LV_IMG_DECLARE(nav_64_fork_l)
+LV_IMG_DECLARE(nav_64_uturn)
+LV_IMG_DECLARE(nav_64_Kreisel_3_3)
+LV_IMG_DECLARE(nav_64_nonav)
 
 const lv_img_dsc_t* navIcon64(uint8_t maneuver, uint8_t roundaboutExit) {
 	switch (maneuver) {
