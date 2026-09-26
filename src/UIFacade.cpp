@@ -81,6 +81,8 @@ void UIFacade::initDisplay() {
     ui_RimRidgeNavUpdateLanes(nullptr, 0); // rrnav_lane_row starts visible in the EEZ canvas - hide it
     create_screen_rim_ridge_rq();
     ui_RimRidgeRQUpdateNav(0, NAV_MANEUVER_NONE, 0); // same "no nav" boot fixup as rr_ic_turn above
+    ui_RimRidgeRQInitLabelControls();
+    ui_RimRidgeRQUpdateLabel(0, 0, false); // nothing labeled/capturing yet - normalize away the JSON's static "Schotter/3 selected" example content
 
     // 3. set main screen
     // RimRidge is now the permanent main/boot screen (2026-09-18).
@@ -426,6 +428,16 @@ void UIFacade::updateRoadQuality(uint8_t roadClass, float roughness, uint32_t sh
 		if (!uiTask) xSemaphoreGive(xUIDrawMutex);
 	} else {
 		bclog.log(BCLogger::Log_Warn, BCLogger::TAG_UI, "Update road quality blocked by mutex");
+	}
+}
+
+void UIFacade::updateRoadLabel(uint8_t surface, uint8_t quality, bool capturing) {
+	bool uiTask = isDrawTask();
+	if (uiTask || xSemaphoreTake(xUIDrawMutex, 150 / portTICK_PERIOD_MS) == pdTRUE) {
+		ui_RimRidgeRQUpdateLabel(surface, quality, capturing);
+		if (!uiTask) xSemaphoreGive(xUIDrawMutex);
+	} else {
+		bclog.log(BCLogger::Log_Warn, BCLogger::TAG_UI, "Update road label blocked by mutex");
 	}
 }
 

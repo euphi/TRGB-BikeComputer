@@ -125,6 +125,16 @@ void ui_RimRidgeUpdateRoadQuality(uint8_t roadClass, float roughness, uint32_t s
 	uint32_t color = (roadClass >= 1 && roadClass <= 5) ? ZONE_COLOR[roadClass - 1] : 0xCBA36B;
 	lv_obj_set_style_line_color(objects.rr_line_rq, lv_color_hex(color), LV_PART_MAIN | LV_STATE_DEFAULT);
 	lv_obj_clear_flag(objects.rr_line_rq, LV_OBJ_FLAG_HIDDEN);
+
+	// Same zone color/class drives the RQ-index digit on the RQ-Ride-Screen
+	// (rq_rq_val) - "-" in the same neutral RRBrass for class 0, matching
+	// rr_line_rq's "not hidden, shown neutral" convention above.
+	if (roadClass >= 1 && roadClass <= 5) {
+		lv_label_set_text_fmt(objects.rq_rq_val, "%d", roadClass);
+	} else {
+		lv_label_set_text(objects.rq_rq_val, "-");
+	}
+	lv_obj_set_style_text_color(objects.rq_rq_val, lv_color_hex(color), LV_PART_MAIN | LV_STATE_DEFAULT);
 }
 
 void ui_RimRidgeUpdateWiFiState(bool wifiEnabled, bool APModeActive, bool disableAPMode, uint8_t apStaCount) {

@@ -5,13 +5,14 @@
  */
 
 #include <math.h>
+#include <stdint.h>
 
 #include "ui_eez/screens.h"
 #include "ui_eez/ui.h"
 #include "ui_eez/actions.h"
 #include "RimRidgeRQCustFunc.h"
 #include "ui/img/nav_icons.h"
-#include "Singletons.h"	// ui (UIFacade singleton)
+#include "Singletons.h"	// ui (UIFacade singleton), sensors (TRGBBC_SENSORS_I2C only)
 
 void ui_RimRidgeRQUpdateSpeed(float speed) {
 	// Same NAN convention as ui_RimRidgeUpdateSpeed() - rq_speed_val is a
@@ -63,3 +64,133 @@ void action_rq_screen_gesture(lv_event_t * e) {
 	lv_indev_wait_release(indev);
 	ui.hideRQScreen();
 }
+
+// ---------------- Manual road label controls ----------------
+// Gravel variant only - the FL variant has no BMI160/I2CSensors at all, so
+// the buttons stay inert there (stub bodies below the #else).
+#ifdef TRGBBC_SENSORS_I2C
+#include "I2CSensors.h"
+
+// Surface pills / quality circles have a label nested on top for the text
+// (record button: a ring + a dot); EEZ Studio makes every widget clickable
+// by default, so without LV_OBJ_FLAG_EVENT_BUBBLE a tap landing on that
+// child would be swallowed there instead of reaching the pill/circle/button
+// that actually carries the event handler below - same bug and fix as
+// rr_group_rq_mode's rr_ic_state/rr_line_rq (RimRidgeCustFunc.cpp), just
+// applied here at init time in C instead of via an EEZ Studio JSON edit
+// (LV_OBJ_FLAG_EVENT_BUBBLE is a runtime flag, not layout - setting it here
+// doesn't diverge from what the canvas shows).
+static void rqBubble(lv_obj_t* child) {
+	lv_obj_add_flag(child, LV_OBJ_FLAG_EVENT_BUBBLE);
+}
+
+// A second tap on the already-active pill/circle clears it (0 = none) -
+// read the current value fresh from getRoadLabelState() rather than
+// tracking it locally, so this stays correct even if the label changes from
+// somewhere else. setRoadLabelSurface()/setRoadLabelQuality() are safe to
+// call from an LVGL event callback (see I2CSensors.h) - they only set a
+// request, the ImuTask does the actual logging.
+static void rqSurfClickedCb(lv_event_t* e) {
+	uint8_t surface = (uint8_t)(uintptr_t) lv_event_get_user_data(e);
+	uint8_t current = sensors.getRoadLabelState().surface;
+	sensors.setRoadLabelSurface((current == surface) ? 0 : surface);
+}
+
+static void rqQualClickedCb(lv_event_t* e) {
+	uint8_t quality = (uint8_t)(uintptr_t) lv_event_get_user_data(e);
+	uint8_t current = sensors.getRoadLabelState().quality;
+	sensors.setRoadLabelQuality((current == quality) ? 0 : quality);
+}
+
+static void rqBtnRecordClickedCb(lv_event_t* e) {
+	(void) e;
+	if (sensors.getRoadLabelState().capturing) {
+		sensors.stopRoadCapture();
+	} else {
+		sensors.startRoadCapture();
+	}
+}
+
+void ui_RimRidgeRQInitLabelControls() {
+	struct { lv_obj_t* pill; lv_obj_t* lbl; uint8_t surface; } surf[] = {
+		{objects.rq_surf_asphalt,   objects.rq_surf_asphalt_lbl,   1},
+		{objects.rq_surf_schotter,  objects.rq_surf_schotter_lbl,  2},
+		{objects.rq_surf_waldweg,   objects.rq_surf_waldweg_lbl,   3},
+		{objects.rq_surf_feldweg,   objects.rq_surf_feldweg_lbl,   4},
+		{objects.rq_surf_pflaster,  objects.rq_surf_pflaster_lbl,  5},
+		{objects.rq_surf_sonstiges, objects.rq_surf_sonstiges_lbl, 6},
+	};
+	for (auto& s : surf) {
+		rqBubble(s.lbl);
+		lv_obj_add_event_cb(s.pill, rqSurfClickedCb, LV_EVENT_CLICKED, (void*)(uintptr_t) s.surface);
+	}
+
+	struct { lv_obj_t* circle; lv_obj_t* lbl; uint8_t quality; } qual[] = {
+		{objects.rq_qual_1, objects.rq_qual_1_lbl, 1},
+		{objects.rq_qual_2, objects.rq_qual_2_lbl, 2},
+		{objects.rq_qual_3, objects.rq_qual_3_lbl, 3},
+		{objects.rq_qual_4, objects.rq_qual_4_lbl, 4},
+	};
+	for (auto& q : qual) {
+		rqBubble(q.lbl);
+		lv_obj_add_event_cb(q.circle, rqQualClickedCb, LV_EVENT_CLICKED, (void*)(uintptr_t) q.quality);
+	}
+
+	rqBubble(objects.rq_btn_record_ring);
+	rqBubble(objects.rq_btn_record_dot);
+	lv_obj_add_event_cb(objects.rq_btn_record, rqBtnRecordClickedCb, LV_EVENT_CLICKED, nullptr);
+}
+
+void ui_RimRidgeRQUpdateLabel(uint8_t surface, uint8_t quality, bool capturing) {
+	// Same 4 tokens EEZ Studio's own PANEL_SEL/PANEL_UNSEL styles use for
+	// these widgets' two states (add_rimridge_rq_controls.py) - hardcoded
+	// hex for the same reason as ui_RimRidgeUpdateRoadQuality()'s zone
+	// colors: this file has no access to the generated theme_colors[].
+	static const lv_color_t SEL_BG = lv_color_hex(0xCBA36B);    // RRBrass
+	static const lv_color_t UNSEL_BG = lv_color_hex(0x1E252B);  // RRPanelBg
+	static const lv_color_t SEL_TXT = lv_color_hex(0x161B1F);   // RRBackground
+	static const lv_color_t UNSEL_TXT = lv_color_hex(0xE7E2D6); // RRParchment
+	static const lv_color_t REC_COLOR = lv_color_hex(0xC1604A); // RRZoneRed, brighter than the idle ring's brass
+
+	struct { lv_obj_t* pill; lv_obj_t* lbl; uint8_t value; } surf[] = {
+		{objects.rq_surf_asphalt,   objects.rq_surf_asphalt_lbl,   1},
+		{objects.rq_surf_schotter,  objects.rq_surf_schotter_lbl,  2},
+		{objects.rq_surf_waldweg,   objects.rq_surf_waldweg_lbl,   3},
+		{objects.rq_surf_feldweg,   objects.rq_surf_feldweg_lbl,   4},
+		{objects.rq_surf_pflaster,  objects.rq_surf_pflaster_lbl,  5},
+		{objects.rq_surf_sonstiges, objects.rq_surf_sonstiges_lbl, 6},
+	};
+	for (auto& s : surf) {
+		bool sel = (s.value == surface);
+		lv_obj_set_style_bg_color(s.pill, sel ? SEL_BG : UNSEL_BG, LV_PART_MAIN | LV_STATE_DEFAULT);
+		lv_obj_set_style_text_color(s.lbl, sel ? SEL_TXT : UNSEL_TXT, LV_PART_MAIN | LV_STATE_DEFAULT);
+	}
+
+	struct { lv_obj_t* circle; lv_obj_t* lbl; uint8_t value; } qual[] = {
+		{objects.rq_qual_1, objects.rq_qual_1_lbl, 1},
+		{objects.rq_qual_2, objects.rq_qual_2_lbl, 2},
+		{objects.rq_qual_3, objects.rq_qual_3_lbl, 3},
+		{objects.rq_qual_4, objects.rq_qual_4_lbl, 4},
+	};
+	for (auto& q : qual) {
+		bool sel = (q.value == quality);
+		lv_obj_set_style_bg_color(q.circle, sel ? SEL_BG : UNSEL_BG, LV_PART_MAIN | LV_STATE_DEFAULT);
+		lv_obj_set_style_text_color(q.lbl, sel ? SEL_TXT : UNSEL_TXT, LV_PART_MAIN | LV_STATE_DEFAULT);
+	}
+
+	// Recording: brass -> red ring, dot goes solid to read as "live" (no
+	// separate recording-state widget exists yet, see
+	// add_rimridge_rq_controls.py's comment on rq_btn_record).
+	lv_obj_set_style_border_color(objects.rq_btn_record, capturing ? REC_COLOR : SEL_BG, LV_PART_MAIN | LV_STATE_DEFAULT);
+	lv_obj_set_style_border_color(objects.rq_btn_record_ring, capturing ? REC_COLOR : SEL_BG, LV_PART_MAIN | LV_STATE_DEFAULT);
+	lv_obj_set_style_bg_opa(objects.rq_btn_record_dot, capturing ? 255 : 128, LV_PART_MAIN | LV_STATE_DEFAULT);
+}
+
+#else // !TRGBBC_SENSORS_I2C - FL variant, no BMI160
+
+void ui_RimRidgeRQInitLabelControls() {}
+void ui_RimRidgeRQUpdateLabel(uint8_t surface, uint8_t quality, bool capturing) {
+	(void) surface; (void) quality; (void) capturing;
+}
+
+#endif

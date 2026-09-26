@@ -21,6 +21,16 @@
  * screen itself (action_rq_screen_gesture() below calling
  * UIFacade::hideRQScreen()) - same manual-only pattern as RimRidgeNav's
  * tap/swipe, but with no auto-popup logic at all.
+ *
+ * Manual road label controls (surface pills, quality selector, record
+ * button - added 2026-09-26 once I2CSensors grew setRoadLabel*()/
+ * startRoadCapture()/stopRoadCapture()/getRoadLabelState(), see
+ * I2CSensors.h and doc/design/rim-ridge-design-system.md's RQ-Ride-Screen
+ * section): wired with plain lv_obj_add_event_cb() calls, not EEZ actions -
+ * 11 click targets would mean 11 near-identical actions in the JSON for no
+ * benefit, and no navigation/screen-load is involved. Gravel variant
+ * (TRGBBC_SENSORS_I2C) only - a no-op on the FL variant, which has no
+ * BMI160 and thus no I2CSensors instance at all.
  */
 
 #pragma once
@@ -49,6 +59,21 @@ void ui_RimRidgeRQUpdateNavDist(uint32_t dist);
 // GESTURE event) is defined in the .cpp and declared by the generated
 // src/ui_eez/actions.h, same as every other EEZ action in this project -
 // not redeclared here.
+
+// Registers the CLICKED handlers on the 6 surface pills, 4 quality circles
+// and the record button (see the .cpp for the tap-toggle behavior) - call
+// once from UIFacade::initDisplay() after create_screen_rim_ridge_rq().
+void ui_RimRidgeRQInitLabelControls();
+
+// Refreshes the label controls' visual state - which pill/circle is
+// highlighted, the record button's idle/recording look - from
+// I2CSensors::getRoadLabelState(), never from the tap itself: a capture can
+// stop by itself (30 min cap) and the label is gone after a restart, so the
+// display has to reflect the sensor's own state, not the last click. Called
+// at the same cadence as ui_RimRidgeUpdateRoadQuality() (Statistics::
+// updateRoadQualityUi(), via UIFacade::updateRoadLabel()).
+//   surface/quality  0 = none, same encoding as I2CSensors::setRoadLabel*()
+void ui_RimRidgeRQUpdateLabel(uint8_t surface, uint8_t quality, bool capturing);
 
 #ifdef __cplusplus
 } /*extern "C"*/

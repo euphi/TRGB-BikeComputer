@@ -117,6 +117,13 @@ public:
 	// Statistics::cycle() when something changed, and every 10 s regardless.
 	void updateRoadQuality(uint8_t roadClass, float roughness, uint32_t shockCount);
 
+	// Manual road label (RQ-Ride-Screen's surface pills/quality selector/record button) -
+	// surface/quality 0 = none, same encoding as I2CSensors::setRoadLabel*(). Refreshes the
+	// display from I2CSensors::getRoadLabelState(), not from the tap itself (see
+	// ui_RimRidgeRQUpdateLabel()'s comment). Called from Statistics::updateRoadQualityUi(),
+	// same cadence as updateRoadQuality() above.
+	void updateRoadLabel(uint8_t surface, uint8_t quality, bool capturing);
+
 
 	typedef std::function<void(bool ok)> MsgBoxCallBack;
 	void showMsgBox(const String& msgText, const MsgBoxCallBack& cb);

@@ -304,6 +304,11 @@ void Statistics::updateRoadQualityUi() {
 		shockCountShown = shocks;
 		ui.updateRoadQuality(cls, sensors.getRoughness(), shocks);
 	}
+	// Manual road label (RQ-Ride-Screen) - refreshed every cycle, not just on
+	// change, since capturing/captureS keep moving on their own even while
+	// surface/quality stay put.
+	I2CSensors::RoadLabelState label = sensors.getRoadLabelState();
+	ui.updateRoadLabel(label.surface, label.quality, label.capturing);
 }
 #endif
 

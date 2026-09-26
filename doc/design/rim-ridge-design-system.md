@@ -12,7 +12,7 @@ selbst ist die Felge.
 | Mainscreen | [`mainscreen.svg`](mainscreen.svg) | **implementiert**, `EEZStudio/TRGB-BikeComputer.eez-project`, Screen `rim_ridge`, inkl. Straßenqualität-Indikator (`rr_line_rq`, §4) |
 | Navigationsscreen | [`navscreen.svg`](navscreen.svg) | **implementiert**, Screen `rim_ridge_nav` (`SCREEN_ID_RIM_RIDGE_NAV`) |
 | Einstellungen | [`settings.svg`](settings.svg) | Spezifikation, noch nicht in EEZ Studio angelegt |
-| RQ-Ride-Screen | [`rqscreen.svg`](rqscreen.svg) | **Widgets angelegt** (Screen `RimRidgeRQ`) — Nav-Pille, Speed, RQ-Index, Puls, Wegzähler, Untergrund-Pillen, Qualitäts-Regler, Aufnahme-Taste; bewusst noch ohne jede Logik (kein Datenanschluss, keine Events/Actions, "ausgewählt" ist überall nur der statische Beispielzustand aus der SVG) |
+| RQ-Ride-Screen | [`rqscreen.svg`](rqscreen.svg) | **Umgesetzt** (Screen `RimRidgeRQ`) — Nav-Pille, Speed, Puls, Wegzähler (Tourstrecke) mit echten Daten; RQ-Index aus `ui_RimRidgeUpdateRoadQuality()`; Untergrund-Pillen, Qualitäts-Regler und Aufnahme-Taste live über `I2CSensors::setRoadLabel*()`/`startRoadCapture()` verdrahtet (Tap togglet, zweiter Tap auf den aktiven Wert setzt ihn zurück) |
 
 Jede SVG-Datei ist 1:1 im Ziel-Koordinatensystem (480×480 Einheiten =
 480×480 physische Pixel) und lässt sich direkt im Browser oder per
@@ -408,13 +408,23 @@ ohnehin selten trennscharf ist; falls sich in der Praxis zeigt, dass 5
 Stufen für den Soll/Ist-Vergleich nötig sind, lässt sich ein fünfter Kreis
 mit gleichem Abstand (60px) ergänzen, ohne das Muster zu ändern.
 
-**Offene Punkte vor der Umsetzung** (Firmware-seitig, nicht Teil dieser
-Spezifikation): wo die Auswahl (Untergrund + Qualität) landet, ist noch
-offen — vermutlich zusätzliche Felder in `LogRec::RoadQuality` oder ein
-eigener Log-Record-Typ (`FORMAT_VERSION`-Bump nötig, siehe `LogRecords.h`),
-plus die Verbindung zu `R_*.bin`/`rq raw` fürs Start/Stopp der
-Detailaufzeichnung. Reine UI-Frage, ob Start/Stopp ein Tap oder ein
-Long-Press ist, ist dieselbe offene Frage wie beim Einstellungen-Screen.
+**Stand 2026-09-27:** Speicherung und Verdrahtung sind umgesetzt. Das
+manuelle Label landet als eigener Satztyp (`LogRec::Label`, Satztyp 3) im
+Binärlog, zusätzlich in jedem Stoß-Satz und jedem Rohdaten-Block (siehe
+`src/LogRecords.h`, `Tools/bikelog/record.py`); Firmware-API dafür ist
+`I2CSensors::setRoadLabelSurface()`/`setRoadLabelQuality()`/
+`startRoadCapture()`/`stopRoadCapture()`/`getRoadLabelState()`. Die 6
+Untergrund-Pillen, die 4 Qualitätskreise und die Aufnahme-Taste sind über
+direkte `lv_obj_add_event_cb()`-Aufrufe verdrahtet (nicht als EEZ-Actions —
+11 fast identische Actions für reine Logik ohne Screen-Wechsel hätten
+keinen Mehrwert gehabt), siehe `ui_RimRidgeRQInitLabelControls()`/
+`ui_RimRidgeRQUpdateLabel()` in `src/ui/RimRidgeRQCustFunc.cpp`. Start/Stopp
+ist ein einfacher Tap (kein Long-Press) — ein erneuter Tap auf die aktive
+Pille/den aktiven Kreis setzt sie auf "keiner" zurück, ein Tap auf die
+Aufnahme-Taste stoppt einen laufenden Mitschnitt. Die Anzeige liest den
+Zustand dabei immer aus `getRoadLabelState()`, nie aus dem Tap selbst, weil
+ein Mitschnitt nach spätestens 30 min von selbst endet und das Label einen
+Neustart nicht übersteht.
 
 ## 7. Hinweise für die EEZ-Studio-Umsetzung
 
