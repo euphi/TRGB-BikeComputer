@@ -55,8 +55,35 @@ public:
 	// reference the accelerometer's mounting offset is learned against.
 	void feedBaroGradient(float pct, float deltaDistM);
 	bool requestRefRide(bool start);		// false if the IMU isn't running
-	// Raw capture on demand (R_*.bin, RawCapture.h): seconds 1..600, 0 = stop.
+	// Raw capture on demand (R_*.bin, RawCapture.h): seconds 1..RAW_MAX_CAPTURE_S, 0 = stop.
 	bool requestRawCapture(uint16_t seconds);
+
+	// ---- Manual road label (RQ-Ride screen) ----
+	// The rider's own rating of the surface, logged as ground truth next to the automatic
+	// road class: a LogRec::Label record on every change (and every 60 s while set), and in
+	// every shock record and raw-capture block. Starts unset at boot. Safe to call from any
+	// task, including LVGL event callbacks -- they only set a request, the ImuTask logs it
+	// within ~50 ms. All return false if the IMU isn't running (nothing gets logged then).
+	//   surface  LogRec::Surface (0 = not set, 1 Asphalt, 2 Schotter, 3 Waldweg, 4 Feldweg,
+	//            5 Pflaster, 6 Sonstiges); quality 0 = not set, 1 (best) .. 4 (worst)
+	// Out-of-range values are rejected (false), not clamped.
+	bool setRoadLabel(uint8_t surface, uint8_t quality);
+	bool setRoadLabelSurface(uint8_t surface);		// keeps the quality
+	bool setRoadLabelQuality(uint8_t quality);		// keeps the surface
+	// Record button: open-ended raw capture (stops by itself after RAW_MAX_CAPTURE_S).
+	bool startRoadCapture() {return requestRawCapture(RAW_MAX_CAPTURE_S);}
+	bool stopRoadCapture() {return requestRawCapture(0);}
+	struct RoadLabelState {
+		uint8_t surface = 0, quality = 0;		// as requested (shows the tap at once, before the ImuTask logged it)
+		bool imuRunning = false;
+		bool capturing = false;					// raw capture running
+		float captureS = 0;						// length so far
+		float captureDistM = 0;					// ridden since the capture started
+		float labelDistM = 0;					// ridden under the current label (since its last change)
+		uint32_t labelMs = 0;					// time under the current label
+	};
+	RoadLabelState getRoadLabelState();
+	static const char* surfaceName(uint8_t surface);	// German display name, "" for 0
 	void requestPitchReset() {pitchResetRequest = true;}
 
 	float getHeight() const {return height;}
@@ -233,7 +260,23 @@ private:
 	uint32_t curSpeedUpdMs = 0;
 
 	// ---------------- Raw data: capture on demand, shock snippets ----------------
-	static constexpr uint16_t RAW_MAX_CAPTURE_S = 600;
+	static constexpr uint16_t RAW_MAX_CAPTURE_S = 1800;	// 30 min, ~4.5 MB
+
+	// ---------------- Manual road label ----------------
+	static constexpr uint32_t LABEL_REFRESH_MS = 60000;
+	std::atomic<uint16_t> labelWanted{0};	// surface | quality << 8, set by any task
+	struct LabelSnapshot {
+		float captureDistM = 0, labelDistM = 0;
+		uint32_t labelMs = 0;
+	} labelSnap;							// guarded by imuMux
+	// ImuTask-private
+	uint16_t labelActive = 0;				// as last logged
+	uint32_t labelSinceMs = 0, labelWrittenMs = 0, labelSeq = 0;
+	float labelDistM = 0, captureDistM = 0;
+	void labelBeforeBurst(uint32_t nowMs);	// logs a change, or the 60 s refresh
+	void labelWrite(uint8_t reason, uint16_t prev, uint32_t nowMs);
+	uint8_t labelSurface() const {return labelActive & 0xFF;}
+	uint8_t labelQuality() const {return labelActive >> 8;}
 	static constexpr uint16_t SNIP_PRE_MS = 250, SNIP_POST_MS = 500;
 	static constexpr uint16_t SNIP_PRE = SNIP_PRE_MS * IMU_ODR_HZ / 1000;		// 100 frames
 	static constexpr uint16_t SNIP_POST = SNIP_POST_MS * IMU_ODR_HZ / 1000;		// 200 frames

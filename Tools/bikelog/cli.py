@@ -12,7 +12,8 @@ import sys
 
 from . import csvexport, fixtures, gpx, raw, replay
 from .record import (CURRENT_VERSION, IF_NO_SPEED, IF_TOO_SLOW, IF_UNCALIBRATED,
-                     ROAD_CLASS_NAMES, ReadStats, UnknownLogFormat, read_file, split)
+                     ROAD_CLASS_NAMES, SURFACE_NAMES, ReadStats, UnknownLogFormat, label_at,
+                     labels_of, read_file, split)
 
 __version__ = "0.4"
 
@@ -36,18 +37,23 @@ def _warn_trailing(path: str, stats: ReadStats) -> None:
 
 def cmd_csv(opts) -> int:
     stats = ReadStats()
-    records, road, shocks = split(_read(opts.infile, stats))
+    everything = _read(opts.infile, stats)
+    records, road, shocks = split(everything)
+    labels = labels_of(everything)
     rows = csvexport.write(opts.outfile, records, start_time=opts.starttime,
                            add_offset=opts.add_flag, with_gps=opts.gps,
                            with_roadq=opts.roadq)
     _warn_trailing(opts.infile, stats)
     print("%d Datensatz/Datensätze (Format v%d) -> %s" % (rows, stats.version, opts.outfile))
     if opts.roadq_out:
-        n = csvexport.write_road_quality(opts.roadq_out, road)
+        n = csvexport.write_road_quality(opts.roadq_out, road, labels=labels)
         print("%d Wegequalitäts-Intervall(e) -> %s" % (n, opts.roadq_out))
     if opts.shocks_out:
         n = csvexport.write_shocks(opts.shocks_out, shocks)
         print("%d Stoß/Stöße -> %s" % (n, opts.shocks_out))
+    if opts.labels_out:
+        n = csvexport.write_labels(opts.labels_out, labels)
+        print("%d Label-Datensatz/-sätze -> %s" % (n, opts.labels_out))
     return 0
 
 
@@ -75,7 +81,9 @@ def cmd_gpx(opts) -> int:
 
 def cmd_info(opts) -> int:
     stats = ReadStats()
-    records, road, shocks = split(_read(opts.infile, stats))
+    everything = _read(opts.infile, stats)
+    records, road, shocks = split(everything)
+    labels = labels_of(everything)
     _warn_trailing(opts.infile, stats)
     if not records:
         print("Leeres Log.")
@@ -127,6 +135,8 @@ def cmd_info(opts) -> int:
         slow = sum(1 for r in road if r.flags & (IF_TOO_SLOW | IF_NO_SPEED))
         if slow:
             print("              %d Intervall(e) zu langsam oder ohne Geschwindigkeit" % slow)
+    if labels:
+        _print_labels(labels, road)
     if shocks or road:
         suppressed = sum(r.events_suppressed for r in road)
         by_sev = {s: sum(1 for x in shocks if x.severity == s) for s in (1, 2, 3)}
@@ -143,6 +153,27 @@ def cmd_info(opts) -> int:
                 x.utc().isoformat(sep=" ", timespec="seconds"), x.peak_g, x.severity, where,
                 "  (Vorder- + Hinterrad)" if x.wheelbase_match else ""))
     return 0
+
+
+def _print_labels(labels, road) -> None:
+    """Manual labels against the automatic classification: per label, the distance
+    and how the intervals under it were classified -- the ground-truth comparison."""
+    changes = sum(1 for lab in labels if lab.reason == 0)
+    print("Labels:       %d Datensätze, %d Wechsel" % (len(labels), changes))
+    groups: dict[tuple[int, int], list] = {}
+    for r in road:
+        key = label_at(labels, r.time)
+        if key != (0, 0):
+            groups.setdefault(key, []).append(r)
+    for (surf, q), rs in sorted(groups.items()):
+        dist = sum(r.distance_m for r in rs)
+        rated = [r for r in rs if r.rated]
+        by_cls = {c: sum(1 for r in rated if r.road_class == c) for c in range(1, 6)}
+        rough = [r.roughness for r in rated if r.roughness is not None]
+        print("              %-9s Q%s: %.2f km, %d Intervalle, R Median %s, Klassen 1-5: %s" % (
+            SURFACE_NAMES.get(surf, "?") or "-", q or "-", dist / 1000.0, len(rs),
+            "%.2f" % sorted(rough)[len(rough) // 2] if rough else "-",
+            "/".join(str(by_cls[c]) for c in range(1, 6))))
 
 
 def cmd_fixture_synth(opts) -> int:
@@ -198,6 +229,22 @@ def cmd_raw_info(opts) -> int:
     speeds = [b.speed_kmh for b in blocks if b.speed_kmh is not None]
     if speeds:
         print("Speed:        %.1f..%.1f km/h" % (min(speeds), max(speeds)))
+    if header.kind == raw.KIND_CAPTURE and any(b.label_surface or b.label_quality for b in blocks):
+        # consecutive blocks with the same manual label
+        print("Labels:")
+        seg = None
+        for b in blocks + [None]:
+            key = None if b is None else (b.label_surface, b.label_quality)
+            if seg and key != seg[0]:
+                (surf, q), start, frames = seg
+                print("              ab %8.1f s  %.1f s  %s Q%s" % (
+                    max(0, start - header.start_epoch_ms) / 1000.0, frames / header.odr_hz,
+                    SURFACE_NAMES.get(surf, "?") or "-", q or "-"))
+                seg = None
+            if b is not None:
+                if seg is None:
+                    seg = [key, b.epoch_ms, 0]
+                seg[2] += b.count
     if header.kind == raw.KIND_SNIPPETS:
         for b in blocks:
             g = b.g(header)
@@ -215,14 +262,16 @@ def cmd_raw_csv(opts) -> int:
     rows = 0
     with open(opts.outfile, "w", newline="", encoding="utf-8") as fh:
         writer = csvexport.csv.writer(fh, dialect="excel")
-        writer.writerow(("t_ms", "Block", "Ref", "x_g", "y_g", "z_g", "Speed"))
+        writer.writerow(("t_ms", "Block", "Ref", "x_g", "y_g", "z_g", "Speed", "Untergrund", "Qualitaet_manuell"))
         for n, b in enumerate(blocks):
             t0 = b.epoch_ms - header.start_epoch_ms
             speed = "" if b.speed_kmh is None else str(round(b.speed_kmh, 2)).replace(".", ",")
+            surf = SURFACE_NAMES.get(b.label_surface, b.label_surface) if b.label_surface else ""
+            qual = b.label_quality or ""
             for i, (x, y, z) in enumerate(b.g(header)):
                 writer.writerow(("%.1f" % (t0 + i * period), n, b.ref,
                                  ("%.4f" % x).replace(".", ","), ("%.4f" % y).replace(".", ","),
-                                 ("%.4f" % z).replace(".", ","), speed))
+                                 ("%.4f" % z).replace(".", ","), speed, surf, qual))
                 rows += 1
     print("%d Frames -> %s" % (rows, opts.outfile))
     return 0
@@ -250,6 +299,16 @@ def cmd_raw_replay(opts) -> int:
         for cls in sorted({i.road_class for i in intervals}):
             n = sum(1 for i in intervals if i.road_class == cls)
             print("              Klasse %d (%s): %d" % (cls, ROAD_CLASS_NAMES.get(cls, "?"), n))
+        labelled: dict[tuple[int, int], list] = {}
+        for i in rated:
+            if i.label_surface or i.label_quality:
+                labelled.setdefault((i.label_surface, i.label_quality), []).append(i)
+        for (surf, q), items in sorted(labelled.items()):
+            rs = sorted(i.roughness for i in items if i.roughness is not None)
+            print("              Label %-9s Q%s: %d Intervalle, R Median %s, Klassen 1-5: %s" % (
+                SURFACE_NAMES.get(surf, "?") or "-", q or "-", len(items),
+                "%.2f" % rs[len(rs) // 2] if rs else "-",
+                "/".join(str(sum(1 for i in items if i.road_class == c)) for c in range(1, 6))))
         rms = sorted(i.rms_vert_g for i in intervals)
         print("RMS vertikal: min %.0f / Median %.0f / max %.0f mg" % (
             rms[0] * 1000, rms[len(rms) // 2] * 1000, rms[-1] * 1000))
@@ -297,6 +356,8 @@ def build_parser() -> argparse.ArgumentParser:
                        help="Wegequalitäts-Intervalle in diese CSV schreiben")
     p_csv.add_argument("--shocks-out", metavar="FILE",
                        help="Stöße in diese CSV schreiben")
+    p_csv.add_argument("--labels-out", metavar="FILE",
+                       help="manuelle Wege-Labels (Untergrund/Qualität) in diese CSV schreiben")
     p_csv.set_defaults(func=cmd_csv)
 
     p_gpx = sub.add_parser("gpx", help="Binärlog nach GPX 1.1 konvertieren")

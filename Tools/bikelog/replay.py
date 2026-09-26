@@ -93,6 +93,8 @@ class ReplayInterval:
     over_2g: int
     flags: int
     grad_raw: float | None
+    label_surface: int = 0              # manual label (record.SURFACE_NAMES), 0 = none
+    label_quality: int = 0
 
 
 @dataclass
@@ -110,6 +112,8 @@ class ReplayShock:
     flags: int
     threshold_g: float
     pre_rms_g: float
+    label_surface: int = 0
+    label_quality: int = 0
 
 
 def run(path, params: dict[str, float] | None = None) -> tuple[list[ReplayInterval], list[ReplayShock], str]:
@@ -127,10 +131,10 @@ def run(path, params: dict[str, float] | None = None) -> tuple[list[ReplayInterv
             intervals.append(ReplayInterval(
                 float(p[1]), int(p[2]), _f(p[3]), float(p[4]), float(p[5]), float(p[6]),
                 float(p[7]), float(p[8]), float(p[9]), _f(p[10]), float(p[11]), int(p[12]),
-                int(p[13]), int(p[14]), _f(p[15])))
+                int(p[13]), int(p[14]), _f(p[15]), int(p[16]), int(p[17])))
         elif p[0] == "S":
             shocks.append(ReplayShock(
                 float(p[1]), int(p[2]), float(p[3]), float(p[4]), float(p[5]), float(p[6]),
                 float(p[7]), float(p[8]), float(p[9]), int(p[10]), int(p[11]), float(p[12]),
-                float(p[13])))
+                float(p[13]), int(p[14]), int(p[15])))
     return intervals, shocks, result.stderr.strip()

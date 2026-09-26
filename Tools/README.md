@@ -7,10 +7,21 @@ Hier liegt alles, was damit offline weiterarbeitet.
 | Format | Satzgröße | Inhalt |
 |---|---|---|
 | v1 | 56 Byte | nur Fahrdaten (alle 5 s) -- ältere Logs, wird weiter gelesen |
-| v2 | 64 Byte | Typ-Byte an Offset 30: 0 = Fahrdaten, 1 = Wegequalität (pro Intervall, 1..10 s), 2 = Stoß |
+| v2 | 64 Byte | Typ-Byte an Offset 30: 0 = Fahrdaten, 1 = Wegequalität (pro Intervall, 1..10 s), 2 = Stoß, 3 = manuelles Wege-Label |
 
 Die Versionsnummer steht in jedem Satz an Offset 31. Unbekannte Satztypen
 werden übersprungen (und in `bikelog info` gezählt).
+
+**Manuelle Wege-Labels** (Typ 3, ohne Versionssprung nachgerüstet): Untergrund
+(1 Asphalt, 2 Schotter, 3 Waldweg, 4 Feldweg, 5 Pflaster, 6 Sonstiges) und
+Qualität 1 (am besten) bis 4, gesetzt auf dem RQ-Ride-Screen oder per
+`rq label <untergrund>,<qualität>`. Ein Satz bei jedem Wechsel, alle 60 s zur
+Sicherheit wiederholt und bei Start/Stopp eines Rohmitschnitts; das Label gilt
+bis zum nächsten Satz. Zusätzlich steht es in jedem Stoß-Satz und jedem
+Rohdaten-Block. `bikelog info` stellt die Labels der automatischen Klasse
+gegenüber (Strecke, Rauheit-Median und Klassenverteilung je Label). Die Zuordnung
+zu OSM `surface`/`smoothness` steht in `bikelog/record.py` (`SURFACE_OSM`,
+`LABEL_QUALITY_OSM`).
 
 ```
 bikelog/            Bibliothek + CLI (reine Standardbibliothek, kein venv nötig)
@@ -27,7 +38,7 @@ Ohne Installation, direkt aus diesem Verzeichnis:
 ```bash
 python3 -m bikelog info -i /pfad/L0001.bin          # Übersicht über ein Log
 python3 -m bikelog csv  -i /pfad/L0001.bin -o out.csv [--gps] [--roadq]
-python3 -m bikelog csv  -i /pfad/L0001.bin -o out.csv --roadq-out wege.csv --shocks-out stoesse.csv
+python3 -m bikelog csv  -i /pfad/L0001.bin -o out.csv --roadq-out wege.csv --shocks-out stoesse.csv --labels-out labels.csv
 python3 -m bikelog gpx  -i /pfad/L0001.bin -o tour.gpx [--no-shocks] [--min-severity 2]
 ./ReadTachoBin.py -i /pfad/L0001.bin -o out.csv     # wie bisher
 ```
@@ -70,7 +81,7 @@ Neben dem Log einer Sitzung `L_HHMMSS.bin` können zwei Rohdaten-Dateien liegen
 
 | Datei | Entsteht | Größe |
 |---|---|---|
-| `R_HHMMSS_NN.bin` | auf Anforderung: `rq raw <s>` (Serial) oder Buttons auf `/debug/imu`, 1..600 s | ca. 150 KB/min |
+| `R_HHMMSS_NN.bin` | auf Anforderung: `rq raw <s>` (Serial), Buttons auf `/debug/imu` oder Aufnahme-Taste des RQ-Ride-Screens, bis 1800 s | ca. 150 KB/min |
 | `S_HHMMSS.bin` | immer: 0,25 s vor bis 0,5 s nach jedem geloggten Stoß | ca. 1,8 KB/Stoß |
 
 ```bash
@@ -85,7 +96,9 @@ nicht mit einer Python-Nachbildung: Es baut beim ersten Aufruf
 [`rqreplay/rq_replay.cpp`](rqreplay/rq_replay.cpp) mit g++ nach `.build/` und
 übergibt die Parameter (`python3 -m bikelog raw replay -h` listet sie). So
 lassen sich Schwellen und Filter an echten Aufnahmen durchprobieren, bevor
-sie in die Firmware wandern.
+sie in die Firmware wandern. Das manuelle Label jedes Blocks läuft mit durch:
+`raw info` listet die Label-Abschnitte, `raw replay` zeigt Rauheit und Klassen
+je Label -- der direkte Vergleich „gefühlt“ gegen „gemessen“.
 
 ### Testdaten ohne Hardware
 

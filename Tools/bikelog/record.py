@@ -15,12 +15,16 @@ v2  64-byte records of several types, the type at byte 30:
       0  Record             ride data every 5 s (v1 fields + gradient sources, road class)
       1  RoadQualityRecord  road-surface metrics per interval (1..10 s)
       2  ShockEvent         a hard hit
+      3  LabelRecord        manual road label (surface + quality), added
+                            later without a version bump; older v2 files
+                            simply have none
     Unknown types are skipped by their size, so a newer firmware can add one
     without breaking this reader.
 """
 
 from __future__ import annotations
 
+import bisect
 import datetime
 import struct
 from dataclasses import dataclass, field, fields
@@ -39,6 +43,7 @@ LOG_GPS_HAS_ACCURACY = 0x10
 TYPE_DATA = 0
 TYPE_ROAD_QUALITY = 1
 TYPE_SHOCK = 2
+TYPE_LABEL = 3
 
 CURRENT_VERSION = 2
 VERSION_OFFSET = 31
@@ -76,6 +81,29 @@ ROAD_CLASS_NAMES = {
     5: "sehr rau",
 }
 ROAD_CLASS_OSM = {1: "excellent", 2: "good", 3: "intermediate", 4: "bad", 5: "very_bad"}
+
+#: Manual label (LogRec::Surface): display name and the OSM surface=* values it stands for
+SURFACE_NAMES = {0: "", 1: "Asphalt", 2: "Schotter", 3: "Waldweg", 4: "Feldweg",
+                 5: "Pflaster", 6: "Sonstiges"}
+SURFACE_OSM = {
+    1: ("asphalt", "concrete"),
+    2: ("compacted", "fine_gravel", "gravel"),
+    3: ("ground", "dirt"),
+    4: ("compacted", "ground", "grass"),
+    5: ("paving_stones", "sett", "cobblestone"),
+}
+#: Manual quality 1..4 and the OSM smoothness values it roughly corresponds to
+LABEL_QUALITY_OSM = {1: ("excellent", "good"), 2: ("intermediate",), 3: ("bad",),
+                     4: ("very_bad", "horrible")}
+
+# LabelRecord.reason (LogRec::LabelReason) and .flags (LogRec::LabelFlags)
+LABEL_CHANGE = 0
+LABEL_REFRESH = 1
+LABEL_CAPTURE_START = 2
+LABEL_CAPTURE_STOP = 3
+LABEL_REASON_NAMES = {0: "Wechsel", 1: "Wiederholung", 2: "Mitschnitt Start", 3: "Mitschnitt Stopp"}
+LF_CAPTURING = 0x01
+LF_GPS_VALID = 0x02
 
 
 def _utc(timestamp: int, ms: int = 0) -> datetime.datetime:
@@ -290,7 +318,8 @@ class ShockEvent:
     gps_lon_e7: int = 0
     gps_fix_age_ms: int = 0
     gps_accuracy_m_x10: int = 0
-    reserved1: int = 0
+    label_surface: int = 0              # manual label at the time, 0 = none
+    label_quality: int = 0
     event_seq: int = 0                  # running number since boot; gaps = records lost
     reserved2: int = 0
 
@@ -326,7 +355,66 @@ class ShockEvent:
         return _utc(self.timestamp, self.timestamp_ms)
 
 
-AnyRecord = Record | RoadQualityRecord | ShockEvent
+@dataclass
+class LabelRecord:
+    """Manual road label (v2, type 3): written on every change and every 60 s
+    while set, plus at the start and end of a raw capture. The label holds
+    from this record until the next one."""
+
+    timestamp: int = 0
+    timestamp_ms: int = 0
+    surface: int = 0                    # SURFACE_NAMES, 0 = not set
+    quality: int = 0                    # 1 (best) .. 4, 0 = not set
+    reason: int = LABEL_CHANGE
+    flags: int = 0
+    prev_surface: int = 0               # the label before a LABEL_CHANGE
+    prev_quality: int = 0
+    prev_distance_m: float = 0.0        # ridden under the previous label (else: under this one so far)
+    prev_duration_ms: int = 0
+    label_seq: int = 0                  # running number since boot; gaps = records lost
+    reserved1: int = 0
+    record_type: int = TYPE_LABEL
+    format_version: int = 0
+    gps_lat_e7: int = 0
+    gps_lon_e7: int = 0
+    gps_fix_age_ms: int = 0
+    gps_accuracy_m_x10: int = 0
+    speed_cms: int = U16_INVALID
+    reserved2: bytes = bytes(16)
+
+    @property
+    def is_set(self) -> bool:
+        return self.surface != 0 or self.quality != 0
+
+    @property
+    def surface_name(self) -> str:
+        return SURFACE_NAMES.get(self.surface, "?%d" % self.surface)
+
+    @property
+    def speed_kmh(self) -> float | None:
+        return None if self.speed_cms == U16_INVALID else self.speed_cms * 0.036
+
+    @property
+    def gps_valid(self) -> bool:
+        return bool(self.flags & LF_GPS_VALID)
+
+    @property
+    def latitude(self) -> float:
+        return self.gps_lat_e7 / 1e7
+
+    @property
+    def longitude(self) -> float:
+        return self.gps_lon_e7 / 1e7
+
+    @property
+    def time(self) -> float:
+        return self.timestamp + self.timestamp_ms / 1000.0
+
+    def utc(self) -> datetime.datetime:
+        return _utc(self.timestamp, self.timestamp_ms)
+
+
+AnyRecord = Record | RoadQualityRecord | ShockEvent | LabelRecord
 
 
 class Layout:
@@ -421,7 +509,7 @@ _V2_ROAD_QUALITY = Layout(
 
 _V2_SHOCK = Layout(
     ShockEvent,
-    "<qHHHhhHHHHHBBBBfHHiiIHHII",
+    "<qHHHhhHHHHHBBBBfHHiiIHBBII",
     (
         "timestamp", "timestamp_ms", "duration_ms", "peak_total_mg",
         "peak_vert_max_mg", "peak_vert_min_mg", "peak_horiz_mg", "pre_rms_mg",
@@ -429,14 +517,26 @@ _V2_SHOCK = Layout(
         "severity", "flags", "record_type", "format_version",
         "vdv", "samples_over_threshold", "threshold_mg",
         "gps_lat_e7", "gps_lon_e7", "gps_fix_age_ms", "gps_accuracy_m_x10",
-        "reserved1", "event_seq", "reserved2",
+        "label_surface", "label_quality", "event_seq", "reserved2",
+    ),
+)
+
+_V2_LABEL = Layout(
+    LabelRecord,
+    "<qHBBBBBBfIIHBBiiIHH16s",
+    (
+        "timestamp", "timestamp_ms", "surface", "quality", "reason", "flags",
+        "prev_surface", "prev_quality", "prev_distance_m", "prev_duration_ms",
+        "label_seq", "reserved1", "record_type", "format_version",
+        "gps_lat_e7", "gps_lon_e7", "gps_fix_age_ms", "gps_accuracy_m_x10",
+        "speed_cms", "reserved2",
     ),
 )
 
 FORMATS: dict[int, Format] = {
     1: Format(1, _V1_DATA.size, {TYPE_DATA: _V1_DATA}),
     2: Format(2, 64, {TYPE_DATA: _V2_DATA, TYPE_ROAD_QUALITY: _V2_ROAD_QUALITY,
-                      TYPE_SHOCK: _V2_SHOCK}, type_offset=TYPE_OFFSET),
+                      TYPE_SHOCK: _V2_SHOCK, TYPE_LABEL: _V2_LABEL}, type_offset=TYPE_OFFSET),
 }
 
 #: The ride-data layout of each version (the only record type v1 had).
@@ -515,16 +615,29 @@ def read_file(path, stats: ReadStats | None = None,
 
 
 def split(records: Iterable[AnyRecord]) -> tuple[list[Record], list[RoadQualityRecord], list[ShockEvent]]:
-    """Sort a mixed record stream into (ride data, road quality, shocks)."""
+    """Sort a mixed record stream into (ride data, road quality, shocks).
+    Labels are left out -- see labels_of()."""
     data, road, shocks = [], [], []
     for rec in records:
         if isinstance(rec, RoadQualityRecord):
             road.append(rec)
         elif isinstance(rec, ShockEvent):
             shocks.append(rec)
-        else:
+        elif isinstance(rec, Record):
             data.append(rec)
     return data, road, shocks
+
+
+def labels_of(records: Iterable[AnyRecord]) -> list[LabelRecord]:
+    """The manual label records of a mixed record stream, in file order."""
+    return [rec for rec in records if isinstance(rec, LabelRecord)]
+
+
+def label_at(labels: list[LabelRecord], t: float) -> tuple[int, int]:
+    """(surface, quality) in effect at time t: that of the last label record at
+    or before t, (0, 0) before the first one. ``labels`` in time order."""
+    i = bisect.bisect_right([lab.time for lab in labels], t)
+    return (labels[i - 1].surface, labels[i - 1].quality) if i else (0, 0)
 
 
 def write_records(path, records, version: int = CURRENT_VERSION) -> int:

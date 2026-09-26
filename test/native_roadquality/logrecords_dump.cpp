@@ -93,13 +93,36 @@ int main(int argc, char** argv) {
 	s.gpsLongitudeE7 = 87000200;
 	s.gpsFixAgeMs = 500;
 	s.gpsAccuracyMX10 = 60;
+	s.labelSurface = SURFACE_PAVING;
+	s.labelQuality = 3;
 	s.eventSeq = 42;
+
+	Label l = {};
+	l.timestamp = 1790000004;
+	l.timestampMs = 321;
+	l.surface = SURFACE_GRAVEL;
+	l.quality = 2;
+	l.reason = LABEL_CHANGE;
+	l.flags = LF_CAPTURING | LF_GPS_VALID;
+	l.prevSurface = SURFACE_ASPHALT;
+	l.prevQuality = 1;
+	l.prevDistanceM = 1234.5f;
+	l.prevDurationMs = 180000;
+	l.labelSeq = 7;
+	l.recordType = TYPE_LABEL;
+	l.formatVersion = FORMAT_VERSION;
+	l.gpsLatitudeE7 = 524000300;
+	l.gpsLongitudeE7 = 87000300;
+	l.gpsFixAgeMs = 600;
+	l.gpsAccuracyMX10 = 70;
+	l.speedCms = speedCms(18.0f);
 
 	FILE* f = fopen(argv[1], "wb");
 	if (!f) return 1;
 	fwrite(&d, sizeof(d), 1, f);
 	fwrite(&r, sizeof(r), 1, f);
 	fwrite(&s, sizeof(s), 1, f);
+	fwrite(&l, sizeof(l), 1, f);
 	fclose(f);
 	return 0;
 }

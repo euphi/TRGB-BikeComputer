@@ -13,6 +13,7 @@ from bikelog.cli import main as cli_main
 from bikelog.record import (FORMATS, IF_GPS_VALID, LAYOUTS, SF_GPS_VALID, SF_WHEELBASE_MATCH,
                             TYPE_DATA, TYPE_ROAD_QUALITY, TYPE_SHOCK, TYPE_OFFSET, U16_INVALID,
                             VERSION_OFFSET, ReadStats, Record, RoadQualityRecord, ShockEvent,
+                            LabelRecord, TYPE_LABEL, label_at, labels_of,
                             read_file, read_stream, split, write_records)
 
 REPO = Path(__file__).resolve().parents[2]
@@ -81,6 +82,15 @@ def test_layout_matches_firmware_header(tmp_path):
     assert (s.vdv, s.samples_over_threshold, s.threshold_mg) == (0.5, 3, 3000)
     assert (s.gps_lat_e7, s.gps_lon_e7, s.gps_fix_age_ms, s.gps_accuracy_m_x10) == (524000200, 87000200, 500, 60)
     assert s.event_seq == 42 and s.wheelbase_match and s.gps_valid
+    assert (s.label_surface, s.label_quality) == (5, 3)
+
+    (lab,) = labels_of(read_file(out, types=None))
+    assert (lab.timestamp, lab.timestamp_ms, lab.surface, lab.quality) == (1790000004, 321, 2, 2)
+    assert (lab.reason, lab.flags, lab.prev_surface, lab.prev_quality) == (0, 0x03, 1, 1)
+    assert (lab.prev_distance_m, lab.prev_duration_ms, lab.label_seq) == (1234.5, 180000, 7)
+    assert (lab.gps_lat_e7, lab.gps_lon_e7, lab.gps_fix_age_ms, lab.gps_accuracy_m_x10) == (524000300, 87000300, 600, 70)
+    assert lab.speed_kmh == pytest.approx(18.0, abs=0.02) and lab.gps_valid
+    assert lab.surface_name == "Schotter"
 
 
 def test_mixed_roundtrip_and_default_filter(tmp_path):
@@ -208,3 +218,58 @@ def test_fixture_flags_are_consistent():
     assert rough and all(r.road_class >= 3 for r in rough if r.rated)
     assert LAYOUTS[2] is FORMATS[2].layouts[TYPE_DATA]
     assert RoadQualityRecord().speed_cms == U16_INVALID
+
+
+def _labelled_ride():
+    """The synthetic ride with two manual labels: Asphalt Q1 from t0+60 s, Schotter Q3 from t0+200 s."""
+    records = _ride()
+    t0 = records[0].timestamp
+    labels = [LabelRecord(timestamp=t0 + 60, surface=1, quality=1, label_seq=1),
+              LabelRecord(timestamp=t0 + 200, surface=2, quality=3, prev_surface=1, prev_quality=1,
+                          prev_distance_m=700.0, prev_duration_ms=140000, label_seq=2)]
+    out = []
+    for rec in records:
+        while labels and labels[0].timestamp <= rec.timestamp:
+            out.append(labels.pop(0))
+        out.append(rec)
+    return out, t0
+
+
+def test_labels_roundtrip_and_lookup(tmp_path):
+    records, t0 = _labelled_ride()
+    path = tmp_path / "ride.bin"
+    write_records(path, records)
+    stats = ReadStats()
+    back = list(read_file(path, stats, types=None))
+    labels = labels_of(back)
+    assert stats.by_type[TYPE_LABEL] == 2 and stats.unknown_type == 0
+    assert [(lab.surface, lab.quality) for lab in labels] == [(1, 1), (2, 3)]
+    data, road, shocks = split(back)                # labels stay out of the ride data
+    assert all(type(r) is Record for r in data)
+    assert label_at(labels, t0 + 10) == (0, 0)
+    assert label_at(labels, t0 + 60) == (1, 1)
+    assert label_at(labels, t0 + 199.5) == (1, 1)
+    assert label_at(labels, t0 + 1000) == (2, 3)
+    # the default filter (ride data only) is unchanged
+    assert all(type(r) is Record for r in read_file(path))
+
+
+def test_labels_in_csv_and_info(tmp_path, capsys):
+    records, t0 = _labelled_ride()
+    path = tmp_path / "ride.bin"
+    write_records(path, records)
+    rq_csv, lab_csv = tmp_path / "rq.csv", tmp_path / "labels.csv"
+    assert cli_main(["csv", "-i", str(path), "-o", str(tmp_path / "d.csv"),
+                     "--roadq-out", str(rq_csv), "--labels-out", str(lab_csv)]) == 0
+    rows = rq_csv.read_text(encoding="utf-8").splitlines()
+    assert rows[0].endswith("Untergrund,Qualitaet_manuell")
+    assert rows[1].endswith(",,")                  # before the first label
+    assert rows[-1].endswith(",Schotter,3")
+    assert any(r.endswith(",Asphalt,1") for r in rows)
+    lab_rows = lab_csv.read_text(encoding="utf-8").splitlines()
+    assert len(lab_rows) == 3 and "Schotter" in lab_rows[2] and "Asphalt" in lab_rows[2]
+    capsys.readouterr()
+    assert cli_main(["info", "-i", str(path)]) == 0
+    out = capsys.readouterr().out
+    assert "Labels:       2 Datensätze, 2 Wechsel" in out
+    assert "Asphalt   Q1" in out and "Schotter  Q3" in out

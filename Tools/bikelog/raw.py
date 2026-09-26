@@ -32,7 +32,7 @@ BF_GAP_BEFORE = 0x01
 BF_SPEED_FROM_GPS = 0x02
 
 HEADER_FMT = "<4sBBHff3ffqfBBHH14s"     # 64 byte, RawCap::FileHeader
-BLOCK_FMT = "<HBBHHqIHH"                # 24 byte, RawCap::BlockHeader
+BLOCK_FMT = "<HBBHHqIHBB"               # 24 byte, RawCap::BlockHeader
 HEADER_SIZE = struct.calcsize(HEADER_FMT)
 BLOCK_SIZE = struct.calcsize(BLOCK_FMT)
 FRAME_SIZE = 6
@@ -88,6 +88,8 @@ class RawBlock:
     ref: int = 0                        # block number, or the shock's event_seq
     speed_age_ms: int = SPEED_AGE_UNKNOWN
     frames: array = field(default_factory=lambda: array("h"))   # x, y, z, x, y, z, ...
+    label_surface: int = 0              # manual road label at the block (record.SURFACE_NAMES), 0 = none
+    label_quality: int = 0              # 1..4, 0 = none
 
     @property
     def count(self) -> int:
@@ -99,7 +101,8 @@ class RawBlock:
 
     def pack(self) -> bytes:
         return struct.pack(BLOCK_FMT, SYNC, self.type, self.flags, self.count, self.speed_cms,
-                           self.epoch_ms, self.ref, self.speed_age_ms, 0) + self.frames.tobytes()
+                           self.epoch_ms, self.ref, self.speed_age_ms, self.label_surface,
+                           self.label_quality) + self.frames.tobytes()
 
     def g(self, header: RawHeader) -> list[tuple[float, float, float]]:
         k = header.g_per_lsb
@@ -141,14 +144,14 @@ def parse(data: bytes, stats: RawStats | None = None) -> tuple[RawHeader, list[R
         if pos + BLOCK_SIZE > len(data):
             stats.trailing_bytes = len(data) - pos
             break
-        _, btype, flags, count, speed, epoch, ref, age, _ = struct.unpack_from(BLOCK_FMT, data, pos)
+        _, btype, flags, count, speed, epoch, ref, age, surf, qual = struct.unpack_from(BLOCK_FMT, data, pos)
         end = pos + BLOCK_SIZE + count * FRAME_SIZE
         if end > len(data):
             stats.trailing_bytes = len(data) - pos
             break
         frames = array("h")
         frames.frombytes(data[pos + BLOCK_SIZE:end])
-        blocks.append(RawBlock(btype, flags, speed, epoch, ref, age, frames))
+        blocks.append(RawBlock(btype, flags, speed, epoch, ref, age, frames, surf, qual))
         stats.blocks += 1
         stats.frames += count
         if flags & BF_GAP_BEFORE:

@@ -40,6 +40,38 @@ enum Type : uint8_t {
 	TYPE_DATA = 0,				// every 5 s: the ride data (as in v1, plus gradient sources and road class)
 	TYPE_ROAD_QUALITY = 1,		// every interval (1..10 s): road-surface metrics
 	TYPE_SHOCK = 2,				// on a hard hit
+	TYPE_LABEL = 3,				// manual road label (RQ-Ride screen): on change, then every 60 s
+};
+
+// Manual road label: what the rider says the surface is, as ground truth for the automatic
+// road class. Added to v2 without a version bump -- a new record type and two formerly
+// reserved bytes in Shock, both 0 ("not set") in older files.
+//
+// Surface, and the OSM surface=* values each one stands for (for comparing with OSM):
+enum Surface : uint8_t {
+	SURFACE_UNSET = 0,
+	SURFACE_ASPHALT = 1,		// asphalt, concrete
+	SURFACE_GRAVEL = 2,			// Schotter: compacted, fine_gravel, gravel
+	SURFACE_FOREST = 3,			// Waldweg: ground, dirt (roots, forest floor)
+	SURFACE_FIELD = 4,			// Feldweg: compacted/ground/grass track between fields
+	SURFACE_PAVING = 5,			// Pflaster: paving_stones, sett, cobblestone
+	SURFACE_OTHER = 6,
+	SURFACE_COUNT
+};
+// Quality 1..4 (0 = not set), rated for cycling, roughly OSM smoothness:
+//   1 excellent/good, 2 intermediate, 3 bad, 4 very_bad and worse
+static constexpr uint8_t LABEL_QUALITY_MAX = 4;
+
+enum LabelReason : uint8_t {
+	LABEL_CHANGE = 0,			// surface or quality changed (including cleared)
+	LABEL_REFRESH = 1,			// unchanged, repeated every 60 s so a lost record doesn't lose the label
+	LABEL_CAPTURE_START = 2,	// raw capture R_*.bin started
+	LABEL_CAPTURE_STOP = 3,		// ... stopped or complete
+};
+
+enum LabelFlags : uint8_t {
+	LF_CAPTURING = 0x01,		// a raw capture is running (after this record, for CAPTURE_START/STOP)
+	LF_GPS_VALID = 0x02,
 };
 
 // Bits of Data::gpsFlags. LOG_GPS_VALID mirrors SGpsFix::valid (a POSITION_UPDATE was
@@ -135,9 +167,34 @@ struct Shock {
 	int32_t gpsLongitudeE7;				// 44
 	uint32_t gpsFixAgeMs;				// 48
 	uint16_t gpsAccuracyMX10;			// 52
-	uint16_t reserved1;					// 54
+	uint8_t labelSurface;				// 54  manual label at the time (Surface), 0 = none
+	uint8_t labelQuality;				// 55  1..4, 0 = none
 	uint32_t eventSeq;					// 56  running number since boot: gaps = records lost on the way to the card
 	uint32_t reserved2;					// 60
+};
+
+// Type 3. Written from the ImuTask, like the other road-quality records.
+struct Label {
+	time_t timestamp;					//  0
+	uint16_t timestampMs;				//  8
+	uint8_t surface;					// 10  Surface
+	uint8_t quality;					// 11  1..4, 0 = not set
+	uint8_t reason;						// 12  LabelReason
+	uint8_t flags;						// 13  LabelFlags
+	uint8_t prevSurface;				// 14  label before a LABEL_CHANGE
+	uint8_t prevQuality;				// 15
+	float prevDistanceM;				// 16  distance ridden under the previous label (LABEL_CHANGE), else so far
+	uint32_t prevDurationMs;			// 20  same for the time
+	uint32_t labelSeq;					// 24  running number since boot
+	uint16_t reserved1;					// 28
+	uint8_t recordType;					// 30  = TYPE_LABEL
+	uint8_t formatVersion;				// 31
+	int32_t gpsLatitudeE7;				// 32  valid if flags & LF_GPS_VALID
+	int32_t gpsLongitudeE7;				// 36
+	uint32_t gpsFixAgeMs;				// 40
+	uint16_t gpsAccuracyMX10;			// 44
+	uint16_t speedCms;					// 46  U16_INVALID if unknown
+	uint8_t reserved2[16];				// 48
 };
 
 // The reader (Tools/bikelog/record.py) depends on exactly these positions.
@@ -145,12 +202,15 @@ static_assert(sizeof(time_t) == 8, "time_t size changed -- all offsets below shi
 static_assert(sizeof(Data) == RECORD_SIZE, "LogRec::Data must be 64 byte");
 static_assert(sizeof(RoadQuality) == RECORD_SIZE, "LogRec::RoadQuality must be 64 byte");
 static_assert(sizeof(Shock) == RECORD_SIZE, "LogRec::Shock must be 64 byte");
+static_assert(sizeof(Label) == RECORD_SIZE, "LogRec::Label must be 64 byte");
 static_assert(offsetof(Data, recordType) == TYPE_OFFSET && offsetof(Data, formatVersion) == VERSION_OFFSET, "Data header");
 static_assert(offsetof(RoadQuality, recordType) == TYPE_OFFSET && offsetof(RoadQuality, formatVersion) == VERSION_OFFSET, "RoadQuality header");
 static_assert(offsetof(Shock, recordType) == TYPE_OFFSET && offsetof(Shock, formatVersion) == VERSION_OFFSET, "Shock header");
+static_assert(offsetof(Label, recordType) == TYPE_OFFSET && offsetof(Label, formatVersion) == VERSION_OFFSET, "Label header");
 static_assert(offsetof(Data, gpsLatitudeE7) == 32 && offsetof(Data, gpsFlags) == 56 && offsetof(Data, gradImuX100) == 62, "Data layout");
 static_assert(offsetof(RoadQuality, vdvVert) == 32 && offsetof(RoadQuality, gpsLatitudeE7) == 48 && offsetof(RoadQuality, gradImuX100) == 62, "RoadQuality layout");
 static_assert(offsetof(Shock, vdv) == 32 && offsetof(Shock, gpsLatitudeE7) == 40 && offsetof(Shock, eventSeq) == 56, "Shock layout");
+static_assert(offsetof(Label, prevDistanceM) == 16 && offsetof(Label, gpsLatitudeE7) == 32 && offsetof(Label, speedCms) == 46, "Label layout");
 
 // Helpers for filling records
 inline uint16_t toU16(float v) {return v <= 0 ? 0 : (v >= 65534.0f ? 65534 : (uint16_t)(v + 0.5f));}

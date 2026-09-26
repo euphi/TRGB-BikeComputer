@@ -74,7 +74,8 @@ struct BlockHeader {
 	int64_t epochMs;					//  8  wall-clock time of the first frame
 	uint32_t ref;						// 16  continuous: block number; shock: LogRec::Shock::eventSeq
 	uint16_t speedAgeMs;				// 20  since the last wheel-speed update (SPEED_AGE_UNKNOWN: none)
-	uint16_t reserved;					// 22
+	uint8_t labelSurface;				// 22  manual road label (LogRec::Surface), 0 = none
+	uint8_t labelQuality;				// 23  1..4, 0 = none
 };
 
 static_assert(sizeof(FileHeader) == 64, "RawCap::FileHeader must be 64 byte");

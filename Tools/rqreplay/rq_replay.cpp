@@ -8,8 +8,9 @@
  *   ./rq_replay R_143012_01.bin shock=2.5 interval=1 baseline=0.12
  *
  * Output on stdout, one CSV line per result (t = ms since the file's start):
- *   I,t,class,R,rmsV,rmsH,peakVMax,peakVMin,peakT,vdv,speedKmh,distM,over1g,over2g,flags,gradRawPct
- *   S,t,ref,peak,vMax,vMin,horiz,durMs,secondG,secondDelayMs,severity,flags,thrG,preRmsG
+ *   I,t,class,R,rmsV,rmsH,peakVMax,peakVMin,peakT,vdv,speedKmh,distM,over1g,over2g,flags,gradRawPct,surface,quality
+ *   S,t,ref,peak,vMax,vMin,horiz,durMs,secondG,secondDelayMs,severity,flags,thrG,preRmsG,surface,quality
+ * (surface/quality: the manual road label of the block the result fell in, 0 = none.)
  * (NaN printed as "nan".) For a snippet file (S_*.bin) every block is replayed on its own,
  * with a fresh algorithm state -- the snippets are 0.75 s pieces, not a continuous signal --
  * and ref is the logged shock's event number.
@@ -64,16 +65,16 @@ static void applyParams(Config& c, PitchEstimator::Config& p, const std::map<std
 	}
 }
 
-static void printInterval(double tMs, const IntervalResult& r, const PitchEstimator& pe) {
-	printf("I,%.0f,%u,%.3f,%.4f,%.4f,%.3f,%.3f,%.3f,%.4f,%.2f,%.2f,%u,%u,%u,%.2f\n", tMs, r.roadClass, r.roughness,
+static void printInterval(double tMs, const IntervalResult& r, const PitchEstimator& pe, const RawCap::BlockHeader& bh) {
+	printf("I,%.0f,%u,%.3f,%.4f,%.4f,%.3f,%.3f,%.3f,%.4f,%.2f,%.2f,%u,%u,%u,%.2f,%u,%u\n", tMs, r.roadClass, r.roughness,
 	       r.rmsVertG, r.rmsHorizG, r.peakVertMaxG, r.peakVertMinG, r.peakTotalG, r.vdvVert, r.speedKmh, r.distanceM,
-	       r.countOverT1, r.countOverT2, r.flags, pe.rawGradientPct());
+	       r.countOverT1, r.countOverT2, r.flags, pe.rawGradientPct(), bh.labelSurface, bh.labelQuality);
 }
 
-static void printShock(double tMs, uint32_t ref, const ShockResult& s) {
-	printf("S,%.0f,%u,%.3f,%.3f,%.3f,%.3f,%.1f,%.3f,%.0f,%u,%u,%.3f,%.4f\n", tMs, ref, s.peakTotalG, s.peakVertMaxG,
+static void printShock(double tMs, uint32_t ref, const ShockResult& s, const RawCap::BlockHeader& bh) {
+	printf("S,%.0f,%u,%.3f,%.3f,%.3f,%.3f,%.1f,%.3f,%.0f,%u,%u,%.3f,%.4f,%u,%u\n", tMs, ref, s.peakTotalG, s.peakVertMaxG,
 	       s.peakVertMinG, s.peakHorizG, s.durationMs, s.secondPeakG, s.secondPeakDelayMs, s.severity, s.flags,
-	       s.thresholdG, s.preRmsG);
+	       s.thresholdG, s.preRmsG, bh.labelSurface, bh.labelQuality);
 }
 
 int main(int argc, char** argv) {
@@ -164,10 +165,10 @@ int main(int argc, char** argv) {
 			for (int j = 0; j < 3; j++) sum[j] += a[j];
 			uint8_t ready = rq.process(a);
 			const double t = t0 + i * framMs;
-			if (ready & RoadQuality::READY_INTERVAL && !snippets) printInterval(t, rq.interval(), pe);
+			if (ready & RoadQuality::READY_INTERVAL && !snippets) printInterval(t, rq.interval(), pe, bh);
 			if (ready & RoadQuality::READY_SHOCK) {
 				const ShockResult& s = rq.shock();
-				printShock(t - s.samplesAgo * framMs, snippets ? bh.ref : s.seq, s);
+				printShock(t - s.samplesAgo * framMs, snippets ? bh.ref : s.seq, s, bh);
 			}
 		}
 		if (!snippets && bh.count) {

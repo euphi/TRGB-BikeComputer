@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import csv
 
+from .record import LABEL_REASON_NAMES, LF_CAPTURING, SURFACE_NAMES, label_at
+
 #: Legacy column set and order. The German names are load-bearing: existing
 #: spreadsheets reference them.
 BASE_COLUMNS = ("Timestamp", "Speed", "Temperatur", "Gradient", "Höhe",
@@ -30,12 +32,20 @@ ROAD_QUALITY_COLUMNS = (
     "Peak_max_mg", "Peak_min_mg", "Peak_total_mg", "VDV", "Speed", "Strecke_m",
     "Ueber_1g", "Ueber_2g", "Stoesse", "Stoesse_unterdrueckt", "Flags",
     "GPS_Lat", "GPS_Lon", "GPS_FixAlter_ms", "Gradient_IMU",
+    "Untergrund", "Qualitaet_manuell",
 )
 
 SHOCK_COLUMNS = (
     "Timestamp", "Nr", "Schwere", "Peak_g", "Vert_max_g", "Vert_min_g", "Horiz_g",
     "Dauer_ms", "Zweiter_Peak_g", "Verzoegerung_ms", "Radstand_passt", "RMS_vorher_mg",
     "Schwelle_g", "Speed", "Flags", "GPS_Lat", "GPS_Lon", "GPS_FixAlter_ms",
+    "Untergrund", "Qualitaet_manuell",
+)
+
+LABEL_COLUMNS = (
+    "Timestamp", "Nr", "Anlass", "Untergrund", "Qualitaet_manuell", "Mitschnitt",
+    "Vorher_Untergrund", "Vorher_Qualitaet", "Vorher_Strecke_m", "Vorher_Dauer_s",
+    "Speed", "GPS_Lat", "GPS_Lon", "GPS_FixAlter_ms",
 )
 
 #: Days between the Unix epoch and the Excel/LibreOffice epoch (1899-12-30).
@@ -140,7 +150,12 @@ def _write_rows(path, columns, rows, excel_time: bool) -> int:
     return count
 
 
-def road_quality_row(rec) -> dict:
+def _surface(code: int):
+    return SURFACE_NAMES.get(code, code) if code else ""
+
+
+def road_quality_row(rec, label: tuple[int, int] = (0, 0)) -> dict:
+    """One interval; ``label`` = the manual (surface, quality) in effect (record.label_at)."""
     return {
         "Timestamp": rec.time,
         "Intervall_ms": rec.interval_ms,
@@ -163,6 +178,8 @@ def road_quality_row(rec) -> dict:
         "GPS_Lon": rec.longitude if rec.gps_valid else "",
         "GPS_FixAlter_ms": rec.gps_fix_age_ms if rec.gps_valid else "",
         "Gradient_IMU": _blank(rec.grad_imu),
+        "Untergrund": _surface(label[0]),
+        "Qualitaet_manuell": label[1] or "",
     }
 
 
@@ -186,14 +203,43 @@ def shock_row(rec) -> dict:
         "GPS_Lat": rec.latitude if rec.gps_valid else "",
         "GPS_Lon": rec.longitude if rec.gps_valid else "",
         "GPS_FixAlter_ms": rec.gps_fix_age_ms if rec.gps_valid else "",
+        "Untergrund": _surface(rec.label_surface),
+        "Qualitaet_manuell": rec.label_quality or "",
     }
 
 
-def write_road_quality(path, records, excel_time: bool = True) -> int:
-    """Road-quality intervals (RoadQualityRecord) to CSV, returning the row count."""
-    return _write_rows(path, ROAD_QUALITY_COLUMNS, (road_quality_row(r) for r in records), excel_time)
+def label_row(rec) -> dict:
+    return {
+        "Timestamp": rec.time,
+        "Nr": rec.label_seq,
+        "Anlass": LABEL_REASON_NAMES.get(rec.reason, rec.reason),
+        "Untergrund": _surface(rec.surface),
+        "Qualitaet_manuell": rec.quality or "",
+        "Mitschnitt": int(bool(rec.flags & LF_CAPTURING)),
+        "Vorher_Untergrund": _surface(rec.prev_surface),
+        "Vorher_Qualitaet": rec.prev_quality or "",
+        "Vorher_Strecke_m": rec.prev_distance_m,
+        "Vorher_Dauer_s": rec.prev_duration_ms / 1000.0,
+        "Speed": _blank(rec.speed_kmh),
+        "GPS_Lat": rec.latitude if rec.gps_valid else "",
+        "GPS_Lon": rec.longitude if rec.gps_valid else "",
+        "GPS_FixAlter_ms": rec.gps_fix_age_ms if rec.gps_valid else "",
+    }
+
+
+def write_road_quality(path, records, excel_time: bool = True, labels=None) -> int:
+    """Road-quality intervals (RoadQualityRecord) to CSV, returning the row count.
+    ``labels`` (LabelRecord, time order) fills the manual-label columns."""
+    labels = list(labels or [])
+    rows = (road_quality_row(r, label_at(labels, r.time)) for r in records)
+    return _write_rows(path, ROAD_QUALITY_COLUMNS, rows, excel_time)
 
 
 def write_shocks(path, records, excel_time: bool = True) -> int:
     """Shock events (ShockEvent) to CSV, returning the row count."""
     return _write_rows(path, SHOCK_COLUMNS, (shock_row(r) for r in records), excel_time)
+
+
+def write_labels(path, records, excel_time: bool = True) -> int:
+    """Manual label records (LabelRecord) to CSV, returning the row count."""
+    return _write_rows(path, LABEL_COLUMNS, (label_row(r) for r in records), excel_time)

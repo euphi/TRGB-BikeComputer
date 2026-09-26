@@ -63,10 +63,16 @@ ist das Protokoll die Quelle der Wahrheit.
 ## Binärlog und Wegequalität
 
 - Binärlog `L_*.bin`: Format v2, 64-Byte-Sätze mit Typ-Byte (Fahrdaten /
-  Wegequalität / Stoß). Layout in `src/LogRecords.h`, Reader
-  `Tools/bikelog/record.py`. Beide nur gemeinsam ändern und
-  `FORMAT_VERSION` erhöhen; `Tools/tests/test_logformat.py` kompiliert den
+  Wegequalität / Stoß / manuelles Label). Layout in `src/LogRecords.h`, Reader
+  `Tools/bikelog/record.py`. Beide nur gemeinsam ändern; `FORMAT_VERSION`
+  erhöhen, wenn sich ein bestehendes Feld verschiebt oder seine Bedeutung
+  ändert (ein neuer Satztyp oder bisher reservierte, nullgefüllte Bytes
+  brauchen das nicht). `Tools/tests/test_logformat.py` kompiliert den
   Header auf dem Host und fängt Abweichungen.
+- Manuelles Wege-Label (Untergrund + Qualität 1–4, Ground Truth für die
+  automatische Klasse): API `sensors.setRoadLabel*()`/`getRoadLabelState()`/
+  `startRoadCapture()` in `src/I2CSensors.h` für den RQ-Ride-Screen; geloggt
+  als Satztyp 3, dazu in Stoß-Sätzen und Rohdaten-Blöcken.
 - BMI160 → `src/RoadQuality.*` (reiner Algorithmus: Rauheit, Stöße,
   Referenzfahrt, Steigung aus Beschleunigung). Host-Test:
   `test/native_roadquality/roadquality_test.cpp` (Build-Befehl im

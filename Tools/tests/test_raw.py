@@ -61,6 +61,18 @@ def test_roundtrip_and_sizes(tmp_path):
     assert z == pytest.approx(1.0, abs=0.3)
 
 
+def test_label_bytes_roundtrip(tmp_path, capsys):
+    path, header, blocks = _capture(tmp_path, seconds=4, bumps=False)
+    for b in blocks[len(blocks) // 2:]:
+        b.label_surface, b.label_quality = 5, 4          # Pflaster, worst
+    raw.write_raw(path, header, blocks)
+    _, back = raw.read_raw(path)
+    assert (back[0].label_surface, back[0].label_quality) == (0, 0)
+    assert (back[-1].label_surface, back[-1].label_quality) == (5, 4)
+    assert cli_main(["raw", "info", "-i", str(path)]) == 0
+    assert "Pflaster Q4" in capsys.readouterr().out
+
+
 def test_damaged_block_is_skipped_not_fatal(tmp_path):
     path, _, blocks = _capture(tmp_path, seconds=1)
     data = bytearray(path.read_bytes())
@@ -95,6 +107,17 @@ def test_replay_capture_finds_the_pothole(tmp_path):
     # a parameter changes the outcome
     _, shocks_hi, _ = replay.run(path, {"shock": 9.0})
     assert shocks_hi == []
+
+
+@needs_cxx
+def test_replay_passes_the_label_through(tmp_path):
+    path, header, blocks = _capture(tmp_path, bumps=True)
+    for b in blocks:
+        b.label_surface, b.label_quality = 3, 2          # Waldweg
+    raw.write_raw(path, header, blocks)
+    intervals, shocks, _ = replay.run(path)
+    assert {(i.label_surface, i.label_quality) for i in intervals} == {(3, 2)}
+    assert [(s.label_surface, s.label_quality) for s in shocks] == [(3, 2)]
 
 
 @needs_cxx

@@ -191,7 +191,7 @@ void I2CSensors::initBMI160() {
 	rqCmd = cli.addCmd("rq", +[](cmd* c) {sensors.handleRqCommand(Command(c));});
 	rqCmd.addPositionalArgument("action", "status");
 	rqCmd.addPositionalArgument("value", "");
-	rqCmd.setDescription("Road quality: rq [status | interval <1..10 s> | shock <g> | wheelbase <m> | gradsrc <baro|imu> | ref <start|stop> | pitchreset | raw <1..600 s|stop>]");
+	rqCmd.setDescription("Road quality: rq [status | interval <1..10 s> | shock <g> | wheelbase <m> | gradsrc <baro|imu> | ref <start|stop> | pitchreset | raw <1..1800 s|stop> | label <surface 0..6>,<quality 0..4>]");
 
 	BMI160.resetFIFO();
 	imuSnap.running = true;
@@ -273,6 +273,7 @@ void I2CSensors::imuTask() {
 		vTaskDelayUntil(&lastWake, pdMS_TO_TICKS(IMU_POLL_MS));
 		const uint32_t pollMs = millis();
 		rqBeforeBurst(pollMs);
+		labelBeforeBurst(pollMs);		// before rawBeforeBurst(): a new label is logged before a capture it starts with
 		rawBeforeBurst();
 
 		if (imuResetMinMaxRequest.exchange(false)) imuMinMaxValid = false;
@@ -688,6 +689,8 @@ void I2CSensors::rqHandleResults(uint8_t ready, int64_t sampleEpochMs) {
 		rec.gradImuX100 = LogRec::gradX100(gradImu);
 		bclog.appendRecord(rec);
 		roadClass = r.roadClass;
+		labelDistM += r.distanceM;
+		if (rawCapturing) captureDistM += r.distanceM;
 
 		portENTER_CRITICAL(&imuMux);
 		rqSnap.last = r;
@@ -724,6 +727,8 @@ void I2CSensors::rqHandleResults(uint8_t ready, int64_t sampleEpochMs) {
 			rec.gpsFixAgeMs = gps.fixAgeMs;
 			rec.gpsAccuracyMX10 = gps.hasAccuracy ? gps.accuracyMX10 : 0;
 		}
+		rec.labelSurface = labelSurface();
+		rec.labelQuality = labelQuality();
 		rec.eventSeq = sh.seq;
 		bclog.appendRecord(rec);
 
@@ -933,6 +938,16 @@ void I2CSensors::handleRqCommand(const Command& cmd) {
 			if (sec >= 1 && sec <= RAW_MAX_CAPTURE_S) requestRawCapture(sec);
 			else Serial.printf("raw: 1..%u s | stop\n", RAW_MAX_CAPTURE_S);
 		}
+	} else if (action.equalsIgnoreCase("label")) {
+		// "rq label 2,3" = Schotter, quality 3; "rq label 0" clears. The second number is
+		// the quality; the CLI parser has two positional arguments, so it rides in "value"
+		// as "<surface>,<quality>" (a space works only if the CLI keeps it in one argument).
+		const long surf = value.toInt();
+		int sep = value.indexOf(' ');
+		if (sep < 0) sep = value.indexOf(',');
+		const long q = sep >= 0 ? value.substring(sep + 1).toInt() : 0;
+		if (value.length() && setRoadLabel(surf, q)) Serial.printf("label: %s, quality %ld\n", surf ? surfaceName(surf) : "-", q);
+		else Serial.println("label <surface 0..6>,<quality 0..4>  (1 Asphalt, 2 Schotter, 3 Waldweg, 4 Feldweg, 5 Pflaster, 6 Sonstiges)");
 	} else {
 		Serial.println(rqCmd.getDescription());
 	}
@@ -965,6 +980,95 @@ bool I2CSensors::requestRawCapture(uint16_t seconds) {
 	return true;
 }
 
+// ******************** Manual road label (RQ-Ride screen) ********************
+
+const char* I2CSensors::surfaceName(uint8_t surface) {
+	static const char* const NAMES[LogRec::SURFACE_COUNT] = {"", "Asphalt", "Schotter", "Waldweg", "Feldweg", "Pflaster", "Sonstiges"};
+	return surface < LogRec::SURFACE_COUNT ? NAMES[surface] : "?";
+}
+
+bool I2CSensors::setRoadLabel(uint8_t surface, uint8_t quality) {
+	if (surface >= LogRec::SURFACE_COUNT || quality > LogRec::LABEL_QUALITY_MAX) return false;
+	labelWanted = surface | (quality << 8);
+	portENTER_CRITICAL(&imuMux);
+	bool running = imuSnap.running;
+	portEXIT_CRITICAL(&imuMux);
+	return running;
+}
+
+bool I2CSensors::setRoadLabelSurface(uint8_t surface) {
+	return setRoadLabel(surface, labelWanted.load() >> 8);
+}
+
+bool I2CSensors::setRoadLabelQuality(uint8_t quality) {
+	return setRoadLabel(labelWanted.load() & 0xFF, quality);
+}
+
+I2CSensors::RoadLabelState I2CSensors::getRoadLabelState() {
+	RoadLabelState st;
+	const uint16_t w = labelWanted.load();
+	st.surface = w & 0xFF;
+	st.quality = w >> 8;
+	portENTER_CRITICAL(&imuMux);
+	st.imuRunning = imuSnap.running;
+	st.capturing = rawSnap.capturing;
+	st.captureS = rawSnap.captureFrames / (float)IMU_ODR_HZ;
+	st.captureDistM = labelSnap.captureDistM;
+	st.labelDistM = labelSnap.labelDistM;
+	st.labelMs = labelSnap.labelMs;
+	portEXIT_CRITICAL(&imuMux);
+	return st;
+}
+
+void I2CSensors::labelBeforeBurst(uint32_t nowMs) {
+	const uint16_t wanted = labelWanted.load();
+	if (wanted != labelActive) {
+		const uint16_t prev = labelActive;
+		labelActive = wanted;
+		labelWrite(LogRec::LABEL_CHANGE, prev, nowMs);
+		labelSinceMs = nowMs;
+		labelDistM = 0;
+		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_OP, "Road label: %s, quality %u", labelSurface() ? surfaceName(labelSurface()) : "-", labelQuality());
+	} else if (labelActive && nowMs - labelWrittenMs >= LABEL_REFRESH_MS) {
+		labelWrite(LogRec::LABEL_REFRESH, labelActive, nowMs);
+	}
+	portENTER_CRITICAL(&imuMux);
+	labelSnap.captureDistM = captureDistM;
+	labelSnap.labelDistM = labelDistM;
+	labelSnap.labelMs = nowMs - labelSinceMs;
+	portEXIT_CRITICAL(&imuMux);
+}
+
+// prev: the label before a LABEL_CHANGE (its distance/time go into the record); for the
+// other reasons the current one, with the distance/time so far.
+void I2CSensors::labelWrite(uint8_t reason, uint16_t prev, uint32_t nowMs) {
+	const int64_t ms = epochMs();
+	const SGpsFix gps = bleDevs.getGpsFix();
+	LogRec::Label rec = {};
+	rec.timestamp = ms / 1000;
+	rec.timestampMs = ms % 1000;
+	rec.surface = labelSurface();
+	rec.quality = labelQuality();
+	rec.reason = reason;
+	rec.flags = (rawCapturing ? LogRec::LF_CAPTURING : 0) | (gps.valid ? LogRec::LF_GPS_VALID : 0);
+	rec.prevSurface = prev & 0xFF;
+	rec.prevQuality = prev >> 8;
+	rec.prevDistanceM = labelDistM;
+	rec.prevDurationMs = labelSinceMs ? nowMs - labelSinceMs : 0;
+	rec.labelSeq = ++labelSeq;
+	rec.recordType = LogRec::TYPE_LABEL;
+	rec.formatVersion = LogRec::FORMAT_VERSION;
+	if (gps.valid) {
+		rec.gpsLatitudeE7 = gps.latitudeE7;
+		rec.gpsLongitudeE7 = gps.longitudeE7;
+		rec.gpsFixAgeMs = gps.fixAgeMs;
+		rec.gpsAccuracyMX10 = gps.hasAccuracy ? gps.accuracyMX10 : 0;
+	}
+	rec.speedCms = LogRec::speedCms(curSpeedKmh);
+	bclog.appendRecord(rec);
+	labelWrittenMs = nowMs;
+}
+
 void I2CSensors::rawFileHeader(uint8_t kind, uint8_t* out) {
 	RawCap::FileHeader h = {};
 	h.magic[0] = 'B'; h.magic[1] = 'C'; h.magic[2] = 'R'; h.magic[3] = 'W';
@@ -990,6 +1094,7 @@ void I2CSensors::rawBeforeBurst() {
 	if (rawCapturing) {
 		bclog.rawClose(BCLogger::RAW_CAPTURE);
 		rawCapturing = false;
+		labelWrite(LogRec::LABEL_CAPTURE_STOP, labelActive, millis());
 		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_OP, "Raw capture stopped after %.1f s", rawCaptureFrames / (float)IMU_ODR_HZ);
 	}
 	if (req == 0) return;
@@ -1004,6 +1109,8 @@ void I2CSensors::rawBeforeBurst() {
 	rawCaptureFrames = 0;
 	rawBlockNo = 0;
 	rawGap = false;
+	captureDistM = 0;
+	labelWrite(LogRec::LABEL_CAPTURE_START, labelActive, millis());
 	bclog.logf(BCLogger::Log_Info, BCLogger::TAG_OP, "Raw capture started: %d s, ~%u KB", req, (unsigned)(req * IMU_ODR_HZ * 6 / 1000 * 21 / 20));
 }
 
@@ -1024,6 +1131,8 @@ void I2CSensors::rawCaptureChunk(const uint8_t* frames, uint16_t n, int64_t firs
 	} else {
 		h.speedAgeMs = RawCap::SPEED_AGE_UNKNOWN;
 	}
+	h.labelSurface = labelSurface();
+	h.labelQuality = labelQuality();
 	memcpy(msg + BCLogger::RAW_PREFIX, &h, sizeof(h));
 	memcpy(msg + BCLogger::RAW_PREFIX + sizeof(h), frames, take * IMU_FRAME_BYTES);
 	// A dropped block (card too slow for > 3 s) is marked on the next one
@@ -1033,6 +1142,7 @@ void I2CSensors::rawCaptureChunk(const uint8_t* frames, uint16_t n, int64_t firs
 	if (rawCaptureLeft == 0) {
 		bclog.rawClose(BCLogger::RAW_CAPTURE);
 		rawCapturing = false;
+		labelWrite(LogRec::LABEL_CAPTURE_STOP, labelActive, millis());
 		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_OP, "Raw capture complete: %.1f s", rawCaptureFrames / (float)IMU_ODR_HZ);
 	}
 }
@@ -1082,6 +1192,8 @@ void I2CSensors::rawWriteSnippet(int64_t lastEpochMs) {
 	h.epochMs = lastEpochMs - (int64_t)(SNIP_FRAMES - 1) * 1000 / IMU_ODR_HZ;
 	h.ref = snipSeq;
 	h.speedAgeMs = RawCap::SPEED_AGE_UNKNOWN;
+	h.labelSurface = labelSurface();
+	h.labelQuality = labelQuality();
 	memcpy(msg + BCLogger::RAW_PREFIX, &h, sizeof(h));
 	bool ok = bclog.rawWrite(BCLogger::RAW_SNIPPETS, msg, BCLogger::RAW_PREFIX + sizeof(h));
 	const uint32_t first = imuTotalSamples - (SNIP_FRAMES - 1);
@@ -1238,6 +1350,14 @@ void I2CSensors::getIMUJson(String& json) {
 	rw["snipFile"] = snipName;
 	rw["snipBytes"] = bclog.getRawBytes(BCLogger::RAW_SNIPPETS);
 	rw["dropped"] = bclog.getRawDropped();
+	const RoadLabelState ls = getRoadLabelState();
+	JsonObject lj = doc["label"].to<JsonObject>();
+	lj["surface"] = ls.surface;
+	lj["name"] = surfaceName(ls.surface);
+	lj["quality"] = ls.quality;
+	lj["dist"] = ls.labelDistM;
+	lj["secs"] = ls.labelMs / 1000;
+	lj["capDist"] = ls.captureDistM;
 	JsonObject pj = doc["pitch"].to<JsonObject>();
 	pj["efValid"] = r.efValid;
 	for (uint8_t i = 0; i < 3; i++) pj["ef"][i] = r.ef[i];
