@@ -68,7 +68,6 @@ void UIFacade::initDisplay() {
     lv_disp_set_theme(dispp, theme);
 
     // 2. Init all screens
-    ui_S1Main_screen_init();
 
 
     // .. add init of new screens here

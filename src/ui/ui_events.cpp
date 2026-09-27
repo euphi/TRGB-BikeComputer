@@ -64,7 +64,6 @@ void statsTimeMode(bool dir)
 //	Serial.println("UI Event: Change time mode");
 	Statistics::EAvgType statTimeMode = ui.getStatTimeMode();
 	ui.setStatTimeMode(Statistics::getNextTimeMode(statTimeMode, dir));
-	ui_ScrMainUpdateTimeMode(Statistics::AVG_TYPE_STRING[ui.getStatTimeMode()]);
 }
 
 

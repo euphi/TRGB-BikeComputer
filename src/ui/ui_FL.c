@@ -92,13 +92,8 @@ void ui_ScrFLUpdatePower(uint16_t batVoltage, uint8_t batPerc, uint16_t batFullC
 	snprintf(txtBuffer, 31, "%.01f W", dynPow);
 	lv_label_set_text(ui_ScreenFL_Label5, txtBuffer);
     lv_bar_set_value(ui_ScreenFL_Bar1, (int16_t) (dynPow*1000), LV_ANIM_ON);
-    lv_bar_set_value(ui_S1BarPowerMode, powerStage, LV_ANIM_ON);
-    if (powerStage < 0 ) {
-        lv_obj_add_state(ui_S1BarPowerMode, LV_STATE_DISABLED);       /// States
-    	powerStage = 0;
-    } else {
-        lv_obj_clear_state(ui_S1BarPowerMode, LV_STATE_DISABLED);       /// States
-    }
+    // Power-mode bar lived on the old S1Main screen (removed 2026-09-27)
+    if (powerStage < 0 ) powerStage = 0;
 
 
 
