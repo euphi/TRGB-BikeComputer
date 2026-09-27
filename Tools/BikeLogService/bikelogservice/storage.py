@@ -1,35 +1,50 @@
-"""Ride storage: the raw .bin on disk, a SQLite row as index.
+"""Session storage: the SD card's files on disk, a SQLite index next to them.
 
-Raw uploads are kept verbatim and never rewritten. Everything else -- GPX,
-CSV, later the heatmap -- is derived on demand, so improving the exporter
-improves every past ride instead of only future ones.
+A session is everything one boot of the bike computer wrote -- L_ (binary log),
+I_ (summary), D_ (debug log), S_/R_ (raw IMU), T_ (time hints), N_ (NMEA), all
+sharing one stem. The files are kept verbatim under a tree that mirrors the SD
+card (``sessions/<device>/<day>/<name>``), so they can be looked at with
+nothing but a shell. GPX, CSV and the rest are derived on demand: improving an
+exporter improves every past ride.
 
-The ride id is the content hash. That makes upload idempotent, which matters
-more here than it sounds: the uploader is an ESP32 on flaky WiFi that will
-be interrupted mid-transfer and will retry files it already sent. Re-sending
-a known file is a 200 with the same id, not a duplicate and not an error, so
-the firmware needs no reliable "already uploaded" bookkeeping of its own.
+Storing a file is idempotent. The same bytes again are "unchanged", different
+bytes under the same name replace the old ones (the device rewrites I_ files
+when their format changes). That is what lets both the puller and a pushing
+device simply send again after an interruption, without bookkeeping of their own.
+
+Deleting a session keeps its index rows as a tombstone: the files are still on
+the SD card, and without one the next pull would bring the session straight back.
 """
 
 from __future__ import annotations
 
 import datetime
 import hashlib
+import io
+import json
 import sqlite3
-from dataclasses import asdict, dataclass
+import threading
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from bikelog.record import ReadStats, UnknownLogFormat, read_stream
 
+from . import sdlayout
+from .sdlayout import SdFile
+
+SCHEMA_VERSION = 2
+
 SCHEMA = """
-CREATE TABLE IF NOT EXISTS rides (
-    id              TEXT PRIMARY KEY,
-    filename        TEXT NOT NULL,
-    device          TEXT,
-    size_bytes      INTEGER NOT NULL,
-    sha256          TEXT NOT NULL,
-    uploaded_at     TEXT NOT NULL,
-    uploaded_by     TEXT,
+CREATE TABLE IF NOT EXISTS sessions (
+    id              INTEGER PRIMARY KEY,
+    device          TEXT NOT NULL,
+    day             TEXT NOT NULL,
+    stem            TEXT NOT NULL,
+    created_at      TEXT NOT NULL,
+    updated_at      TEXT NOT NULL,
+    deleted_at      TEXT,
+    summary         TEXT,               -- I_*.txt as JSON
+    -- derived from the L_ file:
     format_version  INTEGER,
     record_count    INTEGER,
     trailing_bytes  INTEGER,
@@ -37,27 +52,55 @@ CREATE TABLE IF NOT EXISTS rides (
     last_time       INTEGER,
     distance_m      REAL,
     gps_points      INTEGER,
-    clock_unset     INTEGER NOT NULL DEFAULT 0
+    clock_unset     INTEGER NOT NULL DEFAULT 0,
+    log_error       TEXT,
+    UNIQUE (device, day, stem)
 );
-CREATE INDEX IF NOT EXISTS rides_first_time ON rides (first_time);
+CREATE TABLE IF NOT EXISTS files (
+    session_id      INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    name            TEXT NOT NULL,
+    size            INTEGER NOT NULL,
+    sha256          TEXT NOT NULL,
+    stored_at       TEXT NOT NULL,
+    source          TEXT,
+    PRIMARY KEY (session_id, name)
+);
 """
 
-#: Timestamps below this mean the ESP32 clock was never set by NTP -- see
-#: bikelog.gpx.MIN_PLAUSIBLE_YEAR. Flagged at upload so the ride can be shown
-#: as "needs a manual time offset" instead of silently landing in 1970.
+#: Timestamps below this mean the ESP32 clock was never set -- see
+#: bikelog.gpx.MIN_PLAUSIBLE_YEAR. LogSessions corrects most of these on the
+#: device, the flag catches the rest.
 MIN_PLAUSIBLE_TIMESTAMP = int(
     datetime.datetime(2020, 1, 1, tzinfo=datetime.timezone.utc).timestamp())
 
 
+def _now() -> str:
+    return datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
+
+
 @dataclass
-class Ride:
-    id: str
-    filename: str
-    device: str | None
-    size_bytes: int
+class StoredFile:
+    name: str
+    size: int
     sha256: str
-    uploaded_at: str
-    uploaded_by: str | None
+    stored_at: str
+    source: str | None
+
+    @property
+    def kind(self) -> str:
+        return self.name[0].upper()
+
+
+@dataclass
+class Session:
+    id: int
+    device: str
+    day: str
+    stem: str
+    created_at: str
+    updated_at: str
+    deleted_at: str | None
+    summary: dict | None
     format_version: int | None
     record_count: int | None
     trailing_bytes: int | None
@@ -66,131 +109,208 @@ class Ride:
     distance_m: float | None
     gps_points: int | None
     clock_unset: int
+    log_error: str | None
+    files: list[StoredFile] = field(default_factory=list)
+
+    @property
+    def start_time(self) -> int | None:
+        """Best known start: the device's summary, else the first log record."""
+        start = (self.summary or {}).get("start")
+        if isinstance(start, int) and start >= MIN_PLAUSIBLE_TIMESTAMP:
+            return start
+        return self.first_time if self.first_time and not self.clock_unset else None
+
+    def file(self, kind: str) -> StoredFile | None:
+        return next((f for f in self.files if f.kind == kind), None)
 
     def as_dict(self) -> dict:
         data = asdict(self)
         data["clock_unset"] = bool(self.clock_unset)
-        data["duration_s"] = (
-            self.last_time - self.first_time
-            if self.first_time and self.last_time else None)
+        data["start_time"] = self.start_time
+        data["duration_s"] = (self.last_time - self.first_time
+                              if self.first_time and self.last_time else None)
+        data["files"] = [asdict(f) for f in self.files]
         return data
 
 
-class DuplicateRide(Exception):
-    """Content already stored; carries the existing ride."""
-
-    def __init__(self, ride: Ride):
-        super().__init__(ride.id)
-        self.ride = ride
-
-
-class InvalidLog(Exception):
-    """Uploaded bytes are not a log this build can read."""
+@dataclass
+class PutResult:
+    session: Session
+    status: str             # "new" | "unchanged" | "replaced"
 
 
 class Storage:
     def __init__(self, settings):
         self.settings = settings
         settings.ensure_dirs()
+        # One connection shared by the request threads and the puller; sqlite3
+        # objects are not safe for concurrent use, hence the lock around every use.
+        self._lock = threading.RLock()
         self._db = sqlite3.connect(settings.db_path, check_same_thread=False)
         self._db.row_factory = sqlite3.Row
+        self._db.execute("PRAGMA foreign_keys = ON")
+        if self._db.execute("PRAGMA user_version").fetchone()[0] < SCHEMA_VERSION:
+            # v1 indexed single uploaded rides and never held real data.
+            self._db.execute("DROP TABLE IF EXISTS rides")
         self._db.executescript(SCHEMA)
+        self._db.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
         self._db.commit()
 
     def close(self) -> None:
-        self._db.close()
+        with self._lock:
+            self._db.close()
 
     # --- paths ---------------------------------------------------------
 
-    def path_for(self, ride_id: str) -> Path:
-        return self.settings.rides_dir / f"{ride_id}.bin"
+    def dir_for(self, session: Session) -> Path:
+        return self.settings.sessions_dir / session.device / (session.day or "_")
+
+    def path_for(self, session: Session, name: str) -> Path:
+        return self.dir_for(session) / name
 
     # --- queries -------------------------------------------------------
 
-    def get(self, ride_id: str) -> Ride | None:
-        row = self._db.execute("SELECT * FROM rides WHERE id = ?", (ride_id,)).fetchone()
-        return Ride(**dict(row)) if row else None
+    def _session(self, row) -> Session:
+        data = dict(row)
+        data["summary"] = json.loads(data["summary"]) if data["summary"] else None
+        files = self._db.execute(
+            "SELECT name, size, sha256, stored_at, source FROM files "
+            "WHERE session_id = ? ORDER BY name", (data["id"],)).fetchall()
+        return Session(**data, files=[StoredFile(**dict(f)) for f in files])
 
-    def list(self, limit: int = 100, offset: int = 0) -> list[Ride]:
-        rows = self._db.execute(
-            "SELECT * FROM rides ORDER BY COALESCE(first_time, 0) DESC, uploaded_at DESC "
-            "LIMIT ? OFFSET ?", (limit, offset)).fetchall()
-        return [Ride(**dict(row)) for row in rows]
+    def get(self, session_id: int, include_deleted: bool = False) -> Session | None:
+        with self._lock:
+            row = self._db.execute("SELECT * FROM sessions WHERE id = ?",
+                                   (session_id,)).fetchone()
+            if row is None or (row["deleted_at"] and not include_deleted):
+                return None
+            return self._session(row)
+
+    def find(self, device: str, day: str, stem: str) -> Session | None:
+        """Also returns tombstones -- callers decide what a deleted session means."""
+        with self._lock:
+            row = self._db.execute(
+                "SELECT * FROM sessions WHERE device = ? AND day = ? AND stem = ?",
+                (device, day, stem)).fetchone()
+            return self._session(row) if row else None
+
+    def list(self, limit: int = 100, offset: int = 0) -> list[Session]:
+        with self._lock:
+            # Day directories sort chronologically, NO_TIME/legacy after them;
+            # within a day the HHMMSS stem does the rest.
+            rows = self._db.execute(
+                "SELECT * FROM sessions WHERE deleted_at IS NULL "
+                "ORDER BY (day GLOB '[0-9]*') DESC, day DESC, length(stem) DESC, stem DESC "
+                "LIMIT ? OFFSET ?", (limit, offset)).fetchall()
+            return [self._session(row) for row in rows]
 
     def count(self) -> int:
-        return self._db.execute("SELECT COUNT(*) FROM rides").fetchone()[0]
+        with self._lock:
+            return self._db.execute(
+                "SELECT COUNT(*) FROM sessions WHERE deleted_at IS NULL").fetchone()[0]
 
-    def records(self, ride_id: str, stats: ReadStats | None = None):
-        """Parsed records of a stored ride -- the input for every export."""
-        with open(self.path_for(ride_id), "rb") as fh:
-            yield from read_stream(fh, stats)
+    def known_files(self, device: str) -> dict[str, int | None]:
+        """{"20260920/L_143012.bin": size} of everything held (or tombstoned) for a
+        device -- what the puller compares the device's listing against. Files of
+        deleted sessions report None: never fetch again, whatever the size."""
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT s.day, f.name, f.size, s.deleted_at FROM files f "
+                "JOIN sessions s ON s.id = f.session_id WHERE s.device = ?",
+                (device,)).fetchall()
+        return {SdFile(r["day"], r["name"]).path: (None if r["deleted_at"] else r["size"])
+                for r in rows}
+
+    def records(self, session: Session, stats: ReadStats | None = None, types=(0,)):
+        """Parsed records of the session's L_ file -- the input for every export."""
+        log = session.file("L")
+        if log is None:
+            return
+        with open(self.path_for(session, log.name), "rb") as fh:
+            yield from read_stream(fh, stats, types)
 
     # --- mutations -----------------------------------------------------
 
-    def add(self, payload: bytes, filename: str, device: str | None = None,
-            uploaded_by: str | None = None) -> Ride:
-        """Store an uploaded log. Raises DuplicateRide if it is already here."""
+    def put_file(self, device: str, sdfile: SdFile, payload: bytes,
+                 source: str | None = None) -> PutResult:
+        """Store one file of a session, creating the session on first sight.
+
+        A tombstoned session is revived: an explicit upload means someone wants it.
+        (The puller never gets here for those -- known_files() tells it to skip.)
+        """
+        if sdfile.day == sdlayout.WORKDIR:
+            raise sdlayout.BadPath("files of the running session are not taken")
         digest = hashlib.sha256(payload).hexdigest()
-        ride_id = digest[:16]
-        existing = self.get(ride_id)
-        if existing:
-            raise DuplicateRide(existing)
+        now = _now()
+        with self._lock:
+            session = self.find(device, sdfile.day, sdfile.stem)
+            if session is None:
+                cur = self._db.execute(
+                    "INSERT INTO sessions (device, day, stem, created_at, updated_at) "
+                    "VALUES (?, ?, ?, ?, ?)", (device, sdfile.day, sdfile.stem, now, now))
+                session = self.get(cur.lastrowid)
+            elif session.deleted_at:
+                self._db.execute("UPDATE sessions SET deleted_at = NULL WHERE id = ?",
+                                 (session.id,))
+                self._db.execute("DELETE FROM files WHERE session_id = ?", (session.id,))
+                session = self.get(session.id)
 
-        summary = _summarise(payload)
-        path = self.path_for(ride_id)
-        # Write to a temp name first: an interrupted write must not leave a
-        # half file under an id the index claims is complete.
-        tmp = path.with_suffix(".bin.part")
-        tmp.write_bytes(payload)
-        tmp.replace(path)
+            old = next((f for f in session.files if f.name == sdfile.name), None)
+            path = self.path_for(session, sdfile.name)
+            if old and old.sha256 == digest and path.exists():
+                return PutResult(session, "unchanged")
 
-        ride = Ride(
-            id=ride_id,
-            filename=filename,
-            device=device,
-            size_bytes=len(payload),
-            sha256=digest,
-            uploaded_at=datetime.datetime.now(datetime.timezone.utc).isoformat(
-                timespec="seconds"),
-            uploaded_by=uploaded_by,
-            **summary,
-        )
-        self._db.execute(
-            "INSERT INTO rides VALUES (:id, :filename, :device, :size_bytes, :sha256, "
-            ":uploaded_at, :uploaded_by, :format_version, :record_count, :trailing_bytes, "
-            ":first_time, :last_time, :distance_m, :gps_points, :clock_unset)",
-            asdict(ride))
-        self._db.commit()
-        return ride
+            path.parent.mkdir(parents=True, exist_ok=True)
+            # Temp name first: an interrupted write must not leave a half file
+            # under a name the index claims is complete.
+            tmp = path.with_name(path.name + ".part")
+            tmp.write_bytes(payload)
+            tmp.replace(path)
 
-    def delete(self, ride_id: str) -> bool:
-        ride = self.get(ride_id)
-        if ride is None:
-            return False
-        self.path_for(ride_id).unlink(missing_ok=True)
-        self._db.execute("DELETE FROM rides WHERE id = ?", (ride_id,))
-        self._db.commit()
-        return True
+            self._db.execute(
+                "INSERT OR REPLACE INTO files (session_id, name, size, sha256, stored_at, source) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (session.id, sdfile.name, len(payload), digest, now, source))
+            updates = {"updated_at": now}
+            if sdfile.kind == "L":
+                updates.update(_summarise_log(payload))
+            elif sdfile.kind == "I":
+                updates["summary"] = json.dumps(
+                    sdlayout.parse_summary(payload.decode("utf-8", "replace")))
+            self._db.execute(
+                "UPDATE sessions SET %s WHERE id = ?" % ", ".join(f"{k} = ?" for k in updates),
+                (*updates.values(), session.id))
+            self._db.commit()
+            return PutResult(self.get(session.id), "replaced" if old else "new")
+
+    def delete(self, session_id: int) -> bool:
+        with self._lock:
+            session = self.get(session_id)
+            if session is None:
+                return False
+            for f in session.files:
+                self.path_for(session, f.name).unlink(missing_ok=True)
+            self._db.execute("UPDATE sessions SET deleted_at = ? WHERE id = ?",
+                             (_now(), session_id))
+            self._db.commit()
+            return True
 
 
-def _summarise(payload: bytes) -> dict:
-    """Parse an upload once, at upload time, to fill the index.
-
-    A file that parses to zero records is rejected here rather than stored:
-    the alternative is an index full of entries that every later export
-    chokes on.
-    """
-    import io
-
+def _summarise_log(payload: bytes) -> dict:
+    """Parse an L_ file once, when it is stored, to fill the index. A file that
+    does not parse is kept anyway (it is the device's data, not ours to drop) and
+    the reason recorded."""
+    blank = dict(format_version=None, record_count=None, trailing_bytes=None,
+                 first_time=None, last_time=None, distance_m=None, gps_points=None,
+                 clock_unset=0)
     stats = ReadStats()
     try:
         records = list(read_stream(io.BytesIO(payload), stats))
     except UnknownLogFormat as exc:
-        raise InvalidLog(str(exc)) from exc
+        return {**blank, "log_error": str(exc)}
     if not records:
-        raise InvalidLog("no complete record in upload (%d byte)" % len(payload))
-
-    gps_points = sum(1 for rec in records if rec.gps_valid)
+        return {**blank, "format_version": stats.version or None,
+                "log_error": "no complete data record (%d byte)" % len(payload)}
     first, last = records[0], records[-1]
     return {
         "format_version": stats.version,
@@ -199,6 +319,7 @@ def _summarise(payload: bytes) -> dict:
         "first_time": first.timestamp,
         "last_time": last.timestamp,
         "distance_m": last.distance - first.distance,
-        "gps_points": gps_points,
+        "gps_points": sum(1 for rec in records if rec.gps_valid),
         "clock_unset": int(first.timestamp < MIN_PLAUSIBLE_TIMESTAMP),
+        "log_error": None,
     }

@@ -21,6 +21,10 @@ def _default_data_dir() -> Path:
     return Path.home() / ".local" / "state" / "bikelog"
 
 
+def _flag(value: str) -> bool:
+    return value.strip().lower() in ("1", "true", "yes", "on")
+
+
 def _split(value: str | None) -> list[str]:
     return [item.strip() for item in (value or "").split(",") if item.strip()]
 
@@ -39,24 +43,40 @@ class Settings:
 
     max_upload_bytes: int = 64 * 1024 * 1024
 
+    #: Pull the logs from the bike computer when it shows up on the network
+    #: (see puller.py). Off by default so tests and ad-hoc runs stay passive.
+    pull: bool = False
+    #: device=mdns-host entries, comma separated. The device name is what the
+    #: sessions are filed under; the host is the name the firmware passes to
+    #: MDNS.begin(), without ".local".
+    pull_targets: list[str] = field(default_factory=lambda: ["trgb=TRGB-BC"])
+    #: Fallback poll interval for when an mDNS announcement was missed.
+    pull_interval_s: float = 120.0
+    #: Listen for mDNS announcements (the trigger that makes pulling immediate).
+    pull_mdns: bool = True
+
     @classmethod
     def from_env(cls, env=None) -> "Settings":
         env = env if env is not None else os.environ
         data_dir = env.get("BIKELOG_DATA_DIR")
         return cls(
             data_dir=Path(data_dir) if data_dir else _default_data_dir(),
-            require_auth=env.get("BIKELOG_REQUIRE_AUTH", "0").lower() in ("1", "true", "yes"),
+            require_auth=_flag(env.get("BIKELOG_REQUIRE_AUTH", "0")),
             tokens=_split(env.get("BIKELOG_TOKENS")),
             max_upload_bytes=int(env.get("BIKELOG_MAX_UPLOAD_BYTES", 64 * 1024 * 1024)),
+            pull=_flag(env.get("BIKELOG_PULL", "0")),
+            pull_targets=_split(env.get("BIKELOG_PULL_TARGETS")) or ["trgb=TRGB-BC"],
+            pull_interval_s=float(env.get("BIKELOG_PULL_INTERVAL_S", 120)),
+            pull_mdns=_flag(env.get("BIKELOG_PULL_MDNS", "1")),
         )
 
     @property
-    def rides_dir(self) -> Path:
-        return self.data_dir / "rides"
+    def sessions_dir(self) -> Path:
+        return self.data_dir / "sessions"
 
     @property
     def db_path(self) -> Path:
         return self.data_dir / "index.sqlite3"
 
     def ensure_dirs(self) -> None:
-        self.rides_dir.mkdir(parents=True, exist_ok=True)
+        self.sessions_dir.mkdir(parents=True, exist_ok=True)

@@ -88,6 +88,10 @@ ist das Protokoll die Quelle der Wahrheit.
   `src/RawCapture.h`, Reader `Tools/bikelog/raw.py`, Replay mit dem
   unveränderten Firmware-Algorithmus `Tools/rqreplay/rq_replay.cpp`
   (`bikelog raw replay`).
+- Log-Dienst `Tools/BikeLogService/` (läuft auf ia216 aus `~/bikelog`, nicht
+  aus dem Repo): holt Sitzungen per mDNS-Trigger vom BC ab (`/logfiles/` bzw.
+  `/logfiles.json` + `/log/...`). Ändert sich das Namensschema auf der SD
+  oder die HTML-Liste, `bikelogservice/sdlayout.py`/`puller.py` mitziehen.
 
 ## Serielle Konsole
 

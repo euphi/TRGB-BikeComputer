@@ -1,0 +1,28 @@
+# Makes Tools/ installable, so the service can run from its own venv outside the
+# repo checkout (see BikeLogService/install.sh):
+#   pip install "/path/to/Tools[service]"
+# Nothing here is needed for running bikelog from this directory (python3 -m bikelog).
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bikelog"
+version = "2.0.0"
+description = "TRGB-BikeComputer log tools and log service"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+service = ["fastapi>=0.110", "uvicorn>=0.27", "zeroconf>=0.132"]
+
+[project.scripts]
+bikelog = "bikelog.cli:main"
+bikelogservice = "bikelogservice.__main__:main"
+
+[tool.setuptools]
+packages = ["bikelog", "bikelogservice"]
+
+[tool.setuptools.package-dir]
+bikelog = "bikelog"
+bikelogservice = "BikeLogService/bikelogservice"

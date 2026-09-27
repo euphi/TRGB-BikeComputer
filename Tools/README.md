@@ -25,7 +25,8 @@ zu OSM `surface`/`smoothness` steht in `bikelog/record.py` (`SURFACE_OSM`,
 
 ```
 bikelog/            Bibliothek + CLI (reine Standardbibliothek, kein venv nötig)
-BikeLogService/     Upload-Dienst (FastAPI, braucht venv)
+BikeLogService/     Dienst: holt Sitzungen vom BC ab (mDNS), GPX/CSV (FastAPI, eigene venv)
+pyproject.toml      macht Tools/ installierbar (für den Dienst, siehe BikeLogService/install.sh)
 tests/              pytest-Suite für beides
 ReadTachoBin.py     Altbekannter CSV-Konverter, jetzt Wrapper um "bikelog csv"
 csv2influx.py       Unverändert: CSV nach InfluxDB
