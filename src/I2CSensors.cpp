@@ -1032,6 +1032,26 @@ bool I2CSensors::setRoadLabelQuality(uint8_t quality) {
 	return setRoadLabel(labelWanted.load() & 0xFF, quality);
 }
 
+I2CSensors::CalibrationState I2CSensors::getCalibrationState() {
+	CalibrationState st;
+	portENTER_CRITICAL(&imuMux);
+	st.imuRunning = imuSnap.running;
+	st.calState = imuSnap.calState;
+	st.calPercent = imuSnap.calProgress * 100 / IMU_CAL_SAMPLES;
+	st.calValid = imuCal.valid;
+	st.calTime = imuCal.calTime;
+	st.refState = rqSnap.refState;
+	st.refProgressS = rqSnap.refProgressS;
+	st.baselineCal = rqSnap.baselineCal;
+	st.baselineG = rqSnap.baselineG;
+	st.baselineTime = rqSnap.baselineTime;
+	portEXIT_CRITICAL(&imuMux);
+	st.refTargetS = roadq.config().refSeconds;		// compile-time defaults, never changed at runtime
+	st.refMinKmh = roadq.config().refMinKmh;
+	if (st.calPercent > 100) st.calPercent = 100;
+	return st;
+}
+
 I2CSensors::RoadLabelState I2CSensors::getRoadLabelState() {
 	RoadLabelState st;
 	const uint16_t w = labelWanted.load();

@@ -86,6 +86,26 @@ public:
 	static const char* surfaceName(uint8_t surface);	// German display name, "" for 0
 	void requestPitchReset() {pitchResetRequest = true;}
 
+	// ---- Calibration state for the on-device settings screen ----
+	// IMU calibration (3 s at standstill, requestIMUCalibration()) and reference ride
+	// (requestRefRide()), both startable without the web page. Safe to call from any task.
+	enum ImuCalState : uint8_t {CAL_NONE = 0, CAL_RUNNING, CAL_OK, CAL_ERR_MOTION, CAL_ERR_SCALE};
+	struct CalibrationState {
+		bool imuRunning = false;
+		ImuCalState calState = CAL_NONE;	// last attempt; CAL_OK also for a calibration loaded at boot
+		uint8_t calPercent = 0;				// of a running calibration
+		bool calValid = false;				// a stored calibration is in use
+		time_t calTime = 0;					// when it was taken, 0 = clock wasn't set
+		RQ::RoadQuality::RefState refState = RQ::RoadQuality::RefState::IDLE;
+		uint16_t refProgressS = 0;			// accepted seconds so far
+		uint16_t refTargetS = 0;			// needed, at >= refMinKmh
+		float refMinKmh = 0;
+		bool baselineCal = false;			// baseline from a reference ride, else the default
+		float baselineG = 0;
+		time_t baselineTime = 0;
+	};
+	CalibrationState getCalibrationState();
+
 	float getHeight() const {return height;}
 	float getHumid() const {return humid;}
 	float getPress() const {return press;}
@@ -134,7 +154,6 @@ private:
 	static constexpr float IMU_CAL_MAX_SIGMA_G = 0.015f;			// stillness check per axis
 	static constexpr float IMU_CAL_SCALE_MIN = 0.9f, IMU_CAL_SCALE_MAX = 1.1f;
 
-	enum ImuCalState : uint8_t {CAL_NONE = 0, CAL_RUNNING, CAL_OK, CAL_ERR_MOTION, CAL_ERR_SCALE};
 	static const char* const CAL_STATE_STRING[];
 
 	// Everything the web page shows. Written by the ImuTask, copied out under imuMux.

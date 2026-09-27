@@ -15,6 +15,25 @@ Linked from `/debug/menu`:
 Log levels are set on `/log.html` (click a level) or on the serial console, see below.
 
 
+## Remote UI testing
+
+Screens can be checked on the real hardware without touching it (`src/UiDebug.h`):
+a screenshot of the active screen and synthetic touch input over HTTP. The host side is
+[`Tools/uishot.py`](../Tools/uishot.py):
+
+```
+python3 Tools/uishot.py shot main.png          # screenshot (PNG, 480x480)
+python3 Tools/uishot.py tap 332 408            # tap -- here: settings button on RimRidge
+python3 Tools/uishot.py press 160 366 800      # long press
+python3 Tools/uishot.py swipe 60 200 320 200   # swipe (all screens: back to RimRidge)
+python3 Tools/uishot.py screen                 # active screen, e.g. rim_ridge_settings
+```
+
+Coordinates are screen pixels, the same as in the EEZ canvas. A touch can be delayed
+(`/debug/ui/touch?...&wait=15000`) to tap something while WiFi is off, e.g. the WLAN
+reconnect pill after `wifi off` on the serial console.
+
+
 ## Logging
 
 Every line has a **tag** (`RAW FL BLE STAT WIFI SD OP CLI UI WEB`) and a **level**
@@ -67,6 +86,9 @@ miniterm's `--eol CR` -- it turns every received CR into a line feed.
 | Ctrl-W, Ctrl-U, Ctrl-K | delete word / to line start / to line end |
 | Ctrl-C | discard the line |
 | Ctrl-L | redraw the line |
+
+`wifi` shows the WiFi status, `wifi off` switches WiFi off (as after a lost connection),
+`wifi on` reconnects -- the same as the WLAN pill on the settings screen.
 
 `help` lists all commands, `help <command>` shows one. Log lines appear above the prompt, the
 half-typed command stays. The terminal should be at least 80 columns wide; longer command

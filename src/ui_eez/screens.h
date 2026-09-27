@@ -14,13 +14,15 @@ enum ScreensEnum {
     SCREEN_ID_RIM_RIDGE = 1,
     SCREEN_ID_RIM_RIDGE_NAV = 2,
     SCREEN_ID_RIM_RIDGE_RQ = 3,
-    _SCREEN_ID_LAST = 3
+    SCREEN_ID_RIM_RIDGE_SETTINGS = 4,
+    _SCREEN_ID_LAST = 4
 };
 
 typedef struct _objects_t {
     lv_obj_t *rim_ridge;
     lv_obj_t *rim_ridge_nav;
     lv_obj_t *rim_ridge_rq;
+    lv_obj_t *rim_ridge_settings;
     lv_obj_t *rr_speed_arc;
     lv_obj_t *rr_ic_wifi;
     lv_obj_t *rr_ic_gps;
@@ -86,6 +88,9 @@ typedef struct _objects_t {
     lv_obj_t *rrnav_grp_heart;
     lv_obj_t *rrnav_ic_heart;
     lv_obj_t *rrnav_hr_val;
+    lv_obj_t *rrnav_group_rq_mode;
+    lv_obj_t *rrnav_ic_state;
+    lv_obj_t *rrnav_line_rq;
     lv_obj_t *rq_nav_pill;
     lv_obj_t *rq_ic_turn;
     lv_obj_t *rq_nav_dist;
@@ -123,6 +128,33 @@ typedef struct _objects_t {
     lv_obj_t *rq_btn_record;
     lv_obj_t *rq_btn_record_ring;
     lv_obj_t *rq_btn_record_dot;
+    lv_obj_t *rq_group_rq_mode;
+    lv_obj_t *rq_ic_state;
+    lv_obj_t *rq_line_rq;
+    lv_obj_t *rrset_ic_gear;
+    lv_obj_t *rrset_title;
+    lv_obj_t *rrset_build_caption;
+    lv_obj_t *rrset_build_val;
+    lv_obj_t *rrset_ip_caption;
+    lv_obj_t *rrset_ip_val;
+    lv_obj_t *rrset_btn_wifi;
+    lv_obj_t *rrset_btn_wifi_lbl;
+    lv_obj_t *rrset_btn_cal;
+    lv_obj_t *rrset_btn_cal_lbl;
+    lv_obj_t *rrset_btn_ref;
+    lv_obj_t *rrset_btn_ref_lbl;
+    lv_obj_t *rrset_cal_status;
+    lv_obj_t *rrset_ref_status;
+    lv_obj_t *rrset_btn_reset;
+    lv_obj_t *rrset_ic_reset;
+    lv_obj_t *rrset_btn_reset_lbl;
+    lv_obj_t *rrset_btn_sleep;
+    lv_obj_t *rrset_ic_sleep;
+    lv_obj_t *rrset_btn_sleep_lbl;
+    lv_obj_t *rrset_hint;
+    lv_obj_t *rrset_group_rq_mode;
+    lv_obj_t *rrset_ic_state;
+    lv_obj_t *rrset_line_rq;
 } objects_t;
 
 extern objects_t objects;
@@ -135,6 +167,9 @@ void tick_screen_rim_ridge_nav();
 
 void create_screen_rim_ridge_rq();
 void tick_screen_rim_ridge_rq();
+
+void create_screen_rim_ridge_settings();
+void tick_screen_rim_ridge_settings();
 
 void tick_screen_by_id(enum ScreensEnum screenId);
 void tick_screen(int screen_index);

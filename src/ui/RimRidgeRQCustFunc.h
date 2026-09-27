@@ -15,12 +15,13 @@
  * NOT wired here yet - no event handlers, no data, per the user
  * ("erstmal nur mit den bekannten Daten").
  *
- * Screen switching: shown via a tap on rr_line_rq (RimRidge's road-quality
- * indicator, see action_go_to_rq() in RimRidgeCustFunc.cpp calling
- * UIFacade::showRQScreen()), returned from via a swipe gesture on this
- * screen itself (action_rq_screen_gesture() below calling
- * UIFacade::hideRQScreen()) - same manual-only pattern as RimRidgeNav's
- * tap/swipe, but with no auto-popup logic at all.
+ * Screen switching: shown via a tap on the state icon/RQ line group
+ * (rr_group_rq_mode and its copies on RimRidgeNav/RimRidgeSettings, see
+ * action_go_to_rq() in RimRidgeCustFunc.cpp calling UIFacade::showRQScreen()),
+ * returned from via a tap on this screen's own copy (rq_group_rq_mode, same
+ * action) or a swipe gesture on the screen (action_rq_screen_gesture() below
+ * calling UIFacade::hideRQScreen()) - same manual-only pattern as
+ * RimRidgeNav's tap/swipe, but with no auto-popup logic at all.
  *
  * Manual road label controls (surface pills, quality selector, record
  * button - added 2026-09-26 once I2CSensors grew setRoadLabel*()/

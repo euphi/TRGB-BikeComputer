@@ -13,6 +13,13 @@ extern void action_go_to_nav(lv_event_t * e);
 extern void action_nav_screen_gesture(lv_event_t * e);
 extern void action_go_to_rq(lv_event_t * e);
 extern void action_rq_screen_gesture(lv_event_t * e);
+extern void action_go_to_settings(lv_event_t * e);
+extern void action_settings_screen_gesture(lv_event_t * e);
+extern void action_settings_wifi(lv_event_t * e);
+extern void action_settings_cal(lv_event_t * e);
+extern void action_settings_ref(lv_event_t * e);
+extern void action_settings_reset(lv_event_t * e);
+extern void action_settings_sleep(lv_event_t * e);
 
 #ifdef __cplusplus
 }

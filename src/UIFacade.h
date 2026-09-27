@@ -39,7 +39,12 @@ public:
 	}
 	void updateFast() {xSemaphoreGive(xUpdateFast);}
 
-	void updateIP(const String& ipStr);
+	// WLAN state for the settings screen and the WLAN icon on RimRidge. Values are shared
+	// with RRSET_WIFI_* in ui/RimRidgeSettingsCustFunc.h.
+	enum WifiUiState : uint8_t {WIFI_UI_OFF = 0, WIFI_UI_CONNECTING = 1, WIFI_UI_ONLINE = 2};
+	// text: IP address, or a short status ("WLAN aus", "verbinde ...", ...). Called by
+	// WifiWebserver on every state change, also before initDisplay() (kept until then).
+	void updateIP(const String& text, WifiUiState state);
 	void updateSSIDList(const String& ssidStr);
 	void updateWiFiState(bool wifiEnabled, bool APModeActive, bool disableAPMode, uint8_t apStaCount);
 
@@ -58,13 +63,17 @@ public:
 	void showNavScreen();
 	void hideNavScreen();
 
-	// Manual RimRidgeRQ show/hide - tap on rr_line_rq (the road-quality
-	// indicator, RimRidge) / swipe gesture on the RQ screen itself. No
-	// auto-popup logic here (unlike the Nav screen) - this screen only
-	// ever opens on a deliberate tap, so no extra bookkeeping is needed
-	// to keep it from fighting anything else.
+	// Manual RimRidgeRQ show/hide - tap on the state icon/RQ line group
+	// (every screen has one; on RimRidgeRQ itself it goes back) / swipe
+	// gesture on the RQ screen. No auto-popup logic here (unlike the Nav
+	// screen); opened from RimRidgeNav it counts as dismissing that one.
 	void showRQScreen();
 	void hideRQScreen();
+
+	// Settings screen (RimRidgeSettings): tap on rr_btn_settings / any swipe on the
+	// screen itself. Refreshed once a second while shown (calibration progress).
+	void showSettingsScreen();
+	void hideSettingsScreen();
 
 	// Received (BLE TLV tags 0x0A-0x0D, PROTOCOL.md "Fahrspur-
 	// Informationen") and rendered on BOTH RimRidge's compact lane-row
@@ -125,6 +134,10 @@ public:
 	void updateRoadLabel(uint8_t surface, uint8_t quality, bool capturing);
 
 
+	// Runs fn with xUIDrawMutex held, for LVGL access from another task (e.g. the debug
+	// snapshot in UiDebug.cpp). false if the mutex couldn't be taken within timeoutMs.
+	bool runLocked(const std::function<void()>& fn, uint32_t timeoutMs);
+
 	typedef std::function<void(bool ok)> MsgBoxCallBack;
 	void showMsgBox(const String& msgText, const MsgBoxCallBack& cb);
 	void updateMsgBox(const String& msgText);
@@ -151,6 +164,9 @@ private:
 	// from updateHandler()'s own 1Hz tick (which bypasses it via
 	// isDrawTask(), same as everywhere else in this file).
 	void evaluateNaviAutoSwitch();
+	// Leaving RimRidgeNav by hand (swipe, or a tap on the state icon/RQ line): the
+	// current maneuver counts as dismissed, see hideNavScreen(). xUIDrawMutex held.
+	void dismissNavScreen();
 
 
 	UiFLModel uifl;
@@ -175,6 +191,13 @@ private:
 	// (manual tap/swipe) - shared so the two mechanisms don't fight each
 	// other (see updateNavi()'s comment).
 	bool navScreenActive = false;
+
+	// Last WLAN state from WifiWebserver (see updateIP()), guarded by xUIDrawMutex. Shown
+	// once displayReady is set - WifiWebserver starts before the UI.
+	String wifiText;
+	WifiUiState wifiState = WIFI_UI_OFF;
+	bool displayReady = false;
+	void applyWifiState();		// xUIDrawMutex held
 
 	// evaluateNaviAutoSwitch()'s state - see its own comment above and
 	// updateNavi()'s doc comment for the full rule set.

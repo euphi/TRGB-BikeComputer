@@ -44,7 +44,11 @@ void ui_RimRidgeRQUpdateNavDist(uint32_t dist) {
 
 void ui_RimRidgeRQUpdateNav(uint32_t dist, uint8_t maneuver, uint8_t roundaboutExit) {
 	static uint8_t maneuverLast = 255, exitLast = 0;
-	ui_RimRidgeRQUpdateNavDist(dist);
+	if (maneuver == NAV_MANEUVER_NONE) {	// no route: "--" like RimRidgeNav, not "0m"
+		lv_label_set_text(objects.rq_nav_dist, "--");
+	} else {
+		ui_RimRidgeRQUpdateNavDist(dist);
+	}
 	if (maneuver != maneuverLast || roundaboutExit != exitLast) {
 		maneuverLast = maneuver;
 		exitLast = roundaboutExit;

@@ -23,6 +23,10 @@ braucht, muss am Gerät selbst bedienbar sein.
 - Fahrt am Gerät **starten / pausieren / beenden**.
 - **Ausschalten** am Gerät.
 
+**Stand 2026-09-27:** Ausschalten ist erledigt: Tiefschlaf und Neustart auf dem neuen
+Settings-Screen (Zahnrad-Knopf), per Long-Press, ausgeführt nach dem Loslassen.
+Starten/Pausieren/Beenden (Pause-Knopf) ist noch offen.
+
 **Ideen:**
 - Pause-Knopf: Ein Tipp schaltet Pause an und aus, Long-Press beendet die Fahrt (mit Rückfrage).
 - Automatisch erkennen und die Wegequalität dabei aussetzen:
@@ -47,6 +51,12 @@ am Gerät starten, mit Fortschritt und Ergebnis.
 Fortschritt und Status liefert `I2CSensors` schon für die Debug-Seite:
 `imuSnap.calState`/`calProgress`, `rqSnap.refState`/`refProgressS`.
 
+**Stand 2026-09-27: erledigt.** Settings-Screen: „Kalibrieren" und „Referenzfahrt"
+(Tipp startet, bei der Referenzfahrt bricht ein zweiter Tipp ab), darunter Fortschritt
+und Ergebnis (`I2CSensors::getCalibrationState()`). Auf dem Gerät getestet: Referenzfahrt
+starten/abbrechen. Eine echte Kalibrierung wurde nicht ausgelöst, um die gespeicherte
+Einbaulage nicht zu überschreiben.
+
 ## 3. WLAN unterwegs
 
 **Ist** (`src/WifiWebserver.cpp`):
@@ -63,6 +73,11 @@ Fortschritt und Status liefert `I2CSensors` schon für die Debug-Seite:
   Android-Browser lösen `.local` aber nicht zuverlässig auf.
 
 **Wunsch:** Unterwegs per Handy auf den Webserver kommen.
+
+**Stand 2026-09-27:** Der Settings-Screen zeigt die IP (oder den WLAN-Zustand) und
+schaltet das abgeschaltete WLAN per „WLAN verbinden" wieder ein; `wifi on|off` auf der
+seriellen Konsole macht dasselbe. Das WLAN-Icon auf dem Mainscreen folgt jetzt der
+Verbindung. Noch offen: mehrere Zugangspunkte (Handy-Hotspot), AP-Modus am Gerät.
 
 **Ideen:**
 - Mehrere Zugangspunkte speichern (WiFiMulti), darunter den Handy-Hotspot.

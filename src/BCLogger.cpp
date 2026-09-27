@@ -289,6 +289,21 @@ void BCLogger::flushAllFiles() {
 	} while (true);
 }
 
+void BCLogger::flushFiles() {
+	// Queued binary records are written by FlusherTask -- give it up to 500 ms to catch up.
+	for (uint8_t i = 0; i < 50 && recordQueue && uxQueueMessagesWaiting(recordQueue) > 0; i++) {
+		wakeFlusher();
+		vTaskDelay(pdMS_TO_TICKS(10));
+	}
+	for (File* f : {&fdebug, &fnmea, &fdata, &fraw[RAW_CAPTURE], &fraw[RAW_SNIPPETS]}) {
+		if (!*f) continue;
+		if (xSemaphoreTake(xPrintMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+			f->flush();
+			xSemaphoreGive(xPrintMutex);
+		}
+	}
+}
+
 // Time-hint file of the session (format in SessionStats.h). Opened per line: it gets a
 // handful of lines per ride, not worth ~4 KB of internal RAM for an open file.
 void BCLogger::appendHint(const char* line) {

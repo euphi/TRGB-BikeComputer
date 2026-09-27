@@ -110,19 +110,41 @@ void WifiWebserver::setup() {
 	startScan();
 	WiFi.begin(StrSSID[0].c_str(), StrPW[0].c_str());
 	wifiCheckTicker.attach_ms(500, +[](WifiWebserver *thisInstance) {thisInstance->checkLoop();}, this);
+	registerCli();
 //	wifiMulti.addAP(ssid, password);
 //	wifiMulti.addAP("IA216", "xxxxx");
 }
 
-void WifiWebserver::disableWifi() {
-	ui.updateIP(String("WiFi disabled"));
+void WifiWebserver::registerCli() {
+	static Command wifiCmd = console.addCmd("wifi", +[](cmd* c) {
+		const String action = Command(c).getArgument("action").getValue();
+		if (action.equalsIgnoreCase("on")) {
+			webserver.requestReconnect();
+		} else if (action.equalsIgnoreCase("off")) {
+			webserver.requestDisable();
+		}
+		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_CLI, "WiFi status %d, IPv4 %s, SSID %s",
+		           (int) WiFi.status(), WiFi.localIP().toString().c_str(), WiFi.SSID().c_str());
+	}, +[](uint8_t pos, SerialConsole::Matches& m) {
+		if (pos == 1) {m.add("status"); m.add("on"); m.add("off");}
+	});
+	wifiCmd.addPositionalArgument("action", "status");
+	wifiCmd.setDescription("WiFi status; \"wifi on\" reconnects (like the settings screen), \"wifi off\" switches it off");
+}
+
+void WifiWebserver::disableWifi(const char* reason) {
+	ui.updateIP(String(reason), UIFacade::WIFI_UI_OFF);
+	if (mdnsStarted) {		// bound to the STA interface that goes away with WIFI_MODE_NULL
+		MDNS.end();
+		mdnsStarted = false;
+	}
 	WiFi.setSleep(true);
 	WiFi.mode(WIFI_MODE_NULL);
 	wifiEnabled = false;
 }
 
 void WifiWebserver::enableWifi() {
-	ui.updateIP(String("Enabling WiFi .."));
+	ui.updateIP(String("verbinde ..."), UIFacade::WIFI_UI_CONNECTING);
 	WiFi.setSleep(true);
 	WiFi.mode(WIFI_MODE_STA);
 	WiFi.enableIPv6();
@@ -140,11 +162,10 @@ void WifiWebserver::enableAPMode(bool enable) {
 		WiFi.mode(WIFI_AP);
 		WiFi.softAP("TRGB-BC", "123456");
 		String ipStr = WiFi.softAPIP().toString();
-		ui.updateIP(ipStr);
+		ui.updateIP(ipStr + " (AP)", UIFacade::WIFI_UI_ONLINE);
 		bclog.logf(BCLogger::Log_Debug, TAG, "Enabled AP mode with IPv4: %s .", ipStr.c_str());
 	} else {
 		APModeActive = false;
-		ui.updateIP("Disabling AP...");
 		enableWifi();
 		WiFi.begin(StrSSID[0].c_str(), StrPW[0].c_str());
 	}
@@ -182,6 +203,26 @@ void WifiWebserver::checkLoop() {
 		scanActive = false;
 
 	}
+	switch (switchRequest.exchange(REQ_NONE)) {
+	case REQ_ON:
+		if (APModeActive || WiFi.status() == WL_CONNECTED || (wifiEnabled && !wifiWasConnected)) {
+			bclog.log(BCLogger::Log_Info, TAG, "WiFi reconnect requested, but WiFi is already on");
+		} else {
+			bclog.logf(BCLogger::Log_Info, TAG, "WiFi reconnect requested on the device - connecting to %s", StrSSID[0].c_str());
+			enableWifi();
+			WiFi.begin(StrSSID[0].c_str(), StrPW[0].c_str());
+		}
+		break;
+	case REQ_OFF:
+		if (wifiEnabled && !APModeActive) {
+			bclog.log(BCLogger::Log_Info, TAG, "WiFi switched off on request");
+			wifiWasConnected = true;		// not "still connecting" - the check below stays quiet
+			disableWifi();
+		}
+		break;
+	default:
+		break;
+	}
 	if (APModeActive) {
 		bclog.log(BCLogger::Log_Debug, TAG, "Wifi check loop - AP mode active");
 		uint8_t apStaCount = WiFi.softAPgetStationNum();
@@ -190,9 +231,11 @@ void WifiWebserver::checkLoop() {
 	}
     // Handle WiFi - the current logic is:
 	// - immediately start a connection to a known Access point (from preferences)
-	// - if no connection is established within 10seconds, WiFi is disabled completely
+	// - if no connection is established within 100 seconds, WiFi is disabled completely
 	// - if established connection  is lost, WiFi is disabled completely
 	// --> this is done to save power consumption of WiFi radio.
+	// - requestReconnect() (settings screen) switches it on again and starts over.
+	// The web server itself keeps its routes; setupWebserver() just calls begin() again.
 	if (!wifiWasConnected) {
 		bclog.log(BCLogger::Log_Debug, TAG, "Wifi check loop - try to connect");
 		if (WiFi.status() == WL_CONNECTED) {
@@ -206,22 +249,26 @@ void WifiWebserver::checkLoop() {
 			//bclog.logf(BCLogger::Log_Info, TAG, "Wifi connected. IPv4: %s IPv6: %s", WiFi.localIP().toString(), WiFi.localIPv6().toString());
 			// Setup Web Server
 			setupWebserver();
-			delay(1000);	//TODO: Wifi reconnection after reset can be very fast, so IP can be available BEFORE UI has been initialized. So wait a second...
-			ui.updateIP(WiFi.localIP().toString());
-			MDNS.begin("TRGB-BC");
-		    MDNS.addService("http", "tcp", 80);
-		} else if (millis() - lostConnTimeStamp > 100000) { //disable Wifi if no connection was established during the first 10 seconds
+			// No wait for the UI needed any more (was a delay(1000) here, blocking the
+			// esp_timer task): startupComplete is only set at the end of setup(), after
+			// ui.initDisplay(), and UIFacade::updateIP() keeps the value for a screen
+			// created later anyway.
+			ui.updateIP(WiFi.localIP().toString(), UIFacade::WIFI_UI_ONLINE);
+			if (!mdnsStarted) {
+				mdnsStarted = MDNS.begin("TRGB-BC");
+				if (mdnsStarted) MDNS.addService("http", "tcp", 80);
+			}
+		} else if (millis() - lostConnTimeStamp > 100000) { //disable Wifi if no connection was established within 100 seconds
 			wifiWasConnected = true;
 			bclog.log(BCLogger::Log_Warn, TAG, "Not connected to Wifi - disabling it");
-			disableWifi();
+			disableWifi("kein WLAN gefunden");
 		} else {
 			bclog.log(BCLogger::Log_Debug, TAG, "Wifi check loop - can't connect (yet)");
 		}
 	} else if (WiFi.status() == WL_CONNECTION_LOST) {
 		lostConnTimeStamp = millis();
-		ui.updateIP(String("connection lost"));
 		bclog.log(BCLogger::Log_Warn, TAG, "Wifi connection lost - disabling it to save power");
-		disableWifi();
+		disableWifi("Verbindung verloren");
 	}
 	// A successful OTA cannot restart from the upload handler -- that runs on async_tcp
 	// and the client still has to receive the response. The flag is set there and acted

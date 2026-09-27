@@ -28,6 +28,7 @@ extern const lv_img_dsc_t img_rr_icon_turn_64;
 extern const lv_img_dsc_t img_rr_icon_stopwatch;
 extern const lv_img_dsc_t img_rr_icon_clock;
 extern const lv_img_dsc_t img_rr_icon_ruler;
+extern const lv_img_dsc_t img_rr_icon_moon;
 
 #ifndef EXT_IMG_DESC_T
 #define EXT_IMG_DESC_T
@@ -37,7 +38,7 @@ typedef struct _ext_img_desc_t {
 } ext_img_desc_t;
 #endif
 
-extern const ext_img_desc_t images[21];
+extern const ext_img_desc_t images[22];
 
 #ifdef __cplusplus
 }

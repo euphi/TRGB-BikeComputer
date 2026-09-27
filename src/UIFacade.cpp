@@ -35,6 +35,11 @@
 #include "ui/RimRidgeCustFunc.h"
 #include "ui/RimRidgeNavCustFunc.h"
 #include "ui/RimRidgeRQCustFunc.h"
+#include "ui/RimRidgeSettingsCustFunc.h"
+#include "UiDebug.h"
+
+static_assert(UIFacade::WIFI_UI_OFF == RRSET_WIFI_OFF && UIFacade::WIFI_UI_CONNECTING == RRSET_WIFI_CONNECTING
+		&& UIFacade::WIFI_UI_ONLINE == RRSET_WIFI_ONLINE, "WifiUiState and RRSET_WIFI_* must match");
 
 #include <DateTime.h>
 
@@ -85,6 +90,9 @@ void UIFacade::initDisplay() {
     ui_RimRidgeRQInitLabelControls();
     ui_RimRidgeRQUpdateLabel(0, 0, false); // nothing labeled/capturing yet - normalize away the JSON's static "Schotter/3 selected" example content
     ui_RimRidgeRQInitNavLink(); // rq_nav_pill tap -> showNavScreen(), same target as rr_nav_pill's GoToNav action, but wired in C (see RimRidgeRQCustFunc.cpp)
+    create_screen_rim_ridge_settings();
+    ui_RimRidgeSettingsInit(); // build string, calibration status, restart/deep-sleep timer
+    UiDebug::setup(); // /debug/ui/*: screenshot and synthetic touch for testing screens remotely
 
     // 3. set main screen
     // RimRidge is now the permanent main/boot screen (2026-09-18).
@@ -92,8 +100,8 @@ void UIFacade::initDisplay() {
     // removed 2026-09-26 once nothing outside their own folders referenced
     // them any more (see memory ui-tooling-eez-studio-migration). Chart and
     // Settings are still initialized (Chart's ui_ScrChartUpdateBat() has a
-    // live dependency - see updateIntBatteryInt(); Settings has no RimRidge
-    // replacement screen yet).
+    // live dependency - see updateIntBatteryInt(); the old Settings screen's
+    // brightness slider has no place on RimRidgeSettings yet).
     ui_MainScreen = objects.rim_ridge;
 
     ui_ScrChartSetBackScreen(ui_MainScreen);
@@ -103,6 +111,13 @@ void UIFacade::initDisplay() {
 
     // 4. Load initial screen
     lv_disp_load_scr(ui_MainScreen);
+
+    // WifiWebserver started before the UI - show what it reported so far.
+    if (xSemaphoreTake(xUIDrawMutex, portMAX_DELAY) == pdTRUE) {
+    	displayReady = true;
+    	applyWifiState();
+    	xSemaphoreGive(xUIDrawMutex);
+    }
 
     // 5. Start fast update Thread
     xTaskCreate(startTaskUiUpdate, "UI Task", 4096, NULL, 20, &uiTaskHandle);	// High priority task for smooth display updates
@@ -214,6 +229,8 @@ void UIFacade::updateHandler() {
 			// both correct and safe here (nothing to self-deadlock against).
 			if (xSemaphoreTake(xUIDrawMutex, 50 / portTICK_PERIOD_MS) == pdTRUE) {
 				evaluateNaviAutoSwitch();
+				// Calibration progress/result - only while the settings screen is shown.
+				if (lv_scr_act() == objects.rim_ridge_settings) ui_RimRidgeSettingsUpdateCal();
 				xSemaphoreGive(xUIDrawMutex);
 			}
 		}
@@ -322,11 +339,26 @@ void UIFacade::updateHeight(float _height) { // height only update,
 
 
 
-void UIFacade::updateIP(const String& ipStr) {
-	// SWLAN screen removed 2026-09-26 (was already disabled since
-	// 2026-09-18) - no RimRidge equivalent yet (no IP display), wire this
-	// up once WLAN gets a RimRidge-style screen.
-	(void) ipStr;
+void UIFacade::updateIP(const String& text, WifiUiState state) {
+	// Called from WifiWebserver's check ticker (esp_timer task) and from its setup(),
+	// which runs before initDisplay() - so the value is kept and only drawn once the
+	// screens exist (displayReady, set in initDisplay()).
+	bool uiTask = isDrawTask();
+	if (uiTask || xSemaphoreTake(xUIDrawMutex, 250 / portTICK_PERIOD_MS) == pdTRUE) {
+		wifiText = text;
+		wifiState = state;
+		if (displayReady) applyWifiState();
+		if (!uiTask) xSemaphoreGive(xUIDrawMutex);
+	} else {
+		bclog.log(BCLogger::Log_Warn, BCLogger::TAG_UI, "Update IP blocked by mutex");
+	}
+}
+
+void UIFacade::applyWifiState() {
+	ui_RimRidgeSettingsUpdateWifi(wifiText.c_str(), wifiState);
+	// The WLAN icon on RimRidge now follows the connection (it used to be updated in AP
+	// mode only, so it stayed visible after WiFi had switched itself off).
+	ui_RimRidgeUpdateWiFiState(wifiState == WIFI_UI_ONLINE, false, false, 0);
 }
 
 void UIFacade::updateSSIDList(const String& ssidStr) {
@@ -591,12 +623,14 @@ void UIFacade::showNavScreen() {
 }
 
 void UIFacade::showRQScreen() {
-	// Manual open (rr_line_rq tap on RimRidge) - no auto-popup logic on
-	// this screen at all, so unlike showNavScreen() there's no extra state
-	// to keep in sync. Same same-task mutex re-entrancy note applies (see
-	// showNavScreen() above).
+	// Manual open (tap on the state icon/RQ line group, from RimRidge,
+	// RimRidgeNav or RimRidgeSettings) - no auto-popup logic on this screen
+	// at all. Coming from RimRidgeNav it is a manual dismiss of the nav
+	// screen, same as swiping it away. Same same-task mutex re-entrancy note
+	// applies (see showNavScreen() above).
 	bool uiTask = isDrawTask();
 	if (uiTask || xSemaphoreTake(xUIDrawMutex, 150 / portTICK_PERIOD_MS) == pdTRUE) {
+		if (navScreenActive) dismissNavScreen();
 		lv_disp_load_scr(objects.rim_ridge_rq);
 		if (!uiTask) xSemaphoreGive(xUIDrawMutex);
 	} else {
@@ -615,6 +649,36 @@ void UIFacade::hideRQScreen() {
 	}
 }
 
+void UIFacade::showSettingsScreen() {
+	// Manual open (rr_btn_settings tap on RimRidge). Same same-task mutex
+	// re-entrancy note as showNavScreen() above.
+	bool uiTask = isDrawTask();
+	if (uiTask || xSemaphoreTake(xUIDrawMutex, 150 / portTICK_PERIOD_MS) == pdTRUE) {
+		ui_RimRidgeSettingsUpdateCal();		// don't show a stale status for the first second
+		lv_disp_load_scr(objects.rim_ridge_settings);
+		if (!uiTask) xSemaphoreGive(xUIDrawMutex);
+	} else {
+		bclog.log(BCLogger::Log_Warn, BCLogger::TAG_UI, "Show settings screen blocked by mutex");
+	}
+}
+
+void UIFacade::hideSettingsScreen() {
+	// Manual close (swipe on RimRidgeSettings).
+	bool uiTask = isDrawTask();
+	if (uiTask || xSemaphoreTake(xUIDrawMutex, 150 / portTICK_PERIOD_MS) == pdTRUE) {
+		lv_disp_load_scr(ui_MainScreen);
+		if (!uiTask) xSemaphoreGive(xUIDrawMutex);
+	} else {
+		bclog.log(BCLogger::Log_Warn, BCLogger::TAG_UI, "Hide settings screen blocked by mutex");
+	}
+}
+
+void UIFacade::dismissNavScreen() {
+	navScreenActive = false;
+	autoDecidedForManeuver = currentManeuver;
+	pendingHideAtMs = 0;
+}
+
 void UIFacade::hideNavScreen() {
 	// Manual close (swipe right on RimRidgeNav). Marks the current
 	// maneuver as already-decided so evaluateNaviAutoSwitch() won't
@@ -627,9 +691,7 @@ void UIFacade::hideNavScreen() {
 	// Same same-task mutex re-entrancy note as showNavScreen() above.
 	bool uiTask = isDrawTask();
 	if (uiTask || xSemaphoreTake(xUIDrawMutex, 150 / portTICK_PERIOD_MS) == pdTRUE) {
-		navScreenActive = false;
-		autoDecidedForManeuver = currentManeuver;
-		pendingHideAtMs = 0;
+		dismissNavScreen();
 		lv_disp_load_scr(ui_MainScreen);
 		if (!uiTask) xSemaphoreGive(xUIDrawMutex);
 	} else {
@@ -644,6 +706,12 @@ void UIFacade::updateNaviDist(uint32_t dist) {
 		// evaluateNaviAutoSwitch() so the distance thresholds react as
 		// fast as the speed sensor allows, not just on the ~1-5s BLE nav
 		// cadence.
+		// No route: the wheel keeps interpolating from the last maneuver's distance
+		// (BLEDevices only resets it with the next frame) - don't overwrite the "--".
+		if (currentManeuver == NAV_MANEUVER_NONE) {
+			xSemaphoreGive(xUIDrawMutex);
+			return;
+		}
 		currentManeuverDist = dist;
 		evaluateNaviAutoSwitch();
 		// ui_ScrNaviUpdateNavDist removed 2026-09-18 (SNavi popup disabled).
@@ -699,6 +767,14 @@ void UIFacade::setChartPosFirst(uint16_t pos, uint8_t idx) {
 }
 void UIFacade::updateChart() {
 	ui_ScrChartRefresh();
+}
+
+bool UIFacade::runLocked(const std::function<void()>& fn, uint32_t timeoutMs) {
+	bool uiTask = isDrawTask();
+	if (!uiTask && xSemaphoreTake(xUIDrawMutex, timeoutMs / portTICK_PERIOD_MS) != pdTRUE) return false;
+	fn();
+	if (!uiTask) xSemaphoreGive(xUIDrawMutex);
+	return true;
 }
 
 void UIFacade::showMsgBox(const String &msgText, const MsgBoxCallBack &cb) {

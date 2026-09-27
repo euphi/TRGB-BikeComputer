@@ -11,7 +11,7 @@ selbst ist die Felge.
 |---|---|---|
 | Mainscreen | [`mainscreen.svg`](mainscreen.svg) | **implementiert**, `EEZStudio/TRGB-BikeComputer.eez-project`, Screen `rim_ridge`, inkl. Straßenqualität-Indikator (`rr_line_rq`, §4) |
 | Navigationsscreen | [`navscreen.svg`](navscreen.svg) | **implementiert**, Screen `rim_ridge_nav` (`SCREEN_ID_RIM_RIDGE_NAV`) |
-| Einstellungen | [`settings.svg`](settings.svg) | Spezifikation, noch nicht in EEZ Studio angelegt |
+| Einstellungen | [`settings.svg`](settings.svg) | **implementiert**, Screen `RimRidgeSettings` (`SCREEN_ID_RIM_RIDGE_SETTINGS`), gegenüber der SVG um WLAN-Reconnect, Kalibrierung und Referenzfahrt erweitert (§6) |
 | RQ-Ride-Screen | [`rqscreen.svg`](rqscreen.svg) | **Umgesetzt** (Screen `RimRidgeRQ`) — Nav-Pille, Speed, Puls, Wegzähler (Tourstrecke) mit echten Daten; RQ-Index aus `ui_RimRidgeUpdateRoadQuality()`; Untergrund-Pillen, Qualitäts-Regler und Aufnahme-Taste live über `I2CSensors::setRoadLabel*()`/`startRoadCapture()` verdrahtet (Tap togglet, zweiter Tap auf den aktiven Wert setzt ihn zurück) |
 
 Jede SVG-Datei ist 1:1 im Ziel-Koordinatensystem (480×480 Einheiten =
@@ -249,10 +249,9 @@ Qualitätsklasse als kleiner farbiger Indikator", BMI160-basiert,
 Konzeptdokument liegt außerhalb des Repos unter
 `~/.claude/plans/plane-mir-ein-konzept-linear-crayon.md`).
 
-- Direktes Kind des `rim_ridge`-Screens (nicht in `rr_tour_pill` verschachtelt),
-  `align=BOTTOM_MID`, Offset `(2,-16)`, `115×5`, `line_width=5` — ein dünner
-  Balken knapp über der Bildschirmkante, mittig unter der Distanz-/Modus-
-  Spalte.
+- Sitzt im Container `rr_group_rq_mode` direkt unter dem Fahrzustand-Icon
+  (`align=BOTTOM_MID`, Widget `140×5`, Linie `0,0 → 115,0`, `line_width=5`) —
+  ein dünner Balken knapp über der Bildschirmkante.
 - Klasse `n` (1–5) → `line_color` auf die entsprechende der fünf
   HF-Zonenfarben (§1, `ZONE_BLUE`…`ZONE_RED`, `theme_colors[26..30]`) —
   glatt = blau, sehr rau = rot, dieselbe Reihenfolge wie die HF-Leiste.
@@ -262,6 +261,15 @@ Konzeptdokument liegt außerhalb des Repos unter
   bei jeder Ampelpause, die Linie ist durchgehend präsent, nur die Farbe
   trägt die Information. Identisch mit dem JSON-Default in EEZ Studio, vor
   der ersten echten Klasse.
+- **Auf allen vier Screens identisch** (seit 2026-09-27): `rr_group_rq_mode`
+  (Container `BOTTOM_MID`, Offset `(0,-5)`, `197×40`, darin Fahrzustand-Icon
+  `TOP_MID` und `rr_line_rq` `BOTTOM_MID`) ist 1:1 als `rq_group_rq_mode`
+  (RQ-Ride), `rrnav_group_rq_mode` (Navigation) und `rrset_group_rq_mode`
+  (Einstellungen) kopiert. Icon und Linienfarbe setzen
+  `ui_RimRidgeUpdateStateIcon()`/`ui_RimRidgeUpdateRoadQuality()` auf allen
+  Kopien. Tipp auf die Gruppe öffnet den RQ-Ride-Screen, auf dem RQ-Ride-Screen
+  selbst geht es damit zurück zum Mainscreen (Action `GoToRq`). Änderungen an
+  der Gruppe immer auf allen vier Screens gleich machen.
 - Verdrahtet in `ui_RimRidgeUpdateRoadQuality()`
   (`src/ui/RimRidgeCustFunc.cpp`) — Datenkette
   `RoadQuality`/`I2CSensors` → `Statistics::updateRoadQualityUi()` →
@@ -285,8 +293,8 @@ Konzeptdokument liegt außerhalb des Repos unter
 | Pause (Button) | `img_rr_icon_pause` | zwei vertikale Balken |
 | Einstellungen (Button) | — (noch kein eigenes `rr_icon_`-Asset, siehe unten) | Kreis + Nabe + 6 radiale Zähne, 60°-Abstand |
 | Fahrzustand ×4 | `img_rr_icon_state_{power,coasting,stop,break}` | siehe §4 |
-| Neustart (Settings) | noch nicht exportiert | identisch zum Cadence-Icon (Kreisbogen + Pfeilspitze) — Wiederverwendung als „rotierend/zurücksetzen" |
-| Tiefschlaf (Settings) | noch nicht exportiert | Vollkreis + versetzter Kreis in Flächenfarbe („ausgestanzte" Mondsichel) |
+| Neustart (Settings) | `img_rr_icon_cadence` (wiederverwendet) | Cadence-Icon (Kreisbogen + Pfeilspitze) als „rotierend/zurücksetzen" |
+| Tiefschlaf (Settings) | `img_rr_icon_moon` | Vollkreis r=8 minus versetzter Kreis r=7 bei (4.5,−2.5) („ausgestanzte" Mondsichel), `ALPHA_8BIT` |
 | Stoppuhr (Fahrzeit) | `img_rr_icon_stopwatch` | Kreis + kleine Krone/Taste oben + zwei Zeiger — siehe §4 „Fahrzeit / Uhrzeit" |
 | Uhr (Uhrzeit) | `img_rr_icon_clock` | wie Stoppuhr, aber ohne Krone — teilt sich denselben Widget-Slot mit dem Stoppuhr-Icon |
 | Wegzähler (RQ-Ride) | noch nicht exportiert | Lineal-Motiv: waagrechte Linie + vier senkrechte Teilstriche (bewusst abstrakt wie das Cadence-/Steigungs-Icon, nicht wörtlich „Kilometerzähler") |
@@ -337,42 +345,43 @@ die gehört auf den Mainscreen, wo sie durchgehend sichtbar ist.
 
 ### Einstellungen — [`settings.svg`](settings.svg)
 
-Erster Ausbauschritt, bewusst minimal: Zahnrad + Screen-Titel oben, zwei
-Info-Zeilen (Build, IP-Adresse) als Label/Wert-Paar, zwei Aktions-Pillen
-(Neustart, Tiefschlaf) mit Icon + Beschriftung.
+**Umgesetzt** als `RimRidgeSettings` (2026-09-27). Gegenüber der SVG-Studie
+(Zahnrad, Titel, Build, IP, Neustart, Tiefschlaf) kamen aus
+[`USABILITY-TODO.md`](../USABILITY-TODO.md) §2/§3 WLAN-Reconnect,
+IMU-Kalibrierung und Referenzfahrt dazu. Neustart und Tiefschlaf stehen deshalb
+nebeneinander statt untereinander. Kein Statuszeilen-Kopf, aber unten die
+gemeinsame Fahrzustand/RQ-Gruppe (§4). Öffnen: Tipp auf `rr_btn_settings`;
+zurück: Wischen in beliebige Richtung. Logik: `src/ui/RimRidgeSettingsCustFunc.cpp`.
 
-| Element | x | y | Größe | Font/Farbe |
-|---|---|---|---|---|
-| Zahnrad | 240 | 88 | r=9·1.5 (Zähne bis r=18·1.5) | `BRASS` |
-| Titel „EINSTELLUNGEN" | 240 | 135 | 15px, letter-spacing 4 | Mono, `BRASS` |
-| Label „BUILD" | 240 | 180 | 12px | Mono, `MUTED` |
-| Wert Build-String | 240 | 210 | 24px | Mono, `PARCHMENT` |
-| Label „IP-ADRESSE" | 240 | 252 | 12px | Mono, `MUTED` |
-| Wert IP-Adresse | 240 | 282 | 24px | Mono, `PARCHMENT` |
-| Pille „Neustart" | 135–345 | 320–360 | h=40, rx=20 | `PANEL_BG`/`BRASS`-Rahmen |
-| Pille „Tiefschlaf" | 135–345 | 375–415 | h=40, rx=20 | `PANEL_BG`/`BRASS`-Rahmen |
+| Element | Box (x, y, w, h) | Font/Farbe | Inhalt |
+|---|---|---|---|
+| `rrset_ic_gear` | 216, 24, 48, 48 | `SettingsIcon`, `BRASS` | |
+| `rrset_title` | TOP_MID, y=78 | 14, Abstand 3, `BRASS` | „EINSTELLUNGEN" |
+| `rrset_build_caption` / `_val` | TOP_MID, y=108 / 126 | 14 `MUTED` / 18 `PARCHMENT` | `v0.0.2-88 (51c4300) #1277` = Tag-Commits (Hash) #Build-Nr. |
+| `rrset_ip_caption` / `_val` | TOP_MID, y=156 / 174 | 14 `MUTED` / 22 `PARCHMENT` | IP, „… (AP)", oder „WLAN aus" / „verbinde ..." / „Verbindung verloren" / „kein WLAN gefunden" |
+| `rrset_btn_wifi` | 135, 208, 210, 40 | Pille, 18 | „WLAN verbinden"; `DISABLED` („verbinde ...", „WLAN verbunden") solange nicht offline |
+| `rrset_btn_cal` / `rrset_btn_ref` | 50/245, 258, 185, 40 | Pille, 18 | „Kalibrieren" / „Referenzfahrt" (läuft: „Abbrechen") |
+| `rrset_cal_status` / `rrset_ref_status` | 50/245, 302, 185, 2 Zeilen | 14, `MUTED`; läuft `PARCHMENT`, Fehler `ZONE_RED` | „kalibriert 25.09.", „still halten ... 67 %", „Fehler: bewegt" / „Standard (150 mg)", „23 / 60 s ab 12 km/h", „142 mg 27.09." |
+| `rrset_btn_reset` / `rrset_btn_sleep` | 85/245, 346, 150, 40 | Pille mit Icon + 18 | Long-Press |
+| `rrset_hint` | TOP_MID, y=392 | 14 `MUTED` | „lange drücken" → „loslassen: Neustart" |
 
-**Für spätere Erweiterung:** weitere Info-Zeilen lassen sich zwischen
-IP-Adresse (y=282) und der ersten Pille (y=320) einschieben — bei y≈300
-ist noch komfortabel Platz für ein bis zwei weitere Label/Wert-Paare, bevor
-es an der Kreisrundung eng wird (§3-Formel vorher gegenrechnen). Wird die
-Liste länger, auf ein scrollbares `lv_obj` mit vertikalem Flow wechseln
-statt weiter manuell zu positionieren.
+Pillen: `PANEL_BG` voll deckend, Rahmen `BRASS` 2 px bei `border_opa` 90,
+`PRESSED`: Rahmen voll + Fläche `TOUR_BG`, `DISABLED`: Rahmen `border_opa` 40,
+Text `MUTED`.
 
-**Offene Punkte vor der Umsetzung** (bewusst nicht Teil dieser Spezifikation,
-aber vor dem Verdrahten in EEZ Studio zu klären):
+**Entschiedene Punkte:**
 
-- Neustart und Tiefschlaf sind folgenreich (Reboot bzw. Power-Down) — vor
-  dem Verdrahten der echten Aktion überlegen, ob ein Long-Press oder ein
-  Bestätigungsschritt nötig ist, statt eines einfachen Tap. Betrifft dieselbe
-  offene Frage wie bei der bestehenden „Pause"-Taste auf dem Mainscreen.
-- Build-String-Format (Version + Git-Hash? nur Datum? `build_versioning.py`
-  im Repo-Root generiert vermutlich schon etwas Passendes — dessen Format
-  übernehmen statt ein neues zu erfinden).
-- IP-Anzeige setzt voraus, dass WLAN/STA-Modus überhaupt aktiv ist (wofür
-  genau — OTA? Web-Interface? `WifiWebserver.cpp` existiert im Repo) — Screen
-  sollte einen Leerzustand („nicht verbunden") vorsehen, nicht nur die
-  Erfolgs-Anzeige.
+- Neustart/Tiefschlaf lösen per **Long-Press** aus und werden erst **nach dem
+  Loslassen** ausgeführt: Tiefschlaf weckt über den Touch-Interrupt, ein noch
+  aufliegender Finger würde sofort wieder wecken. Vorher werden Distanz (NVS) und
+  Log-Dateien gesichert.
+- Kalibrieren und Referenzfahrt starten per einfachem Tipp. Beides überschreibt
+  erst bei Erfolg etwas; die Referenzfahrt lässt sich mit demselben Knopf
+  abbrechen.
+- Der WLAN-Knopf verbindet nur neu, wenn das WLAN aus ist (nach 100 s ohne
+  Verbindung oder nach Verbindungsverlust schaltet es sich ab). AP-Modus und
+  mehrere Zugangspunkte sind noch offen.
+- Die Helligkeit (alter SquareLine-Settings-Screen) hat hier noch keinen Platz.
 
 ### RQ-Ride-Screen — [`rqscreen.svg`](rqscreen.svg)
 
@@ -397,7 +406,7 @@ Aufbau von oben nach unten:
 | Wegzähler | 184 (Icon) / 215 (Wert) | 20px | neues Lineal-Icon (§5), Wert+Einheit ein String wie die Mainscreen-Distanz |
 | Untergrund-Pillen | 240–318 | 6× `100×36`, `rx=18` | Text-Pillen ohne Icon (Begründung: §2-Lektion zur Icon-Mindestgröße), 2×3-Raster: Asphalt/Schotter/Waldweg/Feldweg/Pflaster/Sonstiges |
 | Qualität | 360 | 4× `r=20` | Segmentierter Wähler (§4), Stufen 1–4 |
-| Aufnahme-Taste | 418 | `r=28` | Pol-Ausnahme (§3): mittig auf x=240, daher gilt die physische Kreisgrenze (`r=234`), nicht die `r_sicher=205`-Formel |
+| Aufnahme-Taste | 166 | `r=28` | seit 2026-09-27 in der freien Mittelspalte zwischen Geschwindigkeit und RQ-Index (`212,138,56,56`); unten sitzt jetzt die gemeinsame Fahrzustand/RQ-Gruppe (§4) |
 
 **Warum ein 4-stufiger Wähler statt der automatischen 5 Klassen:** die
 automatische Klassifikation (`RQ::IntervalResult::roadClass`, 1–5) und die
@@ -438,8 +447,11 @@ Neustart nicht übersteht.
   Buttons, `_val`/`_unit`-Suffix für Wert/Einheit-Paare, `_pill`/`_bg` für
   Chip-Flächen. Für die neuen Screens fortführen, z. B. `rr_settings_build`,
   `rr_btn_reset`, `rr_btn_deepsleep`.
-- **Neuer Screen `SCREEN_ID_SETTINGS`:** fehlt noch als EEZ-Screen
-  (vorhanden: `SCREEN_ID_RIM_RIDGE`, `SCREEN_ID_RIM_RIDGE_NAV`).
+- **Screens:** `SCREEN_ID_RIM_RIDGE`, `SCREEN_ID_RIM_RIDGE_NAV`,
+  `SCREEN_ID_RIM_RIDGE_RQ`, `SCREEN_ID_RIM_RIDGE_SETTINGS`. Präfixe der
+  Widgets: `rr_`, `rrnav_`, `rq_`, `rrset_`.
+- **Prüfen auf dem Gerät:** Screenshot und synthetische Touches per
+  `Tools/uishot.py` (siehe `doc/DEBUG.md`, „Remote UI testing").
 - **Fahrzeit/Uhrzeit-Widget:** `rr_ic_time` (Icon) + `rr_time_val` (Text)
   auf `rim_ridge`. Welcher Zustand gilt, entscheidet die Firmware
   (`ui_RimRidgeUpdateTime()`).

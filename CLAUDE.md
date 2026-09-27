@@ -40,14 +40,16 @@ ist das Protokoll die Quelle der Wahrheit.
 
 ## UI
 
-- Aktiver Main-Screen ist **RimRidge** (EEZ Studio), dazu der
-  Navigations-Screen **RimRidgeNav**. Projekt:
+- Aktiver Main-Screen ist **RimRidge** (EEZ Studio), dazu **RimRidgeNav**
+  (Navigation), **RimRidgeRQ** (Wege-Labels) und **RimRidgeSettings**
+  (Einstellungen: IP/WLAN, Kalibrierung, Neustart/Tiefschlaf). Projekt:
   `EEZStudio/TRGB-BikeComputer.eez-project`, Design-System:
   [`doc/design/rim-ridge-design-system.md`](doc/design/rim-ridge-design-system.md).
 - `src/ui_eez/` ist **generiert** und wird bei jedem EEZ-Export komplett
   ersetzt -- nie von Hand editieren. Handgeschriebene Logik liegt in
-  `src/ui/RimRidgeCustFunc.*` und `src/ui/RimRidgeNavCustFunc.*`,
-  angebunden über `src/UIFacade.cpp`.
+  `src/ui/RimRidge*CustFunc.*`, angebunden über `src/UIFacade.cpp`.
+- Auf dem Gerät prüfen ohne es anzufassen: `Tools/uishot.py` (Screenshot,
+  Tap, Wischen; `doc/DEBUG.md`).
 - EEZ-Projekt per Skript bearbeiten: Skill `.claude/skills/eezstudio/`
   (Projekt-Deltas in `PROJECT-NOTES.md` dort). Der Nutzer prüft das
   Ergebnis im EEZ-Canvas und exportiert selbst.

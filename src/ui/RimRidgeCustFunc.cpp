@@ -84,7 +84,12 @@ void ui_RimRidgeUpdateNavDist(uint32_t dist) {
 void ui_RimRidgeUpdateNav(const char* navStr, uint32_t dist, uint8_t maneuver, uint8_t roundaboutExit) {
 	(void) navStr;
 	static uint8_t maneuverLast = 255, exitLast = 0;
-	ui_RimRidgeUpdateNavDist(dist);
+	// No route: "--" like RimRidgeNav, not "0m".
+	if (maneuver == NAV_MANEUVER_NONE) {
+		lv_label_set_text(objects.rr_nav_dist, "--");
+	} else {
+		ui_RimRidgeUpdateNavDist(dist);
+	}
 	// Reuses the same maneuver icon set as MainNoFL's ui_ImgNav
 	// (navIcon64()) instead of RimRidge's own placeholder turn glyph -
 	// navIcon64(NAV_MANEUVER_NONE, ...) already returns the "no nav" icon,
@@ -123,8 +128,12 @@ void ui_RimRidgeUpdateRoadQuality(uint8_t roadClass, float roughness, uint32_t s
 	// presence rather than flickering in and out with every red light.
 	static const uint32_t ZONE_COLOR[5] = { 0x6C90B0, 0x6FA98C, 0xD7B463, 0xCE8A4C, 0xC1604A };
 	uint32_t color = (roadClass >= 1 && roadClass <= 5) ? ZONE_COLOR[roadClass - 1] : 0xCBA36B;
-	lv_obj_set_style_line_color(objects.rr_line_rq, lv_color_hex(color), LV_PART_MAIN | LV_STATE_DEFAULT);
-	lv_obj_clear_flag(objects.rr_line_rq, LV_OBJ_FLAG_HIDDEN);
+	// Same line on every screen that carries the state icon/RQ line group.
+	lv_obj_t* const lines[] = {objects.rr_line_rq, objects.rq_line_rq, objects.rrnav_line_rq, objects.rrset_line_rq};
+	for (lv_obj_t* line : lines) {
+		lv_obj_set_style_line_color(line, lv_color_hex(color), LV_PART_MAIN | LV_STATE_DEFAULT);
+		lv_obj_clear_flag(line, LV_OBJ_FLAG_HIDDEN);
+	}
 
 	// Same zone color/class drives the RQ-index digit on the RQ-Ride-Screen
 	// (rq_rq_val) - "-" in the same neutral RRBrass for class 0, matching
@@ -159,15 +168,19 @@ void action_pause_long_press(lv_event_t * e) {
 }
 
 void ui_RimRidgeUpdateStateIcon(const lv_img_dsc_t* pIcon, lv_color_t color) {
-	if (pIcon == nullptr) {
-		// DS_NO_CONN - no icon for it in the "Mainscreen-Studie" artifact
-		lv_obj_add_flag(objects.rr_ic_state, LV_OBJ_FLAG_HIDDEN);
-		return;
+	// Same icon on every screen that carries the state icon/RQ line group.
+	lv_obj_t* const icons[] = {objects.rr_ic_state, objects.rq_ic_state, objects.rrnav_ic_state, objects.rrset_ic_state};
+	for (lv_obj_t* icon : icons) {
+		if (pIcon == nullptr) {
+			// DS_NO_CONN - no icon for it in the "Mainscreen-Studie" artifact
+			lv_obj_add_flag(icon, LV_OBJ_FLAG_HIDDEN);
+			continue;
+		}
+		lv_img_set_src(icon, pIcon);
+		lv_obj_set_style_img_recolor(icon, color, LV_PART_MAIN | LV_STATE_DEFAULT);
+		lv_obj_set_style_img_recolor_opa(icon, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
+		lv_obj_clear_flag(icon, LV_OBJ_FLAG_HIDDEN);
 	}
-	lv_img_set_src(objects.rr_ic_state, pIcon);
-	lv_obj_set_style_img_recolor(objects.rr_ic_state, color, LV_PART_MAIN | LV_STATE_DEFAULT);
-	lv_obj_set_style_img_recolor_opa(objects.rr_ic_state, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
-	lv_obj_clear_flag(objects.rr_ic_state, LV_OBJ_FLAG_HIDDEN);
 }
 
 void ui_RimRidgeUpdateTime(bool stopwatchMode, uint32_t elapsedS, const char* clockStr) {
@@ -205,11 +218,18 @@ void action_go_to_nav(lv_event_t * e) {
 	ui.showNavScreen();
 }
 
-// EEZ Studio action, wired to rr_line_rq's CLICKED event - opens the
-// RQ-Ride-Screen (see UIFacade::showRQScreen()).
+// EEZ Studio action, wired to the CLICKED event of the state icon/RQ line
+// group - rr_group_rq_mode and its copies on RimRidgeRQ, RimRidgeNav and
+// RimRidgeSettings. Opens the RQ-Ride-Screen (see UIFacade::showRQScreen());
+// on the RQ screen itself it toggles back to the main screen, a tap being
+// easier to hit than a swipe on a bumpy road.
 void action_go_to_rq(lv_event_t * e) {
 	(void) e;
-	ui.showRQScreen();
+	if (lv_scr_act() == objects.rim_ridge_rq) {
+		ui.hideRQScreen();
+	} else {
+		ui.showRQScreen();
+	}
 }
 
 // rr_nav_pill's two positions - REST is this project's shipped, EEZ-

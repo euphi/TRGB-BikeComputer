@@ -81,6 +81,29 @@ Reset stattgefunden hat, daher an Boot-Markern im Log erkennen (z. B.
 `"👨‍🏭 Start"` aus `BLEDevices::scanAndConnectTask()`), nicht an
 USB-Disconnect-Events.
 
+Beim Öffnen von `/dev/ttyACM0` aus eigenen Skripten **nicht** `dtr = False`/`rts =
+False` vor `open()` setzen: pyserial schaltet danach erst DTR ab, und DTR=0 bei RTS=1
+löst beim USB-JTAG-Port einen Reset aus ("Reset reason: USB"). Mit den Standardwerten
+(beide gesetzt) bleibt das Board an.
+
+## UI-Task: kaum Stack übrig
+
+Der UI-Task (`UIFacade::initDisplay()`, 4096 Byte) hat im Betrieb weniger als 1 KB frei
+(`mem` → `STACK UI Task`). EEZ-Actions und LVGL-Timer laufen in diesem Task. Alles
+Schwere dort nicht direkt ausführen, sondern einen eigenen kurzlebigen Task starten:
+NVS-Schreiben, SD-Zugriffe, `delay()`, Rendern eines ganzen Screens (`lv_snapshot` legt
+zusätzlich ~500 Byte Display-Strukturen auf den Stack). Muster: `shutdownTask()` in
+`src/ui/RimRidgeSettingsCustFunc.cpp`, `snapTask()` in `src/UiDebug.cpp`
+(mit `UIFacade::runLocked()`).
+
+## Fehlende Zeilen im Debug-Log
+
+`BCLogger::log()` wartet höchstens 100 ms auf den Datei-Mutex und verwirft die Zeile
+danach (nur `"File Log output blocked"` auf `printf`). Das passiert, wenn gerade ein
+SD-Flush oder ein NVS-Schreibvorgang läuft, z. B. beim Speichern der Distanz. Eine
+fehlende Logzeile beweist also nicht, dass der Code nicht lief; lieber eine Folgewirkung
+prüfen (Reset-Grund, gespeicherter Wert, spätere Zeile).
+
 ## EEZ Studio / LVGL-Build
 
 - `src/ui_eez/` wird bei jedem Export komplett überschrieben -- eigene

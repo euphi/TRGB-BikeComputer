@@ -166,6 +166,9 @@ public:
 
 	void handleCommand(const Command& cmd);
 	void flushAllFiles();
+	// Flushes the open log files right now, from any task -- before a deliberate restart or
+	// deep sleep, which would otherwise lose up to 5 s of log (FlusherTask's period).
+	void flushFiles();
 
 	static const char* TAG_STRING[LogTagMax];
 	static const char* LEVEL_STRING[LogTypeMax];
