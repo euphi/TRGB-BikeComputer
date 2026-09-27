@@ -32,7 +32,7 @@ from bikelog.record import ReadStats, UnknownLogFormat, read_stream
 from . import sdlayout
 from .sdlayout import SdFile
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions (
@@ -59,6 +59,11 @@ CREATE TABLE IF NOT EXISTS sessions (
     gpx_status      TEXT,
     gpx_version     INTEGER,
     gpx_dirty       INTEGER NOT NULL DEFAULT 1,
+    -- Komoot upload (komoot.py): set on every session of the merged tour a
+    -- session ended up part of, so any of them shows the same result.
+    komoot_status   TEXT,
+    komoot_tour_id  TEXT,
+    komoot_uploaded_at TEXT,
     UNIQUE (device, day, stem)
 );
 CREATE TABLE IF NOT EXISTS files (
@@ -119,6 +124,9 @@ class Session:
     gpx_status: str | None = None
     gpx_version: int | None = None
     gpx_dirty: int = 1
+    komoot_status: str | None = None
+    komoot_tour_id: str | None = None
+    komoot_uploaded_at: str | None = None
     files: list[StoredFile] = field(default_factory=list)
 
     @property
@@ -141,6 +149,17 @@ class Session:
                               if self.first_time and self.last_time else None)
         data["files"] = [asdict(f) for f in self.files]
         return data
+
+
+def _distance_clause(min_distance_m: float | None, max_distance_m: float | None) -> tuple[str, tuple]:
+    clause, params = "", []
+    if min_distance_m is not None:
+        clause += "AND distance_m >= ? "
+        params.append(min_distance_m)
+    if max_distance_m is not None:
+        clause += "AND distance_m <= ? "
+        params.append(max_distance_m)
+    return clause, tuple(params)
 
 
 @dataclass
@@ -167,6 +186,9 @@ class Storage:
         if version == 2:
             for column in ("gpx_file TEXT", "gpx_status TEXT", "gpx_version INTEGER",
                            "gpx_dirty INTEGER NOT NULL DEFAULT 1"):
+                self._db.execute(f"ALTER TABLE sessions ADD COLUMN {column}")
+        if version == 3:
+            for column in ("komoot_status TEXT", "komoot_tour_id TEXT", "komoot_uploaded_at TEXT"):
                 self._db.execute(f"ALTER TABLE sessions ADD COLUMN {column}")
         self._db.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
         self._db.commit()
@@ -209,20 +231,43 @@ class Storage:
                 (device, day, stem)).fetchone()
             return self._session(row) if row else None
 
-    def list(self, limit: int = 100, offset: int = 0) -> list[Session]:
+    def list(self, limit: int = 100, offset: int = 0,
+             min_distance_m: float | None = None,
+             max_distance_m: float | None = None) -> list[Session]:
+        """Sessions newest first, optionally restricted to a distance range
+        (the wheel-sensor trip distance, same figure the session list shows).
+        A session whose log could not be parsed (distance_m is NULL) matches
+        neither bound, same as SQL's usual NULL handling."""
+        clause, params = _distance_clause(min_distance_m, max_distance_m)
         with self._lock:
             # Day directories sort chronologically, NO_TIME/legacy after them;
             # within a day the HHMMSS stem does the rest.
             rows = self._db.execute(
-                "SELECT * FROM sessions WHERE deleted_at IS NULL "
+                "SELECT * FROM sessions WHERE deleted_at IS NULL " + clause +
                 "ORDER BY (day GLOB '[0-9]*') DESC, day DESC, length(stem) DESC, stem DESC "
-                "LIMIT ? OFFSET ?", (limit, offset)).fetchall()
+                "LIMIT ? OFFSET ?", (*params, limit, offset)).fetchall()
             return [self._session(row) for row in rows]
 
-    def count(self) -> int:
+    def count(self, min_distance_m: float | None = None,
+              max_distance_m: float | None = None) -> int:
+        clause, params = _distance_clause(min_distance_m, max_distance_m)
         with self._lock:
             return self._db.execute(
-                "SELECT COUNT(*) FROM sessions WHERE deleted_at IS NULL").fetchone()[0]
+                "SELECT COUNT(*) FROM sessions WHERE deleted_at IS NULL " + clause,
+                params).fetchone()[0]
+
+    def sessions_for_device(self, device: str) -> list[Session]:
+        """Every non-deleted session of one device that has a binary log, in
+        ride order -- the input to komoot.py's short-pause grouping."""
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT s.* FROM sessions s WHERE s.deleted_at IS NULL AND s.device = ? "
+                "AND EXISTS (SELECT 1 FROM files f WHERE f.session_id = s.id "
+                "            AND substr(f.name, 1, 1) = 'L') "
+                "ORDER BY s.day, s.stem", (device,)).fetchall()
+            sessions = [self._session(row) for row in rows]
+            sessions.sort(key=lambda s: s.first_time if s.first_time else 0)
+            return sessions
 
     def known_files(self, device: str) -> dict[str, int | None]:
         """{"20260920/L_143012.bin": size} of everything held (or tombstoned) for a
@@ -317,6 +362,15 @@ class Storage:
             self._db.execute(
                 "UPDATE sessions SET gpx_file = ?, gpx_status = ?, gpx_version = ?, "
                 "gpx_dirty = 0 WHERE id = ?", (gpx_file, status, version, session_id))
+            self._db.commit()
+
+    def set_komoot(self, session_ids: list[int], status: str, tour_id: str | None) -> None:
+        """Marks every session of a merged tour with the same upload result,
+        so looking any one of them up shows it -- see komoot.py."""
+        with self._lock:
+            self._db.executemany(
+                "UPDATE sessions SET komoot_status = ?, komoot_tour_id = ?, komoot_uploaded_at = ? "
+                "WHERE id = ?", [(status, tour_id, _now(), sid) for sid in session_ids])
             self._db.commit()
 
     def delete(self, session_id: int) -> bool:

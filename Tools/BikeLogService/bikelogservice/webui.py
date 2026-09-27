@@ -26,7 +26,14 @@ th{font-size:.75rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mu
 td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 a{color:var(--acc);text-decoration:none}
 .f a{display:inline-block;margin:0 6px 2px 0;font-size:.8rem}
+form.upload{display:inline;margin:0 6px 2px 0}
+form.upload button{font:inherit;font-size:.8rem;background:none;border:none;color:var(--acc);
+    padding:0;cursor:pointer;text-decoration:underline}
 .warn{color:var(--warn)}
+form.filter{margin:12px 0 0;font-size:.9rem}
+form.filter input{width:5em;font:inherit;background:transparent;color:inherit;
+    border:1px solid var(--line);border-radius:4px;padding:2px 5px}
+form.filter a{margin-left:8px}
 @media (max-width:640px){.hide-s{display:none}}
 """
 
@@ -73,6 +80,10 @@ def _row(s: Session) -> str:
     for f in s.files:
         links.append(f'<a href="{base}/files/{escape(f.name)}" title="{escape(f.name)}">'
                      f'{escape(f.name[0])} {_fmt_size(f.size)}</a>')
+    if s.gpx_status == "ok" and s.komoot_status not in ("uploaded",):
+        links.append(f'<form class="upload" method="post" action="{base}/komoot" '
+                     'onsubmit="return confirm(\'Diese Fahrt jetzt zu Komoot hochladen?\')">'
+                     '<button type="submit">Komoot</button></form>')
     notes = []
     if s.log_error:
         notes.append(f'<span class="warn" title="{escape(s.log_error)}">log unreadable</span>')
@@ -80,6 +91,12 @@ def _row(s: Session) -> str:
         notes.append(f'<span class="mut">time corrected ({escape(str(summ.get("src", "?")))})</span>')
     if s.gpx_status and s.gpx_status.startswith("error"):
         notes.append(f'<span class="warn" title="{escape(s.gpx_status)}">GPX export failed</span>')
+    if s.gpx_status == "debug":
+        notes.append('<span class="mut">Debug_Archive (&lt; 1 km)</span>')
+    if s.komoot_status == "uploaded":
+        notes.append('<span class="mut">Komoot ✓</span>')
+    elif s.komoot_status == "error":
+        notes.append('<span class="warn">Komoot-Upload fehlgeschlagen</span>')
     if summ.get("shocks"):
         notes.append(f'<span class="mut">{summ["shocks"]} shocks</span>')
     return (
@@ -107,9 +124,22 @@ def _pull_line(pull: dict | None) -> str:
     return '<p class="mut">' + "<br>".join(parts) + "</p>"
 
 
-def index(sessions: list[Session], pull: dict | None) -> str:
+def _filter_form(min_km: float | None, max_km: float | None) -> str:
+    min_v = f' value="{min_km:g}"' if min_km is not None else ""
+    max_v = f' value="{max_km:g}"' if max_km is not None else ""
+    reset = '<a href="/">reset</a>' if (min_km is not None or max_km is not None) else ""
+    return (
+        '<form class="filter" method="get">'
+        f'Länge von <input type="number" name="min_km" min="0" step="0.1"{min_v}> '
+        f'bis <input type="number" name="max_km" min="0" step="0.1"{max_v}> km '
+        '<button type="submit">Filtern</button>' + reset +
+        '</form>')
+
+
+def index(sessions: list[Session], pull: dict | None,
+          min_km: float | None = None, max_km: float | None = None) -> str:
     rows = "\n".join(_row(s) for s in sessions) or \
-        '<tr><td colspan="5" class="mut">No sessions yet.</td></tr>'
+        '<tr><td colspan="5" class="mut">No sessions match this filter.</td></tr>'
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -117,6 +147,7 @@ def index(sessions: list[Session], pull: dict | None) -> str:
 <body><main>
 <h1>BikeLog</h1>
 {_pull_line(pull)}
+{_filter_form(min_km, max_km)}
 <table><thead><tr><th>Session</th><th>Distance</th><th class="hide-s">Moving</th>
 <th class="hide-s">Ø</th><th>Files</th></tr></thead>
 <tbody>

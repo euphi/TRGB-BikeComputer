@@ -1,6 +1,7 @@
 # Makes Tools/ installable, so the service can run from its own venv outside the
 # repo checkout (see BikeLogService/install.sh):
 #   pip install "/path/to/Tools[service]"
+#   pip install "/path/to/Tools[service,komoot]"   # + Komoot upload (komoot.py)
 # Nothing here is needed for running bikelog from this directory (python3 -m bikelog).
 [build-system]
 requires = ["setuptools>=61"]
@@ -15,6 +16,7 @@ dependencies = []
 
 [project.optional-dependencies]
 service = ["fastapi>=0.110", "uvicorn>=0.27", "zeroconf>=0.132"]
+komoot = ["kompy>=0.0.12"]
 
 [project.scripts]
 bikelog = "bikelog.cli:main"

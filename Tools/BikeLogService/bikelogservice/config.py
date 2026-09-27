@@ -63,6 +63,24 @@ class Settings:
     #: goes into the GPX as a link back to the session. Optional.
     public_url: str | None = None
 
+    #: Komoot upload (komoot.py, needs the optional "kompy" package: pip
+    #: install "bikelog[komoot]"). Unset email/password means the feature is
+    #: simply not offered -- no separate on/off flag needed.
+    komoot_email: str | None = None
+    komoot_password: str | None = None
+    #: One of kompy.constants.activities.SupportedActivities.
+    komoot_activity: str = "touringbicycle"
+    #: One of kompy.constants.privacy_status.PrivacyStatus.
+    komoot_status: str = "friends"
+    #: Sessions of the same device closer together than this (the gap
+    #: between one ending and the next starting) are one interrupted ride,
+    #: not two separate ones -- merged into a single upload.
+    komoot_merge_gap_s: float = 1800.0
+
+    @property
+    def komoot_enabled(self) -> bool:
+        return bool(self.komoot_email and self.komoot_password)
+
     @classmethod
     def from_env(cls, env=None) -> "Settings":
         env = env if env is not None else os.environ
@@ -79,6 +97,11 @@ class Settings:
             export_gpx=_flag(env.get("BIKELOG_EXPORT_GPX", "1")),
             export_dir=Path(env["BIKELOG_EXPORT_DIR"]) if env.get("BIKELOG_EXPORT_DIR") else None,
             public_url=(env.get("BIKELOG_PUBLIC_URL") or "").rstrip("/") or None,
+            komoot_email=env.get("BIKELOG_KOMOOT_EMAIL") or None,
+            komoot_password=env.get("BIKELOG_KOMOOT_PASSWORD") or None,
+            komoot_activity=env.get("BIKELOG_KOMOOT_ACTIVITY", "touringbicycle"),
+            komoot_status=env.get("BIKELOG_KOMOOT_STATUS", "friends"),
+            komoot_merge_gap_s=float(env.get("BIKELOG_KOMOOT_MERGE_GAP_S", 1800)),
         )
 
     @property

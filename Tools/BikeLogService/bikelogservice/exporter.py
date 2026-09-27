@@ -1,19 +1,23 @@
 """Automatic GPX export: one file per session, kept up to date.
 
-Every session with a binary log gets ``<export dir>/2026-09-27_164545_trgb.gpx``
--- the rich export from bikelog.gpx (Garmin TrackPointExtension plus this
-project's own extension with gradient, road quality and labels, shocks and
-label changes as waypoints, ride summary in the metadata). The directory is
-meant to be picked up by whatever comes next (Nextcloud sync, a Komoot/Strava
-uploader); its file names sort chronologically and each file's mtime is the
-ride's start.
+Every session with a binary log gets ``<export dir>/<Tours|Debug_Archive>/
+2026-09-27_164545_trgb.gpx`` -- the rich export from bikelog.gpx (Garmin
+TrackPointExtension plus this project's own extension with gradient, road
+quality and labels, shocks and label changes as waypoints, ride summary in
+the metadata). SUBDIR_TOURS is meant to be picked up by whatever comes next
+(Nextcloud sync, a Komoot/Strava uploader); SUBDIR_DEBUG holds everything
+that is not a real ride -- a session parked somewhere with the phone's GPS
+wandering a few metres, a five-minute test -- kept for reference but out of
+the uploaders' way. File names sort chronologically and each file's mtime is
+the ride's start.
 
-A file is (re)written when the session's L_ or I_ file arrived or changed, or
-when EXPORT_VERSION is bumped -- raise it whenever the GPX content changes so
-that old rides are exported again with the better logic.
+A file is (re)written -- and, if its distance moved it from one subdirectory
+to the other, moved -- when the session's L_ or I_ file arrived or changed,
+or when EXPORT_VERSION is bumped -- raise it whenever the GPX content or the
+Tours/Debug_Archive split changes so that old rides are re-sorted too.
 
-Sessions without a single usable GPS fix get no file (status "no-gps"): an
-empty track helps nobody and every importer chokes on it.
+Sessions without a single usable GPS fix get no file at all (status
+"no-gps"): an empty track helps nobody and every importer chokes on it.
 """
 
 from __future__ import annotations
@@ -29,7 +33,15 @@ from .storage import Session, Storage
 
 log = logging.getLogger("bikelog.export")
 
-EXPORT_VERSION = 1
+EXPORT_VERSION = 3
+
+#: Below this, a session goes to Debug_Archive instead of Tours -- see the
+#: module docstring. Raise/lower it here, not per-session; the automatic
+#: export has no UI to configure it from.
+MIN_EXPORT_DISTANCE_M = 1000.0
+
+SUBDIR_TOURS = "Tours"
+SUBDIR_DEBUG = "Debug_Archive"
 
 _lock = threading.Lock()        # puller thread, request threads and startup may all call in
 
@@ -57,28 +69,31 @@ def file_name(session: Session, first_fix: datetime.datetime | None) -> str:
 
 def export_session(store: Storage, session: Session) -> str:
     settings = store.settings
-    target_dir = settings.gpx_dir
+    root = settings.gpx_dir
     try:
         xml, stats = render(store, session)
     except Exception as exc:                    # unreadable log: record it, keep going
         store.set_export(session.id, None, f"error: {exc}", EXPORT_VERSION)
         return "error"
-    old = session.gpx_file
+    old = session.gpx_file            # previous relative path, for cleanup below
     if stats.written == 0:
-        name, status = None, "no-gps"
+        rel, status = None, "no-gps"
     else:
-        name, status = file_name(session, stats.first_time), "ok"
-        target_dir.mkdir(parents=True, exist_ok=True)
-        path = target_dir / name
+        real_ride = stats.real_distance_m >= MIN_EXPORT_DISTANCE_M
+        subdir = SUBDIR_TOURS if real_ride else SUBDIR_DEBUG
+        status = "ok" if real_ride else "debug"
+        rel = f"{subdir}/{file_name(session, stats.first_time)}"
+        path = root / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_name(path.name + ".part")
         tmp.write_text(xml, encoding="utf-8")
         if stats.first_time:
             ts = stats.first_time.timestamp()
             os.utime(tmp, (ts, ts))
         tmp.replace(path)
-    if old and old != name:
-        (target_dir / old).unlink(missing_ok=True)      # renamed (better start time) or no longer valid
-    store.set_export(session.id, name, status, EXPORT_VERSION)
+    if old and old != rel:
+        (root / old).unlink(missing_ok=True)     # renamed, moved between Tours/Debug_Archive, or no longer valid
+    store.set_export(session.id, rel, status, EXPORT_VERSION)
     return status
 
 

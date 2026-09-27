@@ -5,6 +5,8 @@ file twice, send a changed file under the same name, send garbage, send files
 of the session that is still running.
 """
 
+import math
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -82,6 +84,25 @@ def test_files_of_one_session_are_grouped(client, ride_bytes):
     assert ours["summary"]["dist_m"] == 23456
     assert ours["summary"]["time"] == "corrected"
     assert ours["start_time"] == 1758983412
+
+
+def test_sessions_can_be_filtered_by_distance(client, ride_bytes, tmp_path):
+    long_id = _put(client, ride_bytes).json()["session"]["id"]           # ~1.6 km
+    short = tmp_path / "short.bin"
+    write_records(short, fixtures.synthetic(seconds=60, no_fix_start_s=0, pause=None, tunnel=None))
+    short_id = _put(client, short.read_bytes(), device="other").json()["session"]["id"]
+
+    both = client.get(API + "/sessions").json()
+    assert both["total"] == 2
+
+    only_long = client.get(API + "/sessions", params={"min_km": 1.0}).json()
+    assert [s["id"] for s in only_long["sessions"]] == [long_id]
+    assert only_long["total"] == 1
+
+    only_short = client.get(API + "/sessions", params={"max_km": 1.0}).json()
+    assert [s["id"] for s in only_short["sessions"]] == [short_id]
+
+    assert client.get(API + "/sessions", params={"min_km": 100}).json()["total"] == 0
 
 
 def test_reupload_is_idempotent(client, ride_bytes):
@@ -252,6 +273,14 @@ def test_index_page(client, ride_bytes):
     assert f"{API}/sessions/1.gpx" in page.text
 
 
+def test_index_page_distance_filter(client, ride_bytes):
+    _put(client, ride_bytes)
+    assert "No sessions match" not in client.get("/").text
+    assert "No sessions match" in client.get("/", params={"min_km": 100}).text
+    filtered = client.get("/", params={"min_km": 1, "max_km": 5})
+    assert 'value="1"' in filtered.text and 'value="5"' in filtered.text
+
+
 def test_pull_endpoints_when_disabled(client):
     assert client.get(API + "/pull").json() == {"enabled": False}
     assert client.post(API + "/pull").status_code == 409
@@ -262,21 +291,23 @@ def test_pull_endpoints_when_disabled(client):
 def test_export_writes_a_gpx_per_session(client, settings, ride_bytes):
     import datetime
     session = _put(client, ride_bytes).json()["session"]
-    files = list(settings.gpx_dir.glob("*.gpx"))
+    files = list(settings.gpx_dir.rglob("*.gpx"))
     assert len(files) == 1
+    assert files[0].parent.name == "Tours"
     start = datetime.datetime.fromtimestamp(session["first_time"])
     assert files[0].name == start.strftime("%Y-%m-%d_%H%M%S") + "_gravel.gpx"
     assert abs(files[0].stat().st_mtime - session["first_time"]) < 60   # first *fix*
     body = client.get(f"{API}/sessions/{session['id']}").json()
-    assert (body["gpx_status"], body["gpx_file"], body["gpx_dirty"]) == ("ok", files[0].name, False)
+    assert (body["gpx_status"], body["gpx_file"], body["gpx_dirty"]) == \
+        ("ok", f"Tours/{files[0].name}", False)
     assert "TrackPointExtension" in files[0].read_text()
 
 
 def test_export_follows_a_better_start_time(client, settings, ride_bytes):
     _put(client, ride_bytes)
-    old = next(settings.gpx_dir.glob("*.gpx")).name
+    old = next(settings.gpx_dir.rglob("*.gpx")).name
     _put(client, b"start=1758983412\n", "20260920/I_143012.txt")     # device summary arrives
-    files = [f.name for f in settings.gpx_dir.glob("*.gpx")]
+    files = [f.name for f in settings.gpx_dir.rglob("*.gpx")]
     assert files != [old] and len(files) == 1
     assert files[0].endswith("_gravel.gpx")
 
@@ -285,8 +316,38 @@ def test_export_skips_sessions_without_fix(client, settings, tmp_path):
     path = tmp_path / "nofix.bin"
     write_records(path, fixtures.synthetic(seconds=30, no_fix_start_s=30))
     body = _put(client, path.read_bytes()).json()["session"]
-    assert not list(settings.gpx_dir.glob("*.gpx"))
+    assert not list(settings.gpx_dir.rglob("*.gpx"))
     assert client.get(f"{API}/sessions/{body['id']}").json()["gpx_status"] == "no-gps"
+
+
+def test_export_files_rides_under_1km_into_debug_archive(client, settings, tmp_path):
+    path = tmp_path / "short.bin"
+    write_records(path, fixtures.synthetic(seconds=60, no_fix_start_s=0, pause=None, tunnel=None))
+    body = _put(client, path.read_bytes()).json()["session"]
+    files = list(settings.gpx_dir.rglob("*.gpx"))
+    assert len(files) == 1 and files[0].parent.name == "Debug_Archive"
+    session = client.get(f"{API}/sessions/{body['id']}").json()
+    assert session["gpx_status"] == "debug"
+    assert session["gpx_file"] == f"Debug_Archive/{files[0].name}"
+
+
+def test_export_files_gps_jitter_with_no_real_movement_into_debug_archive(client, settings, tmp_path):
+    # A trip on rollers/a trainer: the wheel sensor logs plenty of distance,
+    # but the phone (sitting still) reports the same spot with a few metres
+    # of GPS noise on every fix -- not a ride worth syncing to Tours.
+    records = fixtures.synthetic(seconds=120, no_fix_start_s=0, pause=None, tunnel=None)
+    base = records[0]
+    for i, rec in enumerate(records):
+        angle = i * 0.7
+        rec.gps_lat_e7 = base.gps_lat_e7 + round(3.0 * math.cos(angle) / 111320.0 * 1e7)
+        rec.gps_lon_e7 = base.gps_lon_e7 + round(3.0 * math.sin(angle) / 111320.0 * 1e7)
+    path = tmp_path / "trainer.bin"
+    write_records(path, records)
+    body = _put(client, path.read_bytes()).json()["session"]
+    assert body["distance_m"] > 400          # the wheel kept turning ...
+    files = list(settings.gpx_dir.rglob("*.gpx"))
+    assert len(files) == 1 and files[0].parent.name == "Debug_Archive"    # ... but not a real ride
+    assert client.get(f"{API}/sessions/{body['id']}").json()["gpx_status"] == "debug"
 
 
 def test_export_of_an_unreadable_log_is_an_error_not_a_crash(client, settings):
@@ -296,9 +357,9 @@ def test_export_of_an_unreadable_log_is_an_error_not_a_crash(client, settings):
 
 def test_delete_removes_the_exported_gpx(client, settings, ride_bytes):
     sid = _session_id(client, ride_bytes)
-    assert list(settings.gpx_dir.glob("*.gpx"))
+    assert list(settings.gpx_dir.rglob("*.gpx"))
     client.delete(f"{API}/sessions/{sid}")
-    assert not list(settings.gpx_dir.glob("*.gpx"))
+    assert not list(settings.gpx_dir.rglob("*.gpx"))
 
 
 def test_new_exporter_version_reexports(client, settings, ride_bytes, monkeypatch):
@@ -308,6 +369,27 @@ def test_new_exporter_version_reexports(client, settings, ride_bytes, monkeypatc
     assert exporter.export_pending(store) == {}
     monkeypatch.setattr(exporter, "EXPORT_VERSION", exporter.EXPORT_VERSION + 1)
     assert exporter.export_pending(store) == {"ok": 1}
+
+
+def test_short_ride_moves_from_tours_to_debug_archive_on_reexport(client, settings, tmp_path, monkeypatch):
+    """The scenario a redeploy of the distance gate resolves in production:
+    an old export sitting in Tours from before MIN_EXPORT_DISTANCE_M applied
+    moves to Debug_Archive once the session is re-evaluated, old file gone."""
+    from bikelogservice import exporter
+    path = tmp_path / "short.bin"
+    write_records(path, fixtures.synthetic(seconds=60, no_fix_start_s=0, pause=None, tunnel=None))
+    sid = _put(client, path.read_bytes()).json()["session"]["id"]
+    store = client.app.state.storage
+    session = store.get(sid)
+    assert session.gpx_status == "debug"           # already filed correctly, so fake the "before" state
+    old_path = settings.gpx_dir / "Tours" / "old_name_gravel.gpx"
+    old_path.parent.mkdir(parents=True, exist_ok=True)
+    old_path.write_text("<gpx/>")
+    store.set_export(sid, "Tours/old_name_gravel.gpx", "ok", exporter.EXPORT_VERSION - 1)
+    exporter.export_pending(store)
+    assert not old_path.exists()
+    files = list(settings.gpx_dir.rglob("*.gpx"))
+    assert len(files) == 1 and files[0].parent.name == "Debug_Archive"
 
 
 def test_export_can_be_switched_off(tmp_path, ride_bytes):
@@ -370,6 +452,7 @@ def test_every_route_requires_a_token_once_auth_is_on(tmp_path, ride_bytes):
             ("GET", f"{API}/sessions/{sid}/files/L_143012.bin"),
             ("PUT", f"{API}/devices/gravel/files/20260920/L_143012.bin"),
             ("DELETE", f"{API}/sessions/{sid}"),
+            ("POST", f"{API}/sessions/{sid}/komoot"),
             ("GET", f"{API}/pull"),
             ("POST", f"{API}/pull"),
         ]

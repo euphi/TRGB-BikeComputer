@@ -63,15 +63,32 @@ ausdrücklicher `PUT` holt sie zurück.
 
 ## GPX-Export
 
-Zu jeder Sitzung mit Binärlog schreibt der Dienst automatisch
-`data/export/gpx/2026-09-27_164545_trgb.gpx` (lokale Startzeit + Gerät; mtime
-= Start der Fahrt) -- als Übergabestelle für Nextcloud-Sync, Komoot/Strava
-usw. ([`exporter.py`](bikelogservice/exporter.py)). Neu geschrieben wird,
-wenn `L_` oder `I_` der Sitzung ankommt oder sich ändert, und für **alle**
+Zu jeder Sitzung mit Binärlog schreibt der Dienst automatisch eine Datei
+unter `data/export/gpx/` (lokale Startzeit + Gerät; mtime = Start der
+Fahrt) -- als Übergabestelle für Nextcloud-Sync, Komoot/Strava usw.
+([`exporter.py`](bikelogservice/exporter.py)):
+
+- `Tours/` -- echte Fahrten, mindestens `MIN_EXPORT_DISTANCE_M` (1 km)
+  reale Bewegung (GPS-Sprünge rund um einen Standpunkt zählen nicht mit,
+  siehe `bikelog.gpx.GpxStats.real_distance_m`).
+- `Debug_Archive/` -- alles andere mit verwertbarem GPS-Fix: kurze
+  Testfahrten, ein am Rollentrainer stehendes Rad mit jitterndem
+  Telefon-GPS. Nichts geht verloren, es landet nur nicht in Nextcloud/Strava.
+
+Sitzungen ganz ohne verwertbaren GPS-Fix bekommen gar keine Datei
+(`gpx_status` `no-gps`), unlesbare Logs `error: …`.
+
+Neu geschrieben (und ggf. zwischen den beiden Ordnern verschoben) wird, wenn
+`L_` oder `I_` der Sitzung ankommt oder sich ändert, und für **alle**
 Sitzungen, wenn `EXPORT_VERSION` erhöht wird -- das bei jeder inhaltlichen
 Änderung am GPX tun, dann bekommen auch alte Fahrten die bessere Fassung.
-Sitzungen ohne verwertbaren GPS-Fix bekommen keine Datei (`gpx_status`
-`no-gps`), unlesbare Logs `error: …`.
+
+Vor dem Export läuft [`bikelog/sanitize.py`](../bikelog/sanitize.py) über
+die Rohdaten (per Default an, `GpxOptions.sanitize` bzw. `?sanitize=false`
+am Download): der GPS-Fix wandert im Stand (Ampel, Pause, vor der ersten
+Umdrehung) ein paar Meter um den Standpunkt -- sanitize erkennt das am
+Radsensor (`speed < MOVING_KMH`) und lässt von jedem Stand nur den einen Fix
+direkt an der Pause übrig, statt eines Gekritzels auf der Karte.
 
 Inhalt (Details in [`../bikelog/gpx.py`](../bikelog/gpx.py)):
 
@@ -89,6 +106,34 @@ die TPX-Elemente gegen `TrackPointExtensionv2.xsd`. Schlank ohne `bc:`:
 `GET /api/v1/sessions/{id}.gpx?rich=false` bzw. `bikelog gpx --plain`.
 
 Von Hand: `bikelogservice export` (fehlende/veraltete), `export --all` (alle).
+
+## Komoot-Upload
+
+`POST /api/v1/sessions/{id}/komoot` lädt die Fahrt über
+[kompy](https://github.com/Tsadoq/kompy) zu Komoot hoch (oder, in der
+Web-Oberfläche, der „Komoot“-Knopf neben jeder echten Fahrt). Ein Reboot
+mitten in einer Fahrt (kurzer BLE-Aussetzer, Pause mit ausgeschaltetem BC)
+erzeugt mehrere Sitzungen für eine Tour -- Sitzungen desselben Geräts mit
+höchstens `BIKELOG_KOMOOT_MERGE_GAP_S` Pause dazwischen werden deshalb zu
+einer Fahrt zusammengefasst und als ein GPX hochgeladen
+([`komoot.py`](bikelogservice/komoot.py)); alle beteiligten Sitzungen zeigen
+danach denselben `komoot_status`. Ein zweiter Versuch ohne `?force=true`
+wird mit `409` abgelehnt.
+
+Braucht `pip install "bikelog[komoot]"` (kompy + gpxpy, nicht Teil von
+`[service]`) und `BIKELOG_KOMOOT_EMAIL`/`BIKELOG_KOMOOT_PASSWORD` in
+`bikelog.env` -- ohne beides antwortet der Endpunkt mit `409`
+("not-configured"), sonst bleibt alles wie gehabt. kompy meldet nach dem
+Upload keine Tour-ID zurück (Komoot-API-Limitation), daher kein direkter
+Link auf die neue Tour -- nur der Status (`uploaded`/`error`).
+
+Das hochgeladene GPX hat -- anders als der normale Export -- keine
+`<wpt>`-Wegpunkte (Stöße, Label-Wechsel): Komoots Import-Endpunkt lehnt jede
+Datei mit `<wpt>` ab (`400 query is required for type=tour_planned`, gegen
+die echte API am 2026-09-27 verifiziert -- vermutlich hält deren Parser das
+allein deswegen für eine geplante Route statt einer Aufzeichnung). Die
+reichen `bc:`-Erweiterungen je Trackpunkt sind davon nicht betroffen und
+bleiben drin.
 
 ## Installation (ia216: `~/bikelog`)
 
@@ -155,6 +200,10 @@ Umgebungsvariablen (im Dienst: `~/bikelog/bikelog.env`):
 | `BIKELOG_REQUIRE_AUTH` | `0` | Auth an/aus |
 | `BIKELOG_TOKENS` | -- | `token:name`, kommagetrennt |
 | `BIKELOG_MAX_UPLOAD_BYTES` | 64 MiB | Obergrenze pro `PUT` |
+| `BIKELOG_KOMOOT_EMAIL` / `BIKELOG_KOMOOT_PASSWORD` | -- | Komoot-Login; ohne beide ist der Upload aus |
+| `BIKELOG_KOMOOT_ACTIVITY` | `touringbicycle` | eine `SupportedActivities`-Konstante aus kompy |
+| `BIKELOG_KOMOOT_STATUS` | `friends` | Sichtbarkeit der hochgeladenen Tour (`public`/`private`/`friends`) |
+| `BIKELOG_KOMOOT_MERGE_GAP_S` | `1800` | Sitzungen desselben Geräts mit höchstens so viel Pause dazwischen gelten als eine unterbrochene Fahrt |
 
 Beide BC-Varianten (Gravel und FL) melden sich heute als `TRGB-BC` -- der
 Dienst kann sie nicht auseinanderhalten und legt alles unter einem Gerät ab.
@@ -173,6 +222,7 @@ ein `device`-Feld in `/logfiles.json`.
 | `GET` | `/api/v1/sessions/{id}.csv` | CSV (`with_gps`) |
 | `GET` | `/api/v1/sessions/{id}/files/{name}` | eine Datei unverändert |
 | `DELETE` | `/api/v1/sessions/{id}` | Dateien löschen, Grabstein behalten |
+| `POST` | `/api/v1/sessions/{id}/komoot` | zur zusammengehörigen Tour hochladen (`force`), siehe unten |
 | `PUT` | `/api/v1/devices/{gerät}/files/{tag}/{name}` | eine Datei einliefern (Body = Datei) |
 | `GET`/`POST` | `/api/v1/pull` | Status des Abholens / jetzt abholen (`device`) |
 

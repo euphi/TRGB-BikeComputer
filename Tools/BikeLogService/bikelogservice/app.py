@@ -25,7 +25,7 @@ from fastapi.responses import HTMLResponse, PlainTextResponse
 from bikelog import csvexport
 from bikelog.record import ReadStats
 
-from . import exporter, sdlayout, webui
+from . import exporter, komoot, sdlayout, webui
 from .auth import AuthDep, Principal
 from .config import Settings
 from .puller import Puller
@@ -76,8 +76,14 @@ def create_app(settings: Settings | None = None, puller: Puller | None = None) -
     # ------------------------------------------------------------------
 
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
-    def index(principal: Principal = AuthDep, store: Storage = Depends(storage)):
-        return webui.index(store.list(limit=500), puller.as_dict() if puller else None)
+    def index(min_km: float | None = Query(default=None, ge=0),
+             max_km: float | None = Query(default=None, ge=0),
+             principal: Principal = AuthDep, store: Storage = Depends(storage)):
+        min_m = min_km * 1000 if min_km is not None else None
+        max_m = max_km * 1000 if max_km is not None else None
+        sessions = store.list(limit=500, min_distance_m=min_m, max_distance_m=max_m)
+        return webui.index(sessions, puller.as_dict() if puller else None,
+                           min_km=min_km, max_km=max_km)
 
     @app.get(API + "/health", tags=["service"])
     def health(principal: Principal = AuthDep, store: Storage = Depends(storage)):
@@ -94,10 +100,16 @@ def create_app(settings: Settings | None = None, puller: Puller | None = None) -
     @app.get(API + "/sessions", tags=["sessions"])
     def list_sessions(limit: int = Query(default=100, ge=1, le=1000),
                       offset: int = Query(default=0, ge=0),
+                      min_km: float | None = Query(default=None, ge=0,
+                                                    description="only sessions with at least this much distance"),
+                      max_km: float | None = Query(default=None, ge=0,
+                                                    description="only sessions with at most this much distance"),
                       principal: Principal = AuthDep,
                       store: Storage = Depends(storage)):
-        return {"total": store.count(),
-                "sessions": [s.as_dict() for s in store.list(limit, offset)]}
+        min_m = min_km * 1000 if min_km is not None else None
+        max_m = max_km * 1000 if max_km is not None else None
+        return {"total": store.count(min_m, max_m),
+                "sessions": [s.as_dict() for s in store.list(limit, offset, min_m, max_m)]}
 
     def _require(store: Storage, session_id: int) -> Session:
         session = store.get(session_id)
@@ -121,6 +133,7 @@ def create_app(settings: Settings | None = None, puller: Puller | None = None) -
         shocks: bool = Query(default=True),
         labels: bool = Query(default=True),
         rich: bool = Query(default=True, description="own extensions (gradient, road quality, labels, summary)"),
+        sanitize: bool = Query(default=True, description="trim GPS jitter at stops (see bikelog.sanitize)"),
         principal: Principal = AuthDep,
         store: Storage = Depends(storage),
     ):
@@ -133,6 +146,7 @@ def create_app(settings: Settings | None = None, puller: Puller | None = None) -
         options.shocks = shocks
         options.labels = labels
         options.rich = rich
+        options.sanitize = sanitize
         xml, stats = exporter.render(store, session, options)
         if stats.written == 0:
             # Better a clear 409 than a valid but empty GPX that every
@@ -183,6 +197,32 @@ def create_app(settings: Settings | None = None, puller: Puller | None = None) -
         if not store.delete(session_id):
             raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown session")
         return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    # --- Komoot upload ---
+
+    @app.post(API + "/sessions/{session_id}/komoot", tags=["export"])
+    def upload_to_komoot(
+        session_id: int,
+        force: bool = Query(default=False, description="upload again even if already done"),
+        principal: Principal = AuthDep,
+        store: Storage = Depends(storage),
+    ):
+        """Uploads the merged tour (see komoot.py) that this session is part
+        of. Every session in that tour is marked with the result, so calling
+        this on any one of them shows the same status afterwards."""
+        session = _require_log(store, session_id)
+        group = komoot.group_for(store, session)
+        if not force and any(s.komoot_status == "uploaded" for s in group):
+            done = next(s for s in group if s.komoot_status == "uploaded")
+            raise HTTPException(status.HTTP_409_CONFLICT,
+                                "already uploaded (uploaded_at=%s); retry with ?force=true"
+                                % done.komoot_uploaded_at)
+        result = komoot.upload_group(store, group)
+        if result.status in ("not-configured", "too-short", "no-gps"):
+            raise HTTPException(status.HTTP_409_CONFLICT, result.message or result.status)
+        if result.status == "error":
+            raise HTTPException(status.HTTP_502_BAD_GATEWAY, result.message or "upload failed")
+        return {"status": result.status, "session_ids": result.session_ids}
 
     # --- push ---
 
