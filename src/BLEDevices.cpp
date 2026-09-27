@@ -318,7 +318,7 @@ void BLEDevices::updateDisconnectedDev(const EDevType dt) {
 		break;
 	case DEV_CSC_1:
 	case DEV_CSC_2:
-		if (cscIsSpeed[dt==DEV_CSC_1?1:2]) {
+		if (cscIsSpeed[dt]) {
 			stats.setConnected(false);
 		} else {
 			stats.addCadence(-1, 0);
@@ -566,7 +566,7 @@ void BLEDevices::notifyCallbackCSC(BLERemoteCharacteristic *pBLERemoteCharacteri
 		}
 		if (isSpeed) {
 //#ifndef  BC_FL_SUPPORT
-			cscIsSpeed[ctype==DEV_CSC_1?1:2] = true;
+			cscIsSpeed[ctype] = true;
 			speed_rev = ((uint32_t)pData[4] << 24) + (pData[3] << 16) + (pData[2] << 8) + pData[1];		// LSB first (cast: uint8_t would promote to int and shift into its sign bit)
 			speed_time = (pData[6] << 8) + pData[5];	// LSB first
 			stats.getDistHandler().updateRevs(speed_rev, speed_time);
@@ -586,7 +586,7 @@ void BLEDevices::notifyCallbackCSC(BLERemoteCharacteristic *pBLERemoteCharacteri
 			ui.updateNaviDist((uint32_t) d);
 //#endif
 		} else {
-			cscIsSpeed[ctype==DEV_CSC_1?1:2] = false;
+			cscIsSpeed[ctype] = false;
 			crank_rev = (pData[2] << 8) + pData[1];		// LSB first
 			crank_time = (pData[4] << 8) + pData[3];	// LSB first
 			delta = crank_time - crank_time_last;

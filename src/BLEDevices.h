@@ -83,7 +83,11 @@ private:
 	uint16_t crank_rev_last = 0, crank_time_last=0;
 	time_t crank_time_last_received = 0;
 	uint16_t cadence = 0;
-	bool cscIsSpeed[2] = {false, false};
+	// Indexed by EDevType (DEV_CSC_1/DEV_CSC_2 = 1/2). Was [2] indexed with 1/2 until 2026-09-27:
+	// cscIsSpeed[2] then overwrote the low byte of nav_distance right below on every CSC2
+	// notification, so the wheel-interpolated nav distance on Main/RQ dropped to 0 m (under
+	// 256 m) or by up to 255 m until the next nav frame repaired it.
+	bool cscIsSpeed[DEV_COUNT] = {};
 
 	int32_t nav_distance = 0, nav_distance_int = 0;
 
