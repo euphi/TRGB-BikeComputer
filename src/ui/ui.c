@@ -8,11 +8,12 @@
 #include "ui_helpers.h"
 
 // Screens that can be changed to
+#ifdef BC_FL_SUPPORT
 #include "ui_FL.h"
-#include "Screens/Settings/ui_Settings.h"
+#endif
 // font.h/nav_icons.h were pulled in transitively via the (removed 2026-09-26)
-// SNavi screen's own ui.h - this file genuinely uses both directly (S1Main/
-// ui_ScreenChart's fonts, S1Main's nav icon), so include them here now.
+// SNavi screen's own ui.h - this file genuinely uses both directly (S1Main's
+// fonts and nav icon), so include them here now.
 #include "font/font.h"
 #include "img/nav_icons.h"
 LV_IMG_DECLARE(nav_64_reserved);	// S1Main's own fallback nav icon - not part of nav_icons.h's public API
@@ -63,16 +64,7 @@ lv_obj_t * ui_S1BarBattLabel;
 void ui_event_S1LabelClock(lv_event_t * e);
 lv_obj_t * ui_S1LabelClock;
 lv_obj_t * ui_S1LabelCad;
-void ui_event_ScreenChart(lv_event_t * e);
-lv_obj_t * ui_ScreenChart;
-void ui_event_ScreenChart_Chart1(lv_event_t * e);
-lv_obj_t * ui_ScreenChart_Chart1;
-lv_obj_t * ui_ScreenChartLabelInfo;
-lv_obj_t * ui_ScreenChartLabelSpeed;
 
-lv_chart_series_t* ui_ScreenChart_Chart1_series_v;
-lv_chart_series_t* ui_ScreenChart_Chart1_series_perc_per_minute;
-lv_chart_series_t* ui_ScreenChart_Chart1_ser_v_per_minute;
 
 
 ///////////////////// TEST LVGL SETTINGS ////////////////////
@@ -109,7 +101,9 @@ void ui_event_S1ImgIconBTClassic(lv_event_t * e)
     lv_event_code_t event_code = lv_event_get_code(e);
     lv_obj_t * target = lv_event_get_target(e);
     if(event_code == LV_EVENT_CLICKED) {
+#ifdef BC_FL_SUPPORT
         _ui_screen_change(ui_ScreenFL, LV_SCR_LOAD_ANIM_FADE_ON, 500, 0);
+#endif
     }
 }
 void ui_event_S1ImgIconBLEhrm(lv_event_t * e)
@@ -117,8 +111,8 @@ void ui_event_S1ImgIconBLEhrm(lv_event_t * e)
     lv_event_code_t event_code = lv_event_get_code(e);
     lv_obj_t * target = lv_event_get_target(e);
     if(event_code == LV_EVENT_CLICKED) {
-        _ui_screen_change(ui_ScreenChart, LV_SCR_LOAD_ANIM_OVER_BOTTOM, 500, 0);
-        chartModeHeartRate(e);
+        // Chart screen removed 2026-09-27 (to be redesigned) - S1Main itself is
+        // never shown, so this handler is unreachable anyway.
     }
 }
 void ui_event_S1ImgIconWifi(lv_event_t * e)
@@ -149,8 +143,7 @@ void ui_event_S1BarBatt(lv_event_t * e)
     lv_event_code_t event_code = lv_event_get_code(e);
     lv_obj_t * target = lv_event_get_target(e);
     if(event_code == LV_EVENT_LONG_PRESSED) {
-        chartModeBatterie(e);
-        _ui_screen_change(ui_ScreenChart, LV_SCR_LOAD_ANIM_FADE_ON, 500, 0);
+        // Chart screen removed 2026-09-27, see ui_event_S1ImgIconBLEhrm().
     }
 }
 void ui_event_S1LabelClock(lv_event_t * e)
@@ -158,29 +151,9 @@ void ui_event_S1LabelClock(lv_event_t * e)
     lv_event_code_t event_code = lv_event_get_code(e);
     lv_obj_t * target = lv_event_get_target(e);
     if(event_code == LV_EVENT_LONG_PRESSED) {
-        _ui_screen_change(ui_ScrSettings, LV_SCR_LOAD_ANIM_MOVE_TOP, 500, 0);
+        // Old Settings screen removed 2026-09-27 (RimRidgeSettings replaced it).
     }
 }
-void ui_event_ScreenChart(lv_event_t * e)
-{
-    lv_event_code_t event_code = lv_event_get_code(e);
-    lv_obj_t * target = lv_event_get_target(e);
-    if(event_code == LV_EVENT_GESTURE &&  lv_indev_get_gesture_dir(lv_indev_get_act()) == LV_DIR_RIGHT) {
-        _ui_screen_change(ui_S1Main, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 500, 0);
-    }
-}
-void ui_event_ScreenChart_Chart1(lv_event_t * e)
-{
-    lv_event_code_t event_code = lv_event_get_code(e);
-    lv_obj_t * target = lv_event_get_target(e);
-    if(event_code == LV_EVENT_GESTURE &&  lv_indev_get_gesture_dir(lv_indev_get_act()) == LV_DIR_TOP) {
-        chart_up(e);
-    }
-    if(event_code == LV_EVENT_GESTURE &&  lv_indev_get_gesture_dir(lv_indev_get_act()) == LV_DIR_BOTTOM) {
-        chart_dn(e);
-    }
-}
-
 ///////////////////// SCREENS ////////////////////
 void ui_S1Main_screen_init(void)
 {
@@ -598,53 +571,3 @@ void ui_S1Main_screen_init(void)
     lv_obj_add_event_cb(ui_S1LabelClock, ui_event_S1LabelClock, LV_EVENT_ALL, NULL);
 
 }
-void ui_ScreenChart_screen_init(void)
-{
-    ui_ScreenChart = lv_obj_create(NULL);
-    lv_obj_clear_flag(ui_ScreenChart, LV_OBJ_FLAG_SCROLLABLE);      /// Flags
-
-    ui_ScreenChart_Chart1 = lv_chart_create(ui_ScreenChart);
-    lv_obj_set_width(ui_ScreenChart_Chart1, lv_pct(80));
-    lv_obj_set_height(ui_ScreenChart_Chart1, lv_pct(66));
-    lv_obj_set_align(ui_ScreenChart_Chart1, LV_ALIGN_CENTER);
-    lv_chart_set_type(ui_ScreenChart_Chart1, LV_CHART_TYPE_LINE);
-    lv_chart_set_point_count(ui_ScreenChart_Chart1, 384);
-    lv_chart_set_range(ui_ScreenChart_Chart1, LV_CHART_AXIS_PRIMARY_Y, 300, 450);
-    lv_chart_set_range(ui_ScreenChart_Chart1, LV_CHART_AXIS_SECONDARY_Y, 0, 100);
-    lv_chart_set_div_line_count(ui_ScreenChart_Chart1, 10, 8);
-    lv_chart_set_axis_tick(ui_ScreenChart_Chart1, LV_CHART_AXIS_PRIMARY_X, 10, 5, 8, 2, true, 50);
-    lv_chart_set_axis_tick(ui_ScreenChart_Chart1, LV_CHART_AXIS_PRIMARY_Y, 10, 5, 5, 2, true, 50);
-    lv_chart_set_axis_tick(ui_ScreenChart_Chart1, LV_CHART_AXIS_SECONDARY_Y, 4, 2, 10, 2, false, 5);
-    ui_ScreenChart_Chart1_series_v = lv_chart_add_series(ui_ScreenChart_Chart1, lv_color_hex(0xF60000),
-                                                                             LV_CHART_AXIS_PRIMARY_Y);
-    ui_ScreenChart_Chart1_ser_v_per_minute = lv_chart_add_series(ui_ScreenChart_Chart1, lv_color_hex(0xFFC900),
-                                                                             LV_CHART_AXIS_PRIMARY_Y);
-    ui_ScreenChart_Chart1_series_perc_per_minute = lv_chart_add_series(ui_ScreenChart_Chart1, lv_color_hex(0x00FFF7),
-                                                                             LV_CHART_AXIS_SECONDARY_Y);
-
-    lv_obj_set_style_line_color(ui_ScreenChart_Chart1, lv_color_hex(0x4040FF), LV_PART_ITEMS | LV_STATE_DEFAULT);
-    lv_obj_set_style_line_opa(ui_ScreenChart_Chart1, 255, LV_PART_ITEMS | LV_STATE_DEFAULT);
-    lv_obj_set_style_line_width(ui_ScreenChart_Chart1, 1, LV_PART_ITEMS | LV_STATE_DEFAULT);
-
-    ui_ScreenChartLabelInfo = lv_label_create(ui_ScreenChart);
-    lv_obj_set_width(ui_ScreenChartLabelInfo, LV_SIZE_CONTENT);   /// 1
-    lv_obj_set_height(ui_ScreenChartLabelInfo, LV_SIZE_CONTENT);    /// 1
-    lv_obj_set_x(ui_ScreenChartLabelInfo, 0);
-    lv_obj_set_y(ui_ScreenChartLabelInfo, 200);
-    lv_obj_set_align(ui_ScreenChartLabelInfo, LV_ALIGN_CENTER);
-    lv_obj_set_style_text_font(ui_ScreenChartLabelInfo, &lv_font_montserrat_24, LV_PART_MAIN | LV_STATE_DEFAULT);
-
-    ui_ScreenChartLabelSpeed = lv_label_create(ui_ScreenChart);
-    lv_obj_set_width(ui_ScreenChartLabelSpeed, LV_SIZE_CONTENT);   /// 1
-    lv_obj_set_height(ui_ScreenChartLabelSpeed, LV_SIZE_CONTENT);    /// 1
-    lv_obj_set_x(ui_ScreenChartLabelSpeed, 0);
-    lv_obj_set_y(ui_ScreenChartLabelSpeed, -192);
-    lv_label_set_text(ui_ScreenChartLabelSpeed, "?.?");
-    lv_obj_set_align(ui_ScreenChartLabelSpeed, LV_ALIGN_CENTER);
-    lv_obj_set_style_text_font(ui_ScreenChartLabelSpeed, &ui_font_by75_96, LV_PART_MAIN | LV_STATE_DEFAULT);
-
-    lv_obj_add_event_cb(ui_ScreenChart_Chart1, ui_event_ScreenChart_Chart1, LV_EVENT_ALL, NULL);
-    lv_obj_add_event_cb(ui_ScreenChart, ui_event_ScreenChart, LV_EVENT_ALL, NULL);
-
-}
-

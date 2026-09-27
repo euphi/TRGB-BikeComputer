@@ -56,26 +56,11 @@ extern lv_obj_t * ui_S1BarBattLabel;
 void ui_event_S1LabelClock(lv_event_t * e);
 extern lv_obj_t * ui_S1LabelClock;
 extern lv_obj_t * ui_S1LabelCad;
-void ui_event_ScreenChart(lv_event_t * e);
-extern lv_obj_t * ui_ScreenChart;
-void ui_event_ScreenChart_Chart1(lv_event_t * e);
-extern lv_obj_t * ui_ScreenChart_Chart1;
-extern lv_obj_t * ui_ScreenChartLabelInfo;
-extern lv_obj_t * ui_ScreenChartLabelSpeed;
 
-extern lv_chart_series_t* ui_ScreenChart_Chart1_series_v;
-extern lv_chart_series_t* ui_ScreenChart_Chart1_series_perc_per_minute;
-extern lv_chart_series_t* ui_ScreenChart_Chart1_ser_v_per_minute;
 
 void ui_S1Main_screen_init();
-void ui_ScreenWifi_screen_init();
-void ui_ScreenChart_screen_init();
 
 // Events
-void chartModeHeartRate(lv_event_t * e);
-void chartModeBatterie(lv_event_t * e);
-void chart_up(lv_event_t * e);
-void chart_dn(lv_event_t * e);
 
 void statModeChanged(uint8_t mode);
 void statModeNext(bool dir);

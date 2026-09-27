@@ -4,7 +4,6 @@
 // PROJECT: SquareLine_Project
 
 #include "ui.h"
-#include "Screens/Settings/ui_Settings.h"
 #include "Singletons.h"
 #include "Stats/Statistics.h"
 #include "Stats/Distance.h"
@@ -12,53 +11,6 @@
 
 
 #include <Arduino.h>
-
-void chartModeHeartRate(lv_event_t * e)
-{
-	// Your code here
-}
-
-void chartModeBatterie(lv_event_t * e)
-{
-	// Your code here
-}
-
-void EvDeepSleep(lv_event_t * e)
-{
-	trgb.deepSleep();
-}
-
-void EvRestart(lv_event_t * e)
-{
-	trgb.restart();
-}
-
-void BrightChanged(lv_event_t * e)
-{
-    lv_obj_t * slider = lv_event_get_target(e);
-	//int sliderValue = ( ( (int)lv_slider_get_value(slider)) << 8 ) / 100 - 1;
-	int sliderValue = (int)lv_slider_get_value(slider);
-
-	// Debug, not Info: fires repeatedly while the user drags the slider, not just once per change.
-	bclog.logf( BCLogger::Log_Debug, BCLogger::TAG_OP, "New brightness value %d.\n", sliderValue);
-	if (sliderValue > 250) {
-		analogWrite(EXAMPLE_PIN_NUM_BK_LIGHT, 255);
-		delay(5);
-		digitalWrite(EXAMPLE_PIN_NUM_BK_LIGHT, EXAMPLE_LCD_BK_LIGHT_ON_LEVEL);
-	} else {
-		analogWrite(EXAMPLE_PIN_NUM_BK_LIGHT, sliderValue);
-	}
-}
-
-void chart_up(lv_event_t * e)
-{
-	// Your code here
-}
-
-void chart_dn(lv_event_t * e)
-{
-	// Your code here
-}
 
 void statModeChanged(uint8_t mode) {
 /*

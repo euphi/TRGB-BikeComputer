@@ -1,3 +1,7 @@
+// Forumslader screen - FL variant only (BC_FL_SUPPORT). Kept as the source for the
+// later EEZ port; not compiled into the other variants.
+#ifdef BC_FL_SUPPORT
+
 // SquareLine LVGL GENERATED FILE
 // EDITOR VERSION: SquareLine Studio 1.1.1
 // LVGL VERSION: 8.3.3
@@ -583,3 +587,5 @@ void ui_ScreenFL_screen_init(void)
     lv_obj_add_event_cb(ui_ScreenFL, ui_event_ScreenFL, LV_EVENT_ALL, NULL);
 
 }
+
+#endif // BC_FL_SUPPORT

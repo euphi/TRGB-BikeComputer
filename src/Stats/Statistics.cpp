@@ -92,9 +92,6 @@ void Statistics::setup() {
 	statDataStore.attach(5, +[](Statistics *thisInstance) {thisInstance->dataStore();}, this);
 	statStore.attach(15, +[](Statistics *thisInstance) {thisInstance->autoStore();}, this);
 
-	for (uint_fast8_t i = 0 ; i < chart_array_count ; i++) {
-		ui.setChartArray(chart_array[i], i);
-	}
 	// Serve the array data as JSON
 	webserver.getServer().on("/stat/data", HTTP_GET, [this](AsyncWebServerRequest *request) {
 		String jsonArray = this->generateJSONArray();
@@ -441,7 +438,6 @@ void Statistics::addGradientHeight(float _grad, float _height) {
 	addFloatToDatapoint(distanceData.currentMinMax.height, height);
 	distanceData.curCountGradHeight++;
 	ui.updateGrad(gradient, height);
-	ui.updateChart();
 }
 
 void Statistics::updateDistanceSeries() {
@@ -567,7 +563,6 @@ void Statistics::createChartArray(uint8_t idx) {
 		}
 		chart_array[idx][point] = isnan(val) ? INT16_MAX : static_cast<int16_t>(round(val));
 	}
-	ui.setChartPosFirst(chart_array_startPos[idx], idx);
 	uint32_t endcount = xthal_get_ccount();
 	bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_STAT, "Took %d cycles to update chart", endcount - startcount);
 }

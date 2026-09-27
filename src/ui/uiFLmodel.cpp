@@ -1,3 +1,7 @@
+// Forumslader screen - FL variant only (BC_FL_SUPPORT). Kept as the source for the
+// later EEZ port; not compiled into the other variants.
+#ifdef BC_FL_SUPPORT
+
 /*
  * uiFLmodel.cpp
  *
@@ -68,3 +72,4 @@ void UiFLModel::updateFLPower(uint16_t _batVoltage, uint8_t _batPerc, uint16_t _
 	updatePower = true;
 }
 
+#endif // BC_FL_SUPPORT

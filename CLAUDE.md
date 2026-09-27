@@ -55,14 +55,13 @@ ist das Protokoll die Quelle der Wahrheit.
   exportiert der Agent selbst mit `Tools/eez_export_headless.sh` (EEZ Studios
   eigener Exporter) und testet auf dem Gerät; der Nutzer prüft im Canvas und
   exportiert nur noch aus eigenen Gründen manuell.
-- `src/ui/Screens/*` (Chart, MainNoFL, Settings, SNavi, SOTA, SWLAN) und
-  `src/ui/ui*.c` sind alter SquareLine-generierter Code. Die Screens werden
-  noch initialisiert, aber nicht mehr angezeigt -- **abgeschaltet, nicht
-  gelöscht**, bis es jeweils einen RimRidge-Ersatz gibt. Teile davon sind
-  noch aktiv verdrahtet (MsgBox, Akku-Mittelwert via
-  `ui_ScrChartUpdateBat()`, FL-Screen in der FL-Variante). Fonts/Bilder
-  unter `src/ui/font/` und `src/ui/img/` werden teils von RimRidge
-  mitbenutzt.
+- Alter SquareLine-Code: `src/ui/ui*.c` (Main-Screen `S1Main`, wird noch
+  initialisiert, aber nie angezeigt; MsgBox noch aktiv verdrahtet) und der
+  FL-Screen `src/ui/ui_FL.c`/`uiFLmodel.cpp` -- nur in der FL-Variante
+  kompiliert (`#ifdef BC_FL_SUPPORT`), Quelle für die spätere EEZ-Umstellung,
+  nicht löschen. Settings- und Chart-Screen sind entfernt (2026-09-27; Chart
+  wird neu gestaltet). Fonts/Bilder unter `src/ui/font/` und `src/ui/img/`
+  werden teils von RimRidge mitbenutzt.
 
 ## Binärlog und Wegequalität
 

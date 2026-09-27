@@ -11,7 +11,9 @@
 #include <Ticker.h>
 #include "freertos/semphr.h"
 
+#ifdef BC_FL_SUPPORT
 #include "ui/uiFLmodel.h"
+#endif
 #include <Stats/Statistics.h>		//TODO: Move statistics data types to separate class
 #include "BikeNavProtocol.h"
 
@@ -103,9 +105,6 @@ public:
 	Statistics::EAvgType getStatTimeMode() const {return statTimeMode;}
 	void setStatTimeMode(Statistics::EAvgType _statTimeMode) {statTimeMode = _statTimeMode;updateData();}
 
-	void setChartArray(int16_t a[], uint8_t idx);
-	void setChartPosFirst(uint16_t pos, uint8_t idx);
-	void updateChart();
 
 	enum UIColor {
 		UI_ColorNeutral,
@@ -169,7 +168,9 @@ private:
 	void dismissNavScreen();
 
 
+#ifdef BC_FL_SUPPORT
 	UiFLModel uifl;
+#endif
 
 	Ticker updateTicker;
 	Ticker dataTicker;
@@ -183,6 +184,8 @@ private:
 
 	// Model for TRGB specific data
 	float batIntVoltage = NAN, batIntVoltageAvg = NAN;
+	float batIntVoltageSum = 0;		// of the samples since the last average (updateIntBatteryInt())
+	uint8_t batIntSamples = 0;
 	int8_t batIntPerc = -1;
 	bool batIntCharging = false;
 

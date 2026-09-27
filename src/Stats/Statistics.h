@@ -208,9 +208,8 @@ private:
 	//TODO: Move into separate class
 	enum DataClass {SPEED = 0, HR, HEIGHT, GRADIENT, TEMPERATURE, CADENCE, DISTANCE};
 	static const uint8_t chart_array_count = 4;
-	// Reverted to plain internal RAM (2026-09-19): only 3.2KB, and lv_chart_set_ext_y_array()
-	// (ui_ScrChartSetExtArray1) makes LVGL read this directly on every chart refresh -- not
-	// worth it as another PSRAM-contention source given the display flicker investigation.
+	// Internal RAM (only 3.2KB). No display chart since 2026-09-27 (old SquareLine chart
+	// removed, to be redesigned) -- still served on /stat/debugarray and /stat/data.
 	int16_t chart_array[chart_array_count][400];
 	uint16_t chart_array_startPos[chart_array_count];
 	DataClass chart_array_type[chart_array_count] = {SPEED, HR, CADENCE, DISTANCE};

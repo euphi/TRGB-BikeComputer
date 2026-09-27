@@ -14,10 +14,7 @@
 
 #include "ui/img/state-icons.h"
 
-#include "ui/Screens/Settings/ui_Settings.h"
 
-#include <ui/Screens/Chart/ui.h>
-#include <ui/Screens/Chart/ui_Chart_CustFunc.h>
 
 #include "ui/ui.h"  // FL main and chart screen
 #include "ui/ui_custFunc.h"
@@ -72,10 +69,7 @@ void UIFacade::initDisplay() {
 
     // 2. Init all screens
     ui_S1Main_screen_init();
-    ui_ScreenChart_screen_init();		// old chart (included in SQS main screen project)
-    ui_SChart_screen_init();			// new chart (own SQS project)
 
-    ui_ScrSettings_screen_init();
 
     // .. add init of new screens here
 
@@ -98,16 +92,15 @@ void UIFacade::initDisplay() {
     // RimRidge is now the permanent main/boot screen (2026-09-18).
     // MainNoFL/SNavi/SOTA/SWLAN were disabled-not-deleted then, and fully
     // removed 2026-09-26 once nothing outside their own folders referenced
-    // them any more (see memory ui-tooling-eez-studio-migration). Chart and
-    // Settings are still initialized (Chart's ui_ScrChartUpdateBat() has a
-    // live dependency - see updateIntBatteryInt(); the old Settings screen's
-    // brightness slider has no place on RimRidgeSettings yet).
+    // them any more (see memory ui-tooling-eez-studio-migration). The old
+    // Settings and Chart screens followed 2026-09-27.
     ui_MainScreen = objects.rim_ridge;
 
-    ui_ScrChartSetBackScreen(ui_MainScreen);
 
     // init data model
+#ifdef BC_FL_SUPPORT
     uifl.init();		// FL data model
+#endif
 
     // 4. Load initial screen
     lv_disp_load_scr(ui_MainScreen);
@@ -167,8 +160,7 @@ void UIFacade::updateHandler() {
 			// Old-screen fan-out (ui_ScrMain*/ui_ScrNavi*/ui_SMainNoFL*) removed
 			// 2026-09-18 when those screens were disabled, then the screens
 			// themselves removed 2026-09-26 (see memory
-			// ui-tooling-eez-studio-migration). ui_ScrChart* stays - Chart is
-			// still initialized (see updateIntBatteryInt()).
+			// ui-tooling-eez-studio-migration).
 			ui_RimRidgeUpdateSpeed(speed);
 			ui_RimRidgeUpdateCadence(cad);
 			ui_RimRidgeUpdateHR(hr);
@@ -206,7 +198,9 @@ void UIFacade::updateHandler() {
 			updateClock(tv.tv_sec);
 			next_millis = millis() + (1005 - ( (tv.tv_usec / 1000) % 1000) ) ;		// Update clock only 5ms after full second
 			//TRACE:printf("millis: %d\tclock:%d - %d -> %d\n", millis(), tv.tv_sec, tv.tv_usec, next_millis);
+#ifdef BC_FL_SUPPORT
 			uifl.redraw();	//Redraw FL screens
+#endif
 
 			// 1Hz fallback for evaluateNaviAutoSwitch()'s delayed switch-
 			// back timer - updateNavi()/updateNaviDist() also call it, but
@@ -251,7 +245,9 @@ void UIFacade::updateClock(const time_t now) {
 	String strClock = DateFormatter::format(DateFormatter::TIME_ONLY,now);
 	String strDate = DateFormatter::format(DateFormatter::DATE_ONLY,now);
 	// ui_ScrMainUpdateClock removed 2026-09-18 (old S1Main screen disabled).
+#ifdef BC_FL_SUPPORT
 	uifl.updateClock(strClock, strDate);
+#endif
 
 	// Ride time / clock widget (rr_ic_time + rr_time_val), added 2026-09-25
 	// per doc/design/mainscreen.svg's timeGroup. Mode switch rule (this
@@ -297,16 +293,17 @@ void UIFacade::updateStats() {
 }
 
 void UIFacade::updateIntBatteryInt() {
-	char batStr[32];
-	snprintf(batStr, 31, "Volt: %.02fV - %d%% %s", batIntVoltage, batIntPerc, batIntCharging?"- C": "");
 	ui_RimRidgeUpdateIntBatPerc(batIntPerc);
-	// ui_ScrChartUpdateBat kept even though the Chart screen is disabled:
-	// it also computes the rolling battery-voltage average (batIntVoltageAvg)
-	// by reading back samples from the Chart's own lv_chart widget storage -
-	// removing this call would silently freeze that average. See memory
-	// ui-tooling-eez-studio-migration for the full disabled-screens list.
-	float avg = ui_ScrChartUpdateBat(batIntVoltage, batIntPerc, batStr);
-	if (! isnan(avg)) batIntVoltageAvg = avg;
+	// Battery-voltage average for batCheck() in main.cpp: mean of the last 60 samples
+	// (1/s), refreshed once a minute. Same result as the old Chart screen's
+	// ui_ScrChartUpdateBat(), which read the samples back from its lv_chart.
+	if (isnan(batIntVoltage)) return;
+	batIntVoltageSum += batIntVoltage;
+	if (++batIntSamples >= 60) {
+		batIntVoltageAvg = batIntVoltageSum / batIntSamples;
+		batIntVoltageSum = 0;
+		batIntSamples = 0;
+	}
 }
 
 // ---------------- external (public) data updater ----------------
@@ -753,21 +750,6 @@ void UIFacade::updateBatInt(float voltage, uint8_t batPerc, bool charging) {
 	batIntCharging = charging;
 }
 
-void UIFacade::setChartArray(int16_t a[], uint8_t idx) {
-	if (idx>4) {
-		bclog.log(BCLogger::Log_Error, BCLogger::TAG_UI, "Invalid chart series index");
-		return;
-	}
-	ui_ScrChartSetExtArray1(a, idx);
-}
-
-void UIFacade::setChartPosFirst(uint16_t pos, uint8_t idx) {
-	ui_ScrChartSetPostFirst(pos, idx);
-
-}
-void UIFacade::updateChart() {
-	ui_ScrChartRefresh();
-}
 
 bool UIFacade::runLocked(const std::function<void()>& fn, uint32_t timeoutMs) {
 	bool uiTask = isDrawTask();
