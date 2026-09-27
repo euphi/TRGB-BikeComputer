@@ -375,12 +375,15 @@ void UIFacade::updateWiFiState(bool wifiEnabled, bool APModeActive, bool disable
 	}
 }
 
-void UIFacade::updateStateIcon(Statistics::EDrivingState state, UIColor col) {
+void UIFacade::updateStateIcon(Statistics::EDrivingState state, UIColor col, bool rideMode) {
 	// Restored 2026-09-19 for the RimRidge "Mainscreen-Studie" follow-up
 	// (rr_ic_state) - mirrors the pre-RimRidge mapping (see git history of
 	// this function) with 4 distinct icons instead of the old 2 shared
 	// ones (stateCyclePower/stateStop). DS_NO_CONN has no icon in the
 	// artifact -> NULL, which ui_RimRidgeUpdateStateIcon() hides.
+	// DS_FREE_RIDE added 2026-09-28 for the ride-state machine (see
+	// doc/design/ride-state-machine.md) -- covers both "FreeRide" (before the first Start
+	// tap) and "Cruise" (paused mid-ride, session still open), same icon for both.
 	const lv_img_dsc_t *pCurStateIcon = NULL;
 	switch (state) {
 	case Statistics::DS_DRIVE_POWER:
@@ -388,6 +391,9 @@ void UIFacade::updateStateIcon(Statistics::EDrivingState state, UIColor col) {
 		break;
 	case Statistics::DS_DRIVE_COASTING:
 		pCurStateIcon = &img_rr_icon_state_coasting;
+		break;
+	case Statistics::DS_FREE_RIDE:
+		pCurStateIcon = &img_rr_icon_state_freeride;
 		break;
 	case Statistics::DS_BREAK:
 		pCurStateIcon = &img_rr_icon_state_break;
@@ -399,13 +405,6 @@ void UIFacade::updateStateIcon(Statistics::EDrivingState state, UIColor col) {
 	default:
 		pCurStateIcon = NULL;
 	}
-
-	// TODO(2026-09-19): provisional override for visual QA while no speed
-	// sensor is connected (real state would be DS_NO_CONN, hidden) - forces
-	// the "Cruise"/DS_DRIVE_COASTING icon so the user can check its on-
-	// device look. Remove this override once confirmed, restoring the
-	// switch's real DS_NO_CONN result above.
-	pCurStateIcon = &img_rr_icon_state_coasting;
 
 	lv_color_t lvcol = lv_color_hex(0xCBA36B);	// RRBrass - matches the rest of the RimRidge icon set
 	switch (col) {
@@ -424,7 +423,7 @@ void UIFacade::updateStateIcon(Statistics::EDrivingState state, UIColor col) {
 
 	bool uiTask = isDrawTask();
 	if (uiTask || xSemaphoreTake(xUIDrawMutex, 150 / portTICK_PERIOD_MS) == pdTRUE) {
-		ui_RimRidgeUpdateStateIcon(pCurStateIcon, lvcol);
+		ui_RimRidgeUpdateStateIcon(pCurStateIcon, lvcol, rideMode);
 		if (!uiTask) xSemaphoreGive(xUIDrawMutex);
 	} else {
 		bclog.log(BCLogger::Log_Warn, BCLogger::TAG_UI, "Update state icon blocked by mutex");

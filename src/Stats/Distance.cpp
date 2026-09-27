@@ -141,6 +141,14 @@ void Distance::updateRevs(uint32_t revs, uint16_t timestamp) {
 
 	stats.checkDistance(curTotalDistance[Statistics::SUM_ESP_START]);
 
+	// Per-drive-state distance bucketing (Stop/Break/Cruise-exclusion for average speed --
+	// see doc/design/ride-state-machine.md §5). Same "revs since last call" quantity the
+	// speed calculation below uses, so Scenario 1/2's lastRevs bookkeeping above already
+	// keeps this from spiking on the first call after boot or a sensor reconnect.
+	if (revs > lastRevs) {
+		stats.addDistanceDelta((revs - lastRevs) * wheel_c);
+	}
+
 	// If timestamp is zero, revs have been transmitted without timestamp (e.g. in FL mode) --> no speed calculation possible (here)
 	if (timestamp > 0) {
 		float newSpeed = calculateSpeed(revs - lastRevs, timestamp - lastTimestamp);

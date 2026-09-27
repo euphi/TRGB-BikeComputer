@@ -17,6 +17,7 @@ const char* Statistics::PREF_TIME_STRING[Statistics::EDrivingStateMax] = {
 		"TIME_IN_NOCONN",	//		DS_NO_CONN,
 		"TIME_IN_BREAK",	//		DS_BREAK,
 		"TIME_IN_STOP",		//		DS_STOP,
+		"TIME_IN_FREERIDE",	//		DS_FREE_RIDE,  -- new key, name-keyed NVS storage so old data stays valid
 		"TIME_IN_COAST",	//		DS_DRIVE_COASTING,
 		"TIME_IN_DRIVE"		//		DS_DRIVE_POWER,
 };
@@ -36,7 +37,8 @@ const char* Statistics::SUM_TYPE_STRING[Statistics::ESummaryTypeMax] = {
 const char* Statistics::AVG_TYPE_STRING[Statistics::EAvgTypeMax] = {
 		"⏱ kompl",
 		"⏱ fahrend",
-		"⏱ Stops"
+		"⏱ Stops",
+		"⏱ o.Cruise"
 };
 
 Statistics::Statistics(): distHandler(* new Distance())  {
@@ -101,7 +103,7 @@ void Statistics::setup() {
 	// wheel-calibration page: the markup was there, nothing ever filled it.
 	webserver.getServer().on("/stat/summary", HTTP_GET, [this](AsyncWebServerRequest *request) {
 		JsonDocument doc;
-		static const char* const kAvg[EAvgTypeMax] = { "ALL", "DRIVE", "NOBREAK" };
+		static const char* const kAvg[EAvgTypeMax] = { "ALL", "DRIVE", "NOBREAK", "NOCRUISE" };
 		for (uint_fast8_t t = 0; t <= SUM_ESP_START; t++) {
 			const ESummaryType st = static_cast<ESummaryType>(t);
 			JsonObject o = doc[SUM_TYPE_STRING[t] + 3].to<JsonObject>();	// +3 skips "ST_"
@@ -227,10 +229,17 @@ void Statistics::cycle() {
 	timestamp_last = time_now;
 	time_t time_in_break = time_now - timestamp_stop;
 	for (uint_fast8_t c = SUM_ESP_TOTAL; c <= SUM_ESP_START; c++) {
+		// SUM_ESP_START only accumulates while a ride session is open (see
+		// toggleRideMode()/stopRide(), doc/design/ride-state-machine.md §4) -- before the
+		// first Start tap, or after a Stop, the Start/Ride view stays at zero even though
+		// curDriveState may already be DS_FREE_RIDE (device is moving, just not "riding" yet).
+		if (c == SUM_ESP_START && !rideSessionOpen) continue;
 		time_in[curDriveState][c] += delta;
 	}
 
-	// Driving state fsm (Connected sub-state)
+	// Driving state fsm (Connected sub-state). rideMode (manual, Pause/Start button) picks
+	// DS_FREE_RIDE vs. DS_DRIVE_COASTING/POWER on resume -- see
+	// doc/design/ride-state-machine.md for the full two-axis picture.
 	switch (curDriveState) {
 	case DS_STOP:
 		if ( time_in_break > 120000) {
@@ -248,7 +257,7 @@ void Statistics::cycle() {
 		//no break
 	case DS_BREAK:
 		if (speed > 5.5) {
-			setCurDriveState(cadence < 40  ? DS_DRIVE_COASTING : DS_DRIVE_POWER);
+			setCurDriveState(rideMode ? (cadence < 40  ? DS_DRIVE_COASTING : DS_DRIVE_POWER) : DS_FREE_RIDE);
 			if (offAfterMinutes != 255) offAfterMinutes = 5;	// don't silently re-enable auto-off if the user disabled it (long-press / Pause button)
 			time_in_break = 0;	// Necessary so that next if is not true
 		}
@@ -258,12 +267,26 @@ void Statistics::cycle() {
 			trgb.deepSleep();
 		}
 		break;
+	// state FREE_RIDE (moving, but rideMode == false -- covers both FreeRide and Cruise,
+	// see doc/design/ride-state-machine.md §2). No cadence-based sub-split here -- Coast is
+	// only a Ride sub-state.
+	case DS_FREE_RIDE:
+		timestamp_stop = time_now;
+		if (speed < 0.3) {
+			setCurDriveState(DS_STOP);
+		}
+		break;
 	// state DRIVING
 	case DS_DRIVE_COASTING:
 	case DS_DRIVE_POWER:
 		timestamp_stop = time_now;	// Continuously update timestamp_stop if not in break/stop/disconnected (necessary so that
 		if (speed < 0.3) {
 			setCurDriveState(DS_STOP);
+		} else if (!rideMode) {
+			// Pause was tapped mid-ride -- toggleRideMode() already switches curDriveState
+			// immediately (applyRideModeToCurrentMovement()), so this is only a safety net
+			// against the two ever disagreeing, not the normal path.
+			setCurDriveState(DS_FREE_RIDE);
 		} else {
 			//TODO: add speed depended cadence limits to adapt to steep gradients
 			if (cadence < 40 && curDriveState == DS_DRIVE_POWER) {
@@ -323,6 +346,60 @@ void Statistics::toggleStandbyMode() {
 	updateStateIcon();	// Immediate update (user feedback)
 }
 
+// ******************** Ride-state FSM (Pause/Start button) ********************
+// See doc/design/ride-state-machine.md for the full model.
+
+void Statistics::applyRideModeToCurrentMovement() {
+	// Only re-decides the leaf state while actually moving -- while stopped/on a break
+	// (or disconnected), rideMode's new value simply takes effect once cycle() resumes
+	// movement (its speed>5.5 branch already reads rideMode), nothing to do here.
+	switch (curDriveState) {
+	case DS_FREE_RIDE:
+	case DS_DRIVE_COASTING:
+	case DS_DRIVE_POWER:
+		setCurDriveState(rideMode ? (cadence < 40 ? DS_DRIVE_COASTING : DS_DRIVE_POWER) : DS_FREE_RIDE);
+		break;
+	default:
+		break;
+	}
+}
+
+void Statistics::toggleRideMode() {
+	if (!rideMode) {
+		if (!rideSessionOpen) {
+			// First Start tap (not a resume from Cruise): open a new ride session and zero
+			// the Start/Ride view. resetDistToZero() also calls reset(SUM_ESP_START) for us
+			// (clears time_in[][SUM_ESP_START] and dist_in[][SUM_ESP_START]).
+			rideSessionOpen = true;
+			distHandler.resetDistToZero(SUM_ESP_START);
+			bclog.log(BCLogger::Log_Info, BCLogger::TAG_STAT, "Ride session started");
+		}
+		rideMode = true;
+	} else {
+		rideMode = false;	// Pause tapped -> Cruise. Session stays open (rideSessionOpen unchanged).
+	}
+	applyRideModeToCurrentMovement();
+	updateStateIcon();	// Immediate update (user feedback)
+}
+
+void Statistics::stopRide() {
+	rideMode = false;
+	rideSessionOpen = false;
+	applyRideModeToCurrentMovement();
+	bclog.log(BCLogger::Log_Info, BCLogger::TAG_STAT, "Ride session stopped (long-press)");
+	updateStateIcon();	// Immediate update (user feedback)
+}
+
+void Statistics::handlePauseButtonHold() {
+	if (rideSessionOpen) {
+		stopRide();
+	} else {
+		// No ride session to stop -- long-press keeps its pre-existing meaning, RimRidge's
+		// only control for the auto-standby timer.
+		toggleStandbyMode();
+	}
+}
+
 void Statistics::setConnected(bool connected) {
 	if (connected && (curDriveState == DS_NO_CONN)) {
 		setCurDriveState(histDriveState);
@@ -368,7 +445,7 @@ void Statistics::updateStateIcon() {
 			}
 		}
 	}
-	ui.updateStateIcon(curDriveState, color);
+	ui.updateStateIcon(curDriveState, color, rideMode);
 }
 
 // ******************** Helper functions (static) ********************
@@ -429,6 +506,18 @@ void Statistics::addSpeed(float _speed) {
 	timeData.curCountSpeed++;
 
 	ui.updateSpeed(speed);
+}
+
+void Statistics::addDistanceDelta(float deltaM) {
+	// Mirrors cycle()'s time_in[][] += delta loop (same SUM_ESP_START gate, see §4 of the
+	// design doc) -- called from Distance::updateRevs() with the same rev-delta-derived
+	// distance it already trusts for addSpeed(), so reconnect/first-call spikes are already
+	// handled there (deltaM comes out 0 on those calls).
+	if (!(deltaM > 0)) return;	// also excludes NAN
+	for (uint_fast8_t c = SUM_ESP_TOTAL; c <= SUM_ESP_START; c++) {
+		if (c == SUM_ESP_START && !rideSessionOpen) continue;
+		dist_in[curDriveState][c] += deltaM;
+	}
 }
 
 void Statistics::addGradientHeight(float _grad, float _height) {
@@ -646,6 +735,7 @@ uint32_t Statistics::getDistance(ESummaryType type, bool includeLost) const {
 void Statistics::reset(ESummaryType type) {	//TODO: Move to DistanceHandler
 	for (uint_fast8_t d = 0; d < EDrivingStateMax; d++) {
 		time_in[d][type] = 0;
+		dist_in[d][type] = 0;
 	}
 }
 
@@ -657,23 +747,58 @@ void Statistics::setCurDriveState(EDrivingState _curDriveState) {
 
 uint32_t Statistics::getTime(ESummaryType type, EAvgType avgtype) const {
 	//TODO: uint32_t is too short for time in msec (roll-over every 7 weeks)
+	// Staircase: AVG_ALL ⊃ AVG_NOCRUISE ⊃ AVG_NOBREAK ⊃ AVG_DRIVE -- see
+	// doc/design/ride-state-machine.md §5.
 	uint32_t relevantTime = time_in[DS_DRIVE_COASTING][type] + time_in[DS_DRIVE_POWER][type];
 	switch (avgtype) {
 	case AVG_ALL:
+		relevantTime += time_in[DS_FREE_RIDE][type];
+		//no break
+	case AVG_NOCRUISE:
 		relevantTime += time_in[DS_BREAK][type];
 		//no break
 	case AVG_NOBREAK:
 		relevantTime += time_in[DS_STOP][type];
+		//no break
+	case AVG_DRIVE:
+		break;
 	}
 	return relevantTime/1000;		//msec to sec
+}
+
+float Statistics::getDistanceFiltered(ESummaryType type, EAvgType avgtype) const {
+	// Same staircase as getTime(), but over dist_in[][] -- see that array's doc comment in
+	// Statistics.h for why this exists (and why it's not used for AVG_ALL, see getAvg()).
+	float d = dist_in[DS_DRIVE_COASTING][type] + dist_in[DS_DRIVE_POWER][type];
+	switch (avgtype) {
+	case AVG_ALL:
+		d += dist_in[DS_FREE_RIDE][type];
+		//no break
+	case AVG_NOCRUISE:
+		d += dist_in[DS_BREAK][type];
+		//no break
+	case AVG_NOBREAK:
+		d += dist_in[DS_STOP][type];
+		//no break
+	case AVG_DRIVE:
+		break;
+	}
+	return d;
 }
 
 float Statistics::getAvg(ESummaryType type, EAvgType avgtype) const {
 	//FIXME: avg does not take into account distance in no connection. There should be at least a mechanism to compensate distance in NO_CONN
 	//TRACE: Serial.print(getDistance(type)); Serial.print('\t');Serial.println(relevantTime);
 
+	// AVG_ALL keeps using the robust, NVS-persisted, loss-corrected Distance::getDistance()
+	// (via getDistance() below); the filtered views (AVG_DRIVE/AVG_NOBREAK/AVG_NOCRUISE) use
+	// the non-persisted per-state dist_in[][] breakdown instead, since excluding e.g. Cruise
+	// distance has no equivalent in the plain running total. See doc/design/
+	// ride-state-machine.md §5 for the persistence trade-off this implies.
+	float distM = (avgtype == AVG_ALL) ? getDistance(type, false) : getDistanceFiltered(type, avgtype);
+
 	//        .. in m         / sec                     * 3.6 km/h / m/s..
-	return (getDistance(type, false) / static_cast<float>(getTime(type, avgtype))) * 3.6;
+	return (distM / static_cast<float>(getTime(type, avgtype))) * 3.6;
 
 }
 

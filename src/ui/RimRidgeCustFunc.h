@@ -48,11 +48,17 @@ void ui_RimRidgeUpdateWiFiState(bool wifiEnabled, bool APModeActive, bool disabl
 // Driving-state icon (rr_ic_state, added 2026-09-19 per the "Mainscreen-
 // Studie" follow-up artifact). pIcon NULL hides the widget - used for
 // DS_NO_CONN, which has no icon in the artifact (only Stop/Break/
-// Coasting/Power are shown). The icon<->state mapping lives in
+// Coasting/Power/FreeRide are shown). The icon<->state mapping lives in
 // UIFacade::updateStateIcon(), matching the pre-RimRidge precedent
 // (ui_SMainNoFLUpdateStateIcon) of resolving the enum to a bitmap pointer
 // there rather than pulling Statistics.h into this extern "C" header.
-void ui_RimRidgeUpdateStateIcon(const lv_img_dsc_t* pIcon, lv_color_t color);
+//
+// rideMode (added 2026-09-28, see doc/design/ride-state-machine.md) also
+// drives the Pause/Start button's own glyph (rr_ic_pause) here, since both
+// the state icon and the button flip on the same underlying signal: Start-
+// arrow while not actively riding (FreeRide/Cruise), Pause glyph while Ride/
+// Coast.
+void ui_RimRidgeUpdateStateIcon(const lv_img_dsc_t* pIcon, lv_color_t color, bool rideMode);
 
 // Lane-guidance row (rr_lane_row) + rr_nav_pill's slide-right-and-shrink
 // animation, per the "Rim & Ridge - Mainscreen" design study section.

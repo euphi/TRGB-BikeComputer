@@ -31,12 +31,21 @@ public:
 		AVG_ALL,
 		AVG_DRIVE,
 		AVG_NOBREAK,   // but Pause/Stop
+		AVG_NOCRUISE,  // Drive + Stop + Break, but without FreeRide/Cruise time -- see
+		               // doc/design/ride-state-machine.md §5. Only SUM_ESP_START normally
+		               // has any DS_FREE_RIDE time to exclude (see the rideSessionOpen gate
+		               // in cycle()); for the other summary types this is close to AVG_ALL.
 		EAvgTypeMax
 	};
+	// Ride-state FSM -- see doc/design/ride-state-machine.md for the full picture (two
+	// independent axes: rideMode, manual via the Pause/Start button, selects
+	// DS_FREE_RIDE vs. DS_DRIVE_COASTING/POWER; DS_STOP/DS_BREAK are automatic, from
+	// speed, and apply regardless of rideMode).
 	enum EDrivingState {	// Various driving states
 		DS_NO_CONN,
 		DS_BREAK,
 		DS_STOP,
+		DS_FREE_RIDE,		// rideMode == false, in Bewegung (deckt "FreeRide" UND "Cruise" ab)
 		DS_DRIVE_COASTING,
 		DS_DRIVE_POWER,
 		EDrivingStateMax
@@ -56,8 +65,20 @@ private:
 	EDrivingState curDriveState = DS_NO_CONN;
 	EDrivingState histDriveState = DS_STOP;
 
+	// Manual ride-mode toggle (Pause/Start button short tap) and the ride-session flag it
+	// opens/closes (long-press "Stop") -- see doc/design/ride-state-machine.md §2/§4.
+	// Both start false/false: initial state is FreeRide, no session open, matching the
+	// "Initialer Zustand: FreeRide" requirement without any extra setup code.
+	bool rideMode = false;
+	bool rideSessionOpen = false;
+	void applyRideModeToCurrentMovement();	// re-evaluates curDriveState right after rideMode changes, instead of waiting for the next cycle()
+
 	time_t timestamp_last;
 	uint32_t time_in[EDrivingStateMax][ESummaryTypeMax];
+	// Per-state distance, mirrors time_in[][] -- needed so AVG_NOBREAK/AVG_NOCRUISE can
+	// exclude the distance covered while stopped/cruising, not just the time (see §5 of
+	// the design doc). NOT NVS-persisted, unlike time_in[][] -- resets on reboot.
+	float dist_in[EDrivingStateMax][ESummaryTypeMax] = {};
 	time_t timestamp_stop;
 
 	struct S_DataPoint {
@@ -238,7 +259,19 @@ public:
 	bool isConnected() {return (curDriveState != DS_NO_CONN);}
 	void delayStandby();
 	void toggleStandbyMode();
+
+	// Pause/Start button (rr_btn_pause), see doc/design/ride-state-machine.md §3/§4.
+	// Short tap: Start (opens a new ride session, resets SUM_ESP_START) the first time,
+	// Resume/Cruise-toggle (Ride<->FreeRide/Cruise) every time after, session stays open.
+	void toggleRideMode();
+	// Long press: ends the ride session (-> true FreeRide, SUM_ESP_START stats stop
+	// accumulating) if one is open; otherwise falls back to the pre-existing
+	// toggleStandbyMode() behaviour, since that's RimRidge's only control for it.
+	void handlePauseButtonHold();
+	bool getRideMode() const {return rideMode;}
+	bool isRideSessionOpen() const {return rideSessionOpen;}
 private:
+	void stopRide();
 	void updateStateIcon();
 	void updateGpsFixIcon(const SGpsFix& fix);
 	bool shutdownMsg = false;
@@ -252,6 +285,10 @@ public:
 	void setConnected(bool connected);
 	void addGradientHeight(float _grad, float _height);
 	void addTemperature(float _temperature);
+	// Per-drive-state distance bucketing (see dist_in[][] above) -- called from
+	// Distance::updateRevs() with the same rev-delta-derived distance it uses for
+	// addSpeed(), so it shares that call's Scenario-1/2 (re)connect handling.
+	void addDistanceDelta(float deltaM);
 
 
 	uint32_t getTime(ESummaryType type, EAvgType avgtype) const;
@@ -264,6 +301,11 @@ public:
 	const float getSpeedMax(ESummaryType type) const {return speed_max[type];}
 	uint32_t getDistance(ESummaryType type, bool includeLost = true) const;
 	float getTemp() const {return tempC;}
+private:
+	// dist_in[][]-based distance for the AVG_DRIVE/AVG_NOBREAK/AVG_NOCRUISE filters --
+	// see getAvg()'s doc comment for why AVG_ALL uses getDistance() instead.
+	float getDistanceFiltered(ESummaryType type, EAvgType avgtype) const;
+public:
 
 	static const char* PREF_TIME_STRING[Statistics::EDrivingStateMax];
 	static const char* AVG_TYPE_STRING[Statistics::EAvgTypeMax];
@@ -272,7 +314,7 @@ public:
 	static EAvgType getNextTimeMode(EAvgType type, bool dir) {
 		int32_t rc = static_cast<int32_t>(type);
 		rc += dir ? 1:-1;
-		if (rc < Statistics::AVG_ALL) rc = Statistics::AVG_NOBREAK;
+		if (rc < Statistics::AVG_ALL) rc = Statistics::AVG_NOCRUISE;
 		if (rc >= Statistics::EAvgTypeMax) rc = Statistics::AVG_ALL;
 		return static_cast<EAvgType>(rc);
 	}

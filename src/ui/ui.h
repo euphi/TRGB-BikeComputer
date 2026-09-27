@@ -24,7 +24,9 @@ void statsTimeMode(bool dir);
 typedef enum {
 	DSE_delayStandby = 1,
 	DSE_toggleStandbyMode,
-	DSE_switchOff
+	DSE_switchOff,
+	DSE_pauseButtonTap,	// rr_btn_pause short tap -- Statistics::toggleRideMode()
+	DSE_pauseButtonHold	// rr_btn_pause long press -- Statistics::handlePauseButtonHold()
 } UIDriveStateEvent;
 void driveStateUpdate(const UIDriveStateEvent op);
 

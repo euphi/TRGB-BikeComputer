@@ -162,16 +162,26 @@ void ui_RimRidgeUpdateWiFiState(bool wifiEnabled, bool APModeActive, bool disabl
 }
 
 // EEZ Studio action, wired to rr_btn_pause's LONG_PRESSED event (see
-// patch_rimridge_4_actions.py). This is also the fix for RimRidge's
-// previously-missing way to suppress the auto-standby timeout (MainNoFL had
-// this on ui_ImgState's long-press; RimRidge had no tappable element for it
-// at all until now).
+// patch_rimridge_4_actions.py). Originally the fix for RimRidge's previously-
+// missing way to suppress the auto-standby timeout (MainNoFL had this on
+// ui_ImgState's long-press; RimRidge had no tappable element for it at all
+// until now). Since 2026-09-28 (see doc/design/ride-state-machine.md §3) it
+// ALSO ends an open ride session ("Stop") -- Statistics::
+// handlePauseButtonHold() picks whichever meaning applies right now.
 void action_pause_long_press(lv_event_t * e) {
 	(void) e;
-	driveStateUpdate(DSE_toggleStandbyMode);
+	driveStateUpdate(DSE_pauseButtonHold);
 }
 
-void ui_RimRidgeUpdateStateIcon(const lv_img_dsc_t* pIcon, lv_color_t color) {
+// EEZ Studio action, wired to rr_btn_pause's CLICKED event -- short tap
+// toggles Ride<->FreeRide/Cruise (Statistics::toggleRideMode()), see
+// doc/design/ride-state-machine.md §3/§4.
+void action_pause_click(lv_event_t * e) {
+	(void) e;
+	driveStateUpdate(DSE_pauseButtonTap);
+}
+
+void ui_RimRidgeUpdateStateIcon(const lv_img_dsc_t* pIcon, lv_color_t color, bool rideMode) {
 	// Same icon on every screen that carries the state icon/RQ line group.
 	lv_obj_t* const icons[] = {objects.rr_ic_state, objects.rq_ic_state, objects.rrnav_ic_state, objects.rrset_ic_state};
 	for (lv_obj_t* icon : icons) {
@@ -184,6 +194,15 @@ void ui_RimRidgeUpdateStateIcon(const lv_img_dsc_t* pIcon, lv_color_t color) {
 		lv_obj_set_style_img_recolor(icon, color, LV_PART_MAIN | LV_STATE_DEFAULT);
 		lv_obj_set_style_img_recolor_opa(icon, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
 		lv_obj_clear_flag(icon, LV_OBJ_FLAG_HIDDEN);
+	}
+
+	// Pause/Start button glyph follows rideMode, not curDriveState directly -- Start-arrow
+	// while not actively riding (FreeRide/Cruise, tap starts/resumes Ride), Pause glyph
+	// while Ride/Coast (tap pauses into Cruise). See doc/design/ride-state-machine.md §3.
+	static int8_t rideModeLast = -1;
+	if ((int8_t) rideMode != rideModeLast) {
+		rideModeLast = rideMode;
+		lv_img_set_src(objects.rr_ic_pause, rideMode ? &img_rr_icon_pause : &img_rr_icon_start);
 	}
 }
 

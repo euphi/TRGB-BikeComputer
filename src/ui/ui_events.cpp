@@ -76,6 +76,12 @@ void driveStateUpdate(const UIDriveStateEvent op)
 	case DSE_toggleStandbyMode:
 		stats.toggleStandbyMode();
 		break;
+	case DSE_pauseButtonTap:
+		stats.toggleRideMode();
+		break;
+	case DSE_pauseButtonHold:
+		stats.handlePauseButtonHold();
+		break;
 	default:
 		break;
 	}

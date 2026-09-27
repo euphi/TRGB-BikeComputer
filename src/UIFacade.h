@@ -113,7 +113,9 @@ public:
 		UI_ColorCrit
 	};
 
-	void updateStateIcon(Statistics::EDrivingState state, UIColor col);
+	// rideMode selects the Pause/Start button's glyph together with the state icon (both
+	// flip on the same signal) -- see ui_RimRidgeUpdateStateIcon()'s doc comment.
+	void updateStateIcon(Statistics::EDrivingState state, UIColor col, bool rideMode);
 
 	// Small GPS-fix status icon on the base screen -- hasFix false hides it entirely,
 	// col signals fix quality (see Statistics::updateGpsFixIcon() for the thresholds).
