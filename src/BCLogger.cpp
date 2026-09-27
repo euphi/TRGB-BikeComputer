@@ -16,6 +16,9 @@
 #include <sys/time.h>
 #include "WebInstrument.h"
 #include "WebPage.h"
+#include "ClockSync.h"
+#include "LogSessions.h"
+#include "SessionStats.h"
 
 
 const char *BCLogger::TAG_STRING[LogTagMax] = { "RAW", "FL", "BLE", "STAT", "WIFI", "SD", "OP", "CLI", "UI", "WEB" };
@@ -62,6 +65,7 @@ BCLogger::BCLogger():
 
 void BCLogger::setup() {
 	checkTagTablesComplete();
+	ClockSync::setup();
 	logPrefs[OUT_Serial].begin("LSer", true);
 	logPrefs[OUT_File].begin("LFile", true);
 	for (uint_fast8_t c = 0; c < LogOutputMax; c++) {
@@ -88,6 +92,8 @@ void BCLogger::setup() {
 	replayLog = cli.addCmd("replay", cmdCB);
 	replayLog.addPositionalArgument("path");
 
+	ClockSync::registerCli();
+
 	// FlusherTask and the SSE log stream don't touch the SD card at all (flushAllFiles() already
 	// null-checks each File before using it), so set them up unconditionally -- previously an
 	// early return here for a missing SD card also silently disabled the live web log stream,
@@ -100,6 +106,8 @@ void BCLogger::setup() {
 	// 4608 byte (ESP-IDF's xTaskCreate takes byte, not words): 3072 was already tight for
 	// logf()'s 256-byte stack buffer, this task also runs WebInstr::report()/drain(), and it now
 	// writes all binary and raw records to the card as well (5120 left 2448 byte free).
+	// Measured 2026-09-27 with 4608 after a clock step (checkClockStep() opens the time-hint
+	// file): 1376 byte free.
 	xTaskCreate(+[](void* thisInstance){((BCLogger*)thisInstance)->flushAllFiles();}, "FlusherTask", 4608, this, 5, &flushTaskHandle);
 	webserver.getServer().addHandler(&logevents);
 
@@ -115,38 +123,48 @@ void BCLogger::setup() {
 
 	if (!SD_MMC.exists(LOGDIR) && !SD_MMC.mkdir(LOGDIR))
 		log(Log_Error, TAG_SD, "Failed to create dir " + LOGDIR);
+	if (!SD_MMC.exists(LogSessions::WORKDIR) && !SD_MMC.mkdir(LogSessions::WORKDIR))
+		log(Log_Error, TAG_SD, "Failed to create dir " + LogSessions::WORKDIR);
 
-	//String file_core;
-
-	if (DateTime.getParts().getYear() >= 2023) { // time seems to be somehow valid
-		time_t now;
-		time(&now);
-		file_data = DateFormatter::format((LOGDIR + "/%Y%m%d/L_%H%M%S.bin").c_str(), now);
-		file_debuglog = DateFormatter::format((LOGDIR + "/%Y%m%d/D_%H%M%S.log").c_str(), now);
-		file_nmealog = DateFormatter::format((LOGDIR + "/%Y%m%d/N_%H%M%S.log").c_str(), now);
-		//file_core = DateFormatter::format("/core/%Y%m%d/C_%H%M%S.core", now);
-		fileNameIncludesDateTime = true;
-	} else {
-		log(Log_Warn, TAG_SD, "No time available to create file names");
-		String dirName = LOGDIR + "/NO_TIME";
-		SD_MMC.mkdir(dirName);
-	    char fnumber[24];
-	    //snprintf(fnumber, sizeof(fnumber), "%04u", listDir(dirName, 0)); --> use this line to calculate first available number
-	    noTimeCounter.begin("NoTimeCounter");
-	    uint16_t c = noTimeCounter.getShort("Counter", 40);
-	    snprintf(fnumber, sizeof(fnumber)-1, "%04u", c++);
-	    noTimeCounter.putShort("Counter", c);
-	    noTimeCounter.end();
-		file_data = dirName + "/L" + fnumber + ".bin";
-		file_debuglog = dirName + "/D" + fnumber + ".log";
-		file_nmealog = dirName + "/N" + fnumber + ".log";
-		//file_core = String("/core/C_")+fnumber+".core";
+	// Every session starts in the working directory under a running number -- the clock is
+	// rarely set this early (NTP needs WLAN, GPS the phone). It gets its date and time after
+	// the next boot, see LogSessions.h. The counter is the one the NO_TIME names always used.
+	noTimeCounter.begin("NoTimeCounter");
+	uint16_t c = noTimeCounter.getShort("Counter", 40);
+	char stem[12];
+	// A number whose files are still there (NVS reset or not writable) would append to the
+	// previous session -- skip to a free one.
+	for (uint8_t tries = 0; tries < 100; tries++, c++) {
+		snprintf(stem, sizeof(stem), "_%04u", c);
+		if (!SD_MMC.exists(LogSessions::WORKDIR + "/L" + stem + ".bin")) break;
 	}
+	snprintf(stem, sizeof(stem), "_%04u", c);
+	noTimeCounter.putShort("Counter", c + 1);
+	noTimeCounter.end();
+	sessionStem = stem;
+	const String base = LogSessions::WORKDIR + "/";
+	file_data = base + "L" + stem + ".bin";
+	file_debuglog = base + "D" + stem + ".log";
+	file_nmealog = base + "N" + stem + ".log";
+	file_hints = base + "T" + stem + ".txt";
 	fdebug = SD_MMC.open(file_debuglog, FILE_APPEND, true);
 	fdata  = SD_MMC.open(file_data, FILE_APPEND, true);
 	fnmea  = SD_MMC.open(file_nmealog, FILE_APPEND, true);
 
-	logf(Log_Info, TAG_SD, "New file name: %s\n", file_data.c_str());
+	// The start line and the step reference must be taken at the same moment: a clock step
+	// is measured against exactly this state.
+	ClockSync::baseline();
+	{
+		struct timeval tv;
+		gettimeofday(&tv, nullptr);
+		const int64_t nowMs = static_cast<int64_t>(tv.tv_sec) * 1000 + tv.tv_usec / 1000;
+		char line[64];
+		snprintf(line, sizeof(line), "start %lld %d %lu", (long long)nowMs, SessStats::isValidMs(nowMs) ? 1 : 0, (unsigned long)millis());
+		appendHint(line);
+	}
+
+	logf(Log_Info, TAG_SD, "Session %s: %s%s", stem, file_data.c_str(), fdata ? "" : " - could not be opened, data is not logged!");
+	LogSessions::startFinalizer(sessionStem);
 
 	// TODO: save_coredump_to_littlefs() is disabled on purpose, not just unfinished -- enabling it
 	// previously caused a boot-time crash loop: writing the coredump to LittleFS itself crashed
@@ -248,6 +266,7 @@ void BCLogger::flushAllFiles() {
 		// happens on async_tcp, which is watchdog-guarded and must never touch the SD card.
 		WebInstr::report(++cycle % 12 == 0);		// stack watermarks every 12th cycle = 60s
 		WebInstr::drain();
+		checkClockStep();
 		flushLocked(fdebug);
 		yield();
 		flushLocked(fnmea);
@@ -256,6 +275,41 @@ void BCLogger::flushAllFiles() {
 		flushLocked(fraw[RAW_CAPTURE]);
 		flushLocked(fraw[RAW_SNIPPETS]);
 	} while (true);
+}
+
+// Time-hint file of the session (format in SessionStats.h). Opened per line: it gets a
+// handful of lines per ride, not worth ~4 KB of internal RAM for an open file.
+void BCLogger::appendHint(const char* line) {
+	if (file_hints.isEmpty()) return;
+	bool ok = false;
+	if (xSemaphoreTake(xPrintMutex, static_cast<TickType_t>(500 / portTICK_PERIOD_MS)) == pdTRUE) {
+		File f = SD_MMC.open(file_hints, FILE_APPEND, true);
+		if (f) {
+			ok = f.println(line) > 0;
+			f.close();
+		}
+		xSemaphoreGive(xPrintMutex);
+	}
+	if (!ok) logf(Log_Warn, TAG_SD, "Time hint not written (%s): %s", file_hints.c_str(), line);
+}
+
+// FlusherTask: a clock step (NTP, GPS) goes into the hint file, so the timestamps written
+// before it can be corrected when the session is finished after the next boot.
+void BCLogger::checkClockStep() {
+	ClockSync::Step st;
+	if (!ClockSync::pollStep(st)) return;
+	char line[80];
+	snprintf(line, sizeof(line), "step %s %lld %lld %lu", ClockSync::sourceName(st.source),
+	         (long long)st.offsetMs, (long long)st.newEpochMs, (unsigned long)st.uptimeMs);
+	appendHint(line);
+	logf(Log_Info, TAG_OP, "🕒 Clock stepped by %lld ms (source: %s)", (long long)st.offsetMs, ClockSync::sourceName(st.source));
+}
+
+// The files this boot writes to. Deleting or renaming an open file corrupts FAT here
+// (CONFIG_FATFS_FS_LOCK is 0), so the web page must not.
+bool BCLogger::isActiveSessionFile(const String& path) const {
+	if (sessionStem.isEmpty() || !path.startsWith(LogSessions::WORKDIR + "/")) return false;
+	return LogSessions::stemOf(path.c_str() + path.lastIndexOf('/') + 1) == sessionStem;
 }
 
 void BCLogger::printLoglevels() {
@@ -517,10 +571,10 @@ void BCLogger::rawDrain() {
 	}
 }
 
-// The raw files belong to the session of the data log: L_143012.bin -> R_143012_01.bin
-// (capture 1 of this session) and S_143012.bin (shock snippets); without a clock
-// L0040.bin -> R0040_01.bin / S0040.bin. The shared stem keeps them in the same row of
-// the log file list.
+// The raw files belong to the session of the data log: L_0042.bin -> R_0042_01.bin
+// (capture 1 of this session) and S_0042.bin (shock snippets). The shared stem keeps them
+// in the same row of the log file list, and LogSessions renames them together with the
+// data log (-> R_143012_01.bin) when the session is finished.
 String BCLogger::rawPath(uint8_t stream) {
 	if (file_data.isEmpty()) return String();
 	int slash = file_data.lastIndexOf('/');
@@ -643,9 +697,12 @@ namespace {
 // neither has to be parsed out of a flat filename list:
 //
 //   /BIKECOMP/20260920/L_143012.bin     directory = date, first letter = type
-//                     D_143012.log      L data (binary), D debug, N raw NMEA
-//                     N_143012.log      files of one session share the HHMMSS
-//   /BIKECOMP/NO_TIME/L7.bin            fallback while NTP has not landed yet
+//                     D_143012.log      L data (binary), D debug, N raw NMEA, S/R raw IMU
+//                     I_143012.txt      I summary (shown as text), T time hints (not shown)
+//                                       files of one session share the HHMMSS
+//   /BIKECOMP/NO_TIME/L_0042.bin        session number: no time known (older: L0042.bin)
+//   /BIKECOMP/CUR/L_0042.bin            running session and those not finished yet
+//                                       (LogSessions.h), shown on top
 //
 // SD hands entries out in FAT order, so showing them newest-first means holding
 // them in memory. Both collections are bounded and freed before the response is
@@ -682,8 +739,11 @@ int compareKey(const char* a, const char* b) {
 	return strcmp(a, b);
 }
 
-// NO_TIME has no date and belongs at the bottom, below every dated day.
+// NO_TIME has no date and belongs at the bottom, below every dated day; the working
+// directory with the running session goes on top.
 int compareDay(const char* a, const char* b) {
+	const bool ca = (strcmp(a, LogSessions::WORKDIR_NAME) == 0), cb = (strcmp(b, LogSessions::WORKDIR_NAME) == 0);
+	if (ca != cb) return ca ? 1 : -1;
 	const bool na = (strcmp(a, "NO_TIME") == 0), nb = (strcmp(b, "NO_TIME") == 0);
 	if (na != nb) return na ? -1 : 1;			// "smaller" = shown last
 	return strcmp(a, b);
@@ -723,7 +783,9 @@ void formatSize(uint32_t bytes, char* out, size_t outLen) {
 
 // "20260920" -> "2026-09-20"; anything else (NO_TIME, legacy names) passes through.
 void formatDay(const char* day, char* out, size_t outLen) {
-	if (strlen(day) == 8 && strspn(day, "0123456789") == 8) {
+	if (strcmp(day, LogSessions::WORKDIR_NAME) == 0) {
+		snprintf(out, outLen, "In progress");
+	} else if (strlen(day) == 8 && strspn(day, "0123456789") == 8) {
 		snprintf(out, outLen, "%.4s-%.2s-%.2s", day, day + 4, day + 6);
 	} else {
 		snprintf(out, outLen, "%s", day);
@@ -747,6 +809,7 @@ void formatTime(const char* key, char* out, size_t outLen) {
 // LOGDIR (legacy layout).
 void BCLogger::appendDayTable(String &rc, const char* dayDir, uint32_t& totalFiles, uint32_t& totalBytes) {
 	const String dirPath = dayDir[0] ? (LOGDIR + "/" + dayDir) : LOGDIR;
+	const bool inWorkdir = strcmp(dayDir, LogSessions::WORKDIR_NAME) == 0;
 	File dir = SD_MMC.open(dirPath);
 	if (!dir || !dir.isDirectory()) {
 		if (dir) dir.close();
@@ -825,13 +888,37 @@ void BCLogger::appendDayTable(String &rc, const char* dayDir, uint32_t& totalFil
 			j++;
 		}
 
+		// Summary (I_*.txt) and time hints (T_*.txt) aren't downloads worth a badge: the
+		// summary is shown as text, both go with the row's DEL.
+		SessStats::Summary sum;
+		bool haveSum = false;
+		String paths;			// JS array literal for the row's delete button
+		for (uint16_t e = i; e < j; e++) {
+			const char type = entries[e].name[0];
+			if (type != 'I' && type != 'T') continue;
+			if (type == 'I' && !haveSum) haveSum = LogSessions::readSummary(dirPath + "/" + entries[e].name, sum);
+			if (paths.length()) paths += ',';
+			paths += '\'';
+			if (dayDir[0]) {paths += dayDir; paths += '/';}
+			paths += entries[e].name;
+			paths += '\'';
+		}
+		const bool running = inWorkdir && (String("_") + key) == sessionStem;
+
 		char timeBuf[16];
 		formatTime(key, timeBuf, sizeof(timeBuf));
 		rc += F("<tr><td>");
 		rc += timeBuf;
+		if (haveSum && strcmp(sum.time, "corrected") == 0) {
+			// Started without a clock, date and time found out later
+			rc += F("<span title=\"time corrected afterwards (");
+			rc += sum.source;
+			rc += F(")\">*</span>");
+		}
+		if (running) rc += F("<br><span class=\"badge badge-info\">running</span>");
+		else if (inWorkdir) rc += F("<br><span class=\"badge badge-debug\">not finished</span>");
 		rc += F("</td><td>");
 
-		String paths;			// JS array literal for the row's delete button
 		String replayPath;
 		for (char type : kTypeOrder) {
 			for (uint16_t e = i; e < j; e++) {
@@ -859,15 +946,26 @@ void BCLogger::appendDayTable(String &rc, const char* dayDir, uint32_t& totalFil
 			}
 		}
 
+		if (haveSum) {
+			char line[320];
+			sum.describe(line, sizeof(line));
+			rc += F("<div class=\"sstat\">");
+			rc += line;
+			rc += F("</div>");
+		}
+
 		rc += F("</td><td style=\"white-space:nowrap;\">");
 		if (!fileReplay && replayPath.length()) {
 			rc += F("<a class=\"btn btn-ghost\" href=\"#\" onclick=\"replay('");
 			rc += replayPath;
 			rc += F("');return false;\">Replay</a> ");
 		}
-		rc += F("<a class=\"btn btn-ghost\" href=\"#\" onclick=\"del(this,[");
-		rc += paths;
-		rc += F("]);return false;\">DEL</a></td></tr>\n");
+		if (!running) {
+			rc += F("<a class=\"btn btn-ghost\" href=\"#\" onclick=\"del(this,[");
+			rc += paths;
+			rc += F("]);return false;\">DEL</a>");
+		}
+		rc += F("</td></tr>\n");
 		i = j;
 	}
 	rc += F("</tbody></table>\n");
@@ -879,7 +977,7 @@ uint16_t BCLogger::getAllFileLinks(String &rc) {
 	// starts in PSRAM instead of ramping there through hundreds of 16-byte reallocs in
 	// the scarce internal heap. One cold allocation per manual page view.
 	rc.reserve(24576);		// a full card easily reaches 25KB of table
-	WebPage::begin(rc, "Logfiles");
+	WebPage::begin(rc, "Logfiles", ".sstat{font-size:0.8rem;opacity:.8;margin-top:6px;line-height:1.35}");
 	File root = SD_MMC.open(LOGDIR);
 	if (!root || !root.isDirectory()) {
 		if (root) root.close();
@@ -952,6 +1050,11 @@ uint16_t BCLogger::getAllFileLinks(String &rc) {
 }
 
 bool BCLogger::deleteFile(const String& path){
+  // The running session's files are open, and the finalizer is moving the earlier ones.
+  if (isActiveSessionFile(path) || (LogSessions::busy() && path.startsWith(LogSessions::WORKDIR + "/"))) {
+	  logf(Log_Warn, TAG_SD, "File %s belongs to the running session or is being finished - not deleted.", path.c_str());
+	  return false;
+  }
   if (SD_MMC.remove(path.c_str())) {
 	  logf(Log_Info, TAG_SD, "File %s deleted.", path.c_str());
 	  return true;
@@ -1022,14 +1125,34 @@ bool BCLogger::cleanUp(File& root, uint32_t minsize) {
     bool allFileDeleted = true;
 	while (file) {
 		esp_task_wdt_reset();
-		if (file.isDirectory()) {
+		const char type = file.name()[0];
+		if (file.isDirectory() && LogSessions::WORKDIR == file.path()) {
+			// The running session and the ones not finished yet: all open or in use
+			allFileDeleted = false;
+		} else if (!file.isDirectory() && (type == 'I' || type == 'T')) {
+			// Summary and time hints are always small. They go with their data log (below).
+			allFileDeleted = false;
+		} else if (file.isDirectory()) {
 			bool dirClean = cleanUp(file, minsize);
 			allFileDeleted &= dirClean;
 			bool delOk = SD_MMC.rmdir(file.path());
 			logf(delOk ? Log_Info : Log_Warn, TAG_SD, "🧹%s Directory %s empty. Deleting - %s", delOk ? "✅":"❌", file.name(), delOk ? "OK":"failed!");
 		} else if (file.size() < minsize) {
-			bool delOk = SD_MMC.remove(file.path());
-			logf(delOk ? Log_Info : Log_Warn, TAG_SD, "🧹%s File %s to small (%d). Deleting - %s", delOk ? "✅":"❌", file.name(), file.size(), delOk ? "OK":"failed!");
+			const String path = file.path();
+			const size_t size = file.size();
+			file.close();
+			bool delOk = SD_MMC.remove(path);
+			logf(delOk ? Log_Info : Log_Warn, TAG_SD, "🧹%s File %s to small (%u). Deleting - %s", delOk ? "✅":"❌", path.c_str(), (unsigned)size, delOk ? "OK":"failed!");
+			// A data log too short to keep takes its summary and time hints with it
+			if (delOk && type == 'L') {
+				const int slash = path.lastIndexOf('/');
+				const String stem = LogSessions::stemOf(path.c_str() + slash + 1);
+				const String dir = path.substring(0, slash + 1);
+				if (stem.length()) {
+					SD_MMC.remove(dir + "I" + stem + ".txt");
+					SD_MMC.remove(dir + "T" + stem + ".txt");
+				}
+			}
 		} else {
 			allFileDeleted = false;
 		}

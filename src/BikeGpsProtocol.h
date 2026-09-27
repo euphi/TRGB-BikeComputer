@@ -34,7 +34,8 @@ typedef enum {
 	GPS_TAG_SPEED_CMS = 0x04,				// uint32 LE, cm/s, only if the fix has a speed
 	GPS_TAG_BEARING_DEG_X100 = 0x05,		// uint16 LE, degrees * 100 (0..35999), only if the fix has a bearing
 	GPS_TAG_ACCURACY_M_X10 = 0x06,			// uint16 LE, meters * 10 (horizontal accuracy), only if the fix has one
-	GPS_TAG_FIX_AGE_MS = 0x07				// uint32 LE, ms since this fix, always present
+	GPS_TAG_FIX_AGE_MS = 0x07,				// uint32 LE, ms since this fix, always present
+	GPS_TAG_UTC_TIME_MS = 0x08				// uint64 LE, UTC of the fix in ms since 1970 (Location.getTime()), if known
 } EGpsTlvTag;
 
 // In-memory representation of the latest parsed GPS fix, shared between
@@ -59,4 +60,8 @@ struct SGpsFix {
 	bool hasAccuracy = false;
 	uint16_t accuracyMX10 = 0;
 	uint32_t fixAgeMs = 0;
+	// UTC of the fix; the phone's "now" at sending is utcTimeMs + fixAgeMs. Not logged --
+	// it only sets the clock (ClockSync), and every record carries the clock anyway.
+	bool hasUtcTime = false;
+	int64_t utcTimeMs = 0;
 };

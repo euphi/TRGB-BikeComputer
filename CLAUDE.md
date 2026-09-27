@@ -69,6 +69,12 @@ ist das Protokoll die Quelle der Wahrheit.
   ändert (ein neuer Satztyp oder bisher reservierte, nullgefüllte Bytes
   brauchen das nicht). `Tools/tests/test_logformat.py` kompiliert den
   Header auf dem Host und fängt Abweichungen.
+- Sitzungen: jeder Boot schreibt nach `/BIKECOMP/CUR/` (laufende Nummer,
+  `T_*.txt` = Zeit-Hinweise), der nächste Boot sortiert sie datiert ein,
+  korrigiert 1970-Zeitstempel und legt die Kurzstatistik `I_*.txt` für die
+  Logfile-Seite ab: `src/LogSessions.*`, reiner Teil `src/SessionStats.*`
+  (Host-Test `test/native_sessionstats/`). Uhr: NTP oder GPS-Zeit von
+  TrailBridge (Tag `UTC_TIME_MS`), `src/ClockSync.*`.
 - Manuelles Wege-Label (Untergrund + Qualität 1–4, Ground Truth für die
   automatische Klasse): API `sensors.setRoadLabel*()`/`getRoadLabelState()`/
   `startRoadCapture()` in `src/I2CSensors.h` für den RQ-Ride-Screen; geloggt

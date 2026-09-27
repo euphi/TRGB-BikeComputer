@@ -15,6 +15,7 @@
 #include "Stats/Distance.h"
 #include "BikeNavProtocol.h"
 #include "BikeGpsProtocol.h"
+#include "ClockSync.h"
 
 #include <task.h>
 
@@ -880,6 +881,14 @@ void BLEDevices::handleGpsData(const uint8_t* pData, size_t length) {
 			case GPS_TAG_FIX_AGE_MS:
 				if (len >= 4) fix.fixAgeMs = val[0] | (val[1] << 8) | (val[2] << 16) | ((uint32_t)val[3] << 24);
 				break;
+			case GPS_TAG_UTC_TIME_MS:
+				if (len >= 8) {
+					uint64_t t = 0;
+					for (int i = 7; i >= 0; i--) t = (t << 8) | val[i];
+					fix.hasUtcTime = true;
+					fix.utcTimeMs = static_cast<int64_t>(t);
+				}
+				break;
 			default:
 				break;	// unknown tag: length already respected below, value ignored
 			}
@@ -888,6 +897,8 @@ void BLEDevices::handleGpsData(const uint8_t* pData, size_t length) {
 
 		gpsFix = fix;
 		gpsFixReceivedMillis = millis();
+		// Both values come from this frame, so their sum is the phone's time at sending.
+		if (fix.hasUtcTime) ClockSync::offerGpsTime(fix.utcTimeMs + fix.fixAgeMs);
 
 		bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "📍 %.7f, %.7f (fix age %u ms)", fix.latitudeE7 / 1e7, fix.longitudeE7 / 1e7, fix.fixAgeMs);
 		break;

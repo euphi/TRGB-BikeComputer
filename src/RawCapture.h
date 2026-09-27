@@ -6,8 +6,10 @@
  *   R_HHMMSS_NN.bin   capture on demand ("rq raw <s>" / /debug/imu), continuous 400 Hz
  *   S_HHMMSS.bin      shock snippets: 0.25 s before to 0.5 s after every logged shock
  *
- * (HHMMSS = the session's data log L_HHMMSS.bin, NN = capture number since boot; without
- * a clock the NO_TIME counter takes the place of HHMMSS, as for the other logs.)
+ * (HHMMSS = the session's data log L_HHMMSS.bin, NN = capture number since boot. While the
+ * session runs, its number takes the place of HHMMSS: CUR/R_0042_01.bin, see LogSessions.h.
+ * The timestamps in here are NOT corrected when a session started without a clock -- the
+ * session summary I_HHMMSS.txt has the offset as corr_ms.)
  *
  * Layout: one FileHeader, then blocks. A block is a BlockHeader followed by count frames of
  * int16 x, y, z -- the sensor's raw LSB, NOT scale-corrected (header.scale and lsbPerG give

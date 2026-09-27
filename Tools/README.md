@@ -31,6 +31,38 @@ ReadTachoBin.py     Altbekannter CSV-Konverter, jetzt Wrapper um "bikelog csv"
 csv2influx.py       Unverändert: CSV nach InfluxDB
 ```
 
+## Dateien auf der SD-Karte
+
+Jeder Boot ist eine Sitzung. Sie schreibt zunächst ins Arbeitsverzeichnis
+`/BIKECOMP/CUR/`, benannt nach einer laufenden Nummer -- beim Booten ist die
+Uhr meist noch nicht gestellt:
+
+| Datei | Inhalt |
+|---|---|
+| `L_0042.bin` | Binärlog (dieses Format) |
+| `D_0042.log`, `N_0042.log` | Debug-Log, Forumslader-NMEA |
+| `S_0042.bin`, `R_0042_NN.bin` | Rohdaten, siehe unten |
+| `T_0042.txt` | Zeit-Hinweise: `start <epochMs> <gültig 0/1> <uptimeMs>`, dann je Uhrsprung `step <ntp\|gps\|?> <offsetMs> <neueEpochMs> <uptimeMs>` |
+
+Nach dem nächsten Boot räumt ein Hintergrund-Task (`src/LogSessions.cpp`) jede
+ältere Sitzung aus `CUR/` weg:
+
+- Startzeit aus `T_*`; lief die Sitzung ohne Uhr (1970) an, wird sie um den
+  Sprung korrigiert, mit dem NTP oder die GPS-Zeit von TrailBridge die Uhr
+  gültig gemacht hat.
+- Ziel `/BIKECOMP/JJJJMMTT/X_HHMMSS.*`, ohne ermittelbare Zeit
+  `/BIKECOMP/NO_TIME/X_0042.*`. Im `L_*.bin` werden dabei die
+  1970-Zeitstempel umgeschrieben; Rohdaten und Debug-Log behalten ihre
+  Originalzeiten.
+- `I_HHMMSS.txt`: Kurzstatistik als `schlüssel=wert`-Zeilen (Strecke, Dauer,
+  Fahrzeit, Ø/max. Geschwindigkeit, GPS-Anteil, Anzahl Wegequalitäts-Intervalle,
+  Stöße, Labels, Rohmitschnitte; `corr_ms` = angewandte Zeitkorrektur). Die
+  Logfile-Seite des Webservers zeigt sie je Sitzung an.
+- Leere Dateien werden gelöscht.
+
+Ältere Logs (vor dieser Umstellung) liegen weiter als `L0042.bin` in
+`NO_TIME/` bzw. datiert ohne `I_*.txt`.
+
 ## CLI
 
 Ohne Installation, direkt aus diesem Verzeichnis:

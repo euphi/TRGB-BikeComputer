@@ -61,7 +61,13 @@ private:
 	String file_data, file_nmealog, file_debuglog;		// Filename for logfiles
 	File fdata, fnmea, fdebug;
 
-	bool fileNameIncludesDateTime = false;
+	// This boot's session in LogSessions::WORKDIR: "_0042" -> L_0042.bin, D_0042.log, ...
+	// Finished (dated, summarised) after the next boot, see LogSessions.h.
+	String sessionStem;
+	String file_hints;									// T_0042.txt: start and clock steps
+	void appendHint(const char* line);
+	void checkClockStep();
+	bool isActiveSessionFile(const String& path) const;
 
 	void storeLoglevel(LogType level, LogTag tag, bool file, bool serial);
 	void printLoglevels();

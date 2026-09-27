@@ -177,6 +177,16 @@ geschrieben werden, nicht die ganze Sitzung offen halten. Die Middleware in
 `WifiWebserver.cpp` lehnt Requests unter 20 KB freiem internem Heap mit 503
 ab -- das schützt aber erst nach dem Annehmen der Verbindung.
 
+## SD-Karte: offene Dateien nicht löschen oder umbenennen
+
+`CONFIG_FATFS_FS_LOCK` ist 0: FATFS verhindert nicht, dass eine Datei gelöscht
+oder umbenannt wird, die ein anderer Task noch offen hat -- das Ergebnis ist ein
+beschädigtes Dateisystem, kein Fehlercode. Die Dateien der laufenden Sitzung in
+`/BIKECOMP/CUR/` sind die ganze Fahrt offen. `BCLogger::deleteFile()` und der
+Cleanup lassen sie deshalb aus (`isActiveSessionFile()`), ebenso alles in `CUR/`,
+solange der Finalizer (`LogSessions`) läuft. Neue Wege, Dateien zu löschen oder
+zu verschieben, brauchen dieselbe Prüfung.
+
 ## BMI160: Register-Reads nie ungeprüft
 
 `BMI160Gen::serial_buffer_transfer()` prüft nicht, ob `requestFrom()` alle
