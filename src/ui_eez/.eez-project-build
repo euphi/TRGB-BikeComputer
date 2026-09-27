@@ -25,6 +25,7 @@
     "ui_image_rr_icon_gradient.c",
     "ui_image_rr_icon_heart.c",
     "ui_image_rr_icon_height.c",
+    "ui_image_rr_icon_moon.c",
     "ui_image_rr_icon_pause.c",
     "ui_image_rr_icon_power.c",
     "ui_image_rr_icon_ruler.c",

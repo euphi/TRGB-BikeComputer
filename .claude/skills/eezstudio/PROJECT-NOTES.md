@@ -46,6 +46,9 @@ Wechsel auf LVGL 9 ist eine eigene, größere Entscheidung.
 
 ## Headless-Export und Gerätetest (für Agenten)
 
+**Standard-Ablauf seit 2026-09-27 (Nutzerwunsch):** nach jeder JSON-Änderung
+selbst headless exportieren, nicht auf ein manuelles Ctrl+B warten.
+
 EEZ Studio 0.29 exportiert ohne GUI-Klick:
 `EEZ-Studio-0.29.0.AppImage --build-project <pfad>.eez-project`.
 `Tools/eez_export_headless.sh` kapselt das. Stolpersteine:

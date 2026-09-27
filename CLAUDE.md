@@ -51,8 +51,10 @@ ist das Protokoll die Quelle der Wahrheit.
 - Auf dem Gerät prüfen ohne es anzufassen: `Tools/uishot.py` (Screenshot,
   Tap, Wischen; `doc/DEBUG.md`).
 - EEZ-Projekt per Skript bearbeiten: Skill `.claude/skills/eezstudio/`
-  (Projekt-Deltas in `PROJECT-NOTES.md` dort). Der Nutzer prüft das
-  Ergebnis im EEZ-Canvas und exportiert selbst.
+  (Projekt-Deltas in `PROJECT-NOTES.md` dort). Nach jeder JSON-Änderung
+  exportiert der Agent selbst mit `Tools/eez_export_headless.sh` (EEZ Studios
+  eigener Exporter) und testet auf dem Gerät; der Nutzer prüft im Canvas und
+  exportiert nur noch aus eigenen Gründen manuell.
 - `src/ui/Screens/*` (Chart, MainNoFL, Settings, SNavi, SOTA, SWLAN) und
   `src/ui/ui*.c` sind alter SquareLine-generierter Code. Die Screens werden
   noch initialisiert, aber nicht mehr angezeigt -- **abgeschaltet, nicht

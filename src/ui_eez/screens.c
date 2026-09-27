@@ -724,7 +724,7 @@ void create_screen_rim_ridge() {
                     lv_obj_set_size(obj, 140, 5);
                     static lv_point_t line_points[] = {
                         { 0, 0 },
-                        { 115, 0 }
+                        { 140, 0 }
                     };
                     lv_line_set_points(obj, line_points, 2);
                     lv_obj_add_flag(obj, LV_OBJ_FLAG_EVENT_BUBBLE);
@@ -1047,7 +1047,7 @@ void create_screen_rim_ridge_nav() {
                     lv_obj_set_size(obj, 140, 5);
                     static lv_point_t line_points[] = {
                         { 0, 0 },
-                        { 115, 0 }
+                        { 140, 0 }
                     };
                     lv_line_set_points(obj, line_points, 2);
                     lv_obj_add_flag(obj, LV_OBJ_FLAG_EVENT_BUBBLE);
@@ -1694,7 +1694,7 @@ void create_screen_rim_ridge_rq() {
                     lv_obj_set_size(obj, 140, 5);
                     static lv_point_t line_points[] = {
                         { 0, 0 },
-                        { 115, 0 }
+                        { 140, 0 }
                     };
                     lv_line_set_points(obj, line_points, 2);
                     lv_obj_add_flag(obj, LV_OBJ_FLAG_EVENT_BUBBLE);
@@ -2089,7 +2089,7 @@ void create_screen_rim_ridge_settings() {
                     lv_obj_set_size(obj, 140, 5);
                     static lv_point_t line_points[] = {
                         { 0, 0 },
-                        { 115, 0 }
+                        { 140, 0 }
                     };
                     lv_line_set_points(obj, line_points, 2);
                     lv_obj_add_flag(obj, LV_OBJ_FLAG_EVENT_BUBBLE);

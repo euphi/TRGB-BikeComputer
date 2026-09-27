@@ -381,7 +381,8 @@ Text `MUTED`.
 - Der WLAN-Knopf verbindet nur neu, wenn das WLAN aus ist (nach 100 s ohne
   Verbindung oder nach Verbindungsverlust schaltet es sich ab). AP-Modus und
   mehrere Zugangspunkte sind noch offen.
-- Die Helligkeit (alter SquareLine-Settings-Screen) hat hier noch keinen Platz.
+- Keine Helligkeitsregelung (Entscheidung 2026-09-27: das dunkle Design ist auch
+  nachts nicht zu hell; ggf. später ein kontraststärkeres Tag-Design).
 
 ### RQ-Ride-Screen — [`rqscreen.svg`](rqscreen.svg)
 

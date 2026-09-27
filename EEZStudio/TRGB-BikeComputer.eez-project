@@ -2798,7 +2798,7 @@
                   },
                   "group": "",
                   "groupIndex": 0,
-                  "points": "0,0 115,0",
+                  "points": "0,0 140,0",
                   "invertY": false,
                   "needleLength": 0,
                   "value": 0,
@@ -3996,7 +3996,7 @@
                   },
                   "group": "",
                   "groupIndex": 0,
-                  "points": "0,0 115,0",
+                  "points": "0,0 140,0",
                   "invertY": false,
                   "needleLength": 0,
                   "value": 0,
@@ -6206,7 +6206,7 @@
                   },
                   "group": "",
                   "groupIndex": 0,
-                  "points": "0,0 115,0",
+                  "points": "0,0 140,0",
                   "invertY": false,
                   "needleLength": 0,
                   "value": 0,
@@ -6274,18 +6274,6 @@
     },
     {
       "objID": "ff6d8c5a-9c17-44f7-a333-f248386635cb",
-      "connectionLines": [],
-      "localVariables": [],
-      "componentGroups": [],
-      "userProperties": [],
-      "name": "RimRidgeSettings",
-      "left": 0,
-      "top": 0,
-      "width": 480,
-      "height": 480,
-      "isUsedAsUserWidget": false,
-      "createAtStart": true,
-      "deleteOnScreenUnload": false,
       "components": [
         {
           "objID": "aa2096ff-19a5-4956-aa15-1c73a86f1bb2",
@@ -6334,6 +6322,7 @@
               },
               "timeline": [],
               "eventHandlers": [],
+              "identifier": "rrset_ic_gear",
               "leftUnit": "px",
               "topUnit": "px",
               "widthUnit": "content",
@@ -6363,7 +6352,6 @@
               },
               "group": "",
               "groupIndex": 0,
-              "identifier": "rrset_ic_gear",
               "image": "SettingsIcon",
               "setPivot": false,
               "pivotX": 0,
@@ -6381,8 +6369,8 @@
               "type": "LVGLLabelWidget",
               "left": 0,
               "top": 78,
-              "width": 40,
-              "height": 20,
+              "width": 155,
+              "height": 17,
               "customInputs": [],
               "customOutputs": [],
               "style": {
@@ -6393,6 +6381,7 @@
               },
               "timeline": [],
               "eventHandlers": [],
+              "identifier": "rrset_title",
               "leftUnit": "px",
               "topUnit": "px",
               "widthUnit": "content",
@@ -6424,7 +6413,6 @@
               },
               "group": "",
               "groupIndex": 0,
-              "identifier": "rrset_title",
               "text": "EINSTELLUNGEN",
               "textType": "literal",
               "longMode": "WRAP",
@@ -6436,8 +6424,8 @@
               "type": "LVGLLabelWidget",
               "left": 0,
               "top": 108,
-              "width": 40,
-              "height": 20,
+              "width": 54,
+              "height": 17,
               "customInputs": [],
               "customOutputs": [],
               "style": {
@@ -6448,6 +6436,7 @@
               },
               "timeline": [],
               "eventHandlers": [],
+              "identifier": "rrset_build_caption",
               "leftUnit": "px",
               "topUnit": "px",
               "widthUnit": "content",
@@ -6479,7 +6468,6 @@
               },
               "group": "",
               "groupIndex": 0,
-              "identifier": "rrset_build_caption",
               "text": "BUILD",
               "textType": "literal",
               "longMode": "WRAP",
@@ -6491,8 +6479,8 @@
               "type": "LVGLLabelWidget",
               "left": 0,
               "top": 126,
-              "width": 40,
-              "height": 20,
+              "width": 225,
+              "height": 21,
               "customInputs": [],
               "customOutputs": [],
               "style": {
@@ -6503,6 +6491,7 @@
               },
               "timeline": [],
               "eventHandlers": [],
+              "identifier": "rrset_build_val",
               "leftUnit": "px",
               "topUnit": "px",
               "widthUnit": "content",
@@ -6533,7 +6522,6 @@
               },
               "group": "",
               "groupIndex": 0,
-              "identifier": "rrset_build_val",
               "text": "v0.0.2-88 (51c4300) #1272",
               "textType": "literal",
               "longMode": "WRAP",
@@ -6545,8 +6533,8 @@
               "type": "LVGLLabelWidget",
               "left": 0,
               "top": 156,
-              "width": 40,
-              "height": 20,
+              "width": 105,
+              "height": 17,
               "customInputs": [],
               "customOutputs": [],
               "style": {
@@ -6557,6 +6545,7 @@
               },
               "timeline": [],
               "eventHandlers": [],
+              "identifier": "rrset_ip_caption",
               "leftUnit": "px",
               "topUnit": "px",
               "widthUnit": "content",
@@ -6588,7 +6577,6 @@
               },
               "group": "",
               "groupIndex": 0,
-              "identifier": "rrset_ip_caption",
               "text": "IP-ADRESSE",
               "textType": "literal",
               "longMode": "WRAP",
@@ -6600,8 +6588,8 @@
               "type": "LVGLLabelWidget",
               "left": 0,
               "top": 174,
-              "width": 40,
-              "height": 20,
+              "width": 146,
+              "height": 24,
               "customInputs": [],
               "customOutputs": [],
               "style": {
@@ -6612,6 +6600,7 @@
               },
               "timeline": [],
               "eventHandlers": [],
+              "identifier": "rrset_ip_val",
               "leftUnit": "px",
               "topUnit": "px",
               "widthUnit": "content",
@@ -6642,7 +6631,6 @@
               },
               "group": "",
               "groupIndex": 0,
-              "identifier": "rrset_ip_val",
               "text": "192.168.178.47",
               "textType": "literal",
               "longMode": "WRAP",
@@ -6674,6 +6662,7 @@
                   "userData": 0
                 }
               ],
+              "identifier": "rrset_btn_wifi",
               "leftUnit": "px",
               "topUnit": "px",
               "widthUnit": "px",
@@ -6684,8 +6673,8 @@
                   "type": "LVGLLabelWidget",
                   "left": 0,
                   "top": 0,
-                  "width": 40,
-                  "height": 20,
+                  "width": 156,
+                  "height": 21,
                   "customInputs": [],
                   "customOutputs": [],
                   "style": {
@@ -6696,6 +6685,7 @@
                   },
                   "timeline": [],
                   "eventHandlers": [],
+                  "identifier": "rrset_btn_wifi_lbl",
                   "leftUnit": "px",
                   "topUnit": "px",
                   "widthUnit": "content",
@@ -6729,7 +6719,6 @@
                   },
                   "group": "",
                   "groupIndex": 0,
-                  "identifier": "rrset_btn_wifi_lbl",
                   "text": "WLAN verbinden",
                   "textType": "literal",
                   "longMode": "WRAP",
@@ -6771,8 +6760,7 @@
                 }
               },
               "group": "",
-              "groupIndex": 0,
-              "identifier": "rrset_btn_wifi"
+              "groupIndex": 0
             },
             {
               "objID": "ac0b2b84-9e40-436c-86a8-41ed0a854f80",
@@ -6799,6 +6787,7 @@
                   "userData": 0
                 }
               ],
+              "identifier": "rrset_btn_cal",
               "leftUnit": "px",
               "topUnit": "px",
               "widthUnit": "px",
@@ -6809,8 +6798,8 @@
                   "type": "LVGLLabelWidget",
                   "left": 0,
                   "top": 0,
-                  "width": 40,
-                  "height": 20,
+                  "width": 99,
+                  "height": 21,
                   "customInputs": [],
                   "customOutputs": [],
                   "style": {
@@ -6821,6 +6810,7 @@
                   },
                   "timeline": [],
                   "eventHandlers": [],
+                  "identifier": "rrset_btn_cal_lbl",
                   "leftUnit": "px",
                   "topUnit": "px",
                   "widthUnit": "content",
@@ -6854,7 +6844,6 @@
                   },
                   "group": "",
                   "groupIndex": 0,
-                  "identifier": "rrset_btn_cal_lbl",
                   "text": "Kalibrieren",
                   "textType": "literal",
                   "longMode": "WRAP",
@@ -6896,8 +6885,7 @@
                 }
               },
               "group": "",
-              "groupIndex": 0,
-              "identifier": "rrset_btn_cal"
+              "groupIndex": 0
             },
             {
               "objID": "d92d5b7b-66e2-424c-8daa-3c08cc4bab7d",
@@ -6924,6 +6912,7 @@
                   "userData": 0
                 }
               ],
+              "identifier": "rrset_btn_ref",
               "leftUnit": "px",
               "topUnit": "px",
               "widthUnit": "px",
@@ -6934,8 +6923,8 @@
                   "type": "LVGLLabelWidget",
                   "left": 0,
                   "top": 0,
-                  "width": 40,
-                  "height": 20,
+                  "width": 123,
+                  "height": 21,
                   "customInputs": [],
                   "customOutputs": [],
                   "style": {
@@ -6946,6 +6935,7 @@
                   },
                   "timeline": [],
                   "eventHandlers": [],
+                  "identifier": "rrset_btn_ref_lbl",
                   "leftUnit": "px",
                   "topUnit": "px",
                   "widthUnit": "content",
@@ -6979,7 +6969,6 @@
                   },
                   "group": "",
                   "groupIndex": 0,
-                  "identifier": "rrset_btn_ref_lbl",
                   "text": "Referenzfahrt",
                   "textType": "literal",
                   "longMode": "WRAP",
@@ -7021,8 +7010,7 @@
                 }
               },
               "group": "",
-              "groupIndex": 0,
-              "identifier": "rrset_btn_ref"
+              "groupIndex": 0
             },
             {
               "objID": "1114835a-af33-4672-abc6-7aecbd8d6b87",
@@ -7030,7 +7018,7 @@
               "left": 50,
               "top": 302,
               "width": 185,
-              "height": 20,
+              "height": 17,
               "customInputs": [],
               "customOutputs": [],
               "style": {
@@ -7041,6 +7029,7 @@
               },
               "timeline": [],
               "eventHandlers": [],
+              "identifier": "rrset_cal_status",
               "leftUnit": "px",
               "topUnit": "px",
               "widthUnit": "px",
@@ -7071,7 +7060,6 @@
               },
               "group": "",
               "groupIndex": 0,
-              "identifier": "rrset_cal_status",
               "text": "kalibriert 27.09.",
               "textType": "literal",
               "longMode": "WRAP",
@@ -7084,7 +7072,7 @@
               "left": 245,
               "top": 302,
               "width": 185,
-              "height": 20,
+              "height": 17,
               "customInputs": [],
               "customOutputs": [],
               "style": {
@@ -7095,6 +7083,7 @@
               },
               "timeline": [],
               "eventHandlers": [],
+              "identifier": "rrset_ref_status",
               "leftUnit": "px",
               "topUnit": "px",
               "widthUnit": "px",
@@ -7125,7 +7114,6 @@
               },
               "group": "",
               "groupIndex": 0,
-              "identifier": "rrset_ref_status",
               "text": "Standard (150 mg)",
               "textType": "literal",
               "longMode": "WRAP",
@@ -7157,6 +7145,7 @@
                   "userData": 0
                 }
               ],
+              "identifier": "rrset_btn_reset",
               "leftUnit": "px",
               "topUnit": "px",
               "widthUnit": "px",
@@ -7179,6 +7168,7 @@
                   },
                   "timeline": [],
                   "eventHandlers": [],
+                  "identifier": "rrset_ic_reset",
                   "leftUnit": "px",
                   "topUnit": "px",
                   "widthUnit": "content",
@@ -7209,7 +7199,6 @@
                   },
                   "group": "",
                   "groupIndex": 0,
-                  "identifier": "rrset_ic_reset",
                   "image": "rr_icon_cadence",
                   "setPivot": false,
                   "pivotX": 0,
@@ -7227,8 +7216,8 @@
                   "type": "LVGLLabelWidget",
                   "left": 54,
                   "top": 0,
-                  "width": 40,
-                  "height": 20,
+                  "width": 79,
+                  "height": 21,
                   "customInputs": [],
                   "customOutputs": [],
                   "style": {
@@ -7239,6 +7228,7 @@
                   },
                   "timeline": [],
                   "eventHandlers": [],
+                  "identifier": "rrset_btn_reset_lbl",
                   "leftUnit": "px",
                   "topUnit": "px",
                   "widthUnit": "content",
@@ -7269,7 +7259,6 @@
                   },
                   "group": "",
                   "groupIndex": 0,
-                  "identifier": "rrset_btn_reset_lbl",
                   "text": "Neustart",
                   "textType": "literal",
                   "longMode": "WRAP",
@@ -7308,8 +7297,7 @@
                 }
               },
               "group": "",
-              "groupIndex": 0,
-              "identifier": "rrset_btn_reset"
+              "groupIndex": 0
             },
             {
               "objID": "54f662f6-1319-4ec5-86eb-9008e04e220e",
@@ -7336,6 +7324,7 @@
                   "userData": 0
                 }
               ],
+              "identifier": "rrset_btn_sleep",
               "leftUnit": "px",
               "topUnit": "px",
               "widthUnit": "px",
@@ -7358,6 +7347,7 @@
                   },
                   "timeline": [],
                   "eventHandlers": [],
+                  "identifier": "rrset_ic_sleep",
                   "leftUnit": "px",
                   "topUnit": "px",
                   "widthUnit": "content",
@@ -7388,7 +7378,6 @@
                   },
                   "group": "",
                   "groupIndex": 0,
-                  "identifier": "rrset_ic_sleep",
                   "image": "rr_icon_moon",
                   "setPivot": false,
                   "pivotX": 0,
@@ -7406,8 +7395,8 @@
                   "type": "LVGLLabelWidget",
                   "left": 51,
                   "top": 0,
-                  "width": 40,
-                  "height": 20,
+                  "width": 85,
+                  "height": 21,
                   "customInputs": [],
                   "customOutputs": [],
                   "style": {
@@ -7418,6 +7407,7 @@
                   },
                   "timeline": [],
                   "eventHandlers": [],
+                  "identifier": "rrset_btn_sleep_lbl",
                   "leftUnit": "px",
                   "topUnit": "px",
                   "widthUnit": "content",
@@ -7448,7 +7438,6 @@
                   },
                   "group": "",
                   "groupIndex": 0,
-                  "identifier": "rrset_btn_sleep_lbl",
                   "text": "Tiefschlaf",
                   "textType": "literal",
                   "longMode": "WRAP",
@@ -7487,16 +7476,15 @@
                 }
               },
               "group": "",
-              "groupIndex": 0,
-              "identifier": "rrset_btn_sleep"
+              "groupIndex": 0
             },
             {
               "objID": "a49c609b-f9f2-47d5-8834-77f293dc8e10",
               "type": "LVGLLabelWidget",
               "left": 0,
               "top": 392,
-              "width": 40,
-              "height": 20,
+              "width": 100,
+              "height": 17,
               "customInputs": [],
               "customOutputs": [],
               "style": {
@@ -7507,6 +7495,7 @@
               },
               "timeline": [],
               "eventHandlers": [],
+              "identifier": "rrset_hint",
               "leftUnit": "px",
               "topUnit": "px",
               "widthUnit": "content",
@@ -7537,7 +7526,6 @@
               },
               "group": "",
               "groupIndex": 0,
-              "identifier": "rrset_hint",
               "text": "lange drücken",
               "textType": "literal",
               "longMode": "WRAP",
@@ -7682,7 +7670,7 @@
                   },
                   "group": "",
                   "groupIndex": 0,
-                  "points": "0,0 115,0",
+                  "points": "0,0 140,0",
                   "invertY": false,
                   "needleLength": 0,
                   "value": 0,
@@ -7734,7 +7722,19 @@
           },
           "groupIndex": 0
         }
-      ]
+      ],
+      "connectionLines": [],
+      "localVariables": [],
+      "componentGroups": [],
+      "userProperties": [],
+      "name": "RimRidgeSettings",
+      "left": 0,
+      "top": 0,
+      "width": 480,
+      "height": 480,
+      "isUsedAsUserWidget": false,
+      "createAtStart": true,
+      "deleteOnScreenUnload": false
     }
   ],
   "userWidgets": [],
@@ -8128,7 +8128,9 @@
       "objID": "b7eb6c81-1f51-47b8-9553-876749a7c627",
       "name": "rr_icon_moon",
       "image": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAABmJLR0QA/wD/AP+gvaeTAAABhElEQVRYhe2VPS9DYRTHf+dSjU5eUpOIUUInJcRUL4sPYCEMhERr4BN0M5Ii4i0R6eQLSJAYiHipRcQiRGIUYUCC9h4DEqk2farVxf2N55znf37Jc/NccHBw+O9Itgdi0ZDPRocEOlD2Hi+9oUA4HP9zgYvImPu+3J4SGAEsRXefqqvaA4HfLzcWuIiMuR/K7A2EwFfNsmx/Y+/8SS7LASyToYeKxPT35cBpPpYbCcSiIR8qw0nlg3wsNxKw0aHkORHuCiZgKZ3JNVUqCyagUJOi3FowgQ+HH/gO10L+gggI3KQ8KDodWxh2/bkA6FaaRpvtcS3lKpH5G1B7GUik6gkMqMe1cxQdbUrV318fL82Ub/QSHkeDsyjBDFFnih4I3ClUolw1989NZsouNhHwlHgnnl9u64CO9FPaINAAIKLb8hwfNck2eorre8KvHre3G2SWNNfxSUKFiDzFu/0ji28m2Vn/jo9Wg/VSJINAF2jtZ8w16GZCrJWWvpnzbDMdHBz+N+9mFHLRFhu6ngAAAABJRU5ErkJggg==",
-      "bpp": 4
+      "bpp": 4,
+      "lvglBinaryOutputFormat": 3,
+      "lvglDither": false
     }
   ],
   "changes": {
