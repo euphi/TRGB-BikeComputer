@@ -731,7 +731,17 @@ void WifiWebserver::setupWebserver() {
 	setupOta();
 
 	// -- download Binary Logfile
-	server.serveStatic("/log/", SD_MMC, "/BIKECOMP/");
+	// The library sends text files as bare "text/plain", and without a charset Chrome falls
+	// back to a legacy codepage -- the emojis in the debug log turn into mojibake. The
+	// response exists after next() but isn't sent yet, so its type can still be changed.
+	// Decided by extension: the response keeps its type private until it assembles the head.
+	server.serveStatic("/log/", SD_MMC, "/BIKECOMP/").addMiddleware([](AsyncWebServerRequest* request, ArMiddlewareNext next) {
+		next();
+		AsyncWebServerResponse* response = request->getResponse();
+		const String& url = request->url();
+		if (response && response->code() < 300 && (url.endsWith(".log") || url.endsWith(".txt")))
+			response->setContentType("text/plain; charset=utf-8");
+	});
 	server.serveStatic("/", LittleFS, "/site/").setCacheControl("max-age=31536000").setDefaultFile("index.html");
 	//server.serveStatic("/core/", LittleFS, "/core/").setCacheControl("max-age=31536000");
 
