@@ -16,7 +16,7 @@ import logging
 import sys
 from pathlib import Path
 
-from . import exporter, sdlayout
+from . import exporter, nextcloud, sdlayout
 from .config import Settings
 from .puller import Http, sync
 from .storage import Storage
@@ -38,6 +38,7 @@ def _pull(args) -> int:
     for err in result.errors:
         print("  " + err, file=sys.stderr)
     exporter.export_pending(store)
+    nextcloud.sync_pending(store)
     return 1 if result.failed else 0
 
 
@@ -63,6 +64,7 @@ def _import(args) -> int:
         counts[status] = counts.get(status, 0) + 1
     print(", ".join(f"{n} {k}" for k, n in sorted(counts.items())) or "nothing found")
     exporter.export_pending(store)
+    nextcloud.sync_pending(store)
     return 0
 
 
@@ -75,6 +77,9 @@ def _export(args) -> int:
     counts = exporter.export_pending(store)
     print(", ".join(f"{n} {k}" for k, n in sorted(counts.items())) or "all up to date",
           "->", store.settings.gpx_dir)
+    sync_counts = nextcloud.sync_pending(store)
+    if sync_counts:
+        print(", ".join(f"{n} {k}" for k, n in sorted(sync_counts.items())), "-> Nextcloud")
     return 0
 
 

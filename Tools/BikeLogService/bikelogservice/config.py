@@ -81,6 +81,25 @@ class Settings:
     def komoot_enabled(self) -> bool:
         return bool(self.komoot_email and self.komoot_password)
 
+    #: Automatic sync of Tours-status GPX files to Nextcloud via WebDAV
+    #: (nextcloud.py, needs "pip install bikelog[nextcloud]"). Unset URL/
+    #: user/password means the feature is simply not offered, same as
+    #: Komoot -- deliberately no separate on/off flag, and deliberately no
+    #: manual-trigger equivalent to Komoot's: this one is meant to just run.
+    nextcloud_url: str | None = None          # e.g. https://cloud.example.com
+    nextcloud_user: str | None = None
+    #: App password (Nextcloud settings -> Security -> "Devices & sessions"),
+    #: not the account login password -- revocable on its own, and Nextcloud
+    #: recommends it for exactly this kind of unattended access.
+    nextcloud_password: str | None = None
+    #: Remote folder (WebDAV path below the user's files root), created if
+    #: it does not exist yet.
+    nextcloud_dir: str = "BikeLog"
+
+    @property
+    def nextcloud_enabled(self) -> bool:
+        return bool(self.nextcloud_url and self.nextcloud_user and self.nextcloud_password)
+
     @classmethod
     def from_env(cls, env=None) -> "Settings":
         env = env if env is not None else os.environ
@@ -102,6 +121,10 @@ class Settings:
             komoot_activity=env.get("BIKELOG_KOMOOT_ACTIVITY", "touringbicycle"),
             komoot_status=env.get("BIKELOG_KOMOOT_STATUS", "friends"),
             komoot_merge_gap_s=float(env.get("BIKELOG_KOMOOT_MERGE_GAP_S", 1800)),
+            nextcloud_url=(env.get("BIKELOG_NEXTCLOUD_URL") or "").rstrip("/") or None,
+            nextcloud_user=env.get("BIKELOG_NEXTCLOUD_USER") or None,
+            nextcloud_password=env.get("BIKELOG_NEXTCLOUD_PASSWORD") or None,
+            nextcloud_dir=env.get("BIKELOG_NEXTCLOUD_DIR", "BikeLog"),
         )
 
     @property

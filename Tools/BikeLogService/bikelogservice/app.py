@@ -25,7 +25,7 @@ from fastapi.responses import HTMLResponse, PlainTextResponse
 from bikelog import csvexport
 from bikelog.record import ReadStats
 
-from . import exporter, komoot, sdlayout, webui
+from . import exporter, komoot, nextcloud, sdlayout, webui
 from .auth import AuthDep, Principal
 from .config import Settings
 from .puller import Puller
@@ -41,11 +41,15 @@ def create_app(settings: Settings | None = None, puller: Puller | None = None) -
     if puller is None and settings.pull:
         puller = Puller(store, settings)
 
+    def _export_and_sync(store: Storage) -> None:
+        exporter.export_pending(store)
+        nextcloud.sync_pending(store)
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         # Catch up on GPX files (new exporter version, sessions stored while the
-        # export was off) without holding up the start.
-        threading.Thread(target=exporter.export_pending, args=(store,),
+        # export was off) and Nextcloud sync, without holding up the start.
+        threading.Thread(target=_export_and_sync, args=(store,),
                          name="bikelog-export", daemon=True).start()
         if puller:
             puller.start()
@@ -253,6 +257,10 @@ def create_app(settings: Settings | None = None, puller: Puller | None = None) -
             raise HTTPException(413, "upload exceeds %d bytes" % settings.max_upload_bytes)
         result = store.put_file(device, sdfile, payload, source="push:" + principal.name)
         exporter.export_pending(store)
+        # Nextcloud is a network call (WebDAV) -- don't hold up the device's
+        # upload on it; the session's gpx_status is already current above.
+        threading.Thread(target=nextcloud.sync_pending, args=(store,),
+                         name="bikelog-nextcloud", daemon=True).start()
         return {"status": result.status, "session": result.session.as_dict()}
 
     # --- pull ---

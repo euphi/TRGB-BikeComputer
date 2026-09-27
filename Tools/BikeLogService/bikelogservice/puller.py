@@ -44,7 +44,7 @@ import urllib.request
 from dataclasses import asdict, dataclass, field
 from typing import Callable
 
-from . import exporter, sdlayout
+from . import exporter, nextcloud, sdlayout
 from .sdlayout import SdFile
 
 log = logging.getLogger("bikelog.pull")
@@ -531,6 +531,7 @@ class Puller:
         log.info("%s: %s", target.device, result.summary())
         if result.fetched or result.replaced:
             exporter.export_pending(self.storage)
+            nextcloud.sync_pending(self.storage)
         return result
 
     def as_dict(self) -> dict:
