@@ -193,6 +193,70 @@ def test_mdns_callback_matches_the_instance_name(bc):
     class State:
         name = "Added"
     p._on_service(None, "_http._tcp.local.", "Shelly._http._tcp.local.", State)
-    assert not p._forced
+    assert not p._due
     p._on_service(None, "_http._tcp.local.", "trgb-bc._http._tcp.local.", State)
-    assert p._forced == {"trgb"}
+    assert set(p._due) == {"trgb"}
+
+
+# --- probes: the reboot signal ---
+
+def _probe_packet(host="TRGB-BC", response=False, authority=1):
+    """What the ESP32 sent on boot (2026-09-27): questions for the service
+    instance and the host, ANY/IN, with the claimed records as authority."""
+    import struct
+
+    def name(*labels):
+        return b"".join(bytes([len(l)]) + l.encode() for l in labels) + b"\0"
+    flags = 0x8400 if response else 0
+    q1 = name(host, "_http", "_tcp", "local") + struct.pack("!HH", 255, 1)
+    host_off = 12 + len(q1)
+    q2 = name(host, "local") + struct.pack("!HH", 255, 1)
+    q3 = struct.pack("!H", 0xC000 | host_off) + struct.pack("!HH", 255, 1)   # compressed
+    head = struct.pack("!6H", 0, flags, 3, 0, authority, 0)
+    return head + q1 + q2 + q3 + b"\xc0\x0c" + b"\x00" * 10
+
+
+def test_probe_is_recognised():
+    assert pullmod.probed_names(_probe_packet()) == {"trgb-bc._http._tcp.local", "trgb-bc.local"}
+
+
+def test_ordinary_queries_and_responses_are_not_probes():
+    assert pullmod.probed_names(_probe_packet(authority=0)) == set()
+    assert pullmod.probed_names(_probe_packet(response=True)) == set()
+    assert pullmod.probed_names(b"\x00" * 5) == set()
+    assert pullmod.probed_names(_probe_packet()[:20]) == set()      # truncated
+
+
+def test_probe_schedules_a_delayed_pull(bc):
+    p, resolver, target = bc
+    p._on_probe({"shelly.local"}, "192.168.0.9")
+    assert not p._due
+    p._on_probe({"trgb-bc.local", "trgb-bc._http._tcp.local"}, "192.168.0.171")
+    import time
+    assert p._due["trgb"] - time.monotonic() > pullmod.BOOT_SETTLE_S - 1
+
+
+def test_unmoved_session_in_workdir_means_pull_again(bc, store):
+    p, resolver, target = bc
+    resolver.address = "192.168.0.171"
+    p.http = FakeDevice(dict(FILES, **{"CUR/L_0859.bin": b"old", "CUR/D_0859.log": b"d"}))
+    result = p.check(target)
+    assert result.workdir_sessions == 2          # running 0860 + finished 0859
+    assert "trgb" in p._due                      # retry scheduled
+    p._due.clear()
+    p._mono_attempt["trgb"] -= 100
+    p.http = FakeDevice(FILES)                   # LogSessions has moved it
+    assert p.check(target, forced=True).workdir_sessions == 1
+    assert not p._due
+
+
+def test_failed_pull_is_retried(bc):
+    p, resolver, target = bc
+    resolver.address = "192.168.0.171"
+
+    class Down:
+        def get(self, url):
+            raise HttpError(url, None, "connection refused")
+    p.http = Down()
+    assert p.check(target) is None
+    assert "trgb" in p._due

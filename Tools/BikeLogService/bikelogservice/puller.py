@@ -7,15 +7,22 @@ BLE and the display for internal heap.
 
 When to pull:
 
-* **mDNS**: the firmware calls ``MDNS.begin("TRGB-BC")`` right after joining the
-  WiFi, which announces ``TRGB-BC._http._tcp.local``. A ServiceBrowser sees that
-  within a second or two and triggers a pull.
-* **Polling**, because an announcement is easy to miss: the browser only reports
-  a service it does not already have cached, and a device that is switched off
-  sends no goodbye, so after a quick round trip the entry may still be cached.
-  Every ``pull_interval_s`` the service therefore asks for the host's address
-  (one multicast query, no traffic to the device if it is away). If it answers
-  and was absent before -- or the last pull is older than RESYNC_S -- it pulls.
+* **mDNS probes** (the main trigger): the firmware calls ``MDNS.begin("TRGB-BC")``
+  after every WiFi connect, and before announcing itself the ESP32 *probes* for
+  its name (RFC 6762 8.1: queries for ``TRGB-BC.local`` with the proposed records
+  in the authority section). Only a device claiming its name does that, i.e. a
+  boot or a reconnect -- exactly when LogSessions has just finished a session.
+  ProbeListener sniffs for these on its own socket. Observed 2026-09-27: four
+  probes within a second of the device joining the WiFi.
+  The ServiceBrowser alone is not enough: it reports only services it does not
+  have cached, and a quick reboot keeps the entry in its cache (PTR TTL 75 min).
+* **Polling** as a safety net: every ``pull_interval_s`` one multicast address
+  query (no traffic to the device if it is away). If it answers and was absent
+  before -- or the last pull is older than RESYNC_S -- it pulls.
+
+Triggered pulls wait BOOT_SETTLE_S: right after boot the device is busy (BLE,
+LogSessions moving the last session out of CUR/). While CUR/ still holds more
+than the running session, the pull is repeated every WORKDIR_RETRY_S.
 
 What to pull: every file in the listing that is not held yet (or whose size
 changed), except the running session's working directory and sessions that were
@@ -47,6 +54,15 @@ log = logging.getLogger("bikelog.pull")
 RESYNC_S = 1800
 #: mDNS announcements come in bursts (the firmware's plus retransmissions).
 TRIGGER_DEBOUNCE_S = 15
+#: Delay between a probe/announcement and the pull.
+BOOT_SETTLE_S = 10
+#: Pull again this soon while CUR/ holds a finished session not moved yet, or
+#: after a triggered pull failed (web server not up yet) ...
+WORKDIR_RETRY_S = 60
+#: ... at most this many times in a row.
+MAX_RETRIES = 10
+MDNS_GROUP = "224.0.0.251"
+MDNS_PORT = 5353
 #: Pause between file downloads: every request costs the ESP32 several KB of
 #: internal heap, and its web server sheds load (503) when that runs low.
 DOWNLOAD_PAUSE_S = 0.2
@@ -151,6 +167,9 @@ class SyncResult:
     failed: int = 0
     bytes: int = 0
     errors: list[str] = field(default_factory=list)
+    #: Sessions (stems) seen in CUR/: the running one plus any that LogSessions
+    #: has not moved yet. More than one = pull again shortly.
+    workdir_sessions: int = 0
 
     def summary(self) -> str:
         return (f"{self.listed} listed, {self.fetched} fetched ({self.bytes} byte), "
@@ -164,6 +183,8 @@ def sync(storage, device: str, base_url: str, http: Http | None = None,
     result = SyncResult()
     listing = fetch_listing(http, base_url)
     known = storage.known_files(device)
+    result.workdir_sessions = len({e.file.stem for e in listing
+                                   if e.file.day == sdlayout.WORKDIR})
     for entry in listing:
         sdfile = entry.file
         if sdfile.day == sdlayout.WORKDIR:
@@ -199,6 +220,101 @@ def sync(storage, device: str, base_url: str, http: Http | None = None,
         if pause_s:
             time.sleep(pause_s)
     return result
+
+
+# --- mDNS probes ------------------------------------------------------------
+
+def _dns_name(buf: bytes, off: int) -> tuple[str, int]:
+    """Read a (possibly compressed) DNS name; returns (name, offset after it)."""
+    labels: list[str] = []
+    end = None
+    for _ in range(128):                    # bounded: no pointer loops
+        length = buf[off]
+        if length == 0:
+            off += 1
+            break
+        if length & 0xC0 == 0xC0:
+            if end is None:
+                end = off + 2
+            off = ((length & 0x3F) << 8) | buf[off + 1]
+            continue
+        labels.append(buf[off + 1:off + 1 + length].decode("utf-8", "replace"))
+        off += 1 + length
+    else:
+        raise ValueError("DNS name too long")
+    return ".".join(labels), (end if end is not None else off)
+
+
+def probed_names(packet: bytes) -> set[str]:
+    """Names a packet probes for (lower case, without trailing dot): an mDNS
+    query with records in the authority section (RFC 6762 8.1). Empty for
+    anything else, including malformed packets."""
+    try:
+        if len(packet) < 12:
+            return set()
+        flags, qdcount, _an, nscount = (int.from_bytes(packet[i:i + 2], "big")
+                                        for i in (2, 4, 6, 8))
+        if flags & 0x8000 or not nscount:   # response, or plain query
+            return set()
+        names, off = set(), 12
+        for _ in range(qdcount):
+            name, off = _dns_name(packet, off)
+            off += 4                        # type, class
+            names.add(name.lower().rstrip("."))
+        return names
+    except (IndexError, ValueError):
+        return set()
+
+
+class ProbeListener:
+    """Passive mDNS sniffer on its own socket (SO_REUSEPORT: coexists with
+    zeroconf and avahi, every member socket gets the multicast datagrams)."""
+
+    def __init__(self, on_probe: Callable[[set[str], str], None]):
+        self.on_probe = on_probe
+        self._stop = threading.Event()
+        self._sock: socket.socket | None = None
+        self._thread: threading.Thread | None = None
+
+    def start(self) -> bool:
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            if hasattr(socket, "SO_REUSEPORT"):
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+            sock.bind(("", MDNS_PORT))
+            sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP,
+                            socket.inet_aton(MDNS_GROUP) + socket.inet_aton("0.0.0.0"))
+            sock.settimeout(1.0)
+        except OSError as exc:
+            log.warning("mDNS probe listener unavailable: %s", exc)
+            return False
+        self._sock = sock
+        self._thread = threading.Thread(target=self._run, name="bikelog-probe", daemon=True)
+        self._thread.start()
+        return True
+
+    def stop(self) -> None:
+        self._stop.set()
+        if self._thread:
+            self._thread.join(timeout=3)
+        if self._sock:
+            self._sock.close()
+
+    def _run(self) -> None:
+        while not self._stop.is_set():
+            try:
+                packet, (source, _port) = self._sock.recvfrom(9000)
+            except socket.timeout:
+                continue
+            except OSError:
+                return
+            names = probed_names(packet)
+            if names:
+                try:
+                    self.on_probe(names, source)
+                except Exception:
+                    log.exception("probe handler failed")
 
 
 # --- when to pull ---------------------------------------------------------
@@ -248,9 +364,11 @@ class Puller:
         self._resolver = resolver
         self._zc = None
         self._browser = None
+        self._probes: ProbeListener | None = None
         self._wake = threading.Event()
         self._stop = threading.Event()
-        self._forced: set[str] = set()
+        self._due: dict[str, float] = {}           # device -> monotonic time of a triggered check
+        self._retries: dict[str, int] = {}
         self._lock = threading.Lock()
         self._thread: threading.Thread | None = None
         self._mono_sync_ok: dict[str, float] = {}
@@ -261,11 +379,16 @@ class Puller:
     def start(self) -> None:
         if self.settings.pull_mdns or self._resolver is None:
             self._start_zeroconf()
+        if self.settings.pull_mdns:
+            probes = ProbeListener(self._on_probe)
+            if probes.start():
+                self._probes = probes
         self._thread = threading.Thread(target=self._run, name="bikelog-pull", daemon=True)
         self._thread.start()
         log.info("pulling from %s every %.0f s%s",
                  ", ".join(f"{t.device}={t.host}.local" for t in self.targets),
                  self.settings.pull_interval_s,
+                 " and on mDNS probes/announcements" if self._probes else
                  " and on mDNS announcements" if self._browser else "")
 
     def stop(self) -> None:
@@ -273,6 +396,8 @@ class Puller:
         self._wake.set()
         if self._thread:
             self._thread.join(timeout=5)
+        if self._probes:
+            self._probes.stop()
         if self._zc:
             self._zc.close()
 
@@ -293,26 +418,42 @@ class Puller:
         for target in self.targets:
             if instance.lower() == target.host.lower() and state_change.name in ("Added", "Updated"):
                 log.info("%s announced via mDNS (%s)", target.device, state_change.name)
-                self.trigger(target.device)
+                self.trigger(target.device, BOOT_SETTLE_S)
+
+    def _on_probe(self, names: set[str], source: str) -> None:
+        for target in self.targets:
+            if target.host.lower() + ".local" in names:
+                if target.device not in self._due:
+                    log.info("%s probing for its mDNS name from %s -- (re)started, pulling in %d s",
+                             target.device, source, BOOT_SETTLE_S)
+                self._retries[target.device] = 0
+                self.trigger(target.device, BOOT_SETTLE_S)
 
     # --- triggers ---
 
-    def trigger(self, device: str | None = None) -> None:
-        """Check (and pull from) one device, or all, right away."""
+    def trigger(self, device: str | None = None, delay_s: float = 0.0) -> None:
+        """Check (and pull from) one device, or all, in delay_s seconds."""
+        due = time.monotonic() + delay_s
         with self._lock:
-            self._forced.update([device] if device else [t.device for t in self.targets])
+            for dev in ([device] if device else [t.device for t in self.targets]):
+                self._due[dev] = min(self._due.get(dev, due), due)
         self._wake.set()
 
     def _run(self) -> None:
         next_poll = 0.0
         while not self._stop.is_set():
-            self._wake.wait(max(0.0, next_poll - time.monotonic()))
+            with self._lock:
+                wake_at = min([next_poll, *self._due.values()])
+            self._wake.wait(max(0.0, wake_at - time.monotonic()))
             self._wake.clear()
             if self._stop.is_set():
                 return
+            now = time.monotonic()
             with self._lock:
-                forced, self._forced = self._forced, set()
-            polling = time.monotonic() >= next_poll
+                forced = {dev for dev, due in self._due.items() if due <= now}
+                for dev in forced:
+                    del self._due[dev]
+            polling = now >= next_poll
             if polling:
                 next_poll = time.monotonic() + self.settings.pull_interval_s
             for target in self.targets:
@@ -356,7 +497,17 @@ class Puller:
         stale = now - self._mono_sync_ok.get(target.device, -1e9) > RESYNC_S
         if not (forced or appeared or stale):
             return None
-        return self._pull(target, address)
+        result = self._pull(target, address)
+        # Again soon if the pull failed (device still booting) or CUR/ still holds a
+        # finished session LogSessions is about to move -- bounded, then polling.
+        if result is None or result.failed or result.workdir_sessions > 1:
+            tries = self._retries.get(target.device, 0)
+            if tries < MAX_RETRIES:
+                self._retries[target.device] = tries + 1
+                self.trigger(target.device, WORKDIR_RETRY_S)
+        else:
+            self._retries[target.device] = 0
+        return result
 
     def _pull(self, target: Target, address: str) -> SyncResult | None:
         st = self.status[target.device]
@@ -384,5 +535,6 @@ class Puller:
 
     def as_dict(self) -> dict:
         return {"enabled": True, "mdns": self._browser is not None,
+                "probes": self._probes is not None,
                 "interval_s": self.settings.pull_interval_s,
                 "targets": [asdict(s) for s in self.status.values()]}

@@ -26,14 +26,25 @@ der mit BLE und Display um internen Heap konkurriert.
 
 **Wann** ([`puller.py`](bikelogservice/puller.py)):
 
-- **mDNS**: Die Firmware meldet sich nach dem WLAN-Connect als
-  `TRGB-BC._http._tcp.local`. Ein ServiceBrowser sieht das nach ein, zwei
-  Sekunden und stößt den Abruf an.
+- **mDNS-Probes** (Haupt-Trigger): Nach jedem WLAN-Connect ruft die Firmware
+  `MDNS.begin("TRGB-BC")` auf, und der ESP32 *probt* dabei seinen Namen (RFC
+  6762 8.1: Anfragen nach `TRGB-BC.local` mit Authority-Sektion). Das tut nur
+  ein Gerät, das gerade (neu) ins Netz kommt -- also nach Boot oder
+  WLAN-Reconnect, genau dann, wenn eine Sitzung fertig geworden ist. Ein
+  eigener Socket lauscht passiv darauf; 10 s später wird abgeholt
+  (`BOOT_SETTLE_S`). Gemessen 2026-09-27: vier Probes binnen einer Sekunde
+  nach dem Connect.
+- Der ServiceBrowser allein reicht **nicht**: Er meldet nur Dienste, die er
+  noch nicht im Cache hat, und nach einem schnellen Neustart ist der Eintrag
+  noch da (PTR-TTL 75 min). So ist der erste Versuch am 2026-09-27
+  gescheitert.
 - **Polling** als Netz: alle `BIKELOG_PULL_INTERVAL_S` (120 s) eine
   mDNS-Adressanfrage -- ist der BC weg, kostet das nichts, taucht er (wieder)
-  auf, wird abgeholt. Nötig, weil der Browser einen Dienst, den er noch im
-  Cache hat, nicht erneut meldet, und ein ausgeschalteter BC sich nicht
-  abmeldet. Zusätzlich spätestens alle 30 min, solange er online ist.
+  auf, wird abgeholt. Zusätzlich spätestens alle 30 min, solange er online ist.
+- **Nachfassen**: Direkt nach dem Boot verschiebt `LogSessions` die beendete
+  Sitzung erst im Hintergrund aus `CUR/`. Liegt dort beim Abruf mehr als die
+  laufende Sitzung (oder schlägt der Abruf fehl), wird nach 60 s erneut
+  abgeholt, höchstens 10-mal in Folge.
 - Von Hand: `POST /api/v1/pull` oder `bikelogservice pull`.
 
 **Was**: jede Datei der Liste, die noch fehlt oder deren Größe sich geändert
