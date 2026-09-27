@@ -109,7 +109,8 @@ Von Hand: `bikelogservice export` (fehlende/veraltete), `export --all` (alle).
 
 ## Komoot-Upload
 
-`POST /api/v1/sessions/{id}/komoot` lädt die Fahrt über
+Ausschließlich manuell -- kein automatischer Trigger, anders als der
+Nextcloud-Sync unten. `POST /api/v1/sessions/{id}/komoot` lädt die Fahrt über
 [kompy](https://github.com/Tsadoq/kompy) zu Komoot hoch (oder, in der
 Web-Oberfläche, der „Komoot“-Knopf neben jeder echten Fahrt). Ein Reboot
 mitten in einer Fahrt (kurzer BLE-Aussetzer, Pause mit ausgeschaltetem BC)
@@ -134,6 +135,35 @@ die echte API am 2026-09-27 verifiziert -- vermutlich hält deren Parser das
 allein deswegen für eine geplante Route statt einer Aufzeichnung). Die
 reichen `bc:`-Erweiterungen je Trackpunkt sind davon nicht betroffen und
 bleiben drin.
+
+## Nextcloud-Sync
+
+Anders als Komoot: läuft automatisch, kein Knopf, kein Endpunkt. Jede
+Sitzung mit `gpx_status` `ok` (also in `Tours/`, siehe oben) wird per WebDAV
+in ein konfigurierbares Verzeichnis auf einer Nextcloud-Instanz hochgeladen
+([`nextcloud.py`](bikelogservice/nextcloud.py)); wird eine Sitzung nachträglich
+als nicht mehr „echt“ eingestuft (Export-Logik verbessert, `EXPORT_VERSION`
+erhöht), wird ihre Nextcloud-Kopie wieder gelöscht statt verwaist
+liegenzubleiben. `Debug_Archive`-Sitzungen werden nie synchronisiert.
+
+Braucht `pip install "bikelog[nextcloud]"` (`requests`, nicht Teil von
+`[service]`) und in `bikelog.env`:
+
+```
+BIKELOG_NEXTCLOUD_URL=https://cloud.example.com
+BIKELOG_NEXTCLOUD_USER=bikelog
+BIKELOG_NEXTCLOUD_PASSWORD=<App-Passwort>
+BIKELOG_NEXTCLOUD_DIR=BikeLog          # Standard, frei wählbar
+```
+
+Das Passwort ist ein **App-Passwort** (Nextcloud: Einstellungen -> Sicherheit
+-> „Geräte & Sitzungen“ -> neues App-Passwort anlegen), nicht das normale
+Login-Passwort -- eigenständig widerrufbar, ohne den Hauptzugang zu berühren.
+Ohne URL/Nutzer/Passwort bleibt der Sync einfach aus, sonst wie gehabt.
+
+Bekannte Lücke: Wird eine Sitzung gelöscht (`DELETE /api/v1/sessions/{id}`),
+verschwindet nur die lokale Kopie -- die Nextcloud-Kopie bleibt liegen und
+muss von Hand entfernt werden.
 
 ## Installation (ia216: `~/bikelog`)
 
@@ -204,6 +234,8 @@ Umgebungsvariablen (im Dienst: `~/bikelog/bikelog.env`):
 | `BIKELOG_KOMOOT_ACTIVITY` | `touringbicycle` | eine `SupportedActivities`-Konstante aus kompy |
 | `BIKELOG_KOMOOT_STATUS` | `friends` | Sichtbarkeit der hochgeladenen Tour (`public`/`private`/`friends`) |
 | `BIKELOG_KOMOOT_MERGE_GAP_S` | `1800` | Sitzungen desselben Geräts mit höchstens so viel Pause dazwischen gelten als eine unterbrochene Fahrt |
+| `BIKELOG_NEXTCLOUD_URL` / `_USER` / `_PASSWORD` | -- | Nextcloud-Login (App-Passwort); ohne alle drei ist der Sync aus |
+| `BIKELOG_NEXTCLOUD_DIR` | `BikeLog` | Zielverzeichnis (WebDAV-Pfad, wird bei Bedarf angelegt) |
 
 Beide BC-Varianten (Gravel und FL) melden sich heute als `TRGB-BC` -- der
 Dienst kann sie nicht auseinanderhalten und legt alles unter einem Gerät ab.

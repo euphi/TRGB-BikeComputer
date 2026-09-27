@@ -97,6 +97,10 @@ def _row(s: Session) -> str:
         notes.append('<span class="mut">Komoot ✓</span>')
     elif s.komoot_status == "error":
         notes.append('<span class="warn">Komoot-Upload fehlgeschlagen</span>')
+    if s.nextcloud_status == "ok":
+        notes.append('<span class="mut">Nextcloud ✓</span>')
+    elif s.nextcloud_status == "error":
+        notes.append('<span class="warn">Nextcloud-Sync fehlgeschlagen</span>')
     if summ.get("shocks"):
         notes.append(f'<span class="mut">{summ["shocks"]} shocks</span>')
     return (

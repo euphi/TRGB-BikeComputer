@@ -32,7 +32,7 @@ from bikelog.record import ReadStats, UnknownLogFormat, read_stream
 from . import sdlayout
 from .sdlayout import SdFile
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions (
@@ -64,6 +64,12 @@ CREATE TABLE IF NOT EXISTS sessions (
     komoot_status   TEXT,
     komoot_tour_id  TEXT,
     komoot_uploaded_at TEXT,
+    -- Nextcloud sync (nextcloud.py): the Tours file, kept up to date the
+    -- same way the local export is -- see nextcloud_gpx_version below.
+    nextcloud_status    TEXT,
+    nextcloud_file      TEXT,
+    nextcloud_synced_at TEXT,
+    nextcloud_gpx_version INTEGER,
     UNIQUE (device, day, stem)
 );
 CREATE TABLE IF NOT EXISTS files (
@@ -127,6 +133,10 @@ class Session:
     komoot_status: str | None = None
     komoot_tour_id: str | None = None
     komoot_uploaded_at: str | None = None
+    nextcloud_status: str | None = None
+    nextcloud_file: str | None = None
+    nextcloud_synced_at: str | None = None
+    nextcloud_gpx_version: int | None = None
     files: list[StoredFile] = field(default_factory=list)
 
     @property
@@ -189,6 +199,10 @@ class Storage:
                 self._db.execute(f"ALTER TABLE sessions ADD COLUMN {column}")
         if version == 3:
             for column in ("komoot_status TEXT", "komoot_tour_id TEXT", "komoot_uploaded_at TEXT"):
+                self._db.execute(f"ALTER TABLE sessions ADD COLUMN {column}")
+        if version == 4:
+            for column in ("nextcloud_status TEXT", "nextcloud_file TEXT", "nextcloud_synced_at TEXT",
+                           "nextcloud_gpx_version INTEGER"):
                 self._db.execute(f"ALTER TABLE sessions ADD COLUMN {column}")
         self._db.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
         self._db.commit()
@@ -371,6 +385,30 @@ class Storage:
             self._db.executemany(
                 "UPDATE sessions SET komoot_status = ?, komoot_tour_id = ?, komoot_uploaded_at = ? "
                 "WHERE id = ?", [(status, tour_id, _now(), sid) for sid in session_ids])
+            self._db.commit()
+
+    def pending_nextcloud(self) -> list[Session]:
+        """Tours-status sessions whose Nextcloud copy is missing or stale
+        (gpx_version moved on since the last sync, or the last sync failed),
+        plus previously-synced sessions whose export is no longer "ok" (moved
+        to Debug_Archive, or now unreadable) -- their remote copy is stale
+        and needs removing, not updating. See nextcloud.py."""
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT * FROM sessions WHERE deleted_at IS NULL AND ("
+                "  (gpx_status = 'ok' AND (nextcloud_gpx_version IS NOT gpx_version "
+                "                          OR nextcloud_status = 'error'))"
+                "  OR (gpx_status IS NOT 'ok' AND nextcloud_file IS NOT NULL)"
+                ")").fetchall()
+            return [self._session(row) for row in rows]
+
+    def set_nextcloud(self, session_id: int, status: str | None, file: str | None,
+                      gpx_version: int | None) -> None:
+        with self._lock:
+            self._db.execute(
+                "UPDATE sessions SET nextcloud_status = ?, nextcloud_file = ?, "
+                "nextcloud_synced_at = ?, nextcloud_gpx_version = ? WHERE id = ?",
+                (status, file, _now(), gpx_version, session_id))
             self._db.commit()
 
     def delete(self, session_id: int) -> bool:
