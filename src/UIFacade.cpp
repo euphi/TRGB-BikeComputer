@@ -12,7 +12,6 @@
 
 // Screens
 
-#include "ui/img/state-icons.h"
 
 
 

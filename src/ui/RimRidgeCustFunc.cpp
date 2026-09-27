@@ -70,7 +70,11 @@ void ui_RimRidgeUpdateStats(const char* modeStr, const char* avgStr, float avgSp
 	(void) avgStr; (void) avgSpd; (void) maxSpd; (void) timeInS; // no widgets for these on RimRidge yet
 	lv_label_set_text(objects.rr_tour_label, modeStr);
 	lv_label_set_text_fmt(objects.rr_distance_val, "%.1f km", dist / 1000.0);
-	lv_label_set_text_fmt(objects.rr_temp_val, "%.0f\xc2\xb0", temperature); // UTF-8 degree sign
+	if (isnan(temperature)) {	// sensor not read yet right after boot
+		lv_label_set_text(objects.rr_temp_val, "-/-");
+	} else {
+		lv_label_set_text_fmt(objects.rr_temp_val, "%.0f\xc2\xb0", temperature); // UTF-8 degree sign
+	}
 }
 
 void ui_RimRidgeUpdateNavDist(uint32_t dist) {

@@ -81,8 +81,8 @@ nutzen 34×34px bei `LV_IMG_CF_ALPHA_8BIT` — das ist die richtige
 Referenzgröße und das richtige Format (kantengeglätteter Alpha-Kanal, per
 `lv_obj_set_style_img_recolor` zur Laufzeit auf `RR_BRASS` eingefärbt, statt
 Farbe fest ins Bitmap zu backen). Neue Icons nach demselben Muster
-exportieren, nicht als `LV_IMG_CF_INDEXED_1BIT` wie die älteren,
-ungenutzten Assets in `src/ui/img/state-icons.c`.
+exportieren, nicht als `LV_IMG_CF_INDEXED_1BIT` wie die älteren
+SquareLine-Assets (2026-09-27 entfernt).
 
 ## 3. Koordinatensystem
 

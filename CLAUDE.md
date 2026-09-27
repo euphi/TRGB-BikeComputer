@@ -60,8 +60,8 @@ ist das Protokoll die Quelle der Wahrheit.
   FL-Screen `src/ui/ui_FL.c`/`uiFLmodel.cpp` -- nur in der FL-Variante
   kompiliert (`#ifdef BC_FL_SUPPORT`), Quelle für die spätere EEZ-Umstellung,
   nicht löschen. Settings- und Chart-Screen sind entfernt (2026-09-27; Chart
-  wird neu gestaltet). Fonts/Bilder unter `src/ui/font/` und `src/ui/img/`
-  werden teils von RimRidge mitbenutzt.
+  wird neu gestaltet). `src/ui/img/` enthält nur noch die von RimRidge
+  genutzten Nav-/Spur-Icons (`nav_icons`, `lane_icon`, `roundabout-icon`).
 
 ## Binärlog und Wegequalität
 

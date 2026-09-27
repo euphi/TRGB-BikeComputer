@@ -36,9 +36,6 @@ Das Skill ist für ESP-IDF geschrieben (`main/ui/`, `sdkconfig.defaults`,
   anpassen.
 - EEZ-Code inkludiert `<lvgl/lvgl.h>` -- dafür gibt es den Shim
   `include/lvgl/lvgl.h`.
-- Fonts, die es auch im SquareLine-Altbestand unter `src/ui/font/` gibt
-  (aktuell `ui_font_by7x128`), per `build_src_filter` in `platformio.ini`
-  aus `src/ui_eez/` ausschließen.
 
 LVGL ist 8.4.0 (transitiv über `TRGBArduinoSupport`, `"lvgl": "^8.3.0"`)
 und passt damit zum Schema-Ziel `lvglVersion 8.4.x` des Skills. Ein

@@ -110,10 +110,6 @@ prüfen (Reset-Grund, gespeicherter Wert, spätere Zeile).
   Logik gehört nach `src/ui/RimRidge*CustFunc.*`.
 - EEZ-generierter Code inkludiert `<lvgl/lvgl.h>`; der Shim
   `include/lvgl/lvgl.h` leitet auf `<lvgl.h>` um.
-- Der Font `ui_font_by7x128` existiert doppelt (SquareLine-Altbestand in
-  `src/ui/font/` und EEZ-Export). `build_src_filter` in `platformio.ini`
-  schließt die EEZ-Kopie aus. Bei weiteren gemeinsamen Fonts dort
-  ergänzen, sonst "multiple definition" beim Linken.
 - Bei der Umrechnung von SquareLine-Layouts gilt: Positionen von Kindern
   eines Flex-Containers sind bedeutungslos, LVGL rechnet sie zur Laufzeit.
 

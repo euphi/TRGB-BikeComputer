@@ -1,3 +1,6 @@
+// Only used by the FL screen (ui_FL.c) - FL variant only.
+#ifdef BC_FL_SUPPORT
+
 // SquareLine LVGL GENERATED FILE
 // EDITOR VERSION: SquareLine Studio 1.1.1
 // LVGL VERSION: 8.3.3
@@ -189,4 +192,4 @@ void _ui_checked_set_text_value(lv_obj_t * trg, lv_obj_t * src, char * txt_on, c
     else lv_label_set_text(trg, txt_off);
 }
 
-
+#endif // BC_FL_SUPPORT
