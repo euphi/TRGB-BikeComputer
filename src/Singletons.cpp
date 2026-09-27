@@ -9,6 +9,7 @@
 #include "Singletons.h"
 
 SimpleCLI cli;
+SerialConsole console;
 BCLogger bclog;
 Statistics stats;
 #ifdef BC_FL_SUPPORT

@@ -149,6 +149,23 @@ gelesen wird. Echte Offsets ermitteln statt zählen: absichtlich falsches
 `static_assert(offsetof(T, feld) == 999, "x")` -- GCC meldet den echten
 Wert in "the comparison reduces to ...".
 
+## Serielle Konsole
+
+`src/SerialConsole.*` hält die Eingabezeile (Prompt, halb getippter Befehl) als letzte
+Bildschirmzeile. Zwei Regeln:
+
+- **Serial-Ausgaben aus anderen Tasks** gehen über `bclog` oder werden in
+  `SerialConsole::Output out(console);` eingeschlossen -- sonst landen sie mitten
+  in der Eingabezeile. Befehls-Callbacks laufen im Loop-Task ohne sichtbaren
+  Prompt und dürfen direkt `Serial.print` benutzen, sollten aber mit
+  Zeilenumbruch enden.
+- **Keine ANSI-Escape-Sequenzen und kein `\a` ausgeben.** Der Standardfilter von
+  miniterm und `pio device monitor` zeigt ESC und die meisten Steuerzeichen als
+  Symbol (`␛[K`). Die Konsole zeichnet deshalb nur mit `\r`, `\b` und Leerzeichen.
+
+Befehle mit `console.addCmd()` registrieren, nicht mit `cli.addCmd()`, sonst gibt
+es keine Tab-Completion (SimpleCLI bietet keine Liste der Befehle an).
+
 ## Webserver: Regex-Routen und Stack-Größe
 
 `ASYNCWEBSERVER_REGEX` bleibt bewusst aus: `AsyncCallbackWebHandler::canHandle()`

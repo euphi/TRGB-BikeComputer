@@ -11,6 +11,9 @@
 #include <SimpleCLI.h>
 extern SimpleCLI cli;
 
+#include "SerialConsole.h"
+extern SerialConsole console;
+
 #include "BCLogger.h"
 extern BCLogger bclog;
 

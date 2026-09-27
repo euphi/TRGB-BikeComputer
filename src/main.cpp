@@ -16,13 +16,14 @@ void errorCallback(cmd_error* e) {
     if (cmdError.hasCommand()) {
         Serial.print("Wrong parameters. Help: ");
         Serial.println(cmdError.getCommand().toString());
+    } else {
+        Serial.println("Unknown command -- \"help\" lists them, Tab completes.");
     }
 }
 
 Command cmdPing;
 Command cmdBat;
 Command cmdMem;
-String inputBuffer;
 
 int8_t batLevel = -1;
 
@@ -34,6 +35,7 @@ void batCheck() {
 void setup() {
 	trgb.setLogo(bootLogoRimRidge);
 	trgb.init();
+	console.setup();
 	webserver.setup(); // start early to update system time as soon as possible
 	TRGBSuppport::print_chip_info();
 	TRGBSuppport::scan_iic();
@@ -42,13 +44,13 @@ void setup() {
 
 	bclog.setup();
     cli.setOnError(errorCallback);
-    cmdPing = cli.addCmd("ping", [](cmd* c) {Serial.println("Pong!");});
+    cmdPing = console.addCmd("ping", [](cmd* c) {Serial.println("Pong!");});
     cmdPing.setDescription("Responds with a pong and logs it");
-    cmdBat = cli.addCmd("showbat", [](cmd* c) {Serial.printf("Battery: %d%% - charging [%c]", batt.level(), batt.voltage()>3300?'x':' ');});
+    cmdBat = console.addCmd("showbat", [](cmd* c) {Serial.printf("Battery: %d%% - charging [%c]\r\n", batt.level(), batt.voltage()>3300?'x':' ');});
     // Same output FlusherTask emits every 5s, but on demand -- so a memory reading right
     // after a request doesn't have to wait for the next flush cycle. Stack watermarks
     // included here (the periodic report only prints them every 60s).
-    cmdMem = cli.addCmd("mem", [](cmd* c) {WebInstr::report(true, true); WebInstr::reportDisplayBuffers(); WebInstr::drain();});
+    cmdMem = console.addCmd("mem", [](cmd* c) {WebInstr::report(true, true); WebInstr::reportDisplayBuffers(); WebInstr::drain();});
     cmdMem.setDescription("Log free internal/DMA/PSRAM heap, open requests and task stack watermarks");
 	ui.initDisplay();
     stats.setup();
@@ -63,20 +65,5 @@ void setup() {
 }
 
 void loop() {
-    // Handle command line
-	if (Serial.available()) {
-    	bool lineComplete = false;
-    	while (Serial.available()) {
-    		char inChar = Serial.read();
-    		if (inChar == 255) continue;
-    		if (inChar == '\n') lineComplete = true;
-    		inputBuffer += inChar;
-    		Serial.print(inChar);		// Echo
-    	}
-    	if (lineComplete) {
-    		bclog.log(BCLogger::Log_Info, BCLogger::TAG_OP, "Received command: " + inputBuffer);
-    	    cli.parse(inputBuffer);
-    	    inputBuffer.clear();
-    	}
-    }
+	console.poll();		// command line
 }

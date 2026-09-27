@@ -53,6 +53,18 @@ void cmdCB(cmd *c) {
 	bclog.handleCommand(cmd);
 }
 
+// Tab completion for "loglevel <tag> <level> [-serial] [-file]"
+static void completeLoglevel(uint8_t pos, SerialConsole::Matches& m) {
+	if (pos == 1) {
+		for (uint8_t t = 0; t < BCLogger::LogTagMax; t++) m.add(BCLogger::TAG_STRING[t]);
+	} else if (pos == 2) {
+		for (uint8_t l = 0; l < BCLogger::LogTypeMax; l++) m.add(BCLogger::LEVEL_STRING[l]);
+	} else {
+		m.add("-serial");
+		m.add("-file");
+	}
+}
+
 BCLogger::BCLogger():
 		logevents("/debug/logevent")
 {
@@ -77,15 +89,15 @@ void BCLogger::setup() {
 	logPrefs[OUT_File].end();
 	logPrefs[OUT_Serial].end();
 
-	logcmd = cli.addCmd("loglevel", cmdCB);
+	logcmd = console.addCmd("loglevel", cmdCB, completeLoglevel);
 	logcmd.addPositionalArgument("logtag");
 	logcmd.addPositionalArgument("loglevel");
 	logcmd.addFlagArgument("serial");
 	logcmd.addFlagArgument("file");
 
-	logShow = cli.addCmd("showloglevel", cmdCB);
+	logShow = console.addCmd("showloglevel", cmdCB);
 
-	replayLog = cli.addCmd("replay", cmdCB);
+	replayLog = console.addCmd("replay", cmdCB);
 	replayLog.addPositionalArgument("path");
 
 	// FlusherTask and the SSE log stream don't touch the SD card at all (flushAllFiles() already
@@ -391,9 +403,12 @@ void BCLogger::log(LogType type, LogTag tag, const String& str) {
 
 	if (write_serial) {
 		if (xSemaphoreTake(xPrintMutex, static_cast<TickType_t>(100 / portTICK_PERIOD_MS)) == pdTRUE) {
-			Serial.print(symbolStr);
-			Serial.print(timeStr);
-			Serial.println(str);
+			{
+				SerialConsole::Output out(console);		// above the half-typed command line
+				Serial.print(symbolStr);
+				Serial.print(timeStr);
+				Serial.println(str);
+			}
 			sendLogEvent(type, tag, timeStr, str);
 			xSemaphoreGive(xPrintMutex);
 		} else {

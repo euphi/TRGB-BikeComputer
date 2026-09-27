@@ -19,7 +19,7 @@ Compile and upload with PlatformIO:
 ## Documentation
 
 - [doc/PITFALLS.md](doc/PITFALLS.md) -- known pitfalls (PSRAM/display flicker, NimBLE, ...), German
-- [doc/DEBUG.md](doc/DEBUG.md) -- reading core dumps
+- [doc/DEBUG.md](doc/DEBUG.md) -- serial console, reading core dumps
 - [doc/design/rim-ridge-design-system.md](doc/design/rim-ridge-design-system.md) -- UI design system, German
 - [Tools/README.md](Tools/README.md) -- binary log tools (CSV/GPX export, upload service), German
 
@@ -46,6 +46,7 @@ Compile and upload with PlatformIO:
 #### Console
 
 - [X] Integrate SimpleCLI
+- [X] Line editing, history and Tab completion (miniterm, picocom, `pio device monitor`) -- see [doc/DEBUG.md](doc/DEBUG.md#serial-console)
 - [X] Set loglevel by console and store them
 - [ ] Configure WiFi from console
 - [X] basic debug/monitoring support (free heap etc.)
