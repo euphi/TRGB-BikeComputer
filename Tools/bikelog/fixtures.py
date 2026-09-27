@@ -20,6 +20,7 @@ import datetime
 import math
 import xml.etree.ElementTree as ET
 
+from .geo import bearing_deg, haversine_m
 from .record import (CURRENT_VERSION, IF_GPS_VALID, IF_NO_SPEED, IF_TOO_SLOW,
                      IF_UNCALIBRATED, LOG_GPS_HAS_ACCURACY, LOG_GPS_HAS_ALTITUDE,
                      LOG_GPS_HAS_BEARING, LOG_GPS_HAS_SPEED, LOG_GPS_VALID,
@@ -30,24 +31,6 @@ GPX_NS = "http://www.topografix.com/GPX/1/1"
 #: Both versions are in the wild (bikelog itself writes v2 since the rich export).
 TPX_NSS = ("http://www.garmin.com/xmlschemas/TrackPointExtension/v1",
            "http://www.garmin.com/xmlschemas/TrackPointExtension/v2")
-
-EARTH_RADIUS_M = 6371000.0
-
-
-def haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    p1, p2 = math.radians(lat1), math.radians(lat2)
-    dp = p2 - p1
-    dl = math.radians(lon2 - lon1)
-    a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
-    return 2 * EARTH_RADIUS_M * math.asin(math.sqrt(a))
-
-
-def bearing_deg(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    p1, p2 = math.radians(lat1), math.radians(lat2)
-    dl = math.radians(lon2 - lon1)
-    y = math.sin(dl) * math.cos(p2)
-    x = math.cos(p1) * math.sin(p2) - math.sin(p1) * math.cos(p2) * math.cos(dl)
-    return (math.degrees(math.atan2(y, x)) + 360.0) % 360.0
 
 
 def _gps_record(rec: Record, lat: float, lon: float, altitude_m: int | None,

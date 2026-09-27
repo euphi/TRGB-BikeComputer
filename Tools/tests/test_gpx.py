@@ -1,6 +1,7 @@
 """What ends up in the GPX -- and more importantly, what does not."""
 
 import datetime
+import math
 import xml.etree.ElementTree as ET
 
 from bikelog import fixtures, gpx
@@ -142,6 +143,45 @@ def test_empty_when_nothing_has_a_fix():
     root, stats = _tree(records)
     assert stats.written == 0
     assert root.find(".//gpx:trkpt", NS) is None
+
+
+# --- real_distance_m: the "was this an actual ride" figure ------------
+
+def _jittering_in_place(n: int, radius_m: float = 3.0):
+    """n records at one spot, the phone's fix wandering within radius_m of it
+    -- what an idle bike computer with GPS on sees, never what a ride is."""
+    records = fixtures.synthetic(seconds=1, no_fix_start_s=0)
+    base = records[0]
+    out = []
+    for i in range(n):
+        rec = fixtures.synthetic(seconds=1, no_fix_start_s=0)[0]
+        rec.timestamp = base.timestamp + i
+        angle = i * 0.7
+        rec.gps_lat_e7 = base.gps_lat_e7 + round(radius_m * math.cos(angle) / 111320.0 * 1e7)
+        rec.gps_lon_e7 = base.gps_lon_e7 + round(radius_m * math.sin(angle) / 111320.0 * 1e7)
+        out.append(rec)
+    return out
+
+
+def test_real_distance_ignores_gps_jitter_around_one_spot():
+    _, stats = _tree(_jittering_in_place(30))
+    assert stats.written == 30
+    assert stats.real_distance_m == 0.0
+
+
+def test_real_distance_counts_actual_movement():
+    records = fixtures.synthetic(seconds=60, no_fix_start_s=0, pause=None, tunnel=None)
+    _, stats = _tree(records)
+    assert stats.written == 60
+    assert stats.real_distance_m > 350                # ~24 km/h for 60 s
+
+
+def test_real_distance_needs_steps_past_the_jitter_radius():
+    moving = _tree(fixtures.synthetic(seconds=60, no_fix_start_s=0, pause=None, tunnel=None))[1]
+    tighter = _tree(fixtures.synthetic(seconds=60, no_fix_start_s=0, pause=None, tunnel=None),
+                    jitter_radius_m=1000.0)[1]
+    assert tighter.real_distance_m == 0.0
+    assert moving.real_distance_m > tighter.real_distance_m
 
 
 # --- the rich export --------------------------------------------------

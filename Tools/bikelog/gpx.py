@@ -46,8 +46,10 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 
 from . import ridestats
+from .geo import haversine_m
 from .record import (LABEL_CHANGE, ROAD_CLASS_NAMES, ROAD_CLASS_OSM, LabelRecord, Record,
                      RoadQualityRecord, ShockEvent, label_at, labels_of, split)
+from .sanitize import SanitizeOptions, trim_jitter
 
 GPX_NS = "http://www.topografix.com/GPX/1/1"
 TPX_NS = "http://www.garmin.com/xmlschemas/TrackPointExtension/v2"
@@ -80,6 +82,15 @@ class GpxOptions:
     #: Drop fixes whose reported accuracy is worse than this, in meters.
     #: 0 disables -- records without an accuracy value are never dropped.
     max_accuracy_m: float = 0.0
+    #: A step from the last counted point shorter than this is GPS noise
+    #: (the phone's fix wandering a few metres while the bike stands still),
+    #: not distance travelled -- see GpxStats.real_distance_m.
+    jitter_radius_m: float = 8.0
+    #: Remove the GPS-jitter cluster at the start/end of the ride and around
+    #: every pause before building the track -- see bikelog.sanitize. On by
+    #: default; only the tests that want to see the raw, un-trimmed points
+    #: turn it off.
+    sanitize: bool = True
     #: Write shocks (if given) as waypoints, from this severity (1..3) up.
     shocks: bool = True
     min_shock_severity: int = 1
@@ -115,6 +126,11 @@ class GpxStats:
     labels_written: int = 0
     first_time: datetime.datetime | None = None
     last_time: datetime.datetime | None = None
+    #: Cumulative movement between the track points that made it in, with
+    #: steps under jitter_radius_m ignored -- so a session spent parked
+    #: somewhere, with the phone's GPS wandering around that one spot, comes
+    #: out at (close to) zero rather than accumulating from the noise.
+    real_distance_m: float = 0.0
 
     def summary(self) -> str:
         parts = [f"{self.written}/{self.total} Punkte in {self.segments} Segment(en)"]
@@ -168,6 +184,13 @@ def _elevation(rec: Record, opts: GpxOptions) -> float | None:
     if baro_ok and rec.height != 0.0:
         return rec.height
     return float(rec.gps_altitude_m) if rec.has_gps_altitude else None
+
+
+def default_track_name(first_time: datetime.datetime | None) -> str:
+    """The name a track gets when GpxOptions.track_name is not set -- shared
+    with bikelogservice/komoot.py so a merged tour is named the same way."""
+    local_start = first_time.astimezone() if first_time else None
+    return local_start.strftime("Fahrt %Y-%m-%d %H:%M") if local_start else "Fahrt"
 
 
 def _iso(dt: datetime.datetime) -> str:
@@ -430,7 +453,12 @@ def build_tree(records, opts: GpxOptions | None = None,
     previous: datetime.datetime | None = None
     lat = [90.0, -90.0]
     lon = [180.0, -180.0]
+    anchor: tuple[float, float] | None = None      # for real_distance_m, see below
 
+    # Which records are even GPX-worthy -- tallied here so dropped_* stays a
+    # count of what _check() rejected, not of what sanitize() later trims off
+    # an already-accepted stream.
+    kept: list[Record] = []
     for rec in records:
         stats.total += 1
         try:
@@ -438,6 +466,12 @@ def build_tree(records, opts: GpxOptions | None = None,
         except _Rejected as rejected:
             setattr(stats, rejected.counter, getattr(stats, rejected.counter) + 1)
             continue
+        kept.append(rec)
+
+    if opts.sanitize:
+        kept = trim_jitter(kept, SanitizeOptions())
+
+    for rec in kept:
         now = rec.utc()
         # The logger samples about once a second; a repeated second would put
         # two points at the same instant, which some importers treat as a
@@ -452,6 +486,13 @@ def build_tree(records, opts: GpxOptions | None = None,
         _trackpoint(seg, rec, opts, lookup)
         lat = [min(lat[0], rec.latitude), max(lat[1], rec.latitude)]
         lon = [min(lon[0], rec.longitude), max(lon[1], rec.longitude)]
+        if anchor is None:
+            anchor = (rec.latitude, rec.longitude)
+        else:
+            step_m = haversine_m(anchor[0], anchor[1], rec.latitude, rec.longitude)
+            if step_m >= opts.jitter_radius_m:
+                stats.real_distance_m += step_m
+                anchor = (rec.latitude, rec.longitude)
         stats.written += 1
         if stats.first_time is None:
             stats.first_time = now
@@ -459,9 +500,7 @@ def build_tree(records, opts: GpxOptions | None = None,
         previous = now
 
     ride = ridestats.compute(records, road, shocks, labels)
-    local_start = stats.first_time.astimezone() if stats.first_time else None
-    name = opts.track_name or (
-        local_start.strftime("Fahrt %Y-%m-%d %H:%M") if local_start else "Fahrt")
+    name = opts.track_name or default_track_name(stats.first_time)
     description = ride.describe()
 
     # metadata, in schema order: name, desc, author, copyright, link, time,
