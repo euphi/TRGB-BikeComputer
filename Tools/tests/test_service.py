@@ -1,8 +1,11 @@
-"""API behaviour of the upload service.
+"""API behaviour of the bike log service.
 
-The emphasis is on what an ESP32 on bad WiFi will actually do to this
-service: send the same file twice, send half a file, send garbage.
+The emphasis is on what a flaky delivery will actually do to it: send the same
+file twice, send a changed file under the same name, send garbage, send files
+of the session that is still running.
 """
+
+import math
 
 import pytest
 from fastapi.testclient import TestClient
@@ -13,6 +16,8 @@ from bikelogservice.app import create_app
 from bikelogservice.config import Settings
 
 API = "/api/v1"
+SUMMARY = b"v=1\nstart=1758983412\nend=1758987012\ntime=corrected\nsrc=ntp\ndist_m=23456\n" \
+          b"move_s=3000\nvavg_kmh=24.5\nshocks=3\n"
 
 
 @pytest.fixture
@@ -33,9 +38,12 @@ def ride_bytes(tmp_path):
     return path.read_bytes()
 
 
-def _upload(client, payload, **params):
-    return client.post(API + "/rides", content=payload,
-                       params={"filename": "L0001.bin", **params})
+def _put(client, payload, path="20260920/L_143012.bin", device="gravel", **kw):
+    return client.put(f"{API}/devices/{device}/files/{path}", content=payload, **kw)
+
+
+def _session_id(client, ride_bytes):
+    return _put(client, ride_bytes).json()["session"]["id"]
 
 
 def test_health(client):
@@ -43,94 +51,159 @@ def test_health(client):
     assert body["status"] == "ok"
     assert body["auth_required"] is False
     assert body["principal"] == "anonymous"
+    assert body["pull"] is False
 
 
-def test_upload_indexes_the_ride(client, ride_bytes):
-    response = _upload(client, ride_bytes, device="trgb-gravel")
-    assert response.status_code == 201
+def test_put_indexes_the_log(client, ride_bytes):
+    response = _put(client, ride_bytes)
+    assert response.status_code == 200
     body = response.json()
-    assert body["duplicate"] is False
-    assert body["record_count"] == 240
-    assert body["format_version"] == CURRENT_VERSION
-    assert body["gps_points"] > 0
-    assert body["device"] == "trgb-gravel"
-    assert body["clock_unset"] is False
-    assert body["duration_s"] == body["last_time"] - body["first_time"]
+    assert body["status"] == "new"
+    session = body["session"]
+    assert session["device"] == "gravel"
+    assert (session["day"], session["stem"]) == ("20260920", "_143012")
+    assert session["record_count"] == 240
+    assert session["format_version"] == CURRENT_VERSION
+    assert session["gps_points"] > 0
+    assert session["clock_unset"] is False
+    assert session["log_error"] is None
+    assert [f["name"] for f in session["files"]] == ["L_143012.bin"]
+
+
+def test_files_of_one_session_are_grouped(client, ride_bytes):
+    _put(client, ride_bytes)
+    _put(client, SUMMARY, "20260920/I_143012.txt")
+    _put(client, b"debug\n", "20260920/D_143012.log")
+    _put(client, b"\x01" * 64, "20260920/R_143012_01.bin")
+    _put(client, b"other\n", "20260920/D_150000.log")
+    listed = client.get(API + "/sessions").json()
+    assert listed["total"] == 2
+    ours = next(s for s in listed["sessions"] if s["stem"] == "_143012")
+    assert sorted(f["name"] for f in ours["files"]) == \
+        ["D_143012.log", "I_143012.txt", "L_143012.bin", "R_143012_01.bin"]
+    assert ours["summary"]["dist_m"] == 23456
+    assert ours["summary"]["time"] == "corrected"
+    assert ours["start_time"] == 1758983412
+
+
+def test_sessions_can_be_filtered_by_distance(client, ride_bytes, tmp_path):
+    long_id = _put(client, ride_bytes).json()["session"]["id"]           # ~1.6 km
+    short = tmp_path / "short.bin"
+    write_records(short, fixtures.synthetic(seconds=60, no_fix_start_s=0, pause=None, tunnel=None))
+    short_id = _put(client, short.read_bytes(), device="other").json()["session"]["id"]
+
+    both = client.get(API + "/sessions").json()
+    assert both["total"] == 2
+
+    only_long = client.get(API + "/sessions", params={"min_km": 1.0}).json()
+    assert [s["id"] for s in only_long["sessions"]] == [long_id]
+    assert only_long["total"] == 1
+
+    only_short = client.get(API + "/sessions", params={"max_km": 1.0}).json()
+    assert [s["id"] for s in only_short["sessions"]] == [short_id]
+
+    assert client.get(API + "/sessions", params={"min_km": 100}).json()["total"] == 0
 
 
 def test_reupload_is_idempotent(client, ride_bytes):
-    first = _upload(client, ride_bytes).json()
-    again = _upload(client, ride_bytes)
-    # The firmware retries blindly after a dropped connection; a second
-    # delivery of the same bytes must not create a second ride, and must not
-    # look like an error either.
-    assert again.status_code == 200
-    assert again.json()["duplicate"] is True
-    assert again.json()["id"] == first["id"]
-    assert client.get(API + "/rides").json()["total"] == 1
+    first = _put(client, ride_bytes).json()
+    again = _put(client, ride_bytes).json()
+    assert again["status"] == "unchanged"
+    assert again["session"]["id"] == first["session"]["id"]
+    assert client.get(API + "/sessions").json()["total"] == 1
 
 
-def test_truncated_upload_is_accepted_and_flagged(client):
-    records = fixtures.synthetic()
+def test_changed_file_replaces_the_old_one(client):
+    _put(client, b"start=1\n", "20260920/I_143012.txt")
+    body = _put(client, b"start=1758983412\n", "20260920/I_143012.txt").json()
+    assert body["status"] == "replaced"
+    assert body["session"]["summary"]["start"] == 1758983412
+    sid = body["session"]["id"]
+    assert client.get(f"{API}/sessions/{sid}/files/I_143012.txt").text == "start=1758983412\n"
+
+
+def test_legacy_and_new_counters_stay_apart(client, ride_bytes):
+    _put(client, ride_bytes, "NO_TIME/L0042.bin")
+    _put(client, ride_bytes, "NO_TIME/L_0042.bin")
+    assert client.get(API + "/sessions").json()["total"] == 2
+
+
+def test_running_session_is_refused(client, ride_bytes):
+    assert _put(client, ride_bytes, "CUR/L_0860.bin").status_code == 409
+
+
+@pytest.mark.parametrize("path", ["../etc/passwd", "20260920/../../x.bin",
+                                  "20260920/xL_1.bin", "a/b/L_1.bin", "20260920/.bin"])
+def test_bad_paths_are_refused(client, path):
+    assert _put(client, b"x", path).status_code in (400, 404)
+
+
+def test_bad_device_name_is_refused(client, ride_bytes):
+    assert _put(client, ride_bytes, device="a b").status_code == 422
+
+
+def test_truncated_log_is_kept_and_flagged(client):
     import io
-    buffer = io.BytesIO()
-    from bikelog.record import LAYOUTS
     import struct
+    from bikelog.record import LAYOUTS
+    buffer = io.BytesIO()
     layout = LAYOUTS[1]
+    records = fixtures.synthetic()
     for rec in records:
         values = [1 if name == "format_version" else getattr(rec, name)
                   for name in layout.names]
         buffer.write(struct.pack(layout.fmt, *values))
-    payload = buffer.getvalue() + b"\x00\x01\x02"
-    body = _upload(client, payload).json()
-    # An aborted ride is still a ride -- keep it, but record that the tail
-    # was incomplete.
-    assert body["record_count"] == len(records)
-    assert body["trailing_bytes"] == 3
+    session = _put(client, buffer.getvalue() + b"\x00\x01\x02").json()["session"]
+    # An aborted ride is still a ride -- keep it, but record the incomplete tail.
+    assert session["record_count"] == len(records)
+    assert session["trailing_bytes"] == 3
 
 
-def test_garbage_upload_is_rejected(client):
-    assert _upload(client, b"\xff" * 200).status_code == 422
+def test_garbage_log_is_kept_but_flagged(client):
+    # It's the device's file: store it, say why nothing can be derived from it.
+    session = _put(client, b"\xff" * 200).json()["session"]
+    assert session["log_error"]
+    sid = session["id"]
+    assert client.get(f"{API}/sessions/{sid}/files/L_143012.bin").content == b"\xff" * 200
 
 
 def test_empty_upload_is_rejected(client):
-    assert _upload(client, b"").status_code == 400
+    assert _put(client, b"").status_code == 400
 
 
 def test_upload_too_large(tmp_path, ride_bytes):
     small = Settings(data_dir=tmp_path / "s", max_upload_bytes=10)
     with TestClient(create_app(small)) as client:
-        assert _upload(client, ride_bytes).status_code == 413
+        assert _put(client, ride_bytes).status_code == 413
 
 
 def test_clock_unset_is_flagged(client, tmp_path):
     path = tmp_path / "noclock.bin"
     write_records(path, fixtures.synthetic(start_time=60, unset_clock_records=2))
-    body = _upload(client, path.read_bytes()).json()
-    assert body["clock_unset"] is True
+    assert _put(client, path.read_bytes()).json()["session"]["clock_unset"] is True
 
 
-def test_get_and_list_and_404(client, ride_bytes):
-    ride_id = _upload(client, ride_bytes).json()["id"]
-    assert client.get(f"{API}/rides/{ride_id}").json()["id"] == ride_id
-    listed = client.get(API + "/rides").json()
-    assert listed["total"] == 1 and listed["rides"][0]["id"] == ride_id
-    assert client.get(f"{API}/rides/doesnotexist").status_code == 404
+def test_get_and_404(client, ride_bytes):
+    sid = _session_id(client, ride_bytes)
+    assert client.get(f"{API}/sessions/{sid}").json()["id"] == sid
+    assert client.get(f"{API}/sessions/999").status_code == 404
+    assert client.get(f"{API}/sessions/{sid}/files/nope.bin").status_code == 404
 
 
 def test_gpx_export(client, ride_bytes):
-    ride_id = _upload(client, ride_bytes).json()["id"]
-    response = client.get(f"{API}/rides/{ride_id}.gpx")
+    sid = _session_id(client, ride_bytes)
+    response = client.get(f"{API}/sessions/{sid}.gpx")
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("application/gpx+xml")
     assert int(response.headers["X-Bikelog-Segments"]) == 2
     assert "<trkpt" in response.text
+    assert "gravel_20260920_143012.gpx" in response.headers["content-disposition"]
 
 
 def test_gpx_export_honours_filter_parameters(client, ride_bytes):
-    ride_id = _upload(client, ride_bytes).json()["id"]
-    default = client.get(f"{API}/rides/{ride_id}.gpx")
-    unfiltered = client.get(f"{API}/rides/{ride_id}.gpx",
+    sid = _session_id(client, ride_bytes)
+    default = client.get(f"{API}/sessions/{sid}.gpx")
+    unfiltered = client.get(f"{API}/sessions/{sid}.gpx",
                             params={"max_fix_age_ms": 0, "segment_gap_s": 0})
     assert int(unfiltered.headers["X-Bikelog-Points"]) > \
         int(default.headers["X-Bikelog-Points"])
@@ -140,36 +213,198 @@ def test_gpx_export_honours_filter_parameters(client, ride_bytes):
 def test_gpx_without_any_fix_is_a_conflict_not_an_empty_file(client, tmp_path):
     path = tmp_path / "nofix.bin"
     write_records(path, fixtures.synthetic(seconds=30, no_fix_start_s=30))
-    ride_id = _upload(client, path.read_bytes()).json()["id"]
-    response = client.get(f"{API}/rides/{ride_id}.gpx")
+    sid = _session_id(client, path.read_bytes())
+    response = client.get(f"{API}/sessions/{sid}.gpx")
     assert response.status_code == 409
     assert "no usable GPS fix" in response.json()["detail"]
 
 
+def test_export_of_a_session_without_log_is_404(client):
+    sid = _put(client, b"debug\n", "20260920/D_143012.log").json()["session"]["id"]
+    assert client.get(f"{API}/sessions/{sid}.gpx").status_code == 404
+    assert client.get(f"{API}/sessions/{sid}.csv").status_code == 404
+
+
 def test_csv_export(client, ride_bytes):
-    ride_id = _upload(client, ride_bytes).json()["id"]
-    plain = client.get(f"{API}/rides/{ride_id}.csv").text
+    sid = _session_id(client, ride_bytes)
+    plain = client.get(f"{API}/sessions/{sid}.csv").text
     assert plain.splitlines()[0].startswith("Timestamp,Speed")
-    with_gps = client.get(f"{API}/rides/{ride_id}.csv", params={"with_gps": True}).text
+    with_gps = client.get(f"{API}/sessions/{sid}.csv", params={"with_gps": True}).text
     assert "GPS_Lat" in with_gps.splitlines()[0]
 
 
 def test_raw_download_returns_the_exact_bytes(client, ride_bytes):
-    ride_id = _upload(client, ride_bytes).json()["id"]
-    assert client.get(f"{API}/rides/{ride_id}.bin").content == ride_bytes
+    sid = _session_id(client, ride_bytes)
+    assert client.get(f"{API}/sessions/{sid}/files/L_143012.bin").content == ride_bytes
 
 
-def test_delete(client, ride_bytes):
-    ride_id = _upload(client, ride_bytes).json()["id"]
-    assert client.delete(f"{API}/rides/{ride_id}").status_code == 204
-    assert client.get(f"{API}/rides/{ride_id}").status_code == 404
-    assert client.delete(f"{API}/rides/{ride_id}").status_code == 404
+def test_files_mirror_the_sd_card_on_disk(client, settings, ride_bytes):
+    _put(client, ride_bytes)
+    _put(client, b"x", "L0001.bin")          # legacy file directly in /BIKECOMP
+    assert (settings.sessions_dir / "gravel" / "20260920" / "L_143012.bin").read_bytes() == ride_bytes
+    assert (settings.sessions_dir / "gravel" / "_" / "L0001.bin").exists()
 
 
-def test_deleted_ride_can_be_uploaded_again(client, ride_bytes):
-    ride_id = _upload(client, ride_bytes).json()["id"]
-    client.delete(f"{API}/rides/{ride_id}")
-    assert _upload(client, ride_bytes).status_code == 201
+def test_delete_leaves_a_tombstone(client, settings, ride_bytes):
+    sid = _session_id(client, ride_bytes)
+    assert client.delete(f"{API}/sessions/{sid}").status_code == 204
+    assert client.get(f"{API}/sessions/{sid}").status_code == 404
+    assert client.delete(f"{API}/sessions/{sid}").status_code == 404
+    assert not (settings.sessions_dir / "gravel" / "20260920" / "L_143012.bin").exists()
+    store = client.app.state.storage
+    # The puller must not fetch it again from the SD card ...
+    assert store.known_files("gravel") == {"20260920/L_143012.bin": None}
+
+
+def test_explicit_upload_revives_a_deleted_session(client, ride_bytes):
+    sid = _session_id(client, ride_bytes)
+    client.delete(f"{API}/sessions/{sid}")
+    body = _put(client, ride_bytes).json()
+    assert body["status"] == "new"
+    assert client.get(f"{API}/sessions/{body['session']['id']}").status_code == 200
+
+
+def test_index_page(client, ride_bytes):
+    _put(client, ride_bytes)
+    _put(client, SUMMARY, "20260920/I_143012.txt")
+    page = client.get("/")
+    assert page.status_code == 200
+    assert "23.5 km" in page.text
+    assert f"{API}/sessions/1.gpx" in page.text
+
+
+def test_index_page_distance_filter(client, ride_bytes):
+    _put(client, ride_bytes)
+    assert "No sessions match" not in client.get("/").text
+    assert "No sessions match" in client.get("/", params={"min_km": 100}).text
+    filtered = client.get("/", params={"min_km": 1, "max_km": 5})
+    assert 'value="1"' in filtered.text and 'value="5"' in filtered.text
+
+
+def test_pull_endpoints_when_disabled(client):
+    assert client.get(API + "/pull").json() == {"enabled": False}
+    assert client.post(API + "/pull").status_code == 409
+
+
+# --- automatic GPX export -----------------------------------------------
+
+def test_export_writes_a_gpx_per_session(client, settings, ride_bytes):
+    import datetime
+    session = _put(client, ride_bytes).json()["session"]
+    files = list(settings.gpx_dir.rglob("*.gpx"))
+    assert len(files) == 1
+    assert files[0].parent.name == "Tours"
+    start = datetime.datetime.fromtimestamp(session["first_time"])
+    assert files[0].name == start.strftime("%Y-%m-%d_%H%M%S") + "_gravel.gpx"
+    assert abs(files[0].stat().st_mtime - session["first_time"]) < 60   # first *fix*
+    body = client.get(f"{API}/sessions/{session['id']}").json()
+    assert (body["gpx_status"], body["gpx_file"], body["gpx_dirty"]) == \
+        ("ok", f"Tours/{files[0].name}", False)
+    assert "TrackPointExtension" in files[0].read_text()
+
+
+def test_export_follows_a_better_start_time(client, settings, ride_bytes):
+    _put(client, ride_bytes)
+    old = next(settings.gpx_dir.rglob("*.gpx")).name
+    _put(client, b"start=1758983412\n", "20260920/I_143012.txt")     # device summary arrives
+    files = [f.name for f in settings.gpx_dir.rglob("*.gpx")]
+    assert files != [old] and len(files) == 1
+    assert files[0].endswith("_gravel.gpx")
+
+
+def test_export_skips_sessions_without_fix(client, settings, tmp_path):
+    path = tmp_path / "nofix.bin"
+    write_records(path, fixtures.synthetic(seconds=30, no_fix_start_s=30))
+    body = _put(client, path.read_bytes()).json()["session"]
+    assert not list(settings.gpx_dir.rglob("*.gpx"))
+    assert client.get(f"{API}/sessions/{body['id']}").json()["gpx_status"] == "no-gps"
+
+
+def test_export_files_rides_under_1km_into_debug_archive(client, settings, tmp_path):
+    path = tmp_path / "short.bin"
+    write_records(path, fixtures.synthetic(seconds=60, no_fix_start_s=0, pause=None, tunnel=None))
+    body = _put(client, path.read_bytes()).json()["session"]
+    files = list(settings.gpx_dir.rglob("*.gpx"))
+    assert len(files) == 1 and files[0].parent.name == "Debug_Archive"
+    session = client.get(f"{API}/sessions/{body['id']}").json()
+    assert session["gpx_status"] == "debug"
+    assert session["gpx_file"] == f"Debug_Archive/{files[0].name}"
+
+
+def test_export_files_gps_jitter_with_no_real_movement_into_debug_archive(client, settings, tmp_path):
+    # A trip on rollers/a trainer: the wheel sensor logs plenty of distance,
+    # but the phone (sitting still) reports the same spot with a few metres
+    # of GPS noise on every fix -- not a ride worth syncing to Tours.
+    records = fixtures.synthetic(seconds=120, no_fix_start_s=0, pause=None, tunnel=None)
+    base = records[0]
+    for i, rec in enumerate(records):
+        angle = i * 0.7
+        rec.gps_lat_e7 = base.gps_lat_e7 + round(3.0 * math.cos(angle) / 111320.0 * 1e7)
+        rec.gps_lon_e7 = base.gps_lon_e7 + round(3.0 * math.sin(angle) / 111320.0 * 1e7)
+    path = tmp_path / "trainer.bin"
+    write_records(path, records)
+    body = _put(client, path.read_bytes()).json()["session"]
+    assert body["distance_m"] > 400          # the wheel kept turning ...
+    files = list(settings.gpx_dir.rglob("*.gpx"))
+    assert len(files) == 1 and files[0].parent.name == "Debug_Archive"    # ... but not a real ride
+    assert client.get(f"{API}/sessions/{body['id']}").json()["gpx_status"] == "debug"
+
+
+def test_export_of_an_unreadable_log_is_an_error_not_a_crash(client, settings):
+    body = _put(client, b"\xff" * 200).json()["session"]
+    assert client.get(f"{API}/sessions/{body['id']}").json()["gpx_status"].startswith("error")
+
+
+def test_delete_removes_the_exported_gpx(client, settings, ride_bytes):
+    sid = _session_id(client, ride_bytes)
+    assert list(settings.gpx_dir.rglob("*.gpx"))
+    client.delete(f"{API}/sessions/{sid}")
+    assert not list(settings.gpx_dir.rglob("*.gpx"))
+
+
+def test_new_exporter_version_reexports(client, settings, ride_bytes, monkeypatch):
+    from bikelogservice import exporter
+    _put(client, ride_bytes)
+    store = client.app.state.storage
+    assert exporter.export_pending(store) == {}
+    monkeypatch.setattr(exporter, "EXPORT_VERSION", exporter.EXPORT_VERSION + 1)
+    assert exporter.export_pending(store) == {"ok": 1}
+
+
+def test_short_ride_moves_from_tours_to_debug_archive_on_reexport(client, settings, tmp_path, monkeypatch):
+    """The scenario a redeploy of the distance gate resolves in production:
+    an old export sitting in Tours from before MIN_EXPORT_DISTANCE_M applied
+    moves to Debug_Archive once the session is re-evaluated, old file gone."""
+    from bikelogservice import exporter
+    path = tmp_path / "short.bin"
+    write_records(path, fixtures.synthetic(seconds=60, no_fix_start_s=0, pause=None, tunnel=None))
+    sid = _put(client, path.read_bytes()).json()["session"]["id"]
+    store = client.app.state.storage
+    session = store.get(sid)
+    assert session.gpx_status == "debug"           # already filed correctly, so fake the "before" state
+    old_path = settings.gpx_dir / "Tours" / "old_name_gravel.gpx"
+    old_path.parent.mkdir(parents=True, exist_ok=True)
+    old_path.write_text("<gpx/>")
+    store.set_export(sid, "Tours/old_name_gravel.gpx", "ok", exporter.EXPORT_VERSION - 1)
+    exporter.export_pending(store)
+    assert not old_path.exists()
+    files = list(settings.gpx_dir.rglob("*.gpx"))
+    assert len(files) == 1 and files[0].parent.name == "Debug_Archive"
+
+
+def test_export_can_be_switched_off(tmp_path, ride_bytes):
+    off = Settings(data_dir=tmp_path / "off", export_gpx=False)
+    with TestClient(create_app(off)) as client:
+        _put(client, ride_bytes)
+    assert not off.gpx_dir.exists() or not list(off.gpx_dir.glob("*.gpx"))
+
+
+def test_gpx_download_is_rich_and_can_be_plain(client, ride_bytes):
+    sid = _session_id(client, ride_bytes)
+    rich = client.get(f"{API}/sessions/{sid}.gpx").text
+    assert "bc:TrackPoint" in rich and "bc:Ride" in rich
+    plain = client.get(f"{API}/sessions/{sid}.gpx", params={"rich": False}).text
+    assert "bc:" not in plain
 
 
 # --- the auth retrofit ------------------------------------------------
@@ -177,51 +412,53 @@ def test_deleted_ride_can_be_uploaded_again(client, ride_bytes):
 # config change: if a route is ever added without the dependency, the
 # "everything needs a token" test below stops passing.
 
+def _secured(tmp_path):
+    return Settings(data_dir=tmp_path / "sec", require_auth=True, tokens=["s3cret:gravel"])
+
 
 def test_auth_enabled_rejects_requests_without_a_token(tmp_path, ride_bytes):
-    secured = Settings(data_dir=tmp_path / "sec", require_auth=True,
-                       tokens=["s3cret:gravel"])
-    with TestClient(create_app(secured)) as client:
+    with TestClient(create_app(_secured(tmp_path))) as client:
         assert client.get(API + "/health").status_code == 401
-        assert _upload(client, ride_bytes).status_code == 401
+        assert _put(client, ride_bytes).status_code == 401
 
 
 def test_auth_enabled_accepts_a_configured_token(tmp_path, ride_bytes):
-    secured = Settings(data_dir=tmp_path / "sec", require_auth=True,
-                       tokens=["s3cret:gravel"])
     headers = {"Authorization": "Bearer s3cret"}
-    with TestClient(create_app(secured)) as client:
+    with TestClient(create_app(_secured(tmp_path))) as client:
         assert client.get(API + "/health", headers=headers).json()["principal"] == "gravel"
-        upload = client.post(API + "/rides", content=ride_bytes, headers=headers)
-        assert upload.status_code == 201
-        assert upload.json()["uploaded_by"] == "gravel"
+        upload = _put(client, ride_bytes, headers=headers)
+        assert upload.status_code == 200
+        assert upload.json()["session"]["files"][0]["source"] == "push:gravel"
 
 
 def test_auth_enabled_rejects_an_unknown_token(tmp_path):
-    secured = Settings(data_dir=tmp_path / "sec", require_auth=True,
-                       tokens=["s3cret:gravel"])
-    with TestClient(create_app(secured)) as client:
+    with TestClient(create_app(_secured(tmp_path))) as client:
         response = client.get(API + "/health", headers={"Authorization": "Bearer wrong"})
         assert response.status_code == 401
 
 
 def test_every_route_requires_a_token_once_auth_is_on(tmp_path, ride_bytes):
     """Guards the retrofit promise: no route may bypass the dependency."""
-    secured = Settings(data_dir=tmp_path / "sec", require_auth=True,
-                       tokens=["s3cret:gravel"])
     headers = {"Authorization": "Bearer s3cret"}
-    with TestClient(create_app(secured)) as client:
-        ride_id = client.post(API + "/rides", content=ride_bytes,
-                              headers=headers).json()["id"]
+    with TestClient(create_app(_secured(tmp_path))) as client:
+        sid = _put(client, ride_bytes, headers=headers).json()["session"]["id"]
         protected = [
+            ("GET", "/"),
             ("GET", f"{API}/health"),
-            ("GET", f"{API}/rides"),
-            ("GET", f"{API}/rides/{ride_id}"),
-            ("GET", f"{API}/rides/{ride_id}.gpx"),
-            ("GET", f"{API}/rides/{ride_id}.csv"),
-            ("GET", f"{API}/rides/{ride_id}.bin"),
-            ("POST", f"{API}/rides"),
-            ("DELETE", f"{API}/rides/{ride_id}"),
+            ("GET", f"{API}/sessions"),
+            ("GET", f"{API}/sessions/{sid}"),
+            ("GET", f"{API}/sessions/{sid}.gpx"),
+            ("GET", f"{API}/sessions/{sid}.csv"),
+            ("GET", f"{API}/sessions/{sid}/files/L_143012.bin"),
+            ("PUT", f"{API}/devices/gravel/files/20260920/L_143012.bin"),
+            ("DELETE", f"{API}/sessions/{sid}"),
+            ("POST", f"{API}/sessions/{sid}/komoot"),
+            ("GET", f"{API}/pull"),
+            ("POST", f"{API}/pull"),
         ]
+        routes = {r.path for r in client.app.routes if hasattr(r, "methods")} - {
+            "/openapi.json", "/docs", "/docs/oauth2-redirect", "/redoc"}
+        assert len(routes) == len({p for _, p in protected}), \
+            "new route? add it to the list above"
         for method, path in protected:
             assert client.request(method, path).status_code == 401, path

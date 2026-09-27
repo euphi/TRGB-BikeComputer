@@ -25,6 +25,9 @@ __pycache__/
 # Local state of the BikeLog upload service (raw rides + SQLite index). Lives
 # outside the repo by default; this catches an explicitly relocated one.
 /Tools/BikeLogService/state/
+# Build leftovers of "pip install Tools/" (pyproject.toml)
+/Tools/build/
+/Tools/*.egg-info/
 
 /.pydevproject
 

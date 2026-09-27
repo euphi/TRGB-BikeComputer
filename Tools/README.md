@@ -25,7 +25,8 @@ zu OSM `surface`/`smoothness` steht in `bikelog/record.py` (`SURFACE_OSM`,
 
 ```
 bikelog/            Bibliothek + CLI (reine Standardbibliothek, kein venv nötig)
-BikeLogService/     Upload-Dienst (FastAPI, braucht venv)
+BikeLogService/     Dienst: holt Sitzungen vom BC ab (mDNS), GPX/CSV (FastAPI, eigene venv)
+pyproject.toml      macht Tools/ installierbar (für den Dienst, siehe BikeLogService/install.sh)
 tests/              pytest-Suite für beides
 ReadTachoBin.py     Altbekannter CSV-Konverter, jetzt Wrapper um "bikelog csv"
 csv2influx.py       Unverändert: CSV nach InfluxDB
@@ -77,6 +78,13 @@ python3 -m bikelog gpx  -i /pfad/L0001.bin -o tour.gpx [--no-shocks] [--min-seve
 
 ### GPX-Export
 
+Standardmäßig „reich“: neben Garmins TrackPointExtension v2 (Puls,
+Trittfrequenz, Temperatur, Geschwindigkeit, Kurs) trägt jeder Trackpunkt eine
+eigene Erweiterung mit Steigung, Wegequalität, Label usw., Label-Wechsel
+werden Wegpunkte, die Metadaten enthalten die Kennzahlen der Fahrt -- siehe
+[`BikeLogService/README.md`](BikeLogService/README.md#gpx-export). `--plain`
+lässt die eigenen Erweiterungen weg, `--no-labels` die Label-Wegpunkte.
+
 Das XML ist der einfache Teil; entscheidend ist, was *nicht* hineinkommt:
 
 | Filter | Standard | Option |
@@ -89,16 +97,15 @@ Das XML ist der einfache Teil; entscheidend ist, was *nicht* hineinkommt:
 | Zeitlücke → neues `<trkseg>` | > 60 s | `--segment-gap` |
 
 Höhenquelle über `--ele=auto|baro|gps`; `auto` nimmt den Barometer, wenn sein
-Wert plausibel ist, sonst die GPS-Höhe. Sensordaten (Puls, Trittfrequenz,
-Temperatur, Geschwindigkeit) reisen in Garmins `TrackPointExtension` mit --
-das Format, das Strava und Komoot tatsächlich lesen. Steigung und
-Trip-Distanz haben dort kein Element und bleiben bewusst CSV-exklusiv.
+Wert plausibel ist, sonst die GPS-Höhe. Puls 0 und 255 heißen „kein Wert“ und
+werden weggelassen.
 
 Stöße (v2) werden als `<wpt>` ausgegeben -- Name `Stoß 5,2 g`, `<type>`
 `shock-1..3` nach Schwere, in `<desc>` zweiter Peak (Hinterrad) und
 Geschwindigkeit. Für sie gelten dieselben Positions- und Zeitfilter wie für
-die Trackpunkte. Die Wegequalitäts-Intervalle bleiben CSV-exklusiv
-(`--roadq-out`), aus demselben Grund wie die Steigung.
+die Trackpunkte. Die Wegequalitäts-Intervalle selbst (mit allen Feldern) gibt es weiter
+nur als CSV (`--roadq-out`); im GPX steht an jedem Trackpunkt Klasse und
+Rauheit des Intervalls, in das er fällt.
 
 Jeder Lauf meldet, was verworfen wurde:
 
