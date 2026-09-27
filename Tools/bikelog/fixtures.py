@@ -27,7 +27,9 @@ from .record import (CURRENT_VERSION, IF_GPS_VALID, IF_NO_SPEED, IF_TOO_SLOW,
                      RoadQualityRecord, ShockEvent, write_records)
 
 GPX_NS = "http://www.topografix.com/GPX/1/1"
-TPX_NS = "http://www.garmin.com/xmlschemas/TrackPointExtension/v1"
+#: Both versions are in the wild (bikelog itself writes v2 since the rich export).
+TPX_NSS = ("http://www.garmin.com/xmlschemas/TrackPointExtension/v1",
+           "http://www.garmin.com/xmlschemas/TrackPointExtension/v2")
 
 EARTH_RADIUS_M = 6371000.0
 
@@ -150,6 +152,14 @@ def _text(node, path: str, ns: dict) -> str | None:
     return found.text if found is not None and found.text else None
 
 
+def _tpx(pt, tag: str) -> str | None:
+    for tpx_ns in TPX_NSS:
+        el = pt.find(f"{{{GPX_NS}}}extensions/{{{tpx_ns}}}TrackPointExtension/{{{tpx_ns}}}{tag}")
+        if el is not None and el.text:
+            return el.text.strip()
+    return None
+
+
 def from_gpx(path) -> list[Record]:
     """Rebuild log records from a GPX track (Komoot/Strava export).
 
@@ -159,7 +169,7 @@ def from_gpx(path) -> list[Record]:
     TrackPointExtension).
     """
     tree = ET.parse(path)
-    ns = {"gpx": GPX_NS, "tpx": TPX_NS}
+    ns = {"gpx": GPX_NS}
     records: list[Record] = []
     previous = None
     distance = 0.0
@@ -187,10 +197,10 @@ def from_gpx(path) -> list[Record]:
                 gradient = (ele - previous[2]) / step_m * 100.0
         distance += step_m
 
-        hr_text = _text(pt, "gpx:extensions/tpx:TrackPointExtension/tpx:hr", ns)
-        cad_text = _text(pt, "gpx:extensions/tpx:TrackPointExtension/tpx:cad", ns)
-        temp_text = _text(pt, "gpx:extensions/tpx:TrackPointExtension/tpx:atemp", ns)
-        speed_text = _text(pt, "gpx:extensions/tpx:TrackPointExtension/tpx:speed", ns)
+        hr_text = _tpx(pt, "hr")
+        cad_text = _tpx(pt, "cad")
+        temp_text = _tpx(pt, "atemp")
+        speed_text = _tpx(pt, "speed")
 
         speed_ms = float(speed_text) if speed_text else (step_m / step_s if step_s else 0.0)
         rec = Record(

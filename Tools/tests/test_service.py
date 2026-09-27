@@ -257,6 +257,74 @@ def test_pull_endpoints_when_disabled(client):
     assert client.post(API + "/pull").status_code == 409
 
 
+# --- automatic GPX export -----------------------------------------------
+
+def test_export_writes_a_gpx_per_session(client, settings, ride_bytes):
+    import datetime
+    session = _put(client, ride_bytes).json()["session"]
+    files = list(settings.gpx_dir.glob("*.gpx"))
+    assert len(files) == 1
+    start = datetime.datetime.fromtimestamp(session["first_time"])
+    assert files[0].name == start.strftime("%Y-%m-%d_%H%M%S") + "_gravel.gpx"
+    assert abs(files[0].stat().st_mtime - session["first_time"]) < 60   # first *fix*
+    body = client.get(f"{API}/sessions/{session['id']}").json()
+    assert (body["gpx_status"], body["gpx_file"], body["gpx_dirty"]) == ("ok", files[0].name, False)
+    assert "TrackPointExtension" in files[0].read_text()
+
+
+def test_export_follows_a_better_start_time(client, settings, ride_bytes):
+    _put(client, ride_bytes)
+    old = next(settings.gpx_dir.glob("*.gpx")).name
+    _put(client, b"start=1758983412\n", "20260920/I_143012.txt")     # device summary arrives
+    files = [f.name for f in settings.gpx_dir.glob("*.gpx")]
+    assert files != [old] and len(files) == 1
+    assert files[0].endswith("_gravel.gpx")
+
+
+def test_export_skips_sessions_without_fix(client, settings, tmp_path):
+    path = tmp_path / "nofix.bin"
+    write_records(path, fixtures.synthetic(seconds=30, no_fix_start_s=30))
+    body = _put(client, path.read_bytes()).json()["session"]
+    assert not list(settings.gpx_dir.glob("*.gpx"))
+    assert client.get(f"{API}/sessions/{body['id']}").json()["gpx_status"] == "no-gps"
+
+
+def test_export_of_an_unreadable_log_is_an_error_not_a_crash(client, settings):
+    body = _put(client, b"\xff" * 200).json()["session"]
+    assert client.get(f"{API}/sessions/{body['id']}").json()["gpx_status"].startswith("error")
+
+
+def test_delete_removes_the_exported_gpx(client, settings, ride_bytes):
+    sid = _session_id(client, ride_bytes)
+    assert list(settings.gpx_dir.glob("*.gpx"))
+    client.delete(f"{API}/sessions/{sid}")
+    assert not list(settings.gpx_dir.glob("*.gpx"))
+
+
+def test_new_exporter_version_reexports(client, settings, ride_bytes, monkeypatch):
+    from bikelogservice import exporter
+    _put(client, ride_bytes)
+    store = client.app.state.storage
+    assert exporter.export_pending(store) == {}
+    monkeypatch.setattr(exporter, "EXPORT_VERSION", exporter.EXPORT_VERSION + 1)
+    assert exporter.export_pending(store) == {"ok": 1}
+
+
+def test_export_can_be_switched_off(tmp_path, ride_bytes):
+    off = Settings(data_dir=tmp_path / "off", export_gpx=False)
+    with TestClient(create_app(off)) as client:
+        _put(client, ride_bytes)
+    assert not off.gpx_dir.exists() or not list(off.gpx_dir.glob("*.gpx"))
+
+
+def test_gpx_download_is_rich_and_can_be_plain(client, ride_bytes):
+    sid = _session_id(client, ride_bytes)
+    rich = client.get(f"{API}/sessions/{sid}.gpx").text
+    assert "bc:TrackPoint" in rich and "bc:Ride" in rich
+    plain = client.get(f"{API}/sessions/{sid}.gpx", params={"rich": False}).text
+    assert "bc:" not in plain
+
+
 # --- the auth retrofit ------------------------------------------------
 # Auth is off today. These tests exist so that switching it on stays a
 # config change: if a route is ever added without the dependency, the

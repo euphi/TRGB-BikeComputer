@@ -50,6 +50,35 @@ der ESP32 bremst), Folgeabruf 2 s.
 käme die Sitzung beim nächsten Abruf von der SD-Karte zurück. Ein
 ausdrücklicher `PUT` holt sie zurück.
 
+## GPX-Export
+
+Zu jeder Sitzung mit Binärlog schreibt der Dienst automatisch
+`data/export/gpx/2026-09-27_164545_trgb.gpx` (lokale Startzeit + Gerät; mtime
+= Start der Fahrt) -- als Übergabestelle für Nextcloud-Sync, Komoot/Strava
+usw. ([`exporter.py`](bikelogservice/exporter.py)). Neu geschrieben wird,
+wenn `L_` oder `I_` der Sitzung ankommt oder sich ändert, und für **alle**
+Sitzungen, wenn `EXPORT_VERSION` erhöht wird -- das bei jeder inhaltlichen
+Änderung am GPX tun, dann bekommen auch alte Fahrten die bessere Fassung.
+Sitzungen ohne verwertbaren GPS-Fix bekommen keine Datei (`gpx_status`
+`no-gps`), unlesbare Logs `error: …`.
+
+Inhalt (Details in [`../bikelog/gpx.py`](../bikelog/gpx.py)):
+
+| Wo | Was |
+|---|---|
+| `<metadata>` | Name, Beschreibung mit Kennzahlen (Strecke, Fahrzeit, Ø/max., Höhenmeter, Puls, Trittfrequenz, Temperatur, Stöße, Wegequalität, Labels), Link zur Sitzung (`BIKELOG_PUBLIC_URL`), Bounds |
+| `<metadata><extensions><bc:Ride>` | dieselben Kennzahlen maschinenlesbar, Strecke je Wegeklasse und je Label, dazu die `I_`-Statistik des Geräts unverändert (`bc:deviceSummary`) |
+| Trackpunkt, Garmin TPX v2 | `atemp`, `hr`, `cad`, `speed`, `course` -- das lesen Strava, Komoot, Garmin Connect |
+| Trackpunkt, `bc:TrackPoint` | Trip-Distanz, Radgeschwindigkeit, Steigung (Anzeige/Baro/IMU), Baro- und GPS-Höhe, GPS-Genauigkeit und Fix-Alter, Wegeklasse + OSM-`smoothness`, Rauheit und RMS des Wegequalitäts-Intervalls, manuelles Label |
+| `<wpt>` | Stöße (`sym` „Danger Area“, Details in `bc:Shock`) und Label-Wechsel (`sym` „Flag, Blue“) |
+
+`bc` = `https://github.com/euphi/TRGB-BikeComputer/gpx/v1`. Viewer
+überspringen unbekannte Erweiterungen; das GPX validiert gegen `gpx.xsd`,
+die TPX-Elemente gegen `TrackPointExtensionv2.xsd`. Schlank ohne `bc:`:
+`GET /api/v1/sessions/{id}.gpx?rich=false` bzw. `bikelog gpx --plain`.
+
+Von Hand: `bikelogservice export` (fehlende/veraltete), `export --all` (alle).
+
 ## Installation (ia216: `~/bikelog`)
 
 ```bash
@@ -91,6 +120,7 @@ PYTHONPATH=.:BikeLogService .venv/bin/python -m bikelogservice serve --port 8081
 bikelogservice serve [--host 0.0.0.0] [--port 8080]
 bikelogservice pull  [TRGB-BC.local | 192.168.0.171] [--device trgb]   # einmal abholen
 bikelogservice import /media/sd/BIKECOMP [--device trgb]              # SD-Karte im Kartenleser
+bikelogservice export [--all]                                         # GPX-Dateien schreiben
 ```
 
 `pull` und `import` arbeiten auf demselben Datenverzeichnis
@@ -108,6 +138,9 @@ Umgebungsvariablen (im Dienst: `~/bikelog/bikelog.env`):
 | `BIKELOG_PULL_TARGETS` | `trgb=TRGB-BC` | `gerät=mdns-name`, kommagetrennt |
 | `BIKELOG_PULL_INTERVAL_S` | `120` | Polling-Intervall |
 | `BIKELOG_PULL_MDNS` | `1` | auf mDNS-Ankündigungen hören |
+| `BIKELOG_EXPORT_GPX` | `1` | GPX-Export an/aus |
+| `BIKELOG_EXPORT_DIR` | `<data>/export/gpx` | Zielverzeichnis (muss in der Unit beschreibbar sein: `ReadWritePaths=`) |
+| `BIKELOG_PUBLIC_URL` | -- | z. B. `http://ia216:8080`, für den Link im GPX |
 | `BIKELOG_REQUIRE_AUTH` | `0` | Auth an/aus |
 | `BIKELOG_TOKENS` | -- | `token:name`, kommagetrennt |
 | `BIKELOG_MAX_UPLOAD_BYTES` | 64 MiB | Obergrenze pro `PUT` |
@@ -125,7 +158,7 @@ ein `device`-Feld in `/logfiles.json`.
 | `GET` | `/api/v1/health` | Erreichbarkeit + Anzahl Sitzungen |
 | `GET` | `/api/v1/sessions` | Liste (`limit`, `offset`), neueste zuerst |
 | `GET` | `/api/v1/sessions/{id}` | Sitzung mit Dateien, Kennzahlen, `I_`-Statistik |
-| `GET` | `/api/v1/sessions/{id}.gpx` | GPX (`max_fix_age_ms`, `segment_gap_s`, `ele`, `max_accuracy_m`, `shocks`) |
+| `GET` | `/api/v1/sessions/{id}.gpx` | GPX wie im Export (`max_fix_age_ms`, `segment_gap_s`, `ele`, `max_accuracy_m`, `shocks`, `labels`, `rich`) |
 | `GET` | `/api/v1/sessions/{id}.csv` | CSV (`with_gps`) |
 | `GET` | `/api/v1/sessions/{id}/files/{name}` | eine Datei unverändert |
 | `DELETE` | `/api/v1/sessions/{id}` | Dateien löschen, Grabstein behalten |

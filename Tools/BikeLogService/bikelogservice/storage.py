@@ -32,7 +32,7 @@ from bikelog.record import ReadStats, UnknownLogFormat, read_stream
 from . import sdlayout
 from .sdlayout import SdFile
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions (
@@ -54,6 +54,11 @@ CREATE TABLE IF NOT EXISTS sessions (
     gps_points      INTEGER,
     clock_unset     INTEGER NOT NULL DEFAULT 0,
     log_error       TEXT,
+    -- automatic GPX export (exporter.py):
+    gpx_file        TEXT,
+    gpx_status      TEXT,
+    gpx_version     INTEGER,
+    gpx_dirty       INTEGER NOT NULL DEFAULT 1,
     UNIQUE (device, day, stem)
 );
 CREATE TABLE IF NOT EXISTS files (
@@ -110,6 +115,10 @@ class Session:
     gps_points: int | None
     clock_unset: int
     log_error: str | None
+    gpx_file: str | None = None
+    gpx_status: str | None = None
+    gpx_version: int | None = None
+    gpx_dirty: int = 1
     files: list[StoredFile] = field(default_factory=list)
 
     @property
@@ -126,6 +135,7 @@ class Session:
     def as_dict(self) -> dict:
         data = asdict(self)
         data["clock_unset"] = bool(self.clock_unset)
+        data["gpx_dirty"] = bool(self.gpx_dirty)
         data["start_time"] = self.start_time
         data["duration_s"] = (self.last_time - self.first_time
                               if self.first_time and self.last_time else None)
@@ -149,10 +159,15 @@ class Storage:
         self._db = sqlite3.connect(settings.db_path, check_same_thread=False)
         self._db.row_factory = sqlite3.Row
         self._db.execute("PRAGMA foreign_keys = ON")
-        if self._db.execute("PRAGMA user_version").fetchone()[0] < SCHEMA_VERSION:
+        version = self._db.execute("PRAGMA user_version").fetchone()[0]
+        if version < 2:
             # v1 indexed single uploaded rides and never held real data.
             self._db.execute("DROP TABLE IF EXISTS rides")
         self._db.executescript(SCHEMA)
+        if version == 2:
+            for column in ("gpx_file TEXT", "gpx_status TEXT", "gpx_version INTEGER",
+                           "gpx_dirty INTEGER NOT NULL DEFAULT 1"):
+                self._db.execute(f"ALTER TABLE sessions ADD COLUMN {column}")
         self._db.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
         self._db.commit()
 
@@ -272,6 +287,8 @@ class Storage:
                 "VALUES (?, ?, ?, ?, ?, ?)",
                 (session.id, sdfile.name, len(payload), digest, now, source))
             updates = {"updated_at": now}
+            if sdfile.kind in ("L", "I"):
+                updates["gpx_dirty"] = 1        # both feed the GPX (track, summary)
             if sdfile.kind == "L":
                 updates.update(_summarise_log(payload))
             elif sdfile.kind == "I":
@@ -283,6 +300,25 @@ class Storage:
             self._db.commit()
             return PutResult(self.get(session.id), "replaced" if old else "new")
 
+    def pending_exports(self, version: int) -> list[Session]:
+        """Sessions whose GPX is missing, outdated (L_/I_ changed) or was made
+        by an older exporter -- so exporter improvements reach old rides too."""
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT s.* FROM sessions s WHERE s.deleted_at IS NULL "
+                "AND (s.gpx_dirty = 1 OR s.gpx_version IS NOT ?) "
+                "AND EXISTS (SELECT 1 FROM files f WHERE f.session_id = s.id "
+                "            AND substr(f.name, 1, 1) = 'L')", (version,)).fetchall()
+            return [self._session(row) for row in rows]
+
+    def set_export(self, session_id: int, gpx_file: str | None, status: str,
+                   version: int) -> None:
+        with self._lock:
+            self._db.execute(
+                "UPDATE sessions SET gpx_file = ?, gpx_status = ?, gpx_version = ?, "
+                "gpx_dirty = 0 WHERE id = ?", (gpx_file, status, version, session_id))
+            self._db.commit()
+
     def delete(self, session_id: int) -> bool:
         with self._lock:
             session = self.get(session_id)
@@ -290,7 +326,9 @@ class Storage:
                 return False
             for f in session.files:
                 self.path_for(session, f.name).unlink(missing_ok=True)
-            self._db.execute("UPDATE sessions SET deleted_at = ? WHERE id = ?",
+            if session.gpx_file:
+                (self.settings.gpx_dir / session.gpx_file).unlink(missing_ok=True)
+            self._db.execute("UPDATE sessions SET deleted_at = ?, gpx_file = NULL WHERE id = ?",
                              (_now(), session_id))
             self._db.commit()
             return True

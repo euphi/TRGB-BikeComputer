@@ -3,6 +3,7 @@
     python -m bikelogservice serve [--host 0.0.0.0] [--port 8080]
     python -m bikelogservice pull  [--device trgb] [TRGB-BC.local | 192.168.0.171]
     python -m bikelogservice import /media/sdcard/BIKECOMP [--device trgb]
+    python -m bikelogservice export [--all]
 
 ``pull`` and ``import`` work on the same storage as the service
 (BIKELOG_DATA_DIR) and may run while it does.
@@ -15,7 +16,7 @@ import logging
 import sys
 from pathlib import Path
 
-from . import sdlayout
+from . import exporter, sdlayout
 from .config import Settings
 from .puller import Http, sync
 from .storage import Storage
@@ -36,6 +37,7 @@ def _pull(args) -> int:
     print(result.summary())
     for err in result.errors:
         print("  " + err, file=sys.stderr)
+    exporter.export_pending(store)
     return 1 if result.failed else 0
 
 
@@ -60,6 +62,19 @@ def _import(args) -> int:
                                 source="import:" + str(root)).status
         counts[status] = counts.get(status, 0) + 1
     print(", ".join(f"{n} {k}" for k, n in sorted(counts.items())) or "nothing found")
+    exporter.export_pending(store)
+    return 0
+
+
+def _export(args) -> int:
+    """(Re)write the GPX files; --all also those that are up to date."""
+    store = Storage(Settings.from_env())
+    if args.all:
+        for session in store.list(limit=1_000_000):
+            store.set_export(session.id, session.gpx_file, session.gpx_status or "", 0)
+    counts = exporter.export_pending(store)
+    print(", ".join(f"{n} {k}" for k, n in sorted(counts.items())) or "all up to date",
+          "->", store.settings.gpx_dir)
     return 0
 
 
@@ -81,6 +96,10 @@ def main(argv=None) -> int:
     p.add_argument("dir")
     p.add_argument("--device", default="trgb")
     p.set_defaults(func=_import)
+
+    p = sub.add_parser("export", help="write missing/outdated GPX files")
+    p.add_argument("--all", action="store_true", help="rewrite every GPX file")
+    p.set_defaults(func=_export)
 
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")

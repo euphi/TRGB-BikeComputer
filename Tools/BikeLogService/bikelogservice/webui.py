@@ -67,7 +67,7 @@ def _row(s: Session) -> str:
     base = f"{API}/sessions/{s.id}"
     links = []
     if s.file("L"):
-        if s.gps_points:
+        if s.gps_points and s.gpx_status != "no-gps":
             links.append(f'<a href="{base}.gpx">GPX</a>')
         links.append(f'<a href="{base}.csv?with_gps=true">CSV</a>')
     for f in s.files:
@@ -78,10 +78,12 @@ def _row(s: Session) -> str:
         notes.append(f'<span class="warn" title="{escape(s.log_error)}">log unreadable</span>')
     if summ.get("time") == "corrected":
         notes.append(f'<span class="mut">time corrected ({escape(str(summ.get("src", "?")))})</span>')
+    if s.gpx_status and s.gpx_status.startswith("error"):
+        notes.append(f'<span class="warn" title="{escape(s.gpx_status)}">GPX export failed</span>')
     if summ.get("shocks"):
         notes.append(f'<span class="mut">{summ["shocks"]} shocks</span>')
     return (
-        "<tr>"
+        f'<tr id="s{s.id}">'
         f"<td>{escape(_when(s))}<br><span class=\"mut\">{escape(s.device)}</span></td>"
         f"<td class=\"num\">{(dist or 0) / 1000:.1f} km</td>"
         f"<td class=\"num hide-s\">{_fmt_dur(move)}</td>"

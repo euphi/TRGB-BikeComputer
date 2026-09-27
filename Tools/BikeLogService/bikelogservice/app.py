@@ -16,15 +16,16 @@ from __future__ import annotations
 import asyncio
 import io
 import re
+import threading
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException, Path, Query, Request, Response, status
 from fastapi.responses import HTMLResponse, PlainTextResponse
 
-from bikelog import csvexport, gpx
-from bikelog.record import ReadStats, split
+from bikelog import csvexport
+from bikelog.record import ReadStats
 
-from . import sdlayout, webui
+from . import exporter, sdlayout, webui
 from .auth import AuthDep, Principal
 from .config import Settings
 from .puller import Puller
@@ -42,6 +43,10 @@ def create_app(settings: Settings | None = None, puller: Puller | None = None) -
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        # Catch up on GPX files (new exporter version, sessions stored while the
+        # export was off) without holding up the start.
+        threading.Thread(target=exporter.export_pending, args=(store,),
+                         name="bikelog-export", daemon=True).start()
         if puller:
             puller.start()
         yield
@@ -114,16 +119,21 @@ def create_app(settings: Settings | None = None, puller: Puller | None = None) -
         ele: str = Query(default="auto", pattern="^(auto|baro|gps)$"),
         max_accuracy_m: float = Query(default=0.0, ge=0),
         shocks: bool = Query(default=True),
+        labels: bool = Query(default=True),
+        rich: bool = Query(default=True, description="own extensions (gradient, road quality, labels, summary)"),
         principal: Principal = AuthDep,
         store: Storage = Depends(storage),
     ):
         session = _require_log(store, session_id)
-        options = gpx.GpxOptions(max_fix_age_ms=max_fix_age_ms,
-                                 segment_gap_s=segment_gap_s,
-                                 ele_source=ele,
-                                 max_accuracy_m=max_accuracy_m)
-        records, _, shock_events = split(store.records(session, types=None))
-        xml, stats = gpx.to_string(records, options, shock_events if shocks else None)
+        options = exporter.gpx_options(session, settings)
+        options.max_fix_age_ms = max_fix_age_ms
+        options.segment_gap_s = segment_gap_s
+        options.ele_source = ele
+        options.max_accuracy_m = max_accuracy_m
+        options.shocks = shocks
+        options.labels = labels
+        options.rich = rich
+        xml, stats = exporter.render(store, session, options)
         if stats.written == 0:
             # Better a clear 409 than a valid but empty GPX that every
             # importer accepts and then shows as a track with no points.
@@ -202,6 +212,7 @@ def create_app(settings: Settings | None = None, puller: Puller | None = None) -
         if len(payload) > settings.max_upload_bytes:
             raise HTTPException(413, "upload exceeds %d bytes" % settings.max_upload_bytes)
         result = store.put_file(device, sdfile, payload, source="push:" + principal.name)
+        exporter.export_pending(store)
         return {"status": result.status, "session": result.session.as_dict()}
 
     # --- pull ---

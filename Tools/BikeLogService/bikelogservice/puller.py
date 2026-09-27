@@ -37,7 +37,7 @@ import urllib.request
 from dataclasses import asdict, dataclass, field
 from typing import Callable
 
-from . import sdlayout
+from . import exporter, sdlayout
 from .sdlayout import SdFile
 
 log = logging.getLogger("bikelog.pull")
@@ -378,6 +378,8 @@ class Puller:
             st.last_sync_ok = st.last_sync
             self._mono_sync_ok[target.device] = time.monotonic()
         log.info("%s: %s", target.device, result.summary())
+        if result.fetched or result.replaced:
+            exporter.export_pending(self.storage)
         return result
 
     def as_dict(self) -> dict:

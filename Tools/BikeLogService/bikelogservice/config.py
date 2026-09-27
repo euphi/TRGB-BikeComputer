@@ -55,6 +55,14 @@ class Settings:
     #: Listen for mDNS announcements (the trigger that makes pulling immediate).
     pull_mdns: bool = True
 
+    #: Write a GPX file per session into export_dir (exporter.py).
+    export_gpx: bool = True
+    #: Default: <data_dir>/export/gpx
+    export_dir: Path | None = None
+    #: Base URL of this service as seen from outside, e.g. http://ia216:8080 --
+    #: goes into the GPX as a link back to the session. Optional.
+    public_url: str | None = None
+
     @classmethod
     def from_env(cls, env=None) -> "Settings":
         env = env if env is not None else os.environ
@@ -68,11 +76,18 @@ class Settings:
             pull_targets=_split(env.get("BIKELOG_PULL_TARGETS")) or ["trgb=TRGB-BC"],
             pull_interval_s=float(env.get("BIKELOG_PULL_INTERVAL_S", 120)),
             pull_mdns=_flag(env.get("BIKELOG_PULL_MDNS", "1")),
+            export_gpx=_flag(env.get("BIKELOG_EXPORT_GPX", "1")),
+            export_dir=Path(env["BIKELOG_EXPORT_DIR"]) if env.get("BIKELOG_EXPORT_DIR") else None,
+            public_url=(env.get("BIKELOG_PUBLIC_URL") or "").rstrip("/") or None,
         )
 
     @property
     def sessions_dir(self) -> Path:
         return self.data_dir / "sessions"
+
+    @property
+    def gpx_dir(self) -> Path:
+        return self.export_dir or self.data_dir / "export" / "gpx"
 
     @property
     def db_path(self) -> Path:

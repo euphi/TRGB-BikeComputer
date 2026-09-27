@@ -36,6 +36,9 @@ BIKELOG_PULL=1
 # device=mdns-host, comma separated
 BIKELOG_PULL_TARGETS=trgb=TRGB-BC
 BIKELOG_PULL_INTERVAL_S=120
+# GPX export into \$BIKELOG_DATA_DIR/export/gpx; link back to the session in each file
+BIKELOG_EXPORT_GPX=1
+BIKELOG_PUBLIC_URL=http://$(hostname):8080
 # BIKELOG_REQUIRE_AUTH=1
 # BIKELOG_TOKENS=<token>:<name>
 EOF
