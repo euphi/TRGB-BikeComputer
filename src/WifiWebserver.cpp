@@ -19,6 +19,7 @@
 #include "WebPage.h"
 #include <esp_heap_caps.h>
 #include "WebInstrument.h"
+#include "CrashInfo.h"
 
 //TODO: Read this from preferences
 const char* ntpServer = "pool.ntp.org";
@@ -565,6 +566,8 @@ void WifiWebserver::setupWebserver() {
 #endif		//TODO: Add height (pressure) adjustment for FL
 
 
+	CrashInfo::registerRoutes(server);
+
 	// Debug menu: these pages exist but were reachable only by typing the URL.
 	// Registered as "/debug/menu" because "/debug/" is the static live-log page.
 	server.on("/debug/menu", HTTP_GET, [](AsyncWebServerRequest *request) {
@@ -572,6 +575,7 @@ void WifiWebserver::setupWebserver() {
 		static const Entry kEntries[] = {
 			{ "/debug/",              "Live Log",        "Log stream over SSE, as it happens" },
 			{ "/debug/nvs",           "NVS Contents",    "Every key stored in non-volatile storage" },
+			{ "/debug/coredump",      "Core Dump",       "Last reset reason, where the last crash happened" },
 #ifdef TRGBBC_SENSORS_I2C
 			{ "/debug/imu",           "IMU (BMI160)",    "Accelerometer, calibration, road quality, shocks, gradient" },
 #endif

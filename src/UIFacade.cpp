@@ -218,7 +218,11 @@ void UIFacade::updateHandler() {
 			}
 		}
 		next_ms -= (millis() - mil_start);
-		if (next_ms < 0) next_ms = 0;
+		// Never 0: vTaskDelay(0) only yields to tasks of equal or higher priority, so with
+		// LVGL busy (lv_timer_handler() returning 0 while rendering can't keep up) this
+		// priority-20 task starved IDLE0 until the task watchdog rebooted the device --
+		// core dump 2026-09-27 13:46, right after a burst of BLE reconnect UI updates.
+		if (next_ms < 2) next_ms = 2;
 		if (next_ms > 100) next_ms = 100; // minimum refresh rate 10Hz
 		vTaskDelay(next_ms / portTICK_PERIOD_MS);
 	}

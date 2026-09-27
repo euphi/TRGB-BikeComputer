@@ -155,8 +155,16 @@ const char* const I2CSensors::CAL_STATE_STRING[] = {"not calibrated", "running",
 bool I2CSensors::imuRead(uint8_t reg, uint8_t* buf, uint16_t n) {
 	Wire.beginTransmission(IMU_I2C_ADDR);
 	Wire.write(reg);
-	if (Wire.endTransmission(false) != 0) return false;
-	if (Wire.requestFrom((uint16_t)IMU_I2C_ADDR, (size_t)n) != n) return false;
+	const uint8_t code = Wire.endTransmission(false);
+	if (code != 0) {
+		imuErrWrite++;
+		imuErrLastCode = code;
+		return false;
+	}
+	if (Wire.requestFrom((uint16_t)IMU_I2C_ADDR, (size_t)n) != n) {
+		imuErrShort++;
+		return false;
+	}
 	for (uint16_t i = 0; i < n; i++) {
 		int v = Wire.read();
 		if (v < 0) return false;
@@ -199,7 +207,9 @@ void I2CSensors::initBMI160() {
 	// learned pitch state), the 64-byte log records and a 482-byte snippet piece -- 5120 left
 	// 3368 byte free. Internal RAM is scarce, check "mem" after changes here. Priority above
 	// FlusherTask/BLE (5), so an SD stall can't starve the FIFO.
-	xTaskCreate(+[](void* thisInstance){((I2CSensors*)thisInstance)->imuTask();}, "ImuTask", 4096, this, 6, &imuTaskHandle);
+	// 6 KB: the shock path (log line with floats, snippet pieces) left only 832 of 4096 bytes
+	// free on the first ride (2026-09-27).
+	xTaskCreate(+[](void* thisInstance){((I2CSensors*)thisInstance)->imuTask();}, "ImuTask", 6144, this, 6, &imuTaskHandle);
 	bclog.logf(BCLogger::Log_Info, BCLogger::TAG_OP, "BMI160 running: %u Hz, +/-16 g, FIFO acc only, calibration %s",
 	           IMU_ODR_HZ, imuCal.valid ? "loaded" : "missing");
 }
@@ -325,6 +335,7 @@ void I2CSensors::imuTask() {
 			if (!imuRead(BMI160_RA_FIFO_DATA, buf, n)) {
 				// How much of the FIFO this consumed is unknown: treat as lost samples.
 				imuI2cErrors++;
+				imuLostFrames += n / IMU_FRAME_BYTES;
 				roadq.notifyDataGap();
 				rawGap = true;
 				break;
@@ -390,6 +401,14 @@ void I2CSensors::imuTask() {
 		if (elapsed >= 1000) {
 			imuWin = {};
 			imuWin.startMs = now;
+		}
+		if (now - imuErrLogMs >= 60000) {
+			imuErrLogMs = now;
+			if (imuI2cErrors != imuErrLogged) {
+				bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_OP, "BMI160 I2C errors: %u in the last minute (total %u: write phase %u, last code %u; short read %u; ~%u frames lost)",
+				           imuI2cErrors - imuErrLogged, imuI2cErrors, imuErrWrite, imuErrLastCode, imuErrShort, imuLostFrames);
+				imuErrLogged = imuI2cErrors;
+			}
 		}
 	}
 }

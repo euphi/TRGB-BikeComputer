@@ -197,3 +197,36 @@ die als 31-g-Stöße erkannt wurden. Regel: FIFO-Zähler und -Daten über
 `I2CSensors::imuRead()` lesen (Repeated Start, Längenprüfung) und
 `0x8000/0x8000/0x8000`-Frames verwerfen -- beides ist dort umgesetzt, die
 Zähler stehen auf `/debug/imu`.
+
+## Abstürze ohne USB: Neustart-Grund und Core-Dump
+
+- Beim Boot steht im Debug-Log `Reset reason: …`. Bei PANIC oder einem Watchdog
+  liegt ein Core-Dump in der Partition `coredump`. Jeder Absturz überschreibt den vorigen.
+- Anzeige unter `/debug/coredump`: Task, PC, Backtrace und ob der Dump zur laufenden
+  Firmware passt.
+- Der Dump wird **nur auf Anfrage** gelesen, nie beim Boot. Ein früherer
+  Kopierversuch beim Boot hat eine Endlosschleife aus Abstürzen ausgelöst
+  (TODO in `BCLogger::setup()`). Ohne USB wäre das Gerät dann nicht mehr erreichbar.
+- Auflösen geht nur mit der **ELF genau der abgestürzten Firmware**. Vor jedem neuen Build
+  `.pio/build/trgb-esp32-s3/firmware.elf` sichern, wenn noch ein Dump aussteht.
+  Ob die Datei passt, zeigen die ersten Zeichen von `sha256sum firmware.elf`.
+  Befehl:
+  ```
+  curl -o coredump.bin http://<ip>/debug/coredump.elf
+  esp-coredump info_corefile -t raw \
+      --gdb ~/.platformio/packages/tool-xtensa-esp-elf-gdb/bin/xtensa-esp32s3-elf-gdb \
+      -c coredump.bin firmware.elf
+  ```
+  `-t raw`, weil die Partition vor der ELF noch einen Kopf hat.
+- Bei „Task watchdog … IDLE0“ ist der Task mit dem Absturz meist nur der, der gerade lief.
+  Wichtig ist die Thread-Liste: Wer steht **nicht** in einer Wartefunktion
+  (`0x400559e0 in ??` = blockiert)?
+
+## Nie `vTaskDelay(0)` in einer Task-Schleife mit hoher Priorität
+
+- `vTaskDelay(0)` gibt nur an Tasks gleicher oder höherer Priorität ab, nie an IDLE0.
+- Der UI-Task (Priorität 20) hat mit `vTaskDelay(next_ms)` so lange gerechnet, wie LVGL
+  `0` zurückgab (Rendering kam nicht hinterher, viele Updates nach BLE-Reconnects).
+  Nach 5 s hat der Task-Watchdog das Gerät neu gestartet (Core-Dump 2026-09-27).
+- Jetzt gilt ein Minimum von 2 ms in `UIFacade::updateHandler()`. Dasselbe gilt für
+  jede eigene Schleife: immer mindestens 1 Tick warten.

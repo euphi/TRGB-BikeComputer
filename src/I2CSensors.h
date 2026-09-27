@@ -196,6 +196,12 @@ private:
 	float imuMagMax = 0;
 	uint32_t imuTotalSamples = 0;
 	uint32_t imuI2cErrors = 0, imuInvalidFrames = 0;
+	// I2C error breakdown (ImuTask only), logged once a minute when non-zero: errors seen on
+	// the ride (2026-09-27, ~10/min) but not on the desk -- which phase fails says whether
+	// it is the bus/contact (address NACK) or a read cut short.
+	uint32_t imuErrWrite = 0, imuErrShort = 0, imuLostFrames = 0;
+	uint8_t imuErrLastCode = 0;			// Wire.endTransmission() result of the last write-phase error
+	uint32_t imuErrLogMs = 0, imuErrLogged = 0;
 	bool imuRead(uint8_t reg, uint8_t* buf, uint16_t n);
 	bool imuMinMaxValid = false;
 
