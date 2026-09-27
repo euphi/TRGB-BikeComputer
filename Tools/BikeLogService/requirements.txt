@@ -1,7 +1,9 @@
-# Service dependencies. Install into a venv:
+# Service dependencies (the same as the [service] extra in ../pyproject.toml).
+# For development in the repo:
 #   python3 -m venv Tools/.venv && Tools/.venv/bin/pip install -r Tools/BikeLogService/requirements.txt
 fastapi>=0.110
 uvicorn>=0.27
+zeroconf>=0.132
 
 # Tests only (TestClient needs httpx)
 pytest>=8.0

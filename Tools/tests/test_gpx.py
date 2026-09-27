@@ -1,6 +1,7 @@
 """What ends up in the GPX -- and more importantly, what does not."""
 
 import datetime
+import math
 import xml.etree.ElementTree as ET
 
 from bikelog import fixtures, gpx
@@ -117,9 +118,11 @@ def test_track_name_and_metadata_time():
     root, stats = _tree(records)
     assert root.find("gpx:metadata/gpx:name", NS).text.startswith("Fahrt ")
     assert root.find("gpx:metadata/gpx:time", NS).text.endswith("Z")
-    # <name> must come before <type> inside <trk> for a schema-valid GPX.
+    # GPX 1.1 fixes the order inside <trk>: name, cmt, desc, src, link, number, type.
     children = [child.tag.split("}")[1] for child in root.find("gpx:trk", NS)]
-    assert children[:2] == ["name", "type"]
+    assert children[:4] == ["name", "desc", "src", "type"]
+    meta = [child.tag.split("}")[1] for child in root.find("gpx:metadata", NS)]
+    assert meta == ["name", "desc", "time", "keywords", "bounds", "extensions"]
 
 
 def test_gpx_roundtrips_through_the_fixture_builder(tmp_path):
@@ -140,3 +143,133 @@ def test_empty_when_nothing_has_a_fix():
     root, stats = _tree(records)
     assert stats.written == 0
     assert root.find(".//gpx:trkpt", NS) is None
+
+
+# --- real_distance_m: the "was this an actual ride" figure ------------
+
+def _jittering_in_place(n: int, radius_m: float = 3.0):
+    """n records at one spot, the phone's fix wandering within radius_m of it
+    -- what an idle bike computer with GPS on sees, never what a ride is."""
+    records = fixtures.synthetic(seconds=1, no_fix_start_s=0)
+    base = records[0]
+    out = []
+    for i in range(n):
+        rec = fixtures.synthetic(seconds=1, no_fix_start_s=0)[0]
+        rec.timestamp = base.timestamp + i
+        angle = i * 0.7
+        rec.gps_lat_e7 = base.gps_lat_e7 + round(radius_m * math.cos(angle) / 111320.0 * 1e7)
+        rec.gps_lon_e7 = base.gps_lon_e7 + round(radius_m * math.sin(angle) / 111320.0 * 1e7)
+        out.append(rec)
+    return out
+
+
+def test_real_distance_ignores_gps_jitter_around_one_spot():
+    _, stats = _tree(_jittering_in_place(30))
+    assert stats.written == 30
+    assert stats.real_distance_m == 0.0
+
+
+def test_real_distance_counts_actual_movement():
+    records = fixtures.synthetic(seconds=60, no_fix_start_s=0, pause=None, tunnel=None)
+    _, stats = _tree(records)
+    assert stats.written == 60
+    assert stats.real_distance_m > 350                # ~24 km/h for 60 s
+
+
+def test_real_distance_needs_steps_past_the_jitter_radius():
+    moving = _tree(fixtures.synthetic(seconds=60, no_fix_start_s=0, pause=None, tunnel=None))[1]
+    tighter = _tree(fixtures.synthetic(seconds=60, no_fix_start_s=0, pause=None, tunnel=None),
+                    jitter_radius_m=1000.0)[1]
+    assert tighter.real_distance_m == 0.0
+    assert moving.real_distance_m > tighter.real_distance_m
+
+
+# --- the rich export --------------------------------------------------
+
+BC = {"gpx": gpx.GPX_NS, "tpx": gpx.TPX_NS, "bc": gpx.BC_NS}
+
+
+def _rich_ride():
+    """Synthetic ride with road quality, shocks and two label changes."""
+    from bikelog.record import LABEL_CHANGE, LF_GPS_VALID, LabelRecord
+    records = fixtures.synthetic(no_fix_start_s=0)
+    everything = fixtures.with_road_quality(records)
+    for second, surface, quality in ((10, 1, 1), (200, 2, 3)):
+        rec = records[second]
+        everything.insert(everything.index(rec) + 1, LabelRecord(
+            timestamp=rec.timestamp, surface=surface, quality=quality, reason=LABEL_CHANGE,
+            flags=LF_GPS_VALID, prev_surface=1 if second == 200 else 0,
+            prev_quality=1 if second == 200 else 0, prev_distance_m=1234.0,
+            gps_lat_e7=rec.gps_lat_e7, gps_lon_e7=rec.gps_lon_e7,
+            gps_fix_age_ms=rec.gps_fix_age_ms))
+    return everything
+
+
+def test_rich_trackpoints_carry_road_quality_and_label():
+    xml, stats = gpx.from_records(_rich_ride(), gpx.GpxOptions(device="gravel"))
+    root = ET.fromstring(xml)
+    points = root.findall(".//gpx:trkpt", BC)
+    own = [p.find("gpx:extensions/bc:TrackPoint", BC) for p in points]
+    assert all(o is not None for o in own)
+    assert {o.findtext("bc:label", namespaces=BC) for o in own} >= {"Asphalt Q1", "Schotter Q3"}
+    classes = {o.findtext("bc:roadClass", namespaces=BC) for o in own} - {None}
+    assert len(classes) >= 2                 # smooth road and cobbles
+    assert any(o.find("bc:roughness", BC) is not None for o in own)
+    assert all(o.find("bc:dist", BC) is not None for o in own)
+    # TPX v2 still first in <extensions>, so importers that only look there find it.
+    first_ext = points[50].find("gpx:extensions", BC)[0]
+    assert first_ext.tag == f"{{{gpx.TPX_NS}}}TrackPointExtension"
+
+
+def test_rich_waypoints_for_shocks_and_labels():
+    xml, stats = gpx.from_records(_rich_ride())
+    root = ET.fromstring(xml)
+    assert stats.shocks_written == 1 and stats.labels_written == 2   # 2nd fixture shock lies past the ride
+    types = [w.findtext("gpx:type", namespaces=BC) for w in root.findall("gpx:wpt", BC)]
+    assert types.count("label") == 2
+    label = [w for w in root.findall("gpx:wpt", BC) if w.findtext("gpx:type", namespaces=BC) == "label"][1]
+    assert label.findtext("gpx:name", namespaces=BC) == "Schotter Q3"
+    assert "vorher Asphalt Q1" in label.findtext("gpx:desc", namespaces=BC)
+    shock = root.find("gpx:wpt/gpx:extensions/bc:Shock", BC)
+    assert shock.findtext("bc:severity", namespaces=BC) == "2"
+
+
+def test_rich_metadata_summary():
+    summary = {"v": 1, "src": "ntp", "shocks_supp": 4}
+    xml, _ = gpx.from_records(_rich_ride(), gpx.GpxOptions(device="gravel", link="http://x/1"),
+                              device_summary=summary)
+    root = ET.fromstring(xml)
+    desc = root.findtext("gpx:metadata/gpx:desc", namespaces=BC)
+    assert " km" in desc and "1 Stoß (0/1/0)" in desc and "Labels:" in desc and "max. " in desc
+    ride = root.find("gpx:metadata/gpx:extensions/bc:Ride", BC)
+    assert ride.findtext("bc:device", namespaces=BC) == "gravel"
+    assert float(ride.findtext("bc:distance", namespaces=BC)) > 0
+    assert ride.find("bc:roadClassDistance", BC) is not None
+    assert ride.findtext("bc:deviceSummary/bc:shocks_supp", namespaces=BC) == "4"
+    assert root.find("gpx:metadata/gpx:link", BC).get("href") == "http://x/1"
+    assert root.findtext("gpx:trk/gpx:src", namespaces=BC) == "TRGB-BikeComputer (gravel)"
+
+
+def test_plain_export_has_no_own_namespace():
+    xml, _ = gpx.from_records(_rich_ride(), gpx.GpxOptions(rich=False))
+    assert gpx.BC_NS not in xml
+    assert "TrackPointExtension" in xml
+
+
+def test_hr_255_means_no_reading():
+    rec = fixtures.synthetic(seconds=1, no_fix_start_s=0)[0]
+    rec.hr = 255
+    root, _ = _tree([rec])
+    assert root.find(".//tpx:hr", NS) is None
+
+
+def test_ridestats():
+    from bikelog import ridestats
+    from bikelog.record import split
+    records, road, shocks = split(fixtures.with_road_quality(fixtures.synthetic()))
+    st = ridestats.compute(records, road, shocks)
+    assert st.distance_m > 1000
+    assert 0 < st.moving_s <= st.duration_s
+    assert st.avg_moving_kmh and st.max_speed_kmh >= st.avg_moving_kmh
+    assert st.shocks == {2: 1}
+    assert st.avg_hr and st.max_hr >= st.avg_hr

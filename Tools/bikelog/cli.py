@@ -59,7 +59,7 @@ def cmd_csv(opts) -> int:
 
 def cmd_gpx(opts) -> int:
     stats = ReadStats()
-    records, _, shocks = split(_read(opts.infile, stats))
+    everything = _read(opts.infile, stats)
     options = gpx.GpxOptions(
         max_fix_age_ms=opts.max_fix_age,
         segment_gap_s=opts.segment_gap,
@@ -68,8 +68,13 @@ def cmd_gpx(opts) -> int:
         track_name=opts.name,
         shocks=not opts.no_shocks,
         min_shock_severity=opts.min_severity,
+        labels=not opts.no_labels,
+        rich=not opts.plain,
+        device=opts.device,
     )
-    result = gpx.write(opts.outfile, records, options, shocks)
+    xml, result = gpx.from_records(everything, options)
+    with open(opts.outfile, "w", encoding="utf-8") as fh:
+        fh.write(xml)
     _warn_trailing(opts.infile, stats)
     print(result.summary())
     if result.written == 0:
@@ -378,6 +383,12 @@ def build_parser() -> argparse.ArgumentParser:
                        help="Stöße nicht als Wegpunkte ausgeben")
     p_gpx.add_argument("--min-severity", type=int, choices=(1, 2, 3), default=1,
                        help="Stöße ab dieser Schwere als Wegpunkt [Standard: %(default)s]")
+    p_gpx.add_argument("--no-labels", action="store_true",
+                       help="Wechsel der manuellen Wege-Labels nicht als Wegpunkte ausgeben")
+    p_gpx.add_argument("--plain", action="store_true",
+                       help="nur Garmin-TrackPointExtension, ohne die eigenen Erweiterungen "
+                            "(Steigung, Wegequalität, Labels, Zusammenfassung)")
+    p_gpx.add_argument("--device", help="Gerätename für <src> und die Zusammenfassung")
     p_gpx.set_defaults(func=cmd_gpx)
 
     p_info = sub.add_parser("info", help="Binärlog zusammenfassen")
