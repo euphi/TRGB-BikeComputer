@@ -89,6 +89,14 @@ ist das Protokoll die Quelle der Wahrheit.
   unveränderten Firmware-Algorithmus `Tools/rqreplay/rq_replay.cpp`
   (`bikelog raw replay`).
 
+## Serielle Konsole
+
+`src/SerialConsole.*`: Zeileneditor mit Verlauf und Tab-Completion vor SimpleCLI.
+Neue Befehle mit `console.addCmd(name, callback, completer)` anlegen, Serial-Ausgaben
+aus anderen Tasks in `SerialConsole::Output` einschließen, keine ANSI-Sequenzen
+ausgeben (Details: `doc/PITFALLS.md`). Host-Test:
+`test/native_console/console_test.cpp` (Build-Befehl im Dateikopf).
+
 ## Build
 
 PlatformIO (`platformio.ini`, Board `esp32s3box`, pioarduino-Plattform,
@@ -97,6 +105,9 @@ Arduino-Framework). Environments:
 * `trgb-esp32-s3` -- Default, "Gravel"-Variante (runder Touch-Controller).
 * `trgb-esp32-s3-FL` -- Forumslader am Touren-/Pendlerrad. Zweite
   Priorität, nur auf explizite Anfrage bauen.
+* `trgb-esp32-s3-ota`, `trgb-esp32-s3-FL-ota` -- dieselben Builds, Upload per
+  WLAN über den eigenen `/update`-Endpunkt (curl, nicht espota). Flashen nur auf
+  ausdrückliche Anfrage des Nutzers.
 
 ## Programmiersprachen-Präferenz
 

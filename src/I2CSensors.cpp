@@ -196,7 +196,16 @@ void I2CSensors::initBMI160() {
 	loadIMUCalibration();
 	rqLoad();
 
-	rqCmd = cli.addCmd("rq", +[](cmd* c) {sensors.handleRqCommand(Command(c));});
+	rqCmd = console.addCmd("rq", +[](cmd* c) {sensors.handleRqCommand(Command(c));}, +[](uint8_t pos, SerialConsole::Matches& m) {
+		if (pos == 1) {
+			for (const char* a : {"status", "interval", "shock", "wheelbase", "gradsrc", "ref", "pitchreset", "raw"}) m.add(a);
+		} else if (pos == 2) {
+			const String action = m.word(1);
+			if (action.equalsIgnoreCase("gradsrc")) {m.add("baro"); m.add("imu");}
+			else if (action.equalsIgnoreCase("ref")) {m.add("start"); m.add("stop");}
+			else if (action.equalsIgnoreCase("raw")) m.add("stop");
+		}
+	});
 	rqCmd.addPositionalArgument("action", "status");
 	rqCmd.addPositionalArgument("value", "");
 	rqCmd.setDescription("Road quality: rq [status | interval <1..10 s> | shock <g> | wheelbase <m> | gradsrc <baro|imu> | ref <start|stop> | pitchreset | raw <1..1800 s|stop> | label <surface 0..6>,<quality 0..4>]");

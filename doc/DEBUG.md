@@ -12,6 +12,38 @@
 * TBD
 
 
+## Serial console
+
+The USB port offers a command line (`bc> ` prompt) with line editing, history and Tab
+completion. Any terminal that sends each key as it is typed works:
+
+```
+pio device monitor
+python -m serial.tools.miniterm /dev/ttyACM0 115200
+picocom /dev/ttyACM0
+```
+
+No special options are needed: the console draws with CR, backspace and spaces only, so
+miniterm's default filter (which shows ESC as a symbol) doesn't get in the way. Don't use
+miniterm's `--eol CR` -- it turns every received CR into a line feed.
+
+| Key | Action |
+|---|---|
+| Tab | complete command or argument; press again to list the candidates |
+| Up/Down, Ctrl-P/N | history (16 lines) |
+| Left/Right, Home/End, Ctrl-A/E | move cursor |
+| Ctrl-Left/Right, Alt-B/F | move by word |
+| Backspace, Del, Ctrl-D | delete character |
+| Ctrl-W, Ctrl-U, Ctrl-K | delete word / to line start / to line end |
+| Ctrl-C | discard the line |
+| Ctrl-L | redraw the line |
+
+`help` lists all commands, `help <command>` shows one. Log lines appear above the prompt, the
+half-typed command stays. The terminal should be at least 80 columns wide; longer command
+lines scroll sideways. In picocom, Ctrl-A is the escape key -- use Home instead.
+
+Line-based monitors (Arduino IDE) still work: they send the whole line with a newline.
+
 ## Core Dump
 
 A core dump is a copy of stack and other memory in case of a crash, so it can later be used for investigation of the cause.
