@@ -93,6 +93,9 @@ Arduino-Framework). Environments:
 * `trgb-esp32-s3` -- Default, "Gravel"-Variante (runder Touch-Controller).
 * `trgb-esp32-s3-FL` -- Forumslader am Touren-/Pendlerrad. Zweite
   Priorität, nur auf explizite Anfrage bauen.
+* `trgb-esp32-s3-ota`, `trgb-esp32-s3-FL-ota` -- dieselben Builds, Upload per
+  WLAN über den eigenen `/update`-Endpunkt (curl, nicht espota). Flashen nur auf
+  ausdrückliche Anfrage des Nutzers.
 
 ## Programmiersprachen-Präferenz
 

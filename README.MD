@@ -15,6 +15,9 @@ Compile and upload with PlatformIO:
 
 - `trgb-esp32-s3` (default) -- round T-RGB, sensors via BLE + I2C
 - `trgb-esp32-s3-FL` -- oval T-RGB variant with Forumslader support
+- `trgb-esp32-s3-ota`, `trgb-esp32-s3-FL-ota` -- same builds, uploaded over WiFi to the
+  device's `/update` endpoint (curl). Target is `TRGB-BC.local`; if mDNS doesn't resolve,
+  pass the IP: `pio run -e trgb-esp32-s3-ota -t upload --upload-port 192.168.x.y`
 
 ## Documentation
 
