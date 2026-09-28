@@ -7,19 +7,14 @@ Stops/Breaks/Cruise) zusammenhängt.
 
 Diagramm: [`ride-state-machine.svg`](ride-state-machine.svg).
 
-**Status (2026-09-28):** Design + Statistics-Kern umgesetzt
+**Status (2026-09-28):** Design + Statistics-Kern umgesetzt, Statistik-Review
+(§5) eingearbeitet
 (`src/Stats/Statistics.{h,cpp}`, `src/Stats/Distance.{h,cpp}`). UI-Anbindung
 (Tap-Handler, neue Icons) siehe §6 — Icons sind Platzhalter, vom Nutzer im
 EEZ-Canvas zu prüfen.
 
-**Offener Schritt (Umgebung dieser Session hatte weder EEZ Studio noch
-PlatformIO installiert):** `.eez-project` ist bereits gepatcht
-(`EEZStudio/tmp/add_ride_state_assets.py`, JSON-Gates grün) und
-`src/UIFacade.cpp`/`RimRidgeCustFunc.cpp` referenzieren bereits
-`img_rr_icon_start`/`img_rr_icon_state_freeride` -- diese Symbole existieren
-aber erst nach einem Export. Vor dem nächsten Firmware-Build:
-`Tools/eez_export_headless.sh` (oder Ctrl+B in EEZ Studio) laufen lassen,
-danach `pio run -e trgb-esp32-s3` und ein Gerätetest (`Tools/uishot.py`).
+Exportiert, gebaut und auf dem Gerät getestet (Tap/Long-Press per
+`Tools/uishot.py`); eine echte Fahrt steht noch aus.
 
 ## 1. Grundsatz
 
@@ -64,7 +59,7 @@ nicht. Der einzige Unterschied ist unsichtbar: ob gerade eine
 Ride-Session offen ist (§4).
 
 Persistenz: `PREF_TIME_STRING[]`/NVS-Keys sind namensbasiert
-(`"TIME_IN_FREERIDE"` neu, andere unverändert) -- alte gespeicherte Werte
+(`"TIME_IN_FREE"` neu, JSON `timeIn.FREE`, andere unverändert) -- alte gespeicherte Werte
 bleiben beim Update gültig, kein Migrationsschritt nötig.
 
 ## 3. Taste und Icon
@@ -93,13 +88,20 @@ bräuchte es eine zweite Geste -- bewusst nicht vorgegriffen.
 Ein zweites, von `rideMode`/`curDriveState` unabhängiges Flag:
 
 * Wird `true` beim **ersten** Wechsel `FreeRide -> Ride` (Start-Tap ohne
-  bereits offene Session). In diesem Moment: `Distance::resetDistToZero
-  (SUM_ESP_START)` (nullt Start-Distanz und, via `Statistics::reset()`,
-  `time_in[][SUM_ESP_START]` sowie `dist_in[][SUM_ESP_START]`, §5).
+  bereits offene Session). In diesem Moment: `Statistics::reset
+  (SUM_ESP_START)` (nullt Zeiten, Cruise-Distanz, Max-Speed, Cadence und
+  merkt sich den Distanzstand als Session-Basis).
 * Bleibt `true`, solange man zwischen Ride und Cruise hin- und herwechselt
   -- genau das ist die Anforderung "Cruise beendet den Ride nicht".
-* Wird `false` beim Long-Press-Stop. Ab dann läuft `SUM_ESP_START`
-  wieder bei 0, bis der nächste Start-Tap eine neue Session öffnet.
+* Wird `false` beim Long-Press-Stop. Ab dann bleibt `SUM_ESP_START` auf
+  den Werten der beendeten Fahrt stehen (Zeit läuft nicht weiter, Distanz
+  wird eingefroren), bis der nächste Start-Tap eine neue Session öffnet.
+
+`Distance`s eigener `SUM_ESP_START` ist und bleibt "seit Einschalten"
+und wird nie zurückgesetzt -- Binärlog (`dist_m`), Navigations-Restdistanz
+und Steigungsberechnung brauchen einen monotonen Zähler. Die Session ist
+ein Fenster darauf (`Statistics::sessionBase*`/`sessionEnd*`,
+`Statistics::getDistance(SUM_ESP_START)`).
 
 `time_in[DS_FREE_RIDE][SUM_ESP_START]` akkumuliert nur, während
 `rideSessionOpen == true` -- das ist exakt die Cruise-Zeit der aktuellen
@@ -113,55 +115,60 @@ weiter (bestehendes Verhalten) -- sie laufen "sowieso unabhängig mit".
 Ein "beim Stop noch in Trip/Tour einrechnen" ist dadurch kein separater
 Schritt, sondern bereits die ganze Zeit über passiert.
 
-## 5. Statistik: Tour / Trip / Start-Ride, Stops/Breaks/Cruise herausrechnen
+## 5. Statistik: Zeit, Distanz, Durchschnitte
 
-Bestehende Matrix `ESummaryType x EAvgType` (`Statistics::getTime()`/
-`getAvg()`) deckt "in allen Modi Stops/Breaks/Cruise herausrechnen" ab,
-ohne dass Tour/Trip/Start eigene Sonderfälle brauchen -- dieselbe
-Achse gilt für alle vier `ESummaryType`s (Total/Tour/Trip/Start), per
-Geste (hoch/runter auf `rr_tour_pill`) durchschaltbar
-(`Statistics::getNextTimeMode()`).
+Grundregel: **Distanz zählt immer, Zeit nur mit verbundenem
+Speed-Sensor.** Was der Radzähler vorrückt, während der BC aus oder der
+Sensor getrennt ist, landet in der Distanz und zusätzlich in
+`lostDistanceFromNVS[]` ("ohne Sensor"). Die **Netto-Distanz**
+(`getDistance(t, false)`) ist genau der Teil, zu dem es Zeit gibt -- sie
+wird für alle Durchschnitte verwendet. `DS_NO_CONN`-Zeit wird mitgezählt
+(Diagnose), geht aber in keine Zeit und keinen Durchschnitt ein.
 
 ```
 enum EAvgType {
-    AVG_ALL,        // alles: Fahren + Cruise + Stop + Break
-    AVG_DRIVE,      // nur echtes Treten (Power+Coasting)
-    AVG_NOBREAK,    // Fahren + Stop, ohne lange Break
-    AVG_NOCRUISE,   // NEU: Fahren + Stop + Break, ohne Cruise/FreeRide-Zeit
+    AVG_ALL,        // Fahren + Stops + Pausen (Breaks)
+    AVG_DRIVE,      // nur Fahren (Ride, Coast und FreeRide/Cruise)
+    AVG_NOBREAK,    // Fahren + kurze Stops, ohne Pausen > 2 min
+    AVG_NOCRUISE,   // nur Fahren im Ride-Modus: Cruise-Zeit UND -Distanz raus
     EAvgTypeMax
 };
 ```
 
-Treppenförmig ineinander verschachtelt: `AVG_ALL` ⊃ `AVG_NOCRUISE` ⊃
-`AVG_NOBREAK` ⊃ `AVG_DRIVE`. Für "Start/Ride" ist `AVG_NOCRUISE` der
-interessante neue Fall (Cruise-Strecke/-Zeit raus); für Tour/Trip/Total
-ist er größtenteils identisch mit `AVG_ALL`, solange dort nie eine
-FreeRide-Zeit reingezählt wurde (`DS_FREE_RIDE` zählt für Tour/Trip/Total
-unabhängig von `rideSessionOpen` immer mit -- nur bei `SUM_ESP_START` ist
-das Gate aktiv, §4) -- bewusst so: "FreeRide" vor dem ersten Start soll
-nicht in die langfristige Tour-Statistik als Lücke fehlen.
+* Fahrzeit = Power + Coast + FreeRide. Coast/Power ist reine Anzeige
+  (StateIcon) bzw. für spätere Auswertung, für die Statistik egal.
+* Stops/Pausen fügen Zeit, aber (fast) keine Distanz hinzu -- deshalb
+  unterscheiden sich `AVG_DRIVE`/`AVG_NOBREAK`/`AVG_ALL` nur in der Zeit,
+  eine Distanz je Zustand ist dafür nicht nötig.
+* `AVG_NOCRUISE` braucht die Cruise-Distanz: `Statistics::distFree[]`
+  (nur Distanz in `DS_FREE_RIDE`), wie `time_in[][]` in NVS persistiert
+  (`DIST_FREE`). Für Tour/Trip/Total heißt das "nur Ride-Anteile aller
+  Fahrten"; wer nie Start drückt, hat dort keinen Wert.
+* Stop -> Break (> 2 min): verschoben wird genau die Zeit dieses Stopps
+  (`stopEpisodeMs[]`), nicht pauschal `now - timestamp_stop` -- das hat
+  früher nach einem Reconnect oder Reset Zeit älterer Stopps umgebucht.
+* Reconnect geht immer nach `DS_STOP` (nicht in den Zustand vor dem
+  Abbruch), damit bis zur ersten Geschwindigkeit keine Fahrzeit läuft.
+* Max-Speed je Summary persistiert (`SPEED_MAX`), mit Reset zurückgesetzt,
+  Werte > 120 km/h verworfen; Ø-Cadence = Kurbelumdrehungen / Zeit mit
+  Cadence > 0 während der Fahrt (`CAD_MREVS`/`CAD_MS`).
 
-### Distanz pro Zustand (neu: `dist_in[EDrivingStateMax][ESummaryTypeMax]`)
+### Zählerstand des Sensors (`Distance::updateRevs()`)
 
-Bisher gab es nur eine **Zeit**-Aufschlüsselung nach Zustand
-(`time_in[][]`); Distanz war ein einziger laufender Wert pro
-`ESummaryType` (`Distance::curTotalDistance[]`, NVS-persistiert,
-inklusive "verlorener" Distanz bei Sensor-Aussetzern). Für "Cruise-Strecke
-herausrechnen" reicht Zeit-Filtern allein nicht -- sonst verzerrt
-Frei-Rollen während Cruise die Ø-Geschwindigkeit. Deshalb:
-`Distance::updateRevs()` meldet jedes Delta zusätzlich an
-`Statistics::addDistanceDelta()`, die es (gleiches Muster wie
-`cycle()`s `time_in[][] += delta`, gleiches `SUM_ESP_START`-Gate) in
-`dist_in[curDriveState][summaryType]` einsortiert.
-
-`getAvg()` nutzt für `AVG_ALL` weiterhin die robuste, NVS-persistierte
-`Distance::getDistance()` (verlustkorrigiert); für die drei
-Filter-Varianten (`AVG_DRIVE`/`AVG_NOBREAK`/`AVG_NOCRUISE`) die Summe aus
-`dist_in[][]`. Bewusste Einschränkung: `dist_in[][]` ist **nicht**
-NVS-persistiert (nur `time_in[][]` ist es, wie bisher) -- nach einem
-Neustart starten die gefilterten Ø-Geschwindigkeiten für Tour/Trip bei 0
-und bauen sich neu auf, bis der nächste Neustart. Für die "Start/Ride"-
-Ansicht (bei jedem Start ohnehin neu) fällt das nicht ins Gewicht.
+* Die meisten CSC-Sensoren zählen kumulativ weiter; billige (CYCPLUS)
+  starten nach jedem Aufwachen bei 0. Weil der Connect dauert, steht beim
+  ersten Wert meist schon eine kleine Zahl im Zähler -- die ist gefahren
+  und wird gezählt.
+* Erster Wert nach dem Einschalten: Zähler >= gespeichert -> Differenz ist
+  "ohne Sensor"; Zähler < gespeichert (Neustart des Sensors) -> der ganze
+  aktuelle Zählerstand ist "ohne Sensor".
+* Zähler kleiner als der letzte Wert im Betrieb: bei Reconnect "ohne
+  Sensor", bei laufender Verbindung normal gefahrene Strecke; die Basis
+  wird neu gesetzt, ohne Bisheriges zu verlieren (früher fiel dabei die
+  Start-Distanz auf 0 und der neue Zählerstand wurde verworfen).
+* "Noch kein Wert" ist ein eigenes Flag (`revsInitialized`, `revsKnown[]`
+  per `isKey()`), nicht mehr `lastRevs == 0` -- 0 ist ein gültiger
+  Zählerstand.
 
 ## 6. UI-Anbindung
 
@@ -171,7 +178,9 @@ Ansicht (bei jedem Start ohnehin neu) fällt das nicht ins Gewicht.
   vom Nutzer im Canvas zu prüfen). Der bisherige Debug-Override (immer
   Coasting-Icon, `UIFacade.cpp` TODO 2026-09-19) entfällt damit.
 * `rr_btn_pause` bekommt zusätzlich zum bestehenden `LV_EVENT_LONG_PRESSED`
-  einen `LV_EVENT_CLICKED`-Handler (`action_pause_click()`); das
+  einen `LV_EVENT_SHORT_CLICKED`-Handler (`action_pause_click()`; nicht
+  `CLICKED` -- das schickt LVGL 8 auch nach einem Long-Press, der Stop hätte
+  sofort eine neue Session gestartet); das
   Icon-Kind (`img_rr_icon_pause` vs. neues `img_rr_icon_start`) wechselt
   in `ui_RimRidgeUpdateStateIcon()` mit dem StateIcon zusammen, da beide
   vom selben `rideMode`/`curDriveState` abhängen.
@@ -196,7 +205,9 @@ Ansicht (bei jedem Start ohnehin neu) fällt das nicht ins Gewicht.
   "kein Cadence-Sensor -> gar keinen Coast-Split, immer Power" wurde
   nicht gebaut, um den Explore-Fund nicht auf Verdacht zu erweitern --
   bei Bedarf sauber nachrüstbar.
-* **`dist_in[][]` nicht persistiert** (§5) -- Konsequenz oben beschrieben.
+* **Manuell gesetzter Gesamtkilometerstand** (Odometry-Seite) zählt als
+  Netto-Distanz ohne zugehörige Zeit -- der Total-Durchschnitt ist dadurch
+  zu hoch, solange die Differenz nicht als "lost" eingetragen ist.
 * Kein Host-Test für `Statistics`/`Distance`: beide sind eng mit
   Arduino/ESP32 (Ticker, Preferences, `heap_caps_*`, Singletons)
   verzahnt, anders als `SessionStats`/`RoadQuality`, die bewusst als

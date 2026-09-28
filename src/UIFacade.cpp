@@ -250,13 +250,13 @@ void UIFacade::updateClock(const time_t now) {
 	// Ride time / clock widget (rr_ic_time + rr_time_val), added 2026-09-25
 	// per doc/design/mainscreen.svg's timeGroup. Mode switch rule (this
 	// firmware's own choice - the design doc explicitly leaves it open):
-	// stopwatch showing elapsed ride time while a ride is actually
-	// connected/running (same isConnected() signal updateStateIcon()'s
-	// caller uses to decide DS_NO_CONN), clock-face showing time-of-day the
+	// stopwatch showing elapsed ride time while a ride session is open
+	// (Pause/Start button, doc/design/ride-state-machine.md §4 -- the
+	// SUM_ESP_START time only runs then), clock-face showing time-of-day the
 	// rest of the time (e.g. before a ride starts). elapsedS uses AVG_ALL
-	// so it counts wall-clock time since ride start including stops -
+	// so it counts time since ride start including stops and cruise -
 	// that's "Fahrzeit" here, not moving time.
-	bool stopwatchMode = stats.isConnected();
+	bool stopwatchMode = stats.isRideSessionOpen();
 	uint32_t elapsedS = stats.getTime(Statistics::SUM_ESP_START, Statistics::AVG_ALL);
 	struct tm *lt = localtime(&now);
 	char clockStr[6];

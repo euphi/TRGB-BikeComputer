@@ -27,14 +27,14 @@ public:
 		SUM_FL_TRIP,                // Trip Distance as stored in external device, e. g. FL
 		ESummaryTypeMax
 	};
+	// Which time an average speed divides by -- see getTime() and doc/design/
+	// ride-state-machine.md §5. The distance is always the connected ("net") sensor distance,
+	// so time without a speed sensor (DS_NO_CONN) is never part of it.
 	enum EAvgType {
-		AVG_ALL,
-		AVG_DRIVE,
-		AVG_NOBREAK,   // but Pause/Stop
-		AVG_NOCRUISE,  // Drive + Stop + Break, but without FreeRide/Cruise time -- see
-		               // doc/design/ride-state-machine.md §5. Only SUM_ESP_START normally
-		               // has any DS_FREE_RIDE time to exclude (see the rideSessionOpen gate
-		               // in cycle()); for the other summary types this is close to AVG_ALL.
+		AVG_ALL,       // moving + stops + breaks
+		AVG_DRIVE,     // moving only (Ride, Coast and FreeRide/Cruise)
+		AVG_NOBREAK,   // moving + short stops, without breaks (> 2 min)
+		AVG_NOCRUISE,  // moving in Ride mode only: FreeRide/Cruise time AND distance excluded
 		EAvgTypeMax
 	};
 	// Ride-state FSM -- see doc/design/ride-state-machine.md for the full picture (two
@@ -63,7 +63,6 @@ private:
 	float speed_max[ESummaryTypeMax] = {0.0,0.0,0.0};
 
 	EDrivingState curDriveState = DS_NO_CONN;
-	EDrivingState histDriveState = DS_STOP;
 
 	// Manual ride-mode toggle (Pause/Start button short tap) and the ride-session flag it
 	// opens/closes (long-press "Stop") -- see doc/design/ride-state-machine.md §2/§4.
@@ -74,11 +73,22 @@ private:
 	void applyRideModeToCurrentMovement();	// re-evaluates curDriveState right after rideMode changes, instead of waiting for the next cycle()
 
 	time_t timestamp_last;
-	uint32_t time_in[EDrivingStateMax][ESummaryTypeMax];
-	// Per-state distance, mirrors time_in[][] -- needed so AVG_NOBREAK/AVG_NOCRUISE can
-	// exclude the distance covered while stopped/cruising, not just the time (see §5 of
-	// the design doc). NOT NVS-persisted, unlike time_in[][] -- resets on reboot.
-	float dist_in[EDrivingStateMax][ESummaryTypeMax] = {};
+	uint32_t time_in[EDrivingStateMax][ESummaryTypeMax];	// ms per driving state (NVS-persisted except START)
+	// Time of the current stop so far, per summary type -- what moves from DS_STOP to
+	// DS_BREAK once the stop gets longer than 2 min (only this stop, not older stop time).
+	uint32_t stopEpisodeMs[ESummaryTypeMax] = {};
+	// Distance ridden in DS_FREE_RIDE (FreeRide/Cruise), for AVG_NOCRUISE. Stops/breaks need
+	// no distance of their own -- the distance is the same, only the time differs.
+	float distFree[ESummaryTypeMax] = {};
+	// Average cadence: crank revolutions (in 1/1000) and the time they took, counted only while
+	// moving and pedaling (cadence > 0), i.e. the usual "average cadence without zeros".
+	uint64_t cadMilliRevs[ESummaryTypeMax] = {};
+	uint64_t cadMs[ESummaryTypeMax] = {};
+	// SUM_ESP_START is the ride session: Distance's SUM_ESP_START runs since power-on (log,
+	// navigation, gradient need it monotonic), so the session is a window on it -- the value at
+	// session start, and the session's final distance once it has been stopped.
+	float sessionBaseNet = 0, sessionBaseGross = 0;
+	float sessionEndNet = 0, sessionEndGross = 0;
 	time_t timestamp_stop;
 
 	struct S_DataPoint {
@@ -224,6 +234,8 @@ private:
 	void updateTimeSeries();
 	String generateJSONArray();
 	void setupWebserverDebug();
+	void setupWebserverSummary();
+	static bool isMoving(EDrivingState s) {return s == DS_FREE_RIDE || s == DS_DRIVE_COASTING || s == DS_DRIVE_POWER;}
 	void calculateGradient(float newDist);
 
 	//TODO: Move into separate class
@@ -285,27 +297,21 @@ public:
 	void setConnected(bool connected);
 	void addGradientHeight(float _grad, float _height);
 	void addTemperature(float _temperature);
-	// Per-drive-state distance bucketing (see dist_in[][] above) -- called from
-	// Distance::updateRevs() with the same rev-delta-derived distance it uses for
-	// addSpeed(), so it shares that call's Scenario-1/2 (re)connect handling.
+	// Distance ridden with the sensor connected, called from Distance::updateRevs() (never with
+	// reconnect gaps). Only needed to know the FreeRide/Cruise distance, see distFree[].
 	void addDistanceDelta(float deltaM);
 
 
 	uint32_t getTime(ESummaryType type, EAvgType avgtype) const;
 
 	float getAvg(ESummaryType type, EAvgType avgtype) const;
-	float getAvgCadence(EAvgType avgtype) const;
+	float getAvgCadence(ESummaryType type) const;	// rpm while pedaling, NAN if none
 	int16_t getHr() const {return hr;}
 	float getSpeed() const {return speed;}						// km/h, NAN while disconnected
 	uint32_t getSpeedUpdateMs() const {return speedUpdateMs;}
 	const float getSpeedMax(ESummaryType type) const {return speed_max[type];}
 	uint32_t getDistance(ESummaryType type, bool includeLost = true) const;
 	float getTemp() const {return tempC;}
-private:
-	// dist_in[][]-based distance for the AVG_DRIVE/AVG_NOBREAK/AVG_NOCRUISE filters --
-	// see getAvg()'s doc comment for why AVG_ALL uses getDistance() instead.
-	float getDistanceFiltered(ESummaryType type, EAvgType avgtype) const;
-public:
 
 	static const char* PREF_TIME_STRING[Statistics::EDrivingStateMax];
 	static const char* AVG_TYPE_STRING[Statistics::EAvgTypeMax];

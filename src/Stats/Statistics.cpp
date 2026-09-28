@@ -17,7 +17,7 @@ const char* Statistics::PREF_TIME_STRING[Statistics::EDrivingStateMax] = {
 		"TIME_IN_NOCONN",	//		DS_NO_CONN,
 		"TIME_IN_BREAK",	//		DS_BREAK,
 		"TIME_IN_STOP",		//		DS_STOP,
-		"TIME_IN_FREERIDE",	//		DS_FREE_RIDE,  -- new key, name-keyed NVS storage so old data stays valid
+		"TIME_IN_FREE",		//		DS_FREE_RIDE,  -- new key, name-keyed NVS storage so old data stays valid (NVS keys: max. 15 chars)
 		"TIME_IN_COAST",	//		DS_DRIVE_COASTING,
 		"TIME_IN_DRIVE"		//		DS_DRIVE_POWER,
 };
@@ -99,36 +99,7 @@ void Statistics::setup() {
 		String jsonArray = this->generateJSONArray();
 		request->send(200, "application/json", jsonArray);
 	});
-	// Ride statistics as one document. Used to live as never-populated <span>s on the
-	// wheel-calibration page: the markup was there, nothing ever filled it.
-	webserver.getServer().on("/stat/summary", HTTP_GET, [this](AsyncWebServerRequest *request) {
-		JsonDocument doc;
-		static const char* const kAvg[EAvgTypeMax] = { "ALL", "DRIVE", "NOBREAK", "NOCRUISE" };
-		for (uint_fast8_t t = 0; t <= SUM_ESP_START; t++) {
-			const ESummaryType st = static_cast<ESummaryType>(t);
-			JsonObject o = doc[SUM_TYPE_STRING[t] + 3].to<JsonObject>();	// +3 skips "ST_"
-			o["distance"] = getDistance(st);
-			o["distanceNet"] = getDistance(st, false);		// without the "lost" correction
-			o["maxSpeed"] = getSpeedMax(st);
-			for (uint_fast8_t a = 0; a < EAvgTypeMax; a++) {
-				const EAvgType at = static_cast<EAvgType>(a);
-				o["avgSpeed"][kAvg[a]] = getAvg(st, at);
-				o["time"][kAvg[a]] = getTime(st, at);
-			}
-			for (uint_fast8_t d = 0; d < EDrivingStateMax; d++) {
-				// time_in[][] counts milliseconds (cycle() adds a millis() delta); getTime()
-				// divides by 1000 on the way out, so do the same here or the two sets of
-				// numbers in the same document would be off by a factor of 1000.
-				o["timeIn"][PREF_TIME_STRING[d] + 8] = time_in[d][t] / 1000;	// +8 skips "TIME_IN_"
-			}
-		}
-		for (uint_fast8_t a = 0; a < EAvgTypeMax; a++) {
-			doc["cadence"][kAvg[a]] = getAvgCadence(static_cast<EAvgType>(a));
-		}
-		String json;
-		serializeJson(doc, json);
-		request->send(200, "application/json", json);
-	});
+	setupWebserverSummary();
 	setupWebserverDebug();
 }
 
@@ -156,6 +127,12 @@ String Statistics::generateJSONArray() {
 	return jsonArray;
 }
 
+// NVS keys next to PREF_TIME_STRING[] in the same namespace (max. 15 chars each)
+static const char* const PREF_DIST_FREE = "DIST_FREE";
+static const char* const PREF_SPEED_MAX = "SPEED_MAX";
+static const char* const PREF_CAD_MREVS = "CAD_MREVS";
+static const char* const PREF_CAD_MS    = "CAD_MS";
+
 void Statistics::restoreStats() {
 	for (uint_fast8_t c = 0 ; c < SUM_ESP_START; c++) {
 		StatPreferences[c].begin(SUM_TYPE_STRING[c]);
@@ -163,6 +140,13 @@ void Statistics::restoreStats() {
 			time_in[d][c] = StatPreferences[c].getLong(PREF_TIME_STRING[d], 0);
 			bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Loaded time in %s for %s from preferences: %d", PREF_TIME_STRING[d], SUM_TYPE_STRING[c], time_in[d][c]);
 		}
+		// isKey() first: Preferences logs an [E] line for every missing key otherwise (they
+		// only exist after the first autoStore() that has something to write).
+		Preferences& p = StatPreferences[c];
+		distFree[c]     = p.isKey(PREF_DIST_FREE) ? p.getFloat(PREF_DIST_FREE, 0.0) : 0.0;
+		speed_max[c]    = p.isKey(PREF_SPEED_MAX) ? p.getFloat(PREF_SPEED_MAX, 0.0) : 0.0;
+		cadMilliRevs[c] = p.isKey(PREF_CAD_MREVS) ? p.getULong64(PREF_CAD_MREVS, 0) : 0;
+		cadMs[c]        = p.isKey(PREF_CAD_MS)    ? p.getULong64(PREF_CAD_MS, 0) : 0;
 		//StatPreferences[c].end();
 	}
 }
@@ -170,11 +154,18 @@ void Statistics::restoreStats() {
 void Statistics::autoStore() {
 	bclog.log(BCLogger::Log_Debug, BCLogger::TAG_STAT, "Store distance and time to preferences");
 	for (uint_fast8_t c = 0 ; c < SUM_ESP_START; c++) {
+		Preferences& p = StatPreferences[c];
 		for (uint_fast8_t d = 0 ; d < EDrivingStateMax ; d++) {
-			if (!StatPreferences[c].putLong(PREF_TIME_STRING[d], time_in[d][c])) {
+			if (!p.putLong(PREF_TIME_STRING[d], time_in[d][c])) {
 				bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_STAT, "Can't save time in %s for %s to preferences", PREF_TIME_STRING[d], SUM_TYPE_STRING[c]);
 			}
 		}
+		// These only change while riding -- skip the flash write when nothing changed (and
+		// check isKey() first, see restoreStats()).
+		if (!p.isKey(PREF_DIST_FREE) || p.getFloat(PREF_DIST_FREE, 0.0) != distFree[c])      p.putFloat(PREF_DIST_FREE, distFree[c]);
+		if (!p.isKey(PREF_SPEED_MAX) || p.getFloat(PREF_SPEED_MAX, 0.0) != speed_max[c])     p.putFloat(PREF_SPEED_MAX, speed_max[c]);
+		if (!p.isKey(PREF_CAD_MREVS) || p.getULong64(PREF_CAD_MREVS, 0) != cadMilliRevs[c])  p.putULong64(PREF_CAD_MREVS, cadMilliRevs[c]);
+		if (!p.isKey(PREF_CAD_MS)    || p.getULong64(PREF_CAD_MS, 0) != cadMs[c])            p.putULong64(PREF_CAD_MS, cadMs[c]);
 	}
 	updateTimeSeries();			// FIXME: test only - there may be time or distance mode so maybe move it to cycle or updateRevs.
 	for (uint_fast8_t j=0; j < 4 ; j++) {
@@ -235,6 +226,11 @@ void Statistics::cycle() {
 		// curDriveState may already be DS_FREE_RIDE (device is moving, just not "riding" yet).
 		if (c == SUM_ESP_START && !rideSessionOpen) continue;
 		time_in[curDriveState][c] += delta;
+		if (curDriveState == DS_STOP) stopEpisodeMs[c] += delta;
+		if (isMoving(curDriveState) && cadence > 0) {
+			cadMs[c] += delta;
+			cadMilliRevs[c] += static_cast<uint64_t>(cadence) * delta / 60;	// rpm * ms / 60000 revs, in 1/1000
+		}
 	}
 
 	// Driving state fsm (Connected sub-state). rideMode (manual, Pause/Start button) picks
@@ -243,14 +239,14 @@ void Statistics::cycle() {
 	switch (curDriveState) {
 	case DS_STOP:
 		if ( time_in_break > 120000) {
+			// The stop turned out to be a break: move exactly this stop's time over. (Moving
+			// time_in_break instead took time from older stops whenever this stop wasn't fully
+			// counted as DS_STOP, e.g. after a reconnect or a reset.)
 			for (uint_fast8_t c = SUM_ESP_TOTAL; c <= SUM_ESP_START; c++) {
-				if (time_in[DS_STOP][c] >= time_in_break) {
-					time_in[DS_STOP][c] -= time_in_break;
-				} else { // else path can happen after data reset
-					time_in_break = time_in[DS_STOP][c];
-					time_in[DS_STOP][c] = 0;
-				}
-				time_in[DS_BREAK][c] += time_in_break;
+				uint32_t moved = min(stopEpisodeMs[c], time_in[DS_STOP][c]);
+				time_in[DS_STOP][c] -= moved;
+				time_in[DS_BREAK][c] += moved;
+				stopEpisodeMs[c] = 0;
 			}
 			setCurDriveState(DS_BREAK);
 		}
@@ -368,10 +364,9 @@ void Statistics::toggleRideMode() {
 	if (!rideMode) {
 		if (!rideSessionOpen) {
 			// First Start tap (not a resume from Cruise): open a new ride session and zero
-			// the Start/Ride view. resetDistToZero() also calls reset(SUM_ESP_START) for us
-			// (clears time_in[][SUM_ESP_START] and dist_in[][SUM_ESP_START]).
+			// the Start/Ride view (reset() also takes the session's distance base).
 			rideSessionOpen = true;
-			distHandler.resetDistToZero(SUM_ESP_START);
+			reset(SUM_ESP_START);
 			bclog.log(BCLogger::Log_Info, BCLogger::TAG_STAT, "Ride session started");
 		}
 		rideMode = true;
@@ -383,6 +378,9 @@ void Statistics::toggleRideMode() {
 }
 
 void Statistics::stopRide() {
+	// Keep the finished session's distance on show; the time already stops accumulating.
+	sessionEndNet = distHandler.getDistance(SUM_ESP_START, false) - sessionBaseNet;
+	sessionEndGross = distHandler.getDistance(SUM_ESP_START, true) - sessionBaseGross;
 	rideMode = false;
 	rideSessionOpen = false;
 	applyRideModeToCurrentMovement();
@@ -402,13 +400,15 @@ void Statistics::handlePauseButtonHold() {
 
 void Statistics::setConnected(bool connected) {
 	if (connected && (curDriveState == DS_NO_CONN)) {
-		setCurDriveState(histDriveState);
+		// Always resume as a fresh stop: there's no speed yet, and the state from before the
+		// disconnect (possibly "moving" an hour ago) would count time as moving until the first
+		// speed arrives. The usual >5.5 km/h check then picks the moving state.
+		setCurDriveState(DS_STOP);
 		bclog.log(BCLogger::Log_Info, BCLogger::TAG_STAT, "Connected to speed sensor - counting time");
 	}
 	if (!connected && curDriveState != DS_NO_CONN) {
 		addSpeed(NAN);
 		bclog.log(BCLogger::Log_Info, BCLogger::TAG_STAT, "Disconnected from speed sensor - stop time counters");
-		histDriveState = curDriveState;
 		setCurDriveState(DS_NO_CONN);
 	}
 }
@@ -495,8 +495,13 @@ void Statistics::addHR(int16_t _hr) {
 void Statistics::addSpeed(float _speed) {
 	speed = _speed;
 	speedUpdateMs = millis();
-	for (uint_fast8_t i = 0; i<= SUM_ESP_START; i++) {
-		if (speed_max[i] < speed) speed_max[i] = speed;
+	// Plausibility cap: a single bad sample (e.g. the 16-bit 1/1024s event time wrapping after a
+	// long gap between notifications) would otherwise stick as the max forever -- it's persisted.
+	if (speed <= 120.0) {
+		for (uint_fast8_t i = 0; i<= SUM_ESP_START; i++) {
+			if (i == SUM_ESP_START && !rideSessionOpen) continue;
+			if (speed_max[i] < speed) speed_max[i] = speed;
+		}
 	}
 
 	addFloatToDatapoint(distanceData.currentMinMax.speed, speed);
@@ -509,14 +514,11 @@ void Statistics::addSpeed(float _speed) {
 }
 
 void Statistics::addDistanceDelta(float deltaM) {
-	// Mirrors cycle()'s time_in[][] += delta loop (same SUM_ESP_START gate, see §4 of the
-	// design doc) -- called from Distance::updateRevs() with the same rev-delta-derived
-	// distance it already trusts for addSpeed(), so reconnect/first-call spikes are already
-	// handled there (deltaM comes out 0 on those calls).
-	if (!(deltaM > 0)) return;	// also excludes NAN
+	// Same SUM_ESP_START gate as cycle()'s time_in[][] (§4 of the design doc).
+	if (!(deltaM > 0) || curDriveState != DS_FREE_RIDE) return;	// also excludes NAN
 	for (uint_fast8_t c = SUM_ESP_TOTAL; c <= SUM_ESP_START; c++) {
 		if (c == SUM_ESP_START && !rideSessionOpen) continue;
-		dist_in[curDriveState][c] += deltaM;
+		distFree[c] += deltaM;
 	}
 }
 
@@ -716,8 +718,13 @@ uint32_t Statistics::getDistance(ESummaryType type, bool includeLost) const {
 	case SUM_ESP_TOTAL:
 	case SUM_ESP_TOUR:
 	case SUM_ESP_TRIP:
-	case SUM_ESP_START:
 		return distHandler.getDistance(type, includeLost);
+	case SUM_ESP_START: {
+		// Ride session window on Distance's since-power-on counter (see sessionBaseNet).
+		if (!rideSessionOpen) return includeLost ? sessionEndGross : sessionEndNet;
+		float d = distHandler.getDistance(type, includeLost) - (includeLost ? sessionBaseGross : sessionBaseNet);
+		return d > 0 ? d : 0;
+	}
 #ifdef BC_FL_SUPPORT
 	//FIXME FL_ Distance handling
 	case SUM_FL_TRIP:
@@ -735,82 +742,108 @@ uint32_t Statistics::getDistance(ESummaryType type, bool includeLost) const {
 void Statistics::reset(ESummaryType type) {	//TODO: Move to DistanceHandler
 	for (uint_fast8_t d = 0; d < EDrivingStateMax; d++) {
 		time_in[d][type] = 0;
-		dist_in[d][type] = 0;
+	}
+	stopEpisodeMs[type] = 0;
+	distFree[type] = 0;
+	speed_max[type] = 0;
+	cadMilliRevs[type] = 0;
+	cadMs[type] = 0;
+	if (type == SUM_ESP_START) {
+		sessionBaseNet = distHandler.getDistance(SUM_ESP_START, false);
+		sessionBaseGross = distHandler.getDistance(SUM_ESP_START, true);
+		sessionEndNet = sessionEndGross = 0;
 	}
 }
 
 void Statistics::setCurDriveState(EDrivingState _curDriveState) {
 	curDriveState = _curDriveState;
-	if (_curDriveState == DS_STOP) timestamp_stop = millis();
+	if (_curDriveState == DS_STOP) {
+		timestamp_stop = millis();
+		for (uint_fast8_t c = 0; c < ESummaryTypeMax; c++) stopEpisodeMs[c] = 0;
+	}
 	bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Driving state changed to %s", (PREF_TIME_STRING[curDriveState]+8));
 }
 
 uint32_t Statistics::getTime(ESummaryType type, EAvgType avgtype) const {
-	//TODO: uint32_t is too short for time in msec (roll-over every 7 weeks)
-	// Staircase: AVG_ALL ⊃ AVG_NOCRUISE ⊃ AVG_NOBREAK ⊃ AVG_DRIVE -- see
-	// doc/design/ride-state-machine.md §5.
-	uint32_t relevantTime = time_in[DS_DRIVE_COASTING][type] + time_in[DS_DRIVE_POWER][type];
+	// Only time with a connected speed sensor counts -- DS_NO_CONN never does (the distance
+	// ridden then is "lost" distance, see Distance::updateRevs(), and not in the net distance
+	// getAvg() divides). Coast vs. Power is display-only and makes no difference here.
+	// Summed in 64 bit: each bucket is a uint32_t of ms (~1193 h), the sum would wrap earlier.
+	const uint64_t ride = static_cast<uint64_t>(time_in[DS_DRIVE_COASTING][type]) + time_in[DS_DRIVE_POWER][type];
+	const uint64_t moving = ride + time_in[DS_FREE_RIDE][type];
+	uint64_t t = 0;
 	switch (avgtype) {
-	case AVG_ALL:
-		relevantTime += time_in[DS_FREE_RIDE][type];
-		//no break
-	case AVG_NOCRUISE:
-		relevantTime += time_in[DS_BREAK][type];
-		//no break
-	case AVG_NOBREAK:
-		relevantTime += time_in[DS_STOP][type];
-		//no break
-	case AVG_DRIVE:
-		break;
+	case AVG_NOCRUISE: t = ride; break;
+	case AVG_DRIVE:    t = moving; break;
+	case AVG_NOBREAK:  t = moving + time_in[DS_STOP][type]; break;
+	case AVG_ALL:      t = moving + time_in[DS_STOP][type] + time_in[DS_BREAK][type]; break;
+	default: break;
 	}
-	return relevantTime/1000;		//msec to sec
-}
-
-float Statistics::getDistanceFiltered(ESummaryType type, EAvgType avgtype) const {
-	// Same staircase as getTime(), but over dist_in[][] -- see that array's doc comment in
-	// Statistics.h for why this exists (and why it's not used for AVG_ALL, see getAvg()).
-	float d = dist_in[DS_DRIVE_COASTING][type] + dist_in[DS_DRIVE_POWER][type];
-	switch (avgtype) {
-	case AVG_ALL:
-		d += dist_in[DS_FREE_RIDE][type];
-		//no break
-	case AVG_NOCRUISE:
-		d += dist_in[DS_BREAK][type];
-		//no break
-	case AVG_NOBREAK:
-		d += dist_in[DS_STOP][type];
-		//no break
-	case AVG_DRIVE:
-		break;
-	}
-	return d;
+	return static_cast<uint32_t>(t / 1000);		//msec to sec
 }
 
 float Statistics::getAvg(ESummaryType type, EAvgType avgtype) const {
-	//FIXME: avg does not take into account distance in no connection. There should be at least a mechanism to compensate distance in NO_CONN
-	//TRACE: Serial.print(getDistance(type)); Serial.print('\t');Serial.println(relevantTime);
-
-	// AVG_ALL keeps using the robust, NVS-persisted, loss-corrected Distance::getDistance()
-	// (via getDistance() below); the filtered views (AVG_DRIVE/AVG_NOBREAK/AVG_NOCRUISE) use
-	// the non-persisted per-state dist_in[][] breakdown instead, since excluding e.g. Cruise
-	// distance has no equivalent in the plain running total. See doc/design/
-	// ride-state-machine.md §5 for the persistence trade-off this implies.
-	float distM = (avgtype == AVG_ALL) ? getDistance(type, false) : getDistanceFiltered(type, avgtype);
-
-	//        .. in m         / sec                     * 3.6 km/h / m/s..
-	return (distM / static_cast<float>(getTime(type, avgtype))) * 3.6;
-
+	// Net distance: what the sensor counted while connected, i.e. exactly the distance the
+	// recorded time belongs to. Stops and breaks add time but (almost) no distance, so the
+	// variants only differ in the time -- except AVG_NOCRUISE, which leaves out the
+	// FreeRide/Cruise distance as well as its time.
+	const uint32_t t = getTime(type, avgtype);
+	if (t == 0) return NAN;
+	float distM = getDistance(type, false);
+	if (avgtype == AVG_NOCRUISE) {
+		distM -= distFree[type];
+		if (distM < 0) distM = 0;
+	}
+	//        .. in m / sec  * 3.6 km/h / m/s..
+	return (distM / static_cast<float>(t)) * 3.6;
 }
 
-float Statistics::getAvgCadence(EAvgType avgtype) const {
-	//FIXME: Calculation is totally wrong...
-	//			Start total cadence needs to be stored per summary type.
-	//			Time: Depends, but cadence sensors counts even if disconnected, so it should be accurate to use. Meaningful is value only during driving (including and excluding coasting).
-	//TRACE: Serial.print(getDistance(type)); Serial.print('\t');Serial.println(relevantTime);
+float Statistics::getAvgCadence(ESummaryType type) const {
+	if (cadMs[type] == 0) return NAN;
+	// milli-revs / ms = revs/s * ... -> rpm = revs / min = (mrevs/1000) / (ms/60000)
+	return static_cast<float>(cadMilliRevs[type]) * 60.0f / static_cast<float>(cadMs[type]);
+}
 
-	//        .. in m         / sec                             * 3.6 km/h / m/s..
-		return (cadence_tot / static_cast<float>(getTime(SUM_ESP_START, avgtype)) ) * 3.6;
-
+void Statistics::setupWebserverSummary() {
+	// Ride statistics as one document, read by /stat/statistics.html. Times in seconds,
+	// distances in m, speeds in km/h; NAN (no time yet) serializes as null.
+	webserver.getServer().on("/stat/summary", HTTP_GET, [this](AsyncWebServerRequest *request) {
+		JsonDocument doc;
+		JsonObject st = doc["state"].to<JsonObject>();
+		st["drive"] = PREF_TIME_STRING[curDriveState] + 8;		// +8 skips "TIME_IN_"
+		st["connected"] = isConnected();
+		st["rideMode"] = rideMode;
+		st["session"] = rideSessionOpen;
+		static const char* const kAvg[EAvgTypeMax] = { "ALL", "DRIVE", "NOBREAK", "NOCRUISE" };
+		for (uint_fast8_t t = 0; t <= SUM_ESP_START; t++) {
+			const ESummaryType sType = static_cast<ESummaryType>(t);
+			JsonObject o = doc[SUM_TYPE_STRING[t] + 3].to<JsonObject>();	// +3 skips "ST_"
+			const uint32_t net = getDistance(sType, false);
+			const uint32_t gross = getDistance(sType, true);
+			JsonObject d = o["dist"].to<JsonObject>();
+			d["net"] = net;
+			d["lost"] = gross > net ? gross - net : 0;
+			d["cruise"] = static_cast<uint32_t>(distFree[t]);
+			JsonObject tm = o["time"].to<JsonObject>();
+			tm["moving"] = getTime(sType, AVG_DRIVE);
+			tm["ride"]   = getTime(sType, AVG_NOCRUISE);
+			tm["cruise"] = time_in[DS_FREE_RIDE][t] / 1000;
+			tm["coast"]  = time_in[DS_DRIVE_COASTING][t] / 1000;
+			tm["stops"]  = time_in[DS_STOP][t] / 1000;
+			tm["breaks"] = time_in[DS_BREAK][t] / 1000;
+			tm["total"]  = getTime(sType, AVG_ALL);
+			tm["noconn"] = time_in[DS_NO_CONN][t] / 1000;		// BC on without speed sensor -- not ride time
+			JsonObject a = o["avg"].to<JsonObject>();
+			for (uint_fast8_t k = 0; k < EAvgTypeMax; k++) {
+				a[kAvg[k]] = getAvg(sType, static_cast<EAvgType>(k));
+			}
+			o["maxSpeed"] = getSpeedMax(sType);
+			o["cadence"] = getAvgCadence(sType);
+		}
+		String json;
+		serializeJson(doc, json);
+		request->send(200, "application/json", json);
+	});
 }
 
 void Statistics::setupWebserverDebug() {

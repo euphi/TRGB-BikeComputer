@@ -8,22 +8,53 @@
   <style>
     .wrap { overflow-x:auto; }
     td.num, th.num { text-align:right; white-space:nowrap; }
+    tr.sec th { padding-top:18px; color:var(--rr-parchment-bright); letter-spacing:0.12em; }
+    tr.sub td:first-child { color:var(--rr-muted); padding-left:22px; }
+    tr.key td { color:var(--rr-parchment-bright); font-weight:600; }
+    th .colstate { display:block; margin-top:3px; color:var(--rr-muted); letter-spacing:0.04em; }
+    .chips { display:flex; flex-wrap:wrap; gap:8px; justify-content:center; margin:6px 0 4px; }
+    .chip { font-family:'IBM Plex Mono', monospace; font-size:0.72rem; padding:4px 10px;
+            border-radius:999px; border:1px solid var(--rr-brass-dim); background:var(--rr-panel-2);
+            color:var(--rr-parchment); }
+    .chip b { color:var(--rr-muted); font-weight:500; margin-right:4px; }
+    .chip.ok   { border-color:var(--rr-ok); }
+    .chip.warn { border-color:var(--rr-warn); }
+    .notes { margin-top:18px; font-size:0.8rem; color:var(--rr-muted); line-height:1.45; }
+    .notes dt { color:var(--rr-parchment); margin-top:8px; }
+    .notes dd { margin:2px 0 0 0; }
+    #err { display:none; color:var(--rr-err); text-align:center; font-size:0.84rem; }
   </style>
 </head>
 <body>
-  <div class="container" style="max-width:720px;">
+  <div class="container" style="max-width:760px;">
     <h2>Ride Statistics</h2>
-    <p class="eyebrow">Total is the lifetime odometer; Tour and Trip are the resettable
-      counters; Since Start covers this power-on.</p>
+    <div class="chips" id="chips"></div>
+    <p id="err">No connection to the bike computer.</p>
 
     <div class="wrap">
       <table>
-        <thead><tr><th></th><th class="num">Total</th><th class="num">Tour</th>
-          <th class="num">Trip</th><th class="num">Since Start</th></tr></thead>
+        <thead><tr><th></th>
+          <th class="num">Total</th><th class="num">Tour</th><th class="num">Trip</th>
+          <th class="num">Ride<span class="colstate" id="rideState"></span></th></tr></thead>
         <tbody id="body"></tbody>
       </table>
     </div>
-    <p class="eyebrow" id="cadence" style="margin-top:12px;"></p>
+
+    <dl class="notes">
+      <dt>Moving time</dt>
+      <dd>Time in which the speed sensor delivers distance, including coasting and cruise.
+        Time without a connected speed sensor is never counted.</dd>
+      <dt>Distance without sensor</dt>
+      <dd>Distance the wheel counter advanced while the bike computer was off or the sensor
+        disconnected. It is part of the distance, but not of any average &mdash; there is no time for it.</dd>
+      <dt>Averages</dt>
+      <dd>Distance with sensor divided by moving time; &ldquo;incl. stops&rdquo; adds short stops,
+        &ldquo;incl. breaks&rdquo; adds stops longer than 2&nbsp;min as well. &ldquo;Ride mode only&rdquo;
+        leaves out cruise / free-ride distance and time (Pause button).</dd>
+      <dt>Ride</dt>
+      <dd>The ride session started with the Start button and ended with a long press on it.
+        After the end it keeps showing the finished ride until the next start.</dd>
+    </dl>
 
     <div class="row" style="margin-top:20px;">
       <a class="btn btn-ghost" href="/stat/odometry.html" onclick="if(history.length>1){history.back();return false;}">Back</a>
@@ -32,45 +63,75 @@
 
   <script>
     const COLS = ['TOTAL', 'TOUR', 'TRIP', 'START'];
+    const DASH = '&ndash;';
+    const ok = v => v !== null && v !== undefined && !Number.isNaN(v);
 
-    function km(m)  { return (m / 1000).toFixed(2); }
-    function kmh(v) { return (v === null || v === undefined || isNaN(v)) ? '-' : v.toFixed(1); }
+    function km(m)  { return ok(m) ? (m / 1000).toFixed(2) : DASH; }
+    function kmh(v) { return ok(v) ? v.toFixed(1) : DASH; }
+    function rpm(v) { return ok(v) ? v.toFixed(0) : DASH; }
     function hms(s) {
-      if (s === null || s === undefined || isNaN(s)) return '-';
+      if (!ok(s)) return DASH;
       const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
       return h + ':' + String(m).padStart(2, '0') + ':' + String(Math.floor(s % 60)).padStart(2, '0');
     }
 
-    // label -> how to pull that row's value out of one column's object
+    // [label, getter, row class]; a string entry starts a section
     const ROWS = [
-      ['Distance (km)',            d => km(d.distance)],
-      ['Distance net (km)',        d => km(d.distanceNet)],
-      ['Max speed (km/h)',         d => kmh(d.maxSpeed)],
-      ['Avg speed, all (km/h)',    d => kmh(d.avgSpeed.ALL)],
-      ['Avg speed, moving (km/h)', d => kmh(d.avgSpeed.DRIVE)],
-      ['Avg speed, no break',      d => kmh(d.avgSpeed.NOBREAK)],
-      ['Time, all',                d => hms(d.time.ALL)],
-      ['Time, moving',             d => hms(d.time.DRIVE)],
-      ['Time, no break',           d => hms(d.time.NOBREAK)],
-      ['… powered',                d => hms(d.timeIn.DRIVE)],
-      ['… coasting',               d => hms(d.timeIn.COAST)],
-      ['… stopped',                d => hms(d.timeIn.STOP)],
-      ['… break',                  d => hms(d.timeIn.BREAK)],
-      ['… no connection',          d => hms(d.timeIn.NOCONN)],
+      'Distance (km)',
+      ['Distance',                 d => km(d.dist.net + d.dist.lost), 'key'],
+      ['with sensor',              d => km(d.dist.net),    'sub'],
+      ['without sensor',           d => km(d.dist.lost),   'sub'],
+      ['of it cruise',             d => km(d.dist.cruise), 'sub'],
+      'Average speed (km/h)',
+      ['Moving',                   d => kmh(d.avg.DRIVE),  'key'],
+      ['incl. stops',              d => kmh(d.avg.NOBREAK)],
+      ['incl. stops and breaks',   d => kmh(d.avg.ALL)],
+      ['Ride mode only',           d => kmh(d.avg.NOCRUISE)],
+      ['Max speed',                d => kmh(d.maxSpeed)],
+      'Time',
+      ['Moving',                   d => hms(d.time.moving), 'key'],
+      ['of it cruise',             d => hms(d.time.cruise), 'sub'],
+      ['of it coasting',           d => hms(d.time.coast),  'sub'],
+      ['Stops',                    d => hms(d.time.stops)],
+      ['Breaks (> 2 min)',         d => hms(d.time.breaks)],
+      ['Total',                    d => hms(d.time.total)],
+      'Cadence (rpm)',
+      ['Average while pedaling',   d => rpm(d.cadence)],
     ];
 
+    const STATE = { NOCONN:'no sensor', BREAK:'break', STOP:'stopped', FREE:'free ride / cruise',
+                    COAST:'coasting', DRIVE:'pedaling' };
+
+    function chip(label, value, cls) {
+      return '<span class="chip ' + (cls || '') + '"><b>' + label + '</b>' + value + '</span>';
+    }
+
+    function render(s) {
+      const st = s.state;
+      document.getElementById('chips').innerHTML =
+        chip('Sensor', st.connected ? 'connected' : 'not connected', st.connected ? 'ok' : 'warn') +
+        chip('State', STATE[st.drive] || st.drive) +
+        chip('Mode', st.rideMode ? 'Ride' : (st.session ? 'Cruise' : 'Free ride'), st.rideMode ? 'ok' : '') +
+        chip('Session', st.session ? 'running' : 'none');
+      document.getElementById('rideState').textContent = st.session ? 'running' : 'not running';
+
+      document.getElementById('body').innerHTML = ROWS.map(r => {
+        if (typeof r === 'string') return '<tr class="sec"><th colspan="5">' + r + '</th></tr>';
+        const [label, get, cls] = r;
+        return '<tr class="' + (cls || '') + '"><td>' + label + '</td>' +
+          COLS.map(c => '<td class="num">' + (s[c] ? get(s[c]) : DASH) + '</td>').join('') + '</tr>';
+      }).join('');
+    }
+
     async function load() {
-      let s;
-      try { s = await (await fetch('/stat/summary')).json(); }
-      catch (x) { return; }
-      document.getElementById('body').innerHTML = ROWS.map(([label, get]) =>
-        '<tr><td>' + label + '</td>' +
-        COLS.map(c => '<td class="num">' + (s[c] ? get(s[c]) : '-') + '</td>').join('') +
-        '</tr>').join('');
-      document.getElementById('cadence').textContent =
-        'Average cadence — all: ' + kmh(s.cadence.ALL) +
-        ', moving: ' + kmh(s.cadence.DRIVE) +
-        ', no break: ' + kmh(s.cadence.NOBREAK) + ' rpm';
+      const err = document.getElementById('err');
+      try {
+        const r = await fetch('/stat/summary');
+        render(await r.json());
+        err.style.display = 'none';
+      } catch (x) {
+        err.style.display = 'block';
+      }
     }
 
     load();

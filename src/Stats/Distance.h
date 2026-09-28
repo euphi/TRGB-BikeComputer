@@ -33,14 +33,18 @@ public:
 
 private:
 	float wheel_c = NAN;											// wheel_c as loaded from NVS
-	float distanceFromNVS[Statistics::SUM_ESP_TRIP + 1] = {NAN};		// total distance as loaded from NVS
-	float lostDistanceFromNVS[Statistics::SUM_ESP_START + 1] = {0};
-	uint32_t revsFromNVS[Statistics::SUM_ESP_START + 1] = {0};	// total revs as loaded from NVS
+	// Base distance at revsFromNVS[] -- loaded from NVS for TOTAL, TOUR, TRIP; for START (since
+	// power-on, never stored) it starts at 0 and only moves when the sensor counter is rebased.
+	float distanceFromNVS[Statistics::SUM_ESP_START + 1] = {0};
+	float lostDistanceFromNVS[Statistics::SUM_ESP_START + 1] = {0};	// part of the distance ridden without the BC connected (no time for it)
+	uint32_t revsFromNVS[Statistics::SUM_ESP_START + 1] = {0};	// sensor revs at distanceFromNVS[]
+	bool revsKnown[Statistics::SUM_ESP_START + 1] = {false};	// revsFromNVS[] is a real sensor value (stored in NVS or received), not just "nothing stored yet"
 
 	float curTotalDistance[Statistics::SUM_ESP_START + 1] = {NAN};	// current, actual distance for TOTAL, TOUR, TRIP (stored distance + (current revs - stored revs) * wheel_c)
 
 	// Internal data to manage updates
 	uint32_t lastRevs = 0;
+	bool revsInitialized = false;	// lastRevs holds a received value -- 0 is a legal counter value for sensors that restart at 0
 	uint32_t last_speedUpdate = 0;
 	uint16_t lastTimestamp = 0;
 	uint8_t currentBikeIdx=0;
@@ -52,6 +56,7 @@ private:
 
 	void storeDistanceAndResetRevs(bool resetRevs=false);		// stores current distance and reset rev count (needed for change of wheel circumference)
 	void updateLostRevs(const uint32_t lostRevs);
+	void rebaseCounterRestart(bool asLost, uint32_t revs);
 
 	void setupWebserver();
 };

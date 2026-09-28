@@ -58,103 +58,102 @@ void Distance::loadDistanceForBikeIdx(uint8_t idx) {
 			bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_STAT, "%s: Loaded distance from NVS invalid (NAN) - setting to zero.", Statistics::SUM_TYPE_STRING[j]);
 			distanceFromNVS[j] = 0.0;
 		}
+		revsKnown[j] = storedDist.isKey("revs");
 		revsFromNVS[j] = storedDist.getULong("revs", 0);
 		storedDist.end();
 		curTotalDistance[j] = distanceFromNVS[j];
 		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "%s: Loaded %s total distance %.2fm at %d revs.",
 				Statistics::SUM_TYPE_STRING[j], prefString.c_str(), distanceFromNVS[j], revsFromNVS[j]);
 	}
+	distanceFromNVS[Statistics::SUM_ESP_START] = 0.0;	// since power-on
+	curTotalDistance[Statistics::SUM_ESP_START] = 0.0;
 }
 
 void Distance::updateRevs(uint32_t revs, uint16_t timestamp) {
 	bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_STAT, "%d revs at %d ticks", revs, timestamp);
 
-	/* Scenario:
-	 * 1. First called after startup, revs > 0
-	 *    --> Start must initialize to revs. If no value (=0) is stored for TOTAL/TOUR/TRIP, also set to revs
-	 *    --> Also the lastRevs must be updated to revs, to avoid a large spike in speed for first calculation --> done in Scenerio 2 which is also triggered
-	 *    --> Also lost revs must be calculated, but different to scenario 2.
+	/* Distance vs. time: every revolution counts as distance, but only revolutions received
+	 * while the sensor is connected have ride time to go with them (Statistics::cycle() counts
+	 * no time in DS_NO_CONN). Revolutions made while the BC was off or the sensor disconnected
+	 * are added to the distance AND to lostDistanceFromNVS[], so the "net" distance
+	 * (Distance::getDistance(t, false)) stays the part that matches the recorded time -- that
+	 * is what the average speeds divide.
 	 *
-	 *    === Trigger: lastRevs == 0
-	 *    */
-	if (lastRevs == 0) {  // Scenario 1, in Scen1 also Scenario 2 is triggered, so it shall not interfere with Scen2 calculations
-		bclog.log(BCLogger::Log_Debug, BCLogger::TAG_STAT, "Initialize revs counters");
+	 * Two kinds of sensors: most keep their cumulative wheel revs across reconnects; cheap ones
+	 * (e.g. CYCPLUS) restart at 0 whenever they wake up. Since connecting takes a moment, such
+	 * a sensor rarely reports exactly 0 on the first message, rather a small count -- which
+	 * was ridden, so it is counted (as lost distance if the BC was not connected for it). */
+
+	// Scenario 1: first message after power-on.
+	if (!revsInitialized) {
 		for (uint_fast8_t j = 0; j <= Statistics::SUM_ESP_START; j++) {
-			// If stored rev value is zero and the last known value is also zero, assume it is a reset.
-			//    --> After startup, this is always the case for SUM_ESP_START
-			if (revsFromNVS[j] == 0) {
-				revsFromNVS[j] = revs;
-			} else if (revsFromNVS[j] < revs) {
+			if (j == Statistics::SUM_ESP_START || !revsKnown[j]) {
+				revsFromNVS[j] = revs;		// START counts from power-on; the others have nothing stored yet
+			} else if (revs >= revsFromNVS[j]) {
 				uint32_t lostRevs = revs - revsFromNVS[j];
 				float lostDist = lostRevs * wheel_c;
-				lostDistanceFromNVS[j] += lostDist;
-				bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Lost distance for %s while switched off: %d revs -> %.1f m --> total %.1f",
+				lostDistanceFromNVS[j] += lostDist;		// curTotalDistance[] below includes it via revs - revsFromNVS[j]
+				bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "%s: %d revs (%.1f m) ridden while switched off --> lost total %.1f m",
 						(Statistics::SUM_TYPE_STRING[j] + 3), lostRevs, lostDist, lostDistanceFromNVS[j]);
-			} else if (revsFromNVS[j] == revs) {
-				bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "No distance lost in disconnect: %d = %d", revs, revsFromNVS[j]);
-			} else { // --> revsFromNVS[j] > revs
-				bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_STAT, "Stored revs (%d) greater than revs stored in sensor (%d) - has sensor been reset?", revsFromNVS[j], revs);
+			} else {
+				// Counter restarted since the value was stored: all of the current count was ridden without the BC.
 				float lostDist = revs * wheel_c;
+				bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_STAT, "%s: stored revs (%d) greater than sensor revs (%d) - sensor restarted its counter, %.1f m counted as lost",
+						(Statistics::SUM_TYPE_STRING[j] + 3), revsFromNVS[j], revs, lostDist);
+				distanceFromNVS[j] += lostDist;
 				lostDistanceFromNVS[j] += lostDist;
 				revsFromNVS[j] = revs;
 			}
+			revsKnown[j] = true;
 		}
-	}
-	/* Scenario:
-	 * 2. Reconnect after connection loss
-	 *    a) revs do not reset
-	 *       --> TOTAL/TOUR/TRIP shall be updated with "lost" distance
-	 *
-	 *    b) revs are reset
-	 *       --> Total distance must be updated with old values
-	 *
-	 *    === TRIGGER: revs received, but not connected
- 	 */
-	if (revs < lastRevs) {	// Scenario 2 b
-		bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_STAT, "Received revs %d smaller than stored (%d). Your CSC sensor seems to loose distance info on reconnect.", revs, lastRevs);
-		// My cheap CYCPLUS CSC sensor does not store cumulative wheel revs. Every reconnect it starts with 0.. To mitigate impact, store the distance and ignore the update.
-		// Note: The Magene CSC sensors (that cost a little bit more, but are still quite cheap) do not show this behaviour.
-		lastRevs = revs;
-		storeDistanceAndResetRevs(true);
-		//TODO: Show message box and let user decide if to update
-	}
-	// Scenario 2 a & b (in case of b, lastrevs is already set to revs, so delta is 0.
-	if (!stats.isConnected()) {
-		if (lastRevs > 0) {		// Not in Scenario 1, because Scenario 1 has own logic for lost distance
-			int32_t lostRevs = revs - lastRevs;
-			bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Reconnect: Lost %d revs of distance.", lostRevs);
-			if (lostRevs < 0) lostRevs = 0;
-			updateLostRevs(lostRevs);
-		}
-		lastRevs = revs;	// no spike in speed
-		stats.setConnected(true);
+		lastRevs = revs;		// no delta, no speed spike on the first message
+		lastTimestamp = timestamp;
+		revsInitialized = true;
 	}
 
-	/* Scenario
-	 * 3. Normal Update (includes scen 1 & 2)
-	 */
+	uint32_t riddenRevs = 0;		// revolutions to count as ridden with the sensor connected (time and distance)
+	bool speedSample = true;		// revs/timestamp delta is a real measurement interval
+	if (revs < lastRevs) {
+		// Scenario 2b: the sensor restarted its counter. On a reconnect the new count was
+		// ridden while disconnected (lost); while connected it's just normal riding.
+		const bool asLost = !stats.isConnected();
+		bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_STAT, "Received revs %d smaller than last (%d) - sensor restarted its counter (%s).",
+				revs, lastRevs, asLost ? "reconnect, counted as lost distance" : "while connected");
+		rebaseCounterRestart(asLost, revs);
+		if (!asLost) riddenRevs = revs;
+		speedSample = false;		// the ticks restarted as well
+	} else if (!stats.isConnected()) {
+		// Scenario 2a: reconnect, counter kept running -- the gap was ridden without the BC.
+		if (revs > lastRevs) updateLostRevs(revs - lastRevs);
+		speedSample = false;
+	} else {
+		riddenRevs = revs - lastRevs;
+	}
+	if (!stats.isConnected()) stats.setConnected(true);
+
+	// Scenario 3: normal update (also the tail of 1 and 2)
 	for (uint_fast8_t j=0; j <= Statistics::SUM_ESP_START; j++) {
-		curTotalDistance[j] = ( (j == Statistics::SUM_ESP_START) ? 0.0 : distanceFromNVS[j] ) + ( (revs - revsFromNVS[j]) * wheel_c);
+		curTotalDistance[j] = distanceFromNVS[j] + ( (revs - revsFromNVS[j]) * wheel_c);
 	}
 	bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_STAT, "New distance in total: %.2fm\tTour: %.2fm\tTrip: %.2fm\tStart: %.2fm",
 			curTotalDistance[Statistics::SUM_ESP_TOTAL], curTotalDistance[Statistics::SUM_ESP_TOUR], curTotalDistance[Statistics::SUM_ESP_TRIP], curTotalDistance[Statistics::SUM_ESP_START]);
 
 	stats.checkDistance(curTotalDistance[Statistics::SUM_ESP_START]);
 
-	// Per-drive-state distance bucketing (Stop/Break/Cruise-exclusion for average speed --
-	// see doc/design/ride-state-machine.md §5). Same "revs since last call" quantity the
-	// speed calculation below uses, so Scenario 1/2's lastRevs bookkeeping above already
-	// keeps this from spiking on the first call after boot or a sensor reconnect.
-	if (revs > lastRevs) {
-		stats.addDistanceDelta((revs - lastRevs) * wheel_c);
+	// Cruise/FreeRide distance for Statistics' "without cruise" average -- same connected-only
+	// revs as the speed below, so reconnect gaps (lost distance) never end up in it.
+	if (riddenRevs > 0) {
+		stats.addDistanceDelta(riddenRevs * wheel_c);
 	}
 
 	// If timestamp is zero, revs have been transmitted without timestamp (e.g. in FL mode) --> no speed calculation possible (here)
 	if (timestamp > 0) {
-		float newSpeed = calculateSpeed(revs - lastRevs, timestamp - lastTimestamp);
-		if (!isnan(newSpeed)) {
-			bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_STAT, "New speed %.2f", newSpeed);
-			stats.addSpeed(newSpeed);
+		if (speedSample) {
+			float newSpeed = calculateSpeed(riddenRevs, timestamp - lastTimestamp);
+			if (!isnan(newSpeed)) {
+				bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_STAT, "New speed %.2f", newSpeed);
+				stats.addSpeed(newSpeed);
+			}
 		}
 		lastTimestamp = timestamp;
 	}
@@ -169,6 +168,22 @@ void Distance::updateRevsFL(uint32_t revs, float pulses_per_s) {
 	stats.addSpeed(newSpeed);
 }
 #endif
+
+// Sensor counter restarted (revs < lastRevs): make the current count the new base without
+// losing what was counted before, and count the new revs as ridden -- as lost distance if the
+// BC wasn't connected for them (asLost). curTotalDistance[] still holds the value at lastRevs.
+void Distance::rebaseCounterRestart(bool asLost, uint32_t revs) {
+	for (uint_fast8_t j = 0; j <= Statistics::SUM_ESP_START; j++) {
+		distanceFromNVS[j] = curTotalDistance[j];
+		revsFromNVS[j] = 0;		// curTotalDistance = base + revs * wheel_c from here on
+	}
+	if (asLost && revs > 0) updateLostRevs(revs);
+	lastRevs = revs;
+	for (uint_fast8_t j = 0; j <= Statistics::SUM_ESP_START; j++) {
+		curTotalDistance[j] = distanceFromNVS[j] + revs * wheel_c;
+	}
+	storeDistanceAndResetRevs(false);		// persist right away, the stored revs would otherwise still be the old counter's
+}
 
 void Distance::updateLostRevs(const uint32_t lostRevs) {
 	float lostDist = lostRevs * wheel_c;
@@ -225,15 +240,30 @@ bool Distance::updateWheelCirc(const float circ_in_m) {
 }
 
 void Distance::resetDistToZero(Statistics::ESummaryType eSummaryType) {
-	if (eSummaryType < Statistics::SUM_ESP_TOTAL || eSummaryType > Statistics::SUM_ESP_START) {
-		bool expected = (eSummaryType == Statistics::SUM_ESP_TOTAL) || (eSummaryType == Statistics::SUM_ESP_START); 	//  if user presses reset in TOTAL or START
-		bclog.logf(expected ? BCLogger::Log_Debug : BCLogger::Log_Error, BCLogger::TAG_STAT, "Try to reset invalid Sum-Type 0x%04x", eSummaryType);
+	if (eSummaryType == Statistics::SUM_ESP_START) {
+		// START here is "since power-on" (binary log, navigation distance, gradient) and is
+		// never reset; the Start/Ride view is a session on top of it, see Statistics::reset().
+		stats.reset(eSummaryType);
+		return;
+	}
+	if (eSummaryType < Statistics::SUM_ESP_TOTAL || eSummaryType > Statistics::SUM_ESP_TRIP) {
+		bclog.logf(BCLogger::Log_Error, BCLogger::TAG_STAT, "Try to reset invalid Sum-Type 0x%04x", eSummaryType);
 		return;
 	}
 	curTotalDistance[eSummaryType] = 0;
 	distanceFromNVS[eSummaryType] = 0;
 	lostDistanceFromNVS[eSummaryType] = 0;
 	revsFromNVS[eSummaryType] = lastRevs;
+	revsKnown[eSummaryType] = revsInitialized;
+	if (!revsInitialized) {
+		// Reset before the sensor connected: the old counter value must not be taken as the
+		// new start, or the first message would count everything since then as lost.
+		Preferences storedDist;
+		String prefString = String("DIST_") + String(currentBikeIdx) + String("_") + String(Statistics::SUM_TYPE_STRING[eSummaryType]+3);
+		storedDist.begin(prefString.c_str(), false);
+		storedDist.remove("revs");
+		storedDist.end();
+	}
 	storeDistanceAndResetRevs();
 	stats.reset(eSummaryType);
 }
@@ -246,7 +276,7 @@ void Distance::storeDistanceAndResetRevs(bool resetRevs) {
 		storedDist.begin(prefString.c_str(), false);
 		size_t bytes = storedDist.putFloat("total", curTotalDistance[j]);		// Total distance in m (as float). It is only updated sporadically, so the actual total distance is total + (revs * wheel_circ).
 		bytes += storedDist.putFloat("lost_total", lostDistanceFromNVS[j]);
-		bytes += (lastRevs > 0)  ? storedDist.putULong("revs", lastRevs) : 4;	// only save lastRevs if there are received from sensor (and thus > 0).
+		bytes += revsInitialized ? storedDist.putULong("revs", lastRevs) : 4;	// only save lastRevs once received from the sensor
 		storedDist.end();
 		if (bytes < 12) {
 			bclog.logf(BCLogger::Log_Error, BCLogger::TAG_STAT, "Cannot write to NVS to store wheel circ for %s", prefString.c_str());
@@ -263,6 +293,7 @@ void Distance::storeDistanceAndResetRevs(bool resetRevs) {
 	}
 	if (resetRevs) {
 		bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_STAT, "%s: Reset revs", Statistics::SUM_TYPE_STRING[Statistics::SUM_ESP_START]);
+		distanceFromNVS[Statistics::SUM_ESP_START] = curTotalDistance[Statistics::SUM_ESP_START];
 		revsFromNVS[Statistics::SUM_ESP_START] = lastRevs;
 	}
 }
@@ -283,7 +314,7 @@ void Distance::setupWebserver() {
 			jsonDoc[typeString]["storedTotal"] = sDist;
 			jsonDoc[typeString]["storedRevs"] = sRev;
 			jsonDoc[typeString]["actualDistance"] = curTotalDistance[j];
-			jsonDoc[typeString]["totalDistance"] = (j == Statistics::SUM_ESP_START) ? 0.0 : distanceFromNVS[j];
+			jsonDoc[typeString]["totalDistance"] = distanceFromNVS[j];
 			jsonDoc[typeString]["deltaRevs"] = lastRevs - revsFromNVS[j];
 		}
 		String jsonData;
