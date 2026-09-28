@@ -662,7 +662,7 @@
                 },
                 {
                   "objID": "25cac731-3fd1-94fc-2159-af4141dfebca",
-                  "eventName": "CLICKED",
+                  "eventName": "SHORT_CLICKED",
                   "handlerType": "action",
                   "action": "PauseClick",
                   "userData": 0

@@ -20,6 +20,7 @@ extern void action_settings_cal(lv_event_t * e);
 extern void action_settings_ref(lv_event_t * e);
 extern void action_settings_reset(lv_event_t * e);
 extern void action_settings_sleep(lv_event_t * e);
+extern void action_pause_click(lv_event_t * e);
 
 #ifdef __cplusplus
 }

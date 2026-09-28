@@ -173,7 +173,9 @@ void action_pause_long_press(lv_event_t * e) {
 	driveStateUpdate(DSE_pauseButtonHold);
 }
 
-// EEZ Studio action, wired to rr_btn_pause's CLICKED event -- short tap
+// EEZ Studio action, wired to rr_btn_pause's SHORT_CLICKED event (not CLICKED:
+// LVGL 8 sends CLICKED after LONG_PRESSED too, which re-opened the session the
+// long-press had just stopped) -- short tap
 // toggles Ride<->FreeRide/Cruise (Statistics::toggleRideMode()), see
 // doc/design/ride-state-machine.md §3/§4.
 void action_pause_click(lv_event_t * e) {
