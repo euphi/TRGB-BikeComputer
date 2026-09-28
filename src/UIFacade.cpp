@@ -379,8 +379,8 @@ void UIFacade::updateStateIcon(Statistics::EDrivingState state, UIColor col, boo
 	// Restored 2026-09-19 for the RimRidge "Mainscreen-Studie" follow-up
 	// (rr_ic_state) - mirrors the pre-RimRidge mapping (see git history of
 	// this function) with 4 distinct icons instead of the old 2 shared
-	// ones (stateCyclePower/stateStop). DS_NO_CONN has no icon in the
-	// artifact -> NULL, which ui_RimRidgeUpdateStateIcon() hides.
+	// ones (stateCyclePower/stateStop). DS_NO_CONN (no speed sensor) got its
+	// own "broken link" icon on 2026-09-28; before, it was hidden.
 	// DS_FREE_RIDE added 2026-09-28 for the ride-state machine (see
 	// doc/design/ride-state-machine.md) -- covers both "FreeRide" (before the first Start
 	// tap) and "Cruise" (paused mid-ride, session still open), same icon for both.
@@ -402,6 +402,8 @@ void UIFacade::updateStateIcon(Statistics::EDrivingState state, UIColor col, boo
 		pCurStateIcon = &img_rr_icon_state_stop;
 		break;
 	case Statistics::DS_NO_CONN:
+		pCurStateIcon = &img_rr_icon_state_noconn;
+		break;
 	default:
 		pCurStateIcon = NULL;
 	}

@@ -188,7 +188,7 @@ void ui_RimRidgeUpdateStateIcon(const lv_img_dsc_t* pIcon, lv_color_t color, boo
 	lv_obj_t* const icons[] = {objects.rr_ic_state, objects.rq_ic_state, objects.rrnav_ic_state, objects.rrset_ic_state};
 	for (lv_obj_t* icon : icons) {
 		if (pIcon == nullptr) {
-			// DS_NO_CONN - no icon for it in the "Mainscreen-Studie" artifact
+			// unknown state (DS_NO_CONN has its own icon since 2026-09-28)
 			lv_obj_add_flag(icon, LV_OBJ_FLAG_HIDDEN);
 			continue;
 		}
