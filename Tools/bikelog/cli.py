@@ -11,7 +11,7 @@ import datetime
 import sys
 import time
 
-from . import csvexport, fixtures, gpx, raw, replay, sim
+from . import csvexport, fixtures, gpx, raw, replay, ridestats, sim
 from .record import (CURRENT_VERSION, IF_NO_SPEED, IF_TOO_SLOW, IF_UNCALIBRATED,
                      ROAD_CLASS_NAMES, SURFACE_NAMES, ReadStats, UnknownLogFormat, label_at,
                      labels_of, read_file, split)
@@ -119,8 +119,10 @@ def cmd_info(opts) -> int:
         lons = [r.longitude for r in fresh]
         print("Bounding Box: %.5f..%.5f N, %.5f..%.5f E"
               % (min(lats), max(lats), min(lons), max(lons)))
-    hrs = [r.hr for r in records if r.hr]
-    cads = [r.cadence for r in records if r.cadence]
+    # 255 (0xFF) means "sensor connected, no reading" (firmware logs int16_t -1 into the
+    # record's uint8_t field) -- not a real value, so it must not land in min()/max().
+    hrs = [r.hr for r in records if ridestats.hr_valid(r.hr)]
+    cads = [r.cadence for r in records if ridestats.cadence_valid(r.cadence)]
     print("Puls:         %s" % ("%d Werte, %d..%d bpm" % (len(hrs), min(hrs), max(hrs))
                                 if hrs else "keine"))
     print("Trittfrequenz:%s" % (" %d Werte, %d..%d rpm" % (len(cads), min(cads), max(cads))

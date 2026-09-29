@@ -254,7 +254,7 @@ def _trackpoint(parent: ET.Element, rec: Record, opts: GpxOptions,
         values.append(("atemp", f"{rec.temp:.1f}"))
     if ridestats.hr_valid(rec.hr):
         values.append(("hr", str(rec.hr)))
-    if rec.cadence and rec.cadence < 250:
+    if ridestats.cadence_valid(rec.cadence):
         values.append(("cad", str(rec.cadence)))
     speed_ms = rec.gps_speed_ms if rec.has_gps_speed else rec.speed_ms
     if speed_ms:

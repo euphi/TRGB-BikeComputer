@@ -206,6 +206,24 @@ def test_shock_waypoint_filters():
     assert stats.shocks_written == 0 and stats.shocks_dropped == 0
 
 
+def test_info_excludes_the_no_sensor_sentinel_from_hr_and_cadence(tmp_path, capsys):
+    """255 (0xFF) means "sensor connected, no reading" -- the firmware logs int16_t -1
+    into the record's uint8_t hr/cadence field. It must not show up as a measured value
+    in `bikelog info`'s range (reported live on the BC: it showed up as "..255 bpm")."""
+    records = fixtures.synthetic(seconds=20, no_fix_start_s=0)
+    records[5].hr = 255
+    records[6].cadence = 255
+    path = tmp_path / "ride.bin"
+    write_records(path, records)
+    assert cli_main(["info", "-i", str(path)]) == 0
+    out = capsys.readouterr().out
+    puls_line = next(line for line in out.splitlines() if line.startswith("Puls:"))
+    trittfrequenz_line = next(line for line in out.splitlines() if line.startswith("Trittfrequenz:"))
+    assert "255" not in puls_line and "255" not in trittfrequenz_line
+    assert puls_line.split()[1] == str(sum(1 for r in records if r.hr != 255))
+    assert trittfrequenz_line.split()[1] == str(sum(1 for r in records if r.cadence != 255))
+
+
 def test_cli_info_and_csv_on_a_v2_log(tmp_path, capsys):
     path = tmp_path / "ride.bin"
     assert cli_main(["fixture", "synth", "-o", str(path), "--roadq"]) == 0

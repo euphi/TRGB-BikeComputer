@@ -22,10 +22,15 @@ MAX_STEP_S = 30.0
 ELEVATION_HYSTERESIS_M = 2.0
 
 HR_VALID = range(25, 251)       # 0 = no sensor, 255 = sensor without reading
+CADENCE_VALID = range(1, 250)   # 0 = not pedalling/no sensor, 255 = sensor without reading
 
 
 def hr_valid(hr: int) -> bool:
     return hr in HR_VALID
+
+
+def cadence_valid(cadence: int) -> bool:
+    return cadence in CADENCE_VALID
 
 
 @dataclass
@@ -116,7 +121,7 @@ def compute(records: list[Record], road: list[RoadQualityRecord] | None = None,
             hr_sum += rec.hr
             hr_n += 1
             st.max_hr = max(st.max_hr or 0, rec.hr)
-        if rec.cadence and rec.cadence < 250:
+        if cadence_valid(rec.cadence):
             cad_sum += rec.cadence
             cad_n += 1
         if -50 <= rec.temp <= 80 and rec.temp != 0.0:
