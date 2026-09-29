@@ -41,3 +41,8 @@ extern BLEDevices bleDevs;
 #include "I2CSensors.h"
 extern I2CSensors sensors;
 #endif
+
+#ifdef BC_SIM
+#include "SimSensors.h"
+extern SimSensors sim;
+#endif

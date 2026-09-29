@@ -527,6 +527,9 @@ void BCLogger::appendDataLog(float speed, float temp, float gradient, float dist
 			| (gps.hasSpeed ? LogRec::LOG_GPS_HAS_SPEED : 0)
 			| (gps.hasBearing ? LogRec::LOG_GPS_HAS_BEARING : 0)
 			| (gps.hasAccuracy ? LogRec::LOG_GPS_HAS_ACCURACY : 0);
+#ifdef BC_SIM
+	if (sim.isActive()) b.gpsFlags |= LogRec::LOG_SIMULATED;
+#endif
 	b.gpsLatitudeE7 = gps.latitudeE7;
 	b.gpsLongitudeE7 = gps.longitudeE7;
 	b.gpsAltitudeM = gps.altitudeM;

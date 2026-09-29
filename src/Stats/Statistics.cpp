@@ -136,7 +136,7 @@ static const char* const PREF_CAD_MS    = "CAD_MS";
 
 void Statistics::restoreStats() {
 	for (uint_fast8_t c = 0 ; c < SUM_ESP_START; c++) {
-		StatPreferences[c].begin(SUM_TYPE_STRING[c]);
+		StatPreferences[c].begin((String(NVS_STAT_PREFIX) + SUM_TYPE_STRING[c]).c_str());
 		for (uint_fast8_t d = 0 ; d < EDrivingStateMax ; d++) {
 			time_in[d][c] = StatPreferences[c].getLong(PREF_TIME_STRING[d], 0);
 			bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Loaded time in %s for %s from preferences: %d", PREF_TIME_STRING[d], SUM_TYPE_STRING[c], time_in[d][c]);
@@ -367,6 +367,7 @@ void Statistics::toggleRideMode() {
 			// First Start tap (not a resume from Cruise): open a new ride session and zero
 			// the Start/Ride view (reset() also takes the session's distance base).
 			rideSessionOpen = true;
+			sessionStartPending = true;
 			reset(SUM_ESP_START);
 			bclog.log(BCLogger::Log_Info, BCLogger::TAG_STAT, "Ride session started");
 		}
@@ -375,6 +376,7 @@ void Statistics::toggleRideMode() {
 		rideMode = false;	// Pause tapped -> Cruise. Session stays open (rideSessionOpen unchanged).
 	}
 	applyRideModeToCurrentMovement();
+	logRideState();		// if applyRideModeToCurrentMovement() didn't already (tap while stopped)
 	updateStateIcon();	// Immediate update (user feedback)
 }
 
@@ -385,6 +387,7 @@ void Statistics::stopRide() {
 	rideMode = false;
 	rideSessionOpen = false;
 	applyRideModeToCurrentMovement();
+	logRideState();		// if applyRideModeToCurrentMovement() didn't already (stopped, or cruising)
 	bclog.log(BCLogger::Log_Info, BCLogger::TAG_STAT, "Ride session stopped (long-press)");
 	updateStateIcon();	// Immediate update (user feedback)
 }
@@ -757,26 +760,45 @@ void Statistics::reset(ESummaryType type) {	//TODO: Move to DistanceHandler
 }
 
 void Statistics::setCurDriveState(EDrivingState _curDriveState) {
-	if (_curDriveState != curDriveState) {
-		// Logged here, not in cycle()'s callers, so every transition is caught regardless
-		// of which branch triggered it -- see doc/design/ride-state-machine.md and
-		// LogRec::RideState's comment for why this feeds the GPX <trkseg> export.
-		LogRec::RideState rec = {};
-		BCLogger::nowEpoch(rec.timestamp, rec.timestampMs);
-		rec.state = _curDriveState;
-		rec.prevState = curDriveState;
-		rec.rideMode = rideMode ? 1 : 0;
-		rec.stateSeq = ++rideStateSeq;
-		rec.recordType = LogRec::TYPE_RIDESTATE;
-		rec.formatVersion = LogRec::FORMAT_VERSION;
-		bclog.appendRecord(rec);
-	}
 	curDriveState = _curDriveState;
 	if (_curDriveState == DS_STOP) {
 		timestamp_stop = millis();
 		for (uint_fast8_t c = 0; c < ESummaryTypeMax; c++) stopEpisodeMs[c] = 0;
 	}
 	bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Driving state changed to %s", (PREF_TIME_STRING[curDriveState]+8));
+	logRideState();
+}
+
+static_assert(Statistics::DS_NO_CONN == 0 && Statistics::DS_BREAK == 1 && Statistics::DS_STOP == 2 &&
+		Statistics::DS_FREE_RIDE == 3 && Statistics::DS_DRIVE_COASTING == 4 && Statistics::DS_DRIVE_POWER == 5,
+		"LogRec::RideState.state and Tools/bikelog/record.py carry these values");
+
+// One LogRec::RideState record per change of curDriveState, rideMode or the ride session --
+// called after each of them changed (setCurDriveState(), toggleRideMode(), stopRide()), and
+// a no-op if nothing did. A tap at a stop or a long press while cruising leaves the state
+// alone, so logging only in setCurDriveState() would lose Cruise vs. FreeRide and the
+// session boundaries (doc/design/ride-state-machine.md §4).
+void Statistics::logRideState() {
+	if (!sessionStartPending && curDriveState == loggedState && rideMode == loggedRideMode
+			&& rideSessionOpen == loggedSessionOpen) return;
+	LogRec::RideState rec = {};
+	BCLogger::nowEpoch(rec.timestamp, rec.timestampMs);
+	rec.state = curDriveState;
+	rec.prevState = loggedState;
+	rec.rideMode = rideMode ? 1 : 0;
+	rec.flags = (rideSessionOpen ? LogRec::RSF_SESSION_OPEN : 0) | (sessionStartPending ? LogRec::RSF_SESSION_START : 0);
+#ifdef BC_SIM
+	if (sim.isActive()) rec.flags |= LogRec::RSF_SIMULATED;
+#endif
+	rec.distM = distHandler.getDistance();
+	rec.stateSeq = ++rideStateSeq;
+	rec.recordType = LogRec::TYPE_RIDESTATE;
+	rec.formatVersion = LogRec::FORMAT_VERSION;
+	bclog.appendRecord(rec);
+	loggedState = curDriveState;
+	loggedRideMode = rideMode;
+	loggedSessionOpen = rideSessionOpen;
+	sessionStartPending = false;
 }
 
 uint32_t Statistics::getTime(ESummaryType type, EAvgType avgtype) const {

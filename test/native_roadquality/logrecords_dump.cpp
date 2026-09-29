@@ -36,7 +36,7 @@ int main(int argc, char** argv) {
 	d.gpsBearingDegX100 = 4500;
 	d.gpsAccuracyMX10 = 45;
 	d.gpsFixAgeMs = 350;
-	d.gpsFlags = 0x1f;
+	d.gpsFlags = 0x1f | LOG_SIMULATED;
 	d.roadClass = 3;
 	d.timestampMs = 789;
 	d.gradBaroX100 = gradX100(-3.25f);
@@ -123,6 +123,8 @@ int main(int argc, char** argv) {
 	rs.state = 4;			// DS_DRIVE_COASTING (Statistics::EDrivingState)
 	rs.prevState = 3;		// DS_FREE_RIDE
 	rs.rideMode = 1;
+	rs.flags = RSF_SESSION_OPEN | RSF_SESSION_START | RSF_SIMULATED;
+	rs.distM = 2345.5f;
 	rs.stateSeq = 9;
 	rs.recordType = TYPE_RIDESTATE;
 	rs.formatVersion = FORMAT_VERSION;

@@ -306,6 +306,10 @@ bool BLEDevices::isAlreadyConnected(BLEAdvertisedDevice& newDevice) {
  * @param dt The type of device that has disconnected.
  */
 void BLEDevices::updateDisconnectedDev(const EDevType dt) {
+#ifdef BC_SIM
+	// The simulator stands in for these (SimSensors.h) -- a real one leaving must not disconnect it
+	if (sim.isActive() && (dt == DEV_HRM || dt == DEV_CSC_1 || dt == DEV_CSC_2)) return;
+#endif
 	switch (dt) {
 #ifdef BC_FL_SUPPORT
 	case DEV_FL:
@@ -539,6 +543,10 @@ void BLEDevices::notifyCallbackCSC(BLERemoteCharacteristic *pBLERemoteCharacteri
 	uint16_t crank_rev, crank_time, speed_time, hr,  delta;
 	uint8_t flags;
 	bool isSpeed;
+#ifdef BC_SIM
+	// Real sensor (the simulator passes no characteristic) while the simulator stands in for it
+	if (pBLERemoteCharacteristic && sim.isActive() && (ctype == DEV_HRM || ctype == DEV_CSC_1 || ctype == DEV_CSC_2)) return;
+#endif
 	switch (ctype) {
 #ifdef BC_FL_SUPPORT
 	case DEV_FL:

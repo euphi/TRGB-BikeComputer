@@ -115,6 +115,12 @@ Arduino-Framework). Environments:
 * `trgb-esp32-s3-ota`, `trgb-esp32-s3-FL-ota` -- dieselben Builds, Upload per
   WLAN über den eigenen `/update`-Endpunkt (curl, nicht espota). Flashen nur auf
   ausdrückliche Anfrage des Nutzers.
+* `trgb-esp32-s3-sim`, `trgb-esp32-s3-sim-ota` -- Debug-Build mit
+  Sensor-Simulator (`-DBC_SIM`, `src/SimSensors.*`): Fake-Speed/Cadence/Puls
+  über `sim` (seriell), `/debug/sim` oder `bikelog sim <gpx>`, eigene
+  NVS-Namespaces für die Statistik. Alles Simulator-Spezifische hinter
+  `#ifdef BC_SIM`, die normalen Builds bleiben frei davon.
+  [`doc/SIMULATOR.md`](doc/SIMULATOR.md).
 
 ## Programmiersprachen-Präferenz
 

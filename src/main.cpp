@@ -57,6 +57,9 @@ void setup() {
 	ui.initDisplay();
     stats.setup();
 	bleDevs.setup();
+#ifdef BC_SIM
+	sim.setup();
+#endif
 #ifdef TRGBBC_SENSORS_I2C
 	sensors.setup();
 #endif

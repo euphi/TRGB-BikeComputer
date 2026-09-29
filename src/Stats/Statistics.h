@@ -90,7 +90,12 @@ private:
 	float sessionBaseNet = 0, sessionBaseGross = 0;
 	float sessionEndNet = 0, sessionEndGross = 0;
 	time_t timestamp_stop;
-	uint32_t rideStateSeq = 0;			// LogRec::RideState.stateSeq, see setCurDriveState()
+	// Binary log: LogRec::RideState on every change of state/rideMode/session, see logRideState()
+	uint32_t rideStateSeq = 0;
+	EDrivingState loggedState = DS_NO_CONN;
+	bool loggedRideMode = false, loggedSessionOpen = false;
+	bool sessionStartPending = false;	// next RideState record carries RSF_SESSION_START
+	void logRideState();
 
 	struct S_DataPoint {
 		float min;

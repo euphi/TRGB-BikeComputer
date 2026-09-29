@@ -50,7 +50,7 @@ void Distance::loadDistanceForBikeIdx(uint8_t idx) {
 	bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Loaded wheel circumference from NVS: %.04fm", wheel_c);
 	params.end();
 	for (uint_fast8_t j=0; j <= Statistics::SUM_ESP_TRIP; j++) {
-		String prefString = String("DIST_") + idx_str + String("_") + String(Statistics::SUM_TYPE_STRING[j]+3);
+		String prefString = String(NVS_STAT_PREFIX "DIST_") + idx_str + String("_") + String(Statistics::SUM_TYPE_STRING[j]+3);
 		storedDist.begin(prefString.c_str(), true);		// +3 to skip first three chars "ST_"
 		distanceFromNVS[j]  = storedDist.getFloat("total", 0.0);		// Total distance in m (as float). It is only updated sporadically, so the actual total distance is total + (revs * wheel_circ).
 		lostDistanceFromNVS[j] = storedDist.getFloat("lost_total", 0.0);	// Total distance lost
@@ -259,7 +259,7 @@ void Distance::resetDistToZero(Statistics::ESummaryType eSummaryType) {
 		// Reset before the sensor connected: the old counter value must not be taken as the
 		// new start, or the first message would count everything since then as lost.
 		Preferences storedDist;
-		String prefString = String("DIST_") + String(currentBikeIdx) + String("_") + String(Statistics::SUM_TYPE_STRING[eSummaryType]+3);
+		String prefString = String(NVS_STAT_PREFIX "DIST_") + String(currentBikeIdx) + String("_") + String(Statistics::SUM_TYPE_STRING[eSummaryType]+3);
 		storedDist.begin(prefString.c_str(), false);
 		storedDist.remove("revs");
 		storedDist.end();
@@ -272,7 +272,7 @@ void Distance::storeDistanceAndResetRevs(bool resetRevs) {
 	Preferences storedDist; // Distance (in m and delta as revs) for TOTAL, TOUR, TRIP
 	String idx_str(currentBikeIdx);
 	for (uint_fast8_t j=0; j <= Statistics::SUM_ESP_TRIP; j++) {
-		String prefString = String("DIST_") + idx_str + String("_") + String(Statistics::SUM_TYPE_STRING[j]+3); // +3 to skip first three chars "ST_"
+		String prefString = String(NVS_STAT_PREFIX "DIST_") + idx_str + String("_") + String(Statistics::SUM_TYPE_STRING[j]+3); // +3 to skip first three chars "ST_"
 		storedDist.begin(prefString.c_str(), false);
 		size_t bytes = storedDist.putFloat("total", curTotalDistance[j]);		// Total distance in m (as float). It is only updated sporadically, so the actual total distance is total + (revs * wheel_circ).
 		bytes += storedDist.putFloat("lost_total", lostDistanceFromNVS[j]);
@@ -306,7 +306,7 @@ void Distance::setupWebserver() {
 		for (uint_fast8_t j = 0; j <= Statistics::SUM_ESP_START; j++) {
 			Preferences storedDist;
 			String typeString = String(Statistics::SUM_TYPE_STRING[j] + 3);
-			String prefString = String("DIST_0_") + String(Statistics::SUM_TYPE_STRING[j]+3);
+			String prefString = String(NVS_STAT_PREFIX "DIST_0_") + String(Statistics::SUM_TYPE_STRING[j]+3);
 			storedDist.begin(prefString.c_str(), true);		// +3 to skip first three chars "ST_"
 			float sDist = storedDist.getFloat("total", 0.0);		// Total distance in m (as float). It is only updated sporadically, so the actual total distance is total + (revs * wheel_circ).
 			uint32_t sRev = storedDist.getULong("revs", 0);

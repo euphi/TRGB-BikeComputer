@@ -79,12 +79,16 @@ enum LabelFlags : uint8_t {
 // received at all); it does NOT mean the fix is fresh -- check gpsFixAgeMs for that (see
 // BikeGpsProtocol.h). The other bits mirror SGpsFix's hasXxx flags: the corresponding
 // value field is 0 when its bit is clear.
+// LOG_SIMULATED is not about GPS, it only shares the byte (Data has no other spare bits):
+// speed, cadence and heart rate of this record come from the sensor simulator
+// (src/SimSensors.h, simulator build only). Always 0 in older files -- no version bump.
 enum GpsFlags : uint8_t {
 	LOG_GPS_VALID        = 0x01,
 	LOG_GPS_HAS_ALTITUDE = 0x02,
 	LOG_GPS_HAS_SPEED    = 0x04,
 	LOG_GPS_HAS_BEARING  = 0x08,
 	LOG_GPS_HAS_ACCURACY = 0x10,
+	LOG_SIMULATED        = 0x80,
 };
 
 // Type 0. Bytes 0..55 are v1's layout except that gpsFlags moved from 30 to 56 to make
@@ -198,25 +202,31 @@ struct Label {
 	uint8_t reserved2[16];				// 48
 };
 
-// Type 4. Written from Statistics::setCurDriveState() on every ride/drive-state change --
-// lets a post-processing tool (Tools/bikelog/gpx.py) tag GPX <trkseg> sections with the
-// ride state in effect, without touching every single track point (doc/design/
-// ride-state-machine.md). Field layout mirrors Label's (same primitive-type sequence, at
-// the same offsets) rather than a novel one, since this header has no host compiler
-// available to re-verify a new layout against Tools/tests/test_logformat.py at the time it
-// was added.
+// RideState.flags
+enum RideStateFlags : uint8_t {
+	RSF_SESSION_OPEN = 0x01,	// a ride session is open (Start tapped, not yet ended by a long press)
+	RSF_SESSION_START = 0x02,	// this record opened the session: its Start/Ride statistics begin here
+	RSF_SIMULATED = 0x04,		// the sensor simulator was active (src/SimSensors.h, simulator build only)
+};
+
+// Type 4. Written by Statistics on every change of the drive state, the Ride mode or the
+// ride session (Statistics::logRideState()) -- a tap at a stop or a long press while
+// cruising changes only rideMode/flags, not the state. Lets a post-processing tool
+// (Tools/bikelog/gpx.py) tag GPX <trkseg> sections with the ride state in effect
+// (doc/design/ride-state-machine.md). The record holds until the next one.
 // state/prevState = Statistics::EDrivingState (0 DS_NO_CONN, 1 DS_BREAK, 2 DS_STOP,
 // 3 DS_FREE_RIDE, 4 DS_DRIVE_COASTING, 5 DS_DRIVE_POWER -- see src/Stats/Statistics.h).
+// DS_FREE_RIDE with RSF_SESSION_OPEN is Cruise, without it FreeRide.
 struct RideState {
 	time_t timestamp;					//  0
 	uint16_t timestampMs;				//  8
 	uint8_t state;						// 10
-	uint8_t prevState;					// 11  state before this change
-	uint8_t rideMode;					// 12  1 = rideMode was on (Ride/Coast) at the time, else 0
-	uint8_t reserved0;					// 13
+	uint8_t prevState;					// 11  state of the previous RideState record
+	uint8_t rideMode;					// 12  1 = Ride mode (Pause glyph), also while stopped
+	uint8_t flags;						// 13  RideStateFlags
 	uint8_t reserved1;					// 14
 	uint8_t reserved2;					// 15
-	uint32_t reserved3;					// 16
+	float distM;						// 16  distance since power-on (as Data::dist_m)
 	uint32_t reserved4;					// 20
 	uint32_t stateSeq;					// 24  running number since boot: gaps = records lost
 	uint16_t reserved5;					// 28
@@ -241,7 +251,7 @@ static_assert(offsetof(Data, gpsLatitudeE7) == 32 && offsetof(Data, gpsFlags) ==
 static_assert(offsetof(RoadQuality, vdvVert) == 32 && offsetof(RoadQuality, gpsLatitudeE7) == 48 && offsetof(RoadQuality, gradImuX100) == 62, "RoadQuality layout");
 static_assert(offsetof(Shock, vdv) == 32 && offsetof(Shock, gpsLatitudeE7) == 40 && offsetof(Shock, eventSeq) == 56, "Shock layout");
 static_assert(offsetof(Label, prevDistanceM) == 16 && offsetof(Label, gpsLatitudeE7) == 32 && offsetof(Label, speedCms) == 46, "Label layout");
-static_assert(offsetof(RideState, reserved3) == 16 && offsetof(RideState, stateSeq) == 24, "RideState layout");
+static_assert(offsetof(RideState, distM) == 16 && offsetof(RideState, stateSeq) == 24, "RideState layout");
 
 // Helpers for filling records
 inline uint16_t toU16(float v) {return v <= 0 ? 0 : (v >= 65534.0f ? 65534 : (uint16_t)(v + 0.5f));}

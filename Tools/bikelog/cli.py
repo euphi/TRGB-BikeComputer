@@ -1,4 +1,4 @@
-"""Command line front end: bikelog csv|gpx|info|fixture.
+"""Command line front end: bikelog csv|gpx|info|raw|fixture|sim.
 
 Run as ``python3 -m bikelog ...`` from Tools/, or through the thin
 ReadTachoBin.py wrapper for the CSV export.
@@ -9,8 +9,9 @@ from __future__ import annotations
 import argparse
 import datetime
 import sys
+import time
 
-from . import csvexport, fixtures, gpx, raw, replay
+from . import csvexport, fixtures, gpx, raw, replay, sim
 from .record import (CURRENT_VERSION, IF_NO_SPEED, IF_TOO_SLOW, IF_UNCALIBRATED,
                      ROAD_CLASS_NAMES, SURFACE_NAMES, ReadStats, UnknownLogFormat, label_at,
                      labels_of, read_file, split)
@@ -108,6 +109,9 @@ def cmd_info(opts) -> int:
         print("              ACHTUNG: Startzeit vor %d -- Uhr war beim Aufzeichnen "
               "nicht gesetzt (NTP)." % gpx.MIN_PLAUSIBLE_YEAR)
     print("Distanz:      %.2f km" % ((last.distance - first.distance) / 1000.0))
+    simulated = sum(1 for r in records if r.simulated)
+    if simulated:
+        print("SIMULIERT:    %d von %d Fahrdaten-Datensätzen vom Sensor-Simulator" % (simulated, len(records)))
     print("GPS:          %d mit Fix, davon %d frisch (<=5 s)" % (len(with_fix), len(fresh)))
     if fresh:
         lats = [r.latitude for r in fresh]
@@ -339,6 +343,50 @@ def cmd_raw_replay(opts) -> int:
     return 0
 
 
+def cmd_sim(opts) -> int:
+    try:
+        track = sim.load(opts.gpxfile, opts.max_gap)
+    except (ValueError, OSError) as exc:
+        raise SystemExit(str(exc))
+    print("%s: %d Punkte, %.2f km, %.0f min Wiedergabe%s%s" % (
+        opts.gpxfile, len(track.points), track.distance / 1000, track.duration / 60,
+        ", Trittfrequenz" if track.has_cad else ", Trittfrequenz geschätzt (%d rpm)" % opts.cadence,
+        ", Puls" if track.has_hr else ""))
+    start = opts.start * 60
+    duration = opts.duration * 60 if opts.duration else None
+
+    if opts.dry_run:
+        sample = sim.sampler(track, opts.cadence)
+        end = track.duration if duration is None else min(track.duration, start + duration)
+        s = start
+        while s <= end:
+            x = sample(s)
+            print("%6.0f s  %8.0f m  %5.1f km/h  cad %3s  hr %3s" % (s, x.dist, x.speed, sim._opt(x.cad), sim._opt(x.hr)))
+            s += opts.dry_run
+        return 0
+
+    if not opts.serial and not opts.http:
+        raise SystemExit("--serial PORT oder --http HOST angeben (oder --dry-run)")
+    summary_host = opts.http or opts.summary_host
+    link = sim.HttpLink(opts.http) if opts.http else sim.SerialLink(opts.serial, opts.echo)
+    before = sim.fetch_summary(summary_host)
+    if summary_host and before is None:
+        print("Hinweis: /stat/summary auf %s nicht erreichbar -- kein Vergleich am Ende" % summary_host)
+
+    def progress(s, end, x, sent):
+        if opts.echo:
+            return
+        sys.stdout.write("\r%3d:%02d / %d min  %7.2f km  %5.1f km/h  cad %3s  hr %3s  Fehler %d " % (
+            s // 60, s % 60, end // 60, x.dist / 1000, x.speed, sim._opt(x.cad), sim._opt(x.hr), sent.errors))
+        sys.stdout.flush()
+
+    sent = sim.play(track, link, start, duration, opts.cadence, progress)
+    print()
+    time.sleep(2)       # let the device's 500 ms cycle count the last second
+    print(sim.compare(sent, before, sim.fetch_summary(summary_host)))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="bikelog",
@@ -356,7 +404,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_csv.add_argument("--gps", action="store_true",
                        help="GPS-Spalten zusätzlich ausgeben")
     p_csv.add_argument("--roadq", action="store_true",
-                       help="Spalten Wegeklasse/Gradient_Baro/Gradient_IMU zusätzlich ausgeben")
+                       help="Spalten Wegeklasse/Gradient_Baro/Gradient_IMU/Simuliert zusätzlich ausgeben")
     p_csv.add_argument("--roadq-out", metavar="FILE",
                        help="Wegequalitäts-Intervalle in diese CSV schreiben")
     p_csv.add_argument("--shocks-out", metavar="FILE",
@@ -437,6 +485,28 @@ def build_parser() -> argparse.ArgumentParser:
     p_from.add_argument("gpxfile", metavar="GPX")
     p_from.add_argument("-o", "--out", dest="outfile", required=True, metavar="FILE")
     p_from.set_defaults(func=cmd_fixture_from_gpx)
+
+    p_sim = sub.add_parser(
+        "sim", help="GPX-Datei in die Simulator-Firmware einspielen (env trgb-esp32-s3-sim)",
+        description="Spielt eine GPX-Spur in Echtzeit als Geschwindigkeit/Trittfrequenz/Puls in die "
+                    "Simulator-Firmware ein (doc/SIMULATOR.md). Mit HTTP-Zugang am Ende Vergleich "
+                    "gesendet vs. Trip-Statistik des Geräts.")
+    p_sim.add_argument("gpxfile", metavar="GPX")
+    link = p_sim.add_mutually_exclusive_group()
+    link.add_argument("--serial", metavar="PORT", help="serielle Konsole, z. B. /dev/ttyACM0")
+    link.add_argument("--http", metavar="HOST", help="Webserver, z. B. TRGB-BC.local")
+    p_sim.add_argument("--summary-host", metavar="HOST",
+                       help="bei --serial: /stat/summary für den Vergleich von hier holen")
+    p_sim.add_argument("--cadence", type=int, default=80, metavar="RPM",
+                       help="Trittfrequenz, wenn die GPX keine hat [Standard: %(default)s]")
+    p_sim.add_argument("--max-gap", type=float, default=0, metavar="S",
+                       help="Aufzeichnungspausen auf S Sekunden kürzen (0 = wie aufgezeichnet)")
+    p_sim.add_argument("--start", type=float, default=0, metavar="MIN", help="ab Minute MIN abspielen")
+    p_sim.add_argument("--duration", type=float, default=0, metavar="MIN", help="nur MIN Minuten abspielen")
+    p_sim.add_argument("--echo", action="store_true", help="Ausgabe der seriellen Konsole anzeigen")
+    p_sim.add_argument("--dry-run", type=float, nargs="?", const=10, default=0, metavar="S",
+                       help="nichts senden, nur alle S Sekunden [10] die Werte ausgeben")
+    p_sim.set_defaults(func=cmd_sim)
 
     return parser
 

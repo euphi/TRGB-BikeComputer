@@ -626,6 +626,9 @@ void WifiWebserver::setupWebserver() {
 #ifdef TRGBBC_SENSORS_I2C
 			{ "/debug/imu",           "IMU (BMI160)",    "Accelerometer, calibration, road quality, shocks, gradient" },
 #endif
+#ifdef BC_SIM
+			{ "/debug/sim",           "Sensor Simulator","Fake speed, cadence and heart rate, GPX playback" },
+#endif
 			{ "/stat/debugarray",     "Chart Array",     "Raw heart-rate chart ring buffer" },
 			{ "/stat/dist_debug.html","Distance Debug",  "Raw distance/wheel-revolution data" },
 			{ "/log/",                "Raw SD Browser",  "Unformatted directory listing of the SD card" },

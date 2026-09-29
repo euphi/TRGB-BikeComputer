@@ -18,8 +18,9 @@ v2  64-byte records of several types, the type at byte 30:
       3  LabelRecord        manual road label (surface + quality), added
                             later without a version bump; older v2 files
                             simply have none
-      4  RideStateRecord    ride/drive-state change (Statistics::EDrivingState), added the
-                            same way; used to tag GPX <trkseg> sections (see bikelog.gpx)
+      4  RideStateRecord    ride state (Statistics::EDrivingState, Ride mode, ride
+                            session), on every change; added the same way. Used to
+                            tag GPX <trkseg> sections (see bikelog.gpx)
     Unknown types are skipped by their size, so a newer firmware can add one
     without breaking this reader.
 """
@@ -40,6 +41,9 @@ LOG_GPS_HAS_ALTITUDE = 0x02
 LOG_GPS_HAS_SPEED = 0x04
 LOG_GPS_HAS_BEARING = 0x08
 LOG_GPS_HAS_ACCURACY = 0x10
+# Not GPS, shares the byte: speed/cadence/HR came from the sensor simulator
+# (simulator build, src/SimSensors.h). 0 in older files.
+LOG_SIMULATED = 0x80
 
 # Record types (LogRec::Type)
 TYPE_DATA = 0
@@ -65,6 +69,11 @@ RIDE_STATE_NAMES = {
     DS_DRIVE_COASTING: "Rollen",
     DS_DRIVE_POWER: "Fahrt",
 }
+
+# RideStateRecord.flags (LogRec::RideStateFlags)
+RSF_SESSION_OPEN = 0x01
+RSF_SESSION_START = 0x02
+RSF_SIMULATED = 0x04          # sensor simulator active (simulator build)
 
 CURRENT_VERSION = 2
 VERSION_OFFSET = 31
@@ -198,6 +207,11 @@ class Record:
     @property
     def has_gps_accuracy(self) -> bool:
         return bool(self.gps_flags & LOG_GPS_HAS_ACCURACY)
+
+    @property
+    def simulated(self) -> bool:
+        """Speed/cadence/HR from the sensor simulator, not from a ride."""
+        return bool(self.gps_flags & LOG_SIMULATED)
 
     @property
     def latitude(self) -> float:
@@ -437,19 +451,21 @@ class LabelRecord:
 
 @dataclass
 class RideStateRecord:
-    """Ride/drive-state change (v2, type 4): written on every change of
-    Statistics::EDrivingState. Holds from this record until the next one --
-    used to tag GPX <trkseg> sections (bikelog.gpx) rather than points."""
+    """Ride state (v2, type 4): written on every change of the drive state
+    (Statistics::EDrivingState), the Ride mode or the ride session -- a tap
+    at a stop or a long press while cruising changes only ride_mode/flags.
+    Holds from this record until the next one; used to tag GPX <trkseg>
+    sections (bikelog.gpx) rather than points."""
 
     timestamp: int = 0
     timestamp_ms: int = 0
     state: int = 0                      # EDrivingState, see RIDE_STATE_NAMES
-    prev_state: int = 0                 # state before this change
-    ride_mode: int = 0                  # 1 = rideMode was on (Ride/Coast) at the time
-    reserved0: int = 0
+    prev_state: int = 0                 # state of the previous ride-state record
+    ride_mode: int = 0                  # 1 = Ride mode (Pause glyph), also while stopped
+    flags: int = 0                      # RSF_*
     reserved1: int = 0
     reserved2: int = 0
-    reserved3: int = 0
+    dist_m: float = 0.0                 # distance since power-on, as Record.distance
     reserved4: int = 0
     state_seq: int = 0                  # running number since boot; gaps = records lost
     reserved5: int = 0
@@ -458,7 +474,25 @@ class RideStateRecord:
     reserved6: bytes = bytes(32)
 
     @property
+    def session_open(self) -> bool:
+        return bool(self.flags & RSF_SESSION_OPEN)
+
+    @property
+    def session_start(self) -> bool:
+        """This record opened the ride session (Start tap)."""
+        return bool(self.flags & RSF_SESSION_START)
+
+    @property
+    def simulated(self) -> bool:
+        """The sensor simulator was active (simulator build)."""
+        return bool(self.flags & RSF_SIMULATED)
+
+    @property
     def state_name(self) -> str:
+        """The state as the rider sees it: DS_FREE_RIDE is Cruise inside a
+        ride session, FreeRide outside one."""
+        if self.state == DS_FREE_RIDE and self.session_open:
+            return "Cruise"
         return RIDE_STATE_NAMES.get(self.state, "?%d" % self.state)
 
     @property
@@ -590,10 +624,10 @@ _V2_LABEL = Layout(
 
 _V2_RIDESTATE = Layout(
     RideStateRecord,
-    "<qHBBBBBBIIIHBB32s",
+    "<qHBBBBBBfIIHBB32s",
     (
         "timestamp", "timestamp_ms", "state", "prev_state", "ride_mode",
-        "reserved0", "reserved1", "reserved2", "reserved3", "reserved4",
+        "flags", "reserved1", "reserved2", "dist_m", "reserved4",
         "state_seq", "reserved5", "record_type", "format_version", "reserved6",
     ),
 )
@@ -711,12 +745,18 @@ def ride_states_of(records: Iterable[AnyRecord]) -> list[RideStateRecord]:
     return [rec for rec in records if isinstance(rec, RideStateRecord)]
 
 
-def ride_state_at(states: list[RideStateRecord], t: float) -> int | None:
-    """The ride state (EDrivingState) in effect at time t: that of the last
-    ride-state record at or before t, None before the first one. ``states``
-    in time order."""
+def ride_state_record_at(states: list[RideStateRecord], t: float) -> RideStateRecord | None:
+    """The ride-state record in effect at time t: the last one at or before
+    t, None before the first one. ``states`` in time order."""
     i = bisect.bisect_right([s.time for s in states], t)
-    return states[i - 1].state if i else None
+    return states[i - 1] if i else None
+
+
+def ride_state_at(states: list[RideStateRecord], t: float) -> int | None:
+    """The ride state (EDrivingState) in effect at time t, None before the
+    first ride-state record."""
+    rec = ride_state_record_at(states, t)
+    return rec.state if rec else None
 
 
 def write_records(path, records, version: int = CURRENT_VERSION) -> int:

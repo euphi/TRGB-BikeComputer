@@ -214,3 +214,16 @@ enum EAvgType {
   reine Algorithmen ausgelagert sind. Verifiziert wurde stattdessen per
   PlatformIO-Build (`pio run`) + Codelese; für echte Laufzeit-Tests bliebe
   nur ein Gerätetest.
+
+## 8. Binärlog und GPX
+
+`Statistics::logRideState()` schreibt einen `LogRec::RideState`-Satz (Typ 4,
+`src/LogRecords.h`) bei jeder Änderung von `curDriveState`, `rideMode` oder
+der Ride-Session -- nicht nur bei Zustandswechseln, denn ein Tap im Stand
+oder ein Long-Press im Cruise ändern nur Modus bzw. Session. Der Satz trägt
+Zustand, Ride-Modus, Flags (`RSF_SESSION_OPEN`, `RSF_SESSION_START`) und die
+Distanz seit dem Einschalten; `DS_FREE_RIDE` mit offener Session ist Cruise.
+
+`Tools/bikelog/gpx.py` beginnt bei jedem Wechsel ein neues `<trkseg>` und
+hängt den Zustand als `<extensions><bc:RideState>` an das Segment
+(`GpxOptions.ride_states`).

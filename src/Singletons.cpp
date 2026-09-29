@@ -22,4 +22,6 @@ BLEDevices bleDevs;
 #ifdef TRGBBC_SENSORS_I2C
 I2CSensors sensors;
 #endif
-
+#ifdef BC_SIM
+SimSensors sim;
+#endif

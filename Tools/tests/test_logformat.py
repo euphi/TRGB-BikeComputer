@@ -64,7 +64,8 @@ def test_layout_matches_firmware_header(tmp_path):
     assert (d.timestamp, d.timestamp_ms, d.speed, d.temp, d.gradient) == (1790000000, 789, 21.5, 17.25, -3.5)
     assert (d.height, d.distance, d.hr, d.cadence) == (123.5, 4567.0, 140, 85)
     assert (d.gps_lat_e7, d.gps_lon_e7, d.gps_altitude_m, d.gps_speed_cms) == (524000000, 87000000, 95, 600)
-    assert (d.gps_bearing_deg_x100, d.gps_accuracy_m_x10, d.gps_fix_age_ms, d.gps_flags) == (4500, 45, 350, 0x1F)
+    assert (d.gps_bearing_deg_x100, d.gps_accuracy_m_x10, d.gps_fix_age_ms, d.gps_flags) == (4500, 45, 350, 0x9F)
+    assert d.simulated and d.gps_valid
     assert d.road_class == 3 and d.grad_baro == -3.25 and d.grad_imu is None
 
     assert (r.timestamp, r.timestamp_ms, r.interval_ms, r.sample_count) == (1790000002, 12, 2003, 800)
@@ -95,8 +96,9 @@ def test_layout_matches_firmware_header(tmp_path):
 
     (rs,) = ride_states_of(read_file(out, types=None))
     assert (rs.timestamp, rs.timestamp_ms, rs.state, rs.prev_state) == (1790000005, 654, 4, 3)
-    assert (rs.ride_mode, rs.state_seq) == (1, 9)
-    assert rs.state_name == "Rollen"
+    assert (rs.ride_mode, rs.flags, rs.dist_m, rs.state_seq) == (1, 0x07, 2345.5, 9)
+    assert rs.simulated
+    assert rs.session_open and rs.session_start and rs.state_name == "Rollen"
 
 
 def test_mixed_roundtrip_and_default_filter(tmp_path):
@@ -170,7 +172,7 @@ def test_road_quality_and_shock_csv(tmp_path):
     # the ride data CSV gets the extra columns only on request
     buf = io.StringIO()
     csvexport.write_stream(buf, data, with_roadq=True)
-    assert buf.getvalue().splitlines()[0].endswith("Wegeklasse,Gradient_Baro,Gradient_IMU")
+    assert buf.getvalue().splitlines()[0].endswith("Wegeklasse,Gradient_Baro,Gradient_IMU,Simuliert")
     buf = io.StringIO()
     csvexport.write_stream(buf, data)
     assert "Wegeklasse" not in buf.getvalue().splitlines()[0]

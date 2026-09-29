@@ -4,7 +4,7 @@ import datetime
 import math
 import xml.etree.ElementTree as ET
 
-from bikelog import fixtures, gpx
+from bikelog import fixtures, gpx, record
 from bikelog.record import Record
 
 NS = {"gpx": gpx.GPX_NS, "tpx": gpx.TPX_NS}
@@ -314,3 +314,20 @@ def test_ridestats():
     assert st.avg_moving_kmh and st.max_speed_kmh >= st.avg_moving_kmh
     assert st.shocks == {2: 1}
     assert st.avg_hr and st.max_hr >= st.avg_hr
+
+
+def test_simulated_ride_is_marked():
+    records = fixtures.synthetic()
+    for rec in records[100:200]:
+        rec.gps_flags |= record.LOG_SIMULATED
+    root, _ = _tree(records)
+    assert root.find("gpx:metadata/gpx:name", NS).text.startswith("[SIM] ")
+    assert "simuliert" in root.find("gpx:metadata/gpx:keywords", NS).text
+    marked = root.findall(".//gpx:trkpt/gpx:extensions/bc:TrackPoint/bc:simulated", {**NS, "bc": gpx.BC_NS})
+    assert 0 < len(marked) <= 100
+
+
+def test_real_ride_is_not_marked():
+    root, _ = _tree(fixtures.synthetic())
+    assert not root.find("gpx:metadata/gpx:name", NS).text.startswith("[SIM]")
+    assert not root.findall(".//bc:simulated", {"bc": gpx.BC_NS})

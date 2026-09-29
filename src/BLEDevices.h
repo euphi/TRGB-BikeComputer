@@ -140,6 +140,12 @@ public:
 
 	// helper functions called from lambda
 	void notifyCallbackCSC( BLERemoteCharacteristic* pBLERemoteCharacteristic, uint8_t* pData, size_t length, bool isNotify, EDevType ctype);
+#ifdef BC_SIM
+	// SimSensors: a notification as a real sensor sends it, through notifyCallbackCSC() --
+	// speed in slot CSC_1, cadence in CSC_2. Real sensors of these kinds are ignored meanwhile.
+	void simNotifyCSC(bool speed, uint8_t* pData, size_t length) {notifyCallbackCSC(nullptr, pData, length, true, speed ? DEV_CSC_1 : DEV_CSC_2);}
+	void simNotifyHR(uint8_t* pData, size_t length) {notifyCallbackCSC(nullptr, pData, length, true, DEV_HRM);}
+#endif
 
 	uint16_t getHTMLPage(String& htmlresponse);
 	uint16_t procHTMLCmd(String& htmlresponse, const String& cmd, const String& arg);

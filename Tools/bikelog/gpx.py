@@ -53,7 +53,7 @@ from . import ridestats
 from .geo import haversine_m
 from .record import (LABEL_CHANGE, RIDE_STATE_NAMES, ROAD_CLASS_NAMES, ROAD_CLASS_OSM,
                      LabelRecord, Record, RideStateRecord, RoadQualityRecord, ShockEvent,
-                     label_at, labels_of, ride_state_at, ride_states_of, split)
+                     label_at, labels_of, ride_state_record_at, ride_states_of, split)
 from .sanitize import SanitizeOptions, trim_jitter
 
 GPX_NS = "http://www.topografix.com/GPX/1/1"
@@ -262,6 +262,8 @@ def _trackpoint(parent: ET.Element, rec: Record, opts: GpxOptions,
 
     bc: list[tuple[str, str]] = []
     if opts.rich:
+        if rec.simulated:
+            bc.append(("simulated", "1"))
         bc.append(("dist", _fmt(rec.distance, 1)))
         bc.append(("wheelSpeed", _fmt(rec.speed_ms, 2)))
         if rec.gradient != 0.0 or rec.grad_baro is not None or rec.grad_imu is not None:
@@ -492,7 +494,8 @@ def build_tree(records, opts: GpxOptions | None = None,
         if previous is not None and now == previous:
             stats.dropped_duplicate_time += 1
             continue
-        state = ride_state_at(ride_states, rec.time) if use_ride_states else None
+        state_rec = ride_state_record_at(ride_states, rec.time) if use_ride_states else None
+        state = state_rec.state if state_rec else None
         if (seg is None
                 or (opts.segment_gap_s and previous is not None
                     and (now - previous).total_seconds() > opts.segment_gap_s)
@@ -504,6 +507,8 @@ def build_tree(records, opts: GpxOptions | None = None,
                                     f"{{{BC_NS}}}RideState")
                 _sub(own, BC_NS, "state", str(state))
                 _sub(own, BC_NS, "name", RIDE_STATE_NAMES.get(state, "?"))
+                if state_rec.simulated:
+                    _sub(own, BC_NS, "simulated", "1")
             current_state = state
         _trackpoint(seg, rec, opts, lookup)
         lat = [min(lat[0], rec.latitude), max(lat[1], rec.latitude)]
@@ -524,6 +529,11 @@ def build_tree(records, opts: GpxOptions | None = None,
     ride = ridestats.compute(records, road, shocks, labels)
     name = opts.track_name or default_track_name(stats.first_time)
     description = ride.describe()
+    # Sensor simulator (simulator build): speed/cadence/HR are not from a ride
+    simulated = any(r.simulated for r in records)
+    if simulated:
+        name = "[SIM] " + name
+        description = "SIMULIERT (Sensor-Simulator) -- " + description
 
     # metadata, in schema order: name, desc, author, copyright, link, time,
     # keywords, bounds, extensions
@@ -535,7 +545,7 @@ def build_tree(records, opts: GpxOptions | None = None,
     if stats.first_time:
         _sub(metadata, GPX_NS, "time", _iso(stats.first_time))
     _sub(metadata, GPX_NS, "keywords", ", ".join(
-        k for k in ("Fahrrad", opts.track_type, opts.device) if k))
+        k for k in ("Fahrrad", opts.track_type, opts.device, "simuliert" if simulated else None) if k))
     if stats.written:
         ET.SubElement(metadata, f"{{{GPX_NS}}}bounds", {
             "minlat": f"{lat[0]:.7f}", "minlon": f"{lon[0]:.7f}",

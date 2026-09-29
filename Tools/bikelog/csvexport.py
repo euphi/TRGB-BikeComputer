@@ -25,7 +25,7 @@ GPS_COLUMNS = ("GPS_Valid", "GPS_Lat", "GPS_Lon", "GPS_Höhe", "GPS_Speed",
                "GPS_Kurs", "GPS_Genauigkeit", "GPS_FixAlter_ms")
 
 #: Extra columns of the ride-data CSV from log format v2 (empty for v1 logs).
-ROADQ_COLUMNS = ("Wegeklasse", "Gradient_Baro", "Gradient_IMU")
+ROADQ_COLUMNS = ("Wegeklasse", "Gradient_Baro", "Gradient_IMU", "Simuliert")
 
 ROAD_QUALITY_COLUMNS = (
     "Timestamp", "Intervall_ms", "Klasse", "Rauheit", "RMS_vert_mg", "RMS_hor_mg",
@@ -98,6 +98,7 @@ def row(rec, with_gps: bool = False, with_roadq: bool = False) -> dict:
             "Wegeklasse": rec.road_class or "",
             "Gradient_Baro": _blank(rec.grad_baro),
             "Gradient_IMU": _blank(rec.grad_imu),
+            "Simuliert": 1 if rec.simulated else "",
         })
     return row
 
