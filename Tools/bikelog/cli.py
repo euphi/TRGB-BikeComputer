@@ -70,6 +70,7 @@ def cmd_gpx(opts) -> int:
         shocks=not opts.no_shocks,
         min_shock_severity=opts.min_severity,
         labels=not opts.no_labels,
+        ride_states=opts.ride_states,
         rich=not opts.plain,
         device=opts.device,
     )
@@ -433,6 +434,10 @@ def build_parser() -> argparse.ArgumentParser:
                        help="Stöße ab dieser Schwere als Wegpunkt [Standard: %(default)s]")
     p_gpx.add_argument("--no-labels", action="store_true",
                        help="Wechsel der manuellen Wege-Labels nicht als Wegpunkte ausgeben")
+    p_gpx.add_argument("--ride-states", action="store_true",
+                       help="Neues Segment bei jedem Ride-State-Wechsel (Fahrt/Rollen/Cruise/"
+                            "Stopp/...), Zustand als Segment-Extension -- für die Analyse "
+                            "von Zeitverlust im Verkehr")
     p_gpx.add_argument("--plain", action="store_true",
                        help="nur Garmin-TrackPointExtension, ohne die eigenen Erweiterungen "
                             "(Steigung, Wegequalität, Labels, Zusammenfassung)")

@@ -104,7 +104,9 @@ class GpxOptions:
     #: Start a new <trkseg> on every ride-state change (in addition to
     #: segment_gap_s) and tag it with the state in effect, as an <extensions>
     #: block on the <trkseg> itself -- a section property, not a waypoint.
-    ride_states: bool = True
+    #: Off by default: Coast/Power and every stop split the track into many
+    #: short segments, which only pays off for analysing time lost in traffic.
+    ride_states: bool = False
     #: Add the BC_NS extensions (per point, per waypoint, ride summary).
     rich: bool = True
     track_name: str | None = None

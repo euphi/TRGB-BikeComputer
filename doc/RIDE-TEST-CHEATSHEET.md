@@ -87,7 +87,7 @@ Auf `/stat/statistics.html`:
   verworfen) und stimmt ungefähr mit GPS überein.
 - **Cadence** (Ø beim Treten) liegt im üblichen Bereich, typisch 60 bis 90 rpm.
 
-GPX: `bikelog gpx -i L_….bin -o test.gpx`. Jeder Zustandswechsel beginnt ein
+GPX: `bikelog gpx -i L_….bin -o test.gpx --ride-states`. Jeder Zustandswechsel beginnt ein
 neues `<trkseg>` mit `<bc:RideState>` (Fahrt, Rollen, Cruise, FreeRide,
 Stopp, Pause, Getrennt). Die Segmente sollten zu deinen notierten Uhrzeiten
 passen.

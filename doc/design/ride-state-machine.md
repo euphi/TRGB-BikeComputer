@@ -226,4 +226,6 @@ Distanz seit dem Einschalten; `DS_FREE_RIDE` mit offener Session ist Cruise.
 
 `Tools/bikelog/gpx.py` beginnt bei jedem Wechsel ein neues `<trkseg>` und
 hängt den Zustand als `<extensions><bc:RideState>` an das Segment
-(`GpxOptions.ride_states`).
+(`GpxOptions.ride_states`, CLI `bikelog gpx --ride-states`). Standardmäßig
+aus: Coast/Power und jeder Stopp zerlegen den Track in viele kurze Segmente,
+sinnvoll nur für die Analyse von Zeitverlust im Verkehr.

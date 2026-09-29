@@ -272,7 +272,7 @@ def _ride_with_states():
 
 
 def test_ride_state_changes_split_segments_and_tag_them():
-    xml, stats = gpx.from_records(_ride_with_states())
+    xml, stats = gpx.from_records(_ride_with_states(), gpx.GpxOptions(ride_states=True))
     root = ET.fromstring(xml)
     segs = root.findall(".//gpx:trkseg", BC)
     # 2 segments from the pause (see test_pause_splits_the_track_into_segments)
@@ -284,8 +284,8 @@ def test_ride_state_changes_split_segments_and_tag_them():
     assert names == [None, "FreeRide", "FreeRide", "Rollen"]
 
 
-def test_ride_state_split_can_be_disabled():
-    xml, stats = gpx.from_records(_ride_with_states(), gpx.GpxOptions(ride_states=False))
+def test_ride_state_split_is_off_by_default():
+    xml, stats = gpx.from_records(_ride_with_states())
     root = ET.fromstring(xml)
     assert stats.segments == 2                       # back to the pause-only count
     assert root.find(f".//{{{gpx.BC_NS}}}RideState") is None
