@@ -41,6 +41,7 @@ enum Type : uint8_t {
 	TYPE_ROAD_QUALITY = 1,		// every interval (1..10 s): road-surface metrics
 	TYPE_SHOCK = 2,				// on a hard hit
 	TYPE_LABEL = 3,				// manual road label (RQ-Ride screen): on change, then every 60 s
+	TYPE_RIDESTATE = 4,			// ride/drive-state change (Statistics::EDrivingState): on every change
 };
 
 // Manual road label: what the rider says the surface is, as ground truth for the automatic
@@ -197,20 +198,50 @@ struct Label {
 	uint8_t reserved2[16];				// 48
 };
 
+// Type 4. Written from Statistics::setCurDriveState() on every ride/drive-state change --
+// lets a post-processing tool (Tools/bikelog/gpx.py) tag GPX <trkseg> sections with the
+// ride state in effect, without touching every single track point (doc/design/
+// ride-state-machine.md). Field layout mirrors Label's (same primitive-type sequence, at
+// the same offsets) rather than a novel one, since this header has no host compiler
+// available to re-verify a new layout against Tools/tests/test_logformat.py at the time it
+// was added.
+// state/prevState = Statistics::EDrivingState (0 DS_NO_CONN, 1 DS_BREAK, 2 DS_STOP,
+// 3 DS_FREE_RIDE, 4 DS_DRIVE_COASTING, 5 DS_DRIVE_POWER -- see src/Stats/Statistics.h).
+struct RideState {
+	time_t timestamp;					//  0
+	uint16_t timestampMs;				//  8
+	uint8_t state;						// 10
+	uint8_t prevState;					// 11  state before this change
+	uint8_t rideMode;					// 12  1 = rideMode was on (Ride/Coast) at the time, else 0
+	uint8_t reserved0;					// 13
+	uint8_t reserved1;					// 14
+	uint8_t reserved2;					// 15
+	uint32_t reserved3;					// 16
+	uint32_t reserved4;					// 20
+	uint32_t stateSeq;					// 24  running number since boot: gaps = records lost
+	uint16_t reserved5;					// 28
+	uint8_t recordType;					// 30  = TYPE_RIDESTATE
+	uint8_t formatVersion;				// 31
+	uint8_t reserved6[32];				// 32
+};
+
 // The reader (Tools/bikelog/record.py) depends on exactly these positions.
 static_assert(sizeof(time_t) == 8, "time_t size changed -- all offsets below shift");
 static_assert(sizeof(Data) == RECORD_SIZE, "LogRec::Data must be 64 byte");
 static_assert(sizeof(RoadQuality) == RECORD_SIZE, "LogRec::RoadQuality must be 64 byte");
 static_assert(sizeof(Shock) == RECORD_SIZE, "LogRec::Shock must be 64 byte");
 static_assert(sizeof(Label) == RECORD_SIZE, "LogRec::Label must be 64 byte");
+static_assert(sizeof(RideState) == RECORD_SIZE, "LogRec::RideState must be 64 byte");
 static_assert(offsetof(Data, recordType) == TYPE_OFFSET && offsetof(Data, formatVersion) == VERSION_OFFSET, "Data header");
 static_assert(offsetof(RoadQuality, recordType) == TYPE_OFFSET && offsetof(RoadQuality, formatVersion) == VERSION_OFFSET, "RoadQuality header");
 static_assert(offsetof(Shock, recordType) == TYPE_OFFSET && offsetof(Shock, formatVersion) == VERSION_OFFSET, "Shock header");
 static_assert(offsetof(Label, recordType) == TYPE_OFFSET && offsetof(Label, formatVersion) == VERSION_OFFSET, "Label header");
+static_assert(offsetof(RideState, recordType) == TYPE_OFFSET && offsetof(RideState, formatVersion) == VERSION_OFFSET, "RideState header");
 static_assert(offsetof(Data, gpsLatitudeE7) == 32 && offsetof(Data, gpsFlags) == 56 && offsetof(Data, gradImuX100) == 62, "Data layout");
 static_assert(offsetof(RoadQuality, vdvVert) == 32 && offsetof(RoadQuality, gpsLatitudeE7) == 48 && offsetof(RoadQuality, gradImuX100) == 62, "RoadQuality layout");
 static_assert(offsetof(Shock, vdv) == 32 && offsetof(Shock, gpsLatitudeE7) == 40 && offsetof(Shock, eventSeq) == 56, "Shock layout");
 static_assert(offsetof(Label, prevDistanceM) == 16 && offsetof(Label, gpsLatitudeE7) == 32 && offsetof(Label, speedCms) == 46, "Label layout");
+static_assert(offsetof(RideState, reserved3) == 16 && offsetof(RideState, stateSeq) == 24, "RideState layout");
 
 // Helpers for filling records
 inline uint16_t toU16(float v) {return v <= 0 ? 0 : (v >= 65534.0f ? 65534 : (uint16_t)(v + 0.5f));}

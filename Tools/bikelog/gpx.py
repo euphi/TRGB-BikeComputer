@@ -17,7 +17,11 @@ is which records are allowed into it:
   misfile a track dated 1970.
 
 Gaps in time start a new <trkseg>, so map viewers draw a break instead of a
-straight line across a coffee stop.
+straight line across a coffee stop. So does a change of ride state
+(RideStateRecord, record type 4) -- the state then rides along as an
+<extensions> block on the new <trkseg> itself, not as a waypoint or a
+per-point tag: FreeRide/Ride/Coast/Cruise/Stop/Break are properties of a
+stretch of the ride, not of a single point (doc/design/ride-state-machine.md).
 
 Shocks (log format v2) become <wpt> waypoints -- potholes and kerbs on the
 map -- subject to the same position/time checks as the track points; so do
@@ -47,8 +51,9 @@ from dataclasses import dataclass, field
 
 from . import ridestats
 from .geo import haversine_m
-from .record import (LABEL_CHANGE, ROAD_CLASS_NAMES, ROAD_CLASS_OSM, LabelRecord, Record,
-                     RoadQualityRecord, ShockEvent, label_at, labels_of, split)
+from .record import (LABEL_CHANGE, RIDE_STATE_NAMES, ROAD_CLASS_NAMES, ROAD_CLASS_OSM,
+                     LabelRecord, Record, RideStateRecord, RoadQualityRecord, ShockEvent,
+                     label_at, labels_of, ride_state_at, ride_states_of, split)
 from .sanitize import SanitizeOptions, trim_jitter
 
 GPX_NS = "http://www.topografix.com/GPX/1/1"
@@ -96,6 +101,10 @@ class GpxOptions:
     min_shock_severity: int = 1
     #: Write manual label changes as waypoints.
     labels: bool = True
+    #: Start a new <trkseg> on every ride-state change (in addition to
+    #: segment_gap_s) and tag it with the state in effect, as an <extensions>
+    #: block on the <trkseg> itself -- a section property, not a waypoint.
+    ride_states: bool = True
     #: Add the BC_NS extensions (per point, per waypoint, ride summary).
     rich: bool = True
     track_name: str | None = None
@@ -411,12 +420,14 @@ def build_tree(records, opts: GpxOptions | None = None,
                shocks: list[ShockEvent] | None = None,
                road: list[RoadQualityRecord] | None = None,
                labels: list[LabelRecord] | None = None,
+               ride_states: list[RideStateRecord] | None = None,
                device_summary: dict | None = None) -> tuple[ET.ElementTree, GpxStats]:
     opts = opts or GpxOptions()
     stats = GpxStats()
     records = list(records)
     road = road or []
     labels = labels or []
+    ride_states = ride_states or []
 
     ET.register_namespace("", GPX_NS)
     ET.register_namespace("gpxtpx", TPX_NS)
@@ -449,7 +460,9 @@ def build_tree(records, opts: GpxOptions | None = None,
     ET.SubElement(trk, f"{{{GPX_NS}}}type").text = opts.track_type
 
     lookup = _RoadLookup(road, labels) if (opts.rich and (road or labels)) else None
+    use_ride_states = bool(opts.ride_states and ride_states)
     seg: ET.Element | None = None
+    current_state: int | None = None
     previous: datetime.datetime | None = None
     lat = [90.0, -90.0]
     lon = [180.0, -180.0]
@@ -479,10 +492,19 @@ def build_tree(records, opts: GpxOptions | None = None,
         if previous is not None and now == previous:
             stats.dropped_duplicate_time += 1
             continue
-        if seg is None or (opts.segment_gap_s and previous is not None
-                           and (now - previous).total_seconds() > opts.segment_gap_s):
+        state = ride_state_at(ride_states, rec.time) if use_ride_states else None
+        if (seg is None
+                or (opts.segment_gap_s and previous is not None
+                    and (now - previous).total_seconds() > opts.segment_gap_s)
+                or (use_ride_states and state != current_state)):
             seg = ET.SubElement(trk, f"{{{GPX_NS}}}trkseg")
             stats.segments += 1
+            if use_ride_states and state is not None:
+                own = ET.SubElement(ET.SubElement(seg, f"{{{GPX_NS}}}extensions"),
+                                    f"{{{BC_NS}}}RideState")
+                _sub(own, BC_NS, "state", str(state))
+                _sub(own, BC_NS, "name", RIDE_STATE_NAMES.get(state, "?"))
+            current_state = state
         _trackpoint(seg, rec, opts, lookup)
         lat = [min(lat[0], rec.latitude), max(lat[1], rec.latitude)]
         lon = [min(lon[0], rec.longitude), max(lon[1], rec.longitude)]
@@ -539,7 +561,8 @@ def from_records(everything, opts: GpxOptions | None = None,
     ride data, road quality, shocks and labels are sorted out here."""
     everything = list(everything)
     records, road, shocks = split(everything)
-    tree, stats = build_tree(records, opts, shocks, road, labels_of(everything), device_summary)
+    tree, stats = build_tree(records, opts, shocks, road, labels_of(everything),
+                             ride_states_of(everything), device_summary)
     xml = ET.tostring(tree.getroot(), encoding="unicode", xml_declaration=True)
     return xml + "\n", stats
 

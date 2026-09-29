@@ -10,11 +10,12 @@ import pytest
 
 from bikelog import csvexport, fixtures, gpx
 from bikelog.cli import main as cli_main
-from bikelog.record import (FORMATS, IF_GPS_VALID, LAYOUTS, SF_GPS_VALID, SF_WHEELBASE_MATCH,
-                            TYPE_DATA, TYPE_ROAD_QUALITY, TYPE_SHOCK, TYPE_OFFSET, U16_INVALID,
-                            VERSION_OFFSET, ReadStats, Record, RoadQualityRecord, ShockEvent,
-                            LabelRecord, TYPE_LABEL, label_at, labels_of,
-                            read_file, read_stream, split, write_records)
+from bikelog.record import (DS_DRIVE_POWER, DS_FREE_RIDE, FORMATS, IF_GPS_VALID, LAYOUTS,
+                            SF_GPS_VALID, SF_WHEELBASE_MATCH, TYPE_DATA, TYPE_ROAD_QUALITY,
+                            TYPE_SHOCK, TYPE_OFFSET, U16_INVALID, VERSION_OFFSET, ReadStats,
+                            Record, RoadQualityRecord, ShockEvent, LabelRecord, TYPE_LABEL,
+                            label_at, labels_of, RideStateRecord, TYPE_RIDESTATE, ride_state_at,
+                            ride_states_of, read_file, read_stream, split, write_records)
 
 REPO = Path(__file__).resolve().parents[2]
 
@@ -91,6 +92,11 @@ def test_layout_matches_firmware_header(tmp_path):
     assert (lab.gps_lat_e7, lab.gps_lon_e7, lab.gps_fix_age_ms, lab.gps_accuracy_m_x10) == (524000300, 87000300, 600, 70)
     assert lab.speed_kmh == pytest.approx(18.0, abs=0.02) and lab.gps_valid
     assert lab.surface_name == "Schotter"
+
+    (rs,) = ride_states_of(read_file(out, types=None))
+    assert (rs.timestamp, rs.timestamp_ms, rs.state, rs.prev_state) == (1790000005, 654, 4, 3)
+    assert (rs.ride_mode, rs.state_seq) == (1, 9)
+    assert rs.state_name == "Rollen"
 
 
 def test_mixed_roundtrip_and_default_filter(tmp_path):
@@ -250,6 +256,40 @@ def test_labels_roundtrip_and_lookup(tmp_path):
     assert label_at(labels, t0 + 60) == (1, 1)
     assert label_at(labels, t0 + 199.5) == (1, 1)
     assert label_at(labels, t0 + 1000) == (2, 3)
+    # the default filter (ride data only) is unchanged
+    assert all(type(r) is Record for r in read_file(path))
+
+
+def _ride_states(t0):
+    """Two ride-state changes: FreeRide from t0+30 s, Ride (rideMode on) from t0+90 s."""
+    return [RideStateRecord(timestamp=t0 + 30, state=DS_FREE_RIDE, state_seq=1),
+            RideStateRecord(timestamp=t0 + 90, state=DS_DRIVE_POWER, prev_state=DS_FREE_RIDE,
+                            ride_mode=1, state_seq=2)]
+
+
+def test_ride_states_roundtrip_and_lookup(tmp_path):
+    records = _ride()
+    t0 = records[0].timestamp
+    states = _ride_states(t0)
+    out = []
+    for rec in records:
+        while states and states[0].timestamp <= rec.timestamp:
+            out.append(states.pop(0))
+        out.append(rec)
+    path = tmp_path / "ride.bin"
+    write_records(path, out)
+    stats = ReadStats()
+    back = list(read_file(path, stats, types=None))
+    states = ride_states_of(back)
+    assert stats.by_type[TYPE_RIDESTATE] == 2 and stats.unknown_type == 0
+    assert [(s.state, s.ride_mode) for s in states] == [(DS_FREE_RIDE, 0), (DS_DRIVE_POWER, 1)]
+    assert states[1].state_name == "Fahrt"
+    data, road, shocks = split(back)                # ride states stay out of the ride data
+    assert all(type(r) is Record for r in data)
+    assert ride_state_at(states, t0 + 10) is None
+    assert ride_state_at(states, t0 + 30) == DS_FREE_RIDE
+    assert ride_state_at(states, t0 + 89.5) == DS_FREE_RIDE
+    assert ride_state_at(states, t0 + 1000) == DS_DRIVE_POWER
     # the default filter (ride data only) is unchanged
     assert all(type(r) is Record for r in read_file(path))
 

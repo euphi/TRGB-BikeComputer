@@ -18,6 +18,8 @@ v2  64-byte records of several types, the type at byte 30:
       3  LabelRecord        manual road label (surface + quality), added
                             later without a version bump; older v2 files
                             simply have none
+      4  RideStateRecord    ride/drive-state change (Statistics::EDrivingState), added the
+                            same way; used to tag GPX <trkseg> sections (see bikelog.gpx)
     Unknown types are skipped by their size, so a newer firmware can add one
     without breaking this reader.
 """
@@ -44,6 +46,25 @@ TYPE_DATA = 0
 TYPE_ROAD_QUALITY = 1
 TYPE_SHOCK = 2
 TYPE_LABEL = 3
+TYPE_RIDESTATE = 4
+
+# Statistics::EDrivingState (src/Stats/Statistics.h) -- values RideStateRecord.state/
+# prev_state carry.
+DS_NO_CONN = 0
+DS_BREAK = 1
+DS_STOP = 2
+DS_FREE_RIDE = 3
+DS_DRIVE_COASTING = 4
+DS_DRIVE_POWER = 5
+
+RIDE_STATE_NAMES = {
+    DS_NO_CONN: "Getrennt",
+    DS_BREAK: "Pause",
+    DS_STOP: "Stopp",
+    DS_FREE_RIDE: "FreeRide",
+    DS_DRIVE_COASTING: "Rollen",
+    DS_DRIVE_POWER: "Fahrt",
+}
 
 CURRENT_VERSION = 2
 VERSION_OFFSET = 31
@@ -414,7 +435,41 @@ class LabelRecord:
         return _utc(self.timestamp, self.timestamp_ms)
 
 
-AnyRecord = Record | RoadQualityRecord | ShockEvent | LabelRecord
+@dataclass
+class RideStateRecord:
+    """Ride/drive-state change (v2, type 4): written on every change of
+    Statistics::EDrivingState. Holds from this record until the next one --
+    used to tag GPX <trkseg> sections (bikelog.gpx) rather than points."""
+
+    timestamp: int = 0
+    timestamp_ms: int = 0
+    state: int = 0                      # EDrivingState, see RIDE_STATE_NAMES
+    prev_state: int = 0                 # state before this change
+    ride_mode: int = 0                  # 1 = rideMode was on (Ride/Coast) at the time
+    reserved0: int = 0
+    reserved1: int = 0
+    reserved2: int = 0
+    reserved3: int = 0
+    reserved4: int = 0
+    state_seq: int = 0                  # running number since boot; gaps = records lost
+    reserved5: int = 0
+    record_type: int = TYPE_RIDESTATE
+    format_version: int = 0
+    reserved6: bytes = bytes(32)
+
+    @property
+    def state_name(self) -> str:
+        return RIDE_STATE_NAMES.get(self.state, "?%d" % self.state)
+
+    @property
+    def time(self) -> float:
+        return self.timestamp + self.timestamp_ms / 1000.0
+
+    def utc(self) -> datetime.datetime:
+        return _utc(self.timestamp, self.timestamp_ms)
+
+
+AnyRecord = Record | RoadQualityRecord | ShockEvent | LabelRecord | RideStateRecord
 
 
 class Layout:
@@ -533,10 +588,21 @@ _V2_LABEL = Layout(
     ),
 )
 
+_V2_RIDESTATE = Layout(
+    RideStateRecord,
+    "<qHBBBBBBIIIHBB32s",
+    (
+        "timestamp", "timestamp_ms", "state", "prev_state", "ride_mode",
+        "reserved0", "reserved1", "reserved2", "reserved3", "reserved4",
+        "state_seq", "reserved5", "record_type", "format_version", "reserved6",
+    ),
+)
+
 FORMATS: dict[int, Format] = {
     1: Format(1, _V1_DATA.size, {TYPE_DATA: _V1_DATA}),
     2: Format(2, 64, {TYPE_DATA: _V2_DATA, TYPE_ROAD_QUALITY: _V2_ROAD_QUALITY,
-                      TYPE_SHOCK: _V2_SHOCK, TYPE_LABEL: _V2_LABEL}, type_offset=TYPE_OFFSET),
+                      TYPE_SHOCK: _V2_SHOCK, TYPE_LABEL: _V2_LABEL,
+                      TYPE_RIDESTATE: _V2_RIDESTATE}, type_offset=TYPE_OFFSET),
 }
 
 #: The ride-data layout of each version (the only record type v1 had).
@@ -638,6 +704,19 @@ def label_at(labels: list[LabelRecord], t: float) -> tuple[int, int]:
     or before t, (0, 0) before the first one. ``labels`` in time order."""
     i = bisect.bisect_right([lab.time for lab in labels], t)
     return (labels[i - 1].surface, labels[i - 1].quality) if i else (0, 0)
+
+
+def ride_states_of(records: Iterable[AnyRecord]) -> list[RideStateRecord]:
+    """The ride/drive-state records of a mixed record stream, in file order."""
+    return [rec for rec in records if isinstance(rec, RideStateRecord)]
+
+
+def ride_state_at(states: list[RideStateRecord], t: float) -> int | None:
+    """The ride state (EDrivingState) in effect at time t: that of the last
+    ride-state record at or before t, None before the first one. ``states``
+    in time order."""
+    i = bisect.bisect_right([s.time for s in states], t)
+    return states[i - 1].state if i else None
 
 
 def write_records(path, records, version: int = CURRENT_VERSION) -> int:

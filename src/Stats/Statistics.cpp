@@ -9,6 +9,7 @@
 #include "Distance.h"
 #include "Singletons.h"
 #include "WebPage.h"
+#include "LogRecords.h"
 #include <ArduinoJson.h>
 #include <esp_heap_caps.h>
 #include <new>				// placement new for the PSRAM-backed rb_timedata, see the constructor
@@ -756,6 +757,20 @@ void Statistics::reset(ESummaryType type) {	//TODO: Move to DistanceHandler
 }
 
 void Statistics::setCurDriveState(EDrivingState _curDriveState) {
+	if (_curDriveState != curDriveState) {
+		// Logged here, not in cycle()'s callers, so every transition is caught regardless
+		// of which branch triggered it -- see doc/design/ride-state-machine.md and
+		// LogRec::RideState's comment for why this feeds the GPX <trkseg> export.
+		LogRec::RideState rec = {};
+		BCLogger::nowEpoch(rec.timestamp, rec.timestampMs);
+		rec.state = _curDriveState;
+		rec.prevState = curDriveState;
+		rec.rideMode = rideMode ? 1 : 0;
+		rec.stateSeq = ++rideStateSeq;
+		rec.recordType = LogRec::TYPE_RIDESTATE;
+		rec.formatVersion = LogRec::FORMAT_VERSION;
+		bclog.appendRecord(rec);
+	}
 	curDriveState = _curDriveState;
 	if (_curDriveState == DS_STOP) {
 		timestamp_stop = millis();

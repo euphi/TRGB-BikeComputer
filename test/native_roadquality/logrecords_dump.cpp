@@ -117,12 +117,23 @@ int main(int argc, char** argv) {
 	l.gpsAccuracyMX10 = 70;
 	l.speedCms = speedCms(18.0f);
 
+	RideState rs = {};
+	rs.timestamp = 1790000005;
+	rs.timestampMs = 654;
+	rs.state = 4;			// DS_DRIVE_COASTING (Statistics::EDrivingState)
+	rs.prevState = 3;		// DS_FREE_RIDE
+	rs.rideMode = 1;
+	rs.stateSeq = 9;
+	rs.recordType = TYPE_RIDESTATE;
+	rs.formatVersion = FORMAT_VERSION;
+
 	FILE* f = fopen(argv[1], "wb");
 	if (!f) return 1;
 	fwrite(&d, sizeof(d), 1, f);
 	fwrite(&r, sizeof(r), 1, f);
 	fwrite(&s, sizeof(s), 1, f);
 	fwrite(&l, sizeof(l), 1, f);
+	fwrite(&rs, sizeof(rs), 1, f);
 	fclose(f);
 	return 0;
 }

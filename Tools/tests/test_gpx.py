@@ -250,6 +250,47 @@ def test_rich_metadata_summary():
     assert root.findtext("gpx:trk/gpx:src", namespaces=BC) == "TRGB-BikeComputer (gravel)"
 
 
+def _ride_with_states():
+    """Synthetic ride with two ride-state changes: FreeRide at list index 30
+    (pre-pause segment, second 30) and Ride/DriveCoasting at list index 200
+    (post-pause segment, second 380 -- the pause at 120..300 s removes those
+    records outright, so list index and second diverge after it). Both away
+    from the pause-caused time gap, so they split segments the time-gap check
+    alone would not."""
+    from bikelog.record import DS_DRIVE_COASTING, DS_FREE_RIDE, RideStateRecord
+    records = fixtures.synthetic(no_fix_start_s=0)
+    everything = []
+    for i, rec in enumerate(records):
+        if i == 30:
+            everything.append(RideStateRecord(timestamp=rec.timestamp, state=DS_FREE_RIDE,
+                                              state_seq=1))
+        if i == 200:
+            everything.append(RideStateRecord(timestamp=rec.timestamp, state=DS_DRIVE_COASTING,
+                                              prev_state=DS_FREE_RIDE, ride_mode=1, state_seq=2))
+        everything.append(rec)
+    return everything
+
+
+def test_ride_state_changes_split_segments_and_tag_them():
+    xml, stats = gpx.from_records(_ride_with_states())
+    root = ET.fromstring(xml)
+    segs = root.findall(".//gpx:trkseg", BC)
+    # 2 segments from the pause (see test_pause_splits_the_track_into_segments)
+    # plus 2 more from the ride-state changes, each inside one of those.
+    assert stats.segments == len(segs) == 4
+    names = [s.findtext("gpx:extensions/bc:RideState/bc:name", namespaces=BC) for s in segs]
+    # seg 1: no state yet: seg 2 (state change): FreeRide; seg 3 (pause split, state
+    # unchanged since the change at index 200 comes later): still FreeRide; seg 4: Rollen.
+    assert names == [None, "FreeRide", "FreeRide", "Rollen"]
+
+
+def test_ride_state_split_can_be_disabled():
+    xml, stats = gpx.from_records(_ride_with_states(), gpx.GpxOptions(ride_states=False))
+    root = ET.fromstring(xml)
+    assert stats.segments == 2                       # back to the pause-only count
+    assert root.find(f".//{{{gpx.BC_NS}}}RideState") is None
+
+
 def test_plain_export_has_no_own_namespace():
     xml, _ = gpx.from_records(_rich_ride(), gpx.GpxOptions(rich=False))
     assert gpx.BC_NS not in xml

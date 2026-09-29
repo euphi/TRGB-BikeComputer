@@ -90,6 +90,7 @@ private:
 	float sessionBaseNet = 0, sessionBaseGross = 0;
 	float sessionEndNet = 0, sessionEndGross = 0;
 	time_t timestamp_stop;
+	uint32_t rideStateSeq = 0;			// LogRec::RideState.stateSeq, see setCurDriveState()
 
 	struct S_DataPoint {
 		float min;
