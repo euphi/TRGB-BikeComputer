@@ -10,6 +10,8 @@ Linked from `/debug/menu`:
   gradient, I²C error counters
 * **Climbs** (`/debug/climb`) -- elevation profile state, climb settings, demo profile
   (see [CLIMB.md](CLIMB.md))
+* **Last crash** (`/debug/coredump`) -- reset reason, task and backtrace of the core dump
+* **Simulator** (`/debug/sim`) -- only in the simulator build, see [SIMULATOR.md](SIMULATOR.md)
 * **Chart array** (`/stat/debugarray`) and **distance details**
   (`/stat/dist_debug.html`)
 * **Raw SD browser** (`/log/`)
@@ -48,8 +50,10 @@ loglevel STAT WARN -file          # only warnings and errors of STAT into the fi
 showloglevel                      # current table
 ```
 
-Files on the SD card, one set per session in `/BIKECOMP/<YYYYMMDD>/` (or
-`/BIKECOMP/NO_TIME/` before the clock is set):
+Files on the SD card, one set per session (= one boot). The running session writes to
+`/BIKECOMP/CUR/`; the next boot moves it to `/BIKECOMP/<YYYYMMDD>/` (or
+`/BIKECOMP/NO_TIME/` if the clock was never set). Naming and the summary file `I_*.txt`
+are described in [`Tools/README.md`](../Tools/README.md).
 
 | File | Content |
 |---|---|
@@ -103,6 +107,10 @@ Line-based monitors (Arduino IDE) still work: they send the whole line with a ne
 A core dump is a copy of stack and other memory in case of a crash, so it can later be used for investigation of the cause.
 
 By default, Arduino ESP32 is configured so that core dumps are written to flash memory.
+
+Without USB: `/debug/coredump` shows the task and backtrace of the last crash, and
+`/debug/coredump.elf` downloads the dump for `esp-coredump` (command and caveats in
+[PITFALLS.md](PITFALLS.md), "Abstürze ohne USB"). The steps below read it over USB.
 
 ### How to get a coredump
 

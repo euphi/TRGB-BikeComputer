@@ -2,7 +2,7 @@
  * RimRidgeSettingsCustFunc.h
  *
  * Hand-written logic for the EEZ Studio-generated "RimRidgeSettings" screen
- * (doc/design/settings.svg, extended 2026-09-27 by doc/USABILITY-TODO.md #2/#3).
+ * (doc/design/settings.svg, extended by what a ride needs without web access).
  * Same pattern as RimRidgeCustFunc.h - lives outside src/ui_eez/ because that
  * whole directory gets overwritten on every EEZ Studio export.
  *

@@ -347,9 +347,9 @@ die gehört auf den Mainscreen, wo sie durchgehend sichtbar ist.
 ### Einstellungen — [`settings.svg`](settings.svg)
 
 **Umgesetzt** als `RimRidgeSettings` (2026-09-27). Gegenüber der SVG-Studie
-(Zahnrad, Titel, Build, IP, Neustart, Tiefschlaf) kamen aus
-[`USABILITY-TODO.md`](../USABILITY-TODO.md) §2/§3 WLAN-Reconnect,
-IMU-Kalibrierung und Referenzfahrt dazu. Neustart und Tiefschlaf stehen deshalb
+(Zahnrad, Titel, Build, IP, Neustart, Tiefschlaf) kamen WLAN-Reconnect,
+IMU-Kalibrierung und Referenzfahrt dazu, damit sie unterwegs ohne Web bedienbar
+sind ([`USABILITY-TODO.md`](../USABILITY-TODO.md)). Neustart und Tiefschlaf stehen deshalb
 nebeneinander statt untereinander. Kein Statuszeilen-Kopf, aber unten die
 gemeinsame Fahrzustand/RQ-Gruppe (§4). Öffnen: Tipp auf `rr_btn_settings`;
 zurück: Wischen in beliebige Richtung. Logik: `src/ui/RimRidgeSettingsCustFunc.cpp`.

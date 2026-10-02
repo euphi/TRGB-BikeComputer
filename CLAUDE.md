@@ -6,6 +6,12 @@ LVGL 8.4). Sensoren: Herzfrequenz, CSC (Speed/Cadence), Forumslader
 der Android-Companion-App [TrailBridge](../TrailBridge/) (Paket
 `com.euphi.trailbridge`).
 
+**Stand und offene Arbeit:** [`ROADMAP.md`](ROADMAP.md) (Reifegrad je Feature,
+bekannte Probleme, geplante Features), Bedienung unterwegs:
+[`doc/USABILITY-TODO.md`](doc/USABILITY-TODO.md). Beide aktuell halten, wenn ein
+Punkt erledigt ist -- erledigte Punkte dort löschen, Features im
+[`README.MD`](README.MD) nachtragen.
+
 **Bekannte Fallstricke (PSRAM/Display-Flackern, NimBLE, USB, ...):
 [`doc/PITFALLS.md`](doc/PITFALLS.md) -- vor Änderungen an Speicherlayout,
 BLE-Adressen oder beim Debuggen von Anzeige-Artefakten lesen.**
@@ -61,13 +67,13 @@ ist das Protokoll die Quelle der Wahrheit.
   exportiert der Agent selbst mit `Tools/eez_export_headless.sh` (EEZ Studios
   eigener Exporter) und testet auf dem Gerät; der Nutzer prüft im Canvas und
   exportiert nur noch aus eigenen Gründen manuell.
-- Alter SquareLine-Code: `src/ui/ui*.c` (Main-Screen `S1Main`, wird noch
-  initialisiert, aber nie angezeigt; MsgBox noch aktiv verdrahtet) und der
-  FL-Screen `src/ui/ui_FL.c`/`uiFLmodel.cpp` -- nur in der FL-Variante
-  kompiliert (`#ifdef BC_FL_SUPPORT`), Quelle für die spätere EEZ-Umstellung,
-  nicht löschen. Settings- und Chart-Screen sind entfernt (2026-09-27; Chart
-  wird neu gestaltet). `src/ui/img/` enthält nur noch die von RimRidge
-  genutzten Nav-/Spur-Icons (`nav_icons`, `lane_icon`, `roundabout-icon`).
+- Rest der alten SquareLine-UI: nur noch der FL-Screen `src/ui/ui_FL.c`/
+  `uiFLmodel.cpp` (nur in der FL-Variante kompiliert, `#ifdef BC_FL_SUPPORT`;
+  Quelle für die spätere EEZ-Umstellung, nicht löschen) und die MsgBox in
+  `src/ui/ui_custFunc.c`. `src/ui/ui.c` hält nur noch den Zeiger
+  `ui_MainScreen`. Einen Chart-Screen gibt es nicht mehr, er wird neu gestaltet.
+  `src/ui/img/` enthält nur die von RimRidge genutzten Nav-/Spur-Icons
+  (`nav_icons`, `lane_icon`, `roundabout-icon`).
 
 ## Binärlog und Wegequalität
 

@@ -7,14 +7,11 @@ Stops/Breaks/Cruise) zusammenhängt.
 
 Diagramm: [`ride-state-machine.svg`](ride-state-machine.svg).
 
-**Status (2026-09-28):** Design + Statistics-Kern umgesetzt, Statistik-Review
-(§5) eingearbeitet
-(`src/Stats/Statistics.{h,cpp}`, `src/Stats/Distance.{h,cpp}`). UI-Anbindung
-(Tap-Handler, neue Icons) siehe §6 — Icons sind Platzhalter, vom Nutzer im
-EEZ-Canvas zu prüfen.
-
-Exportiert, gebaut und auf dem Gerät getestet (Tap/Long-Press per
-`Tools/uishot.py`); eine echte Fahrt steht noch aus.
+**Status:** umgesetzt (`src/Stats/Statistics.{h,cpp}`,
+`src/Stats/Distance.{h,cpp}`, UI-Anbindung §6). Auf dem Gerät getestet mit
+Tap/Long-Press per `Tools/uishot.py` und dem Simulator-Build; eine echte Fahrt
+steht noch aus ([Cheatsheet](../RIDE-TEST-CHEATSHEET.md)). Die Icons für
+FreeRide und Start sind Platzhalter.
 
 ## 1. Grundsatz
 

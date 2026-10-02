@@ -1,6 +1,6 @@
 # Testfahrt-Cheatsheet: Ride-Zustandsautomat und Statistik
 
-Für die erste echte Fahrt mit `feature/ride-state-machine`. Unterwegs gibt es
+Für die erste echte Fahrt mit dem Ride-Zustandsautomaten. Unterwegs gibt es
 nur Tap, Long-Press und Wischen. Die Durchschnittswerte stehen nicht auf dem
 Display, du prüfst sie zu Hause auf `/stat/statistics.html`. Unterwegs
 kontrollierst du deshalb nur, was du **sehen** kannst, und notierst die

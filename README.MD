@@ -2,8 +2,9 @@
 
 A bike computer built on the [LilyGO T-RGB](https://www.lilygo.cc/products/t-rgb): a round
 480×480 touch display, ESP32-S3 with BLE and WiFi, SD card, and a LiPo charger on board.
-It reads standard BLE bike sensors, shows turn-by-turn navigation from your phone, logs
-every ride to SD card and rates the road surface with its own accelerometer.
+It reads standard BLE bike sensors, shows turn-by-turn navigation and the climb ahead
+from your phone, logs every ride to SD card and rates the road surface with its own
+accelerometer.
 
 <p>
   <img src="doc/design/mainscreen.svg" width="300" alt="Main screen design">
@@ -12,15 +13,25 @@ every ride to SD card and rates the road surface with its own accelerometer.
 
 ## Features
 
-**Display** -- "Rim & Ridge" UI (LVGL 8, designed in EEZ Studio)
-- Main screen: speed with average marker on the outer ring, cadence, temperature,
-  altitude, gradient, heart rate with zone band, distance, ride time/clock,
-  driving state (pedalling / coasting / stopped / break), road-quality indicator,
-  status icons for WiFi, GPS fix and battery
-- Navigation screen: opens by itself when the next maneuver comes close, closes after
-  it. Shows large turn arrow, distance ring, street name, next maneuver, lane guidance
-  and roundabout exits
-- Tap the nav pill to open it manually, swipe right to close it
+**Display** -- "Rim & Ridge" UI (LVGL 8, designed in EEZ Studio) with five screens:
+- **Main**: speed (number and outer ring), cadence, heart rate with zone band,
+  temperature, altitude, gradient, distance (ride / trip / tour / total), ride time or
+  clock, driving state, road-quality line, status icons for WiFi, GPS fix and battery
+- **Navigation**: opens by itself before a maneuver and closes after it. Large turn
+  arrow, distance ring, street name, next maneuver, lane guidance, roundabout exits
+- **Climb**: elevation profile of the climb ahead, coloured by gradient, with its
+  category; opens by itself at the foot of a rated climb ([doc/CLIMB.md](doc/CLIMB.md))
+- **Road labels**: mark surface and quality by hand while riding, as ground truth for
+  the automatic road-quality class
+- **Settings**: IP address and WiFi reconnect, accelerometer calibration and reference
+  ride, restart, power off
+
+**Rides and statistics**
+- One button starts a ride, pauses it ("cruise") and ends it; stops and breaks are
+  detected from the speed
+- Distance, time, average and maximum speed and average cadence per ride, trip, tour
+  and in total; averages with or without stops, breaks and cruise time
+  ([doc/design/ride-state-machine.md](doc/design/ride-state-machine.md))
 
 **Sensors**
 - BLE: cycling speed & cadence (CSC), heart rate, battery level of each sensor;
@@ -30,30 +41,40 @@ every ride to SD card and rates the road surface with its own accelerometer.
   [BLE gateway](https://github.com/euphi/ESP32_FLClassic2BLE) (build variant `-FL`)
 
 **Navigation and GPS** from the Android companion app
-[TrailBridge](https://github.com/euphi/TrailBridge), which forwards OsmAnd's
-turn-by-turn instructions and the phone's GPS position over BLE
-([protocol](https://github.com/euphi/TrailBridge/blob/main/PROTOCOL.md)).
+[TrailBridge](https://github.com/euphi/TrailBridge) over BLE
+([protocol](https://github.com/euphi/TrailBridge/blob/main/PROTOCOL.md)):
+- Turn-by-turn instructions from OsmAnd, or from a GPX route that TrailBridge plays
+  itself -- then with the elevation profile for the climb screen
+- The phone's GPS position for the log, and its time for the clock when there is no WiFi
+- [`Tools/gpxenrich`](Tools/gpxenrich/) turns a plain GPX track into such a route
+  (turn hints from BRouter)
 
 **Road quality** from the BMI160 at 400 Hz: roughness class per interval, shock
 detection (with second peak from the rear wheel), a calibration ride on smooth
 asphalt, and gradient from the accelerometer as an alternative to the barometer.
 
 **Logging**
-- Binary ride log on SD card: ride data every 5 s incl. GPS, road quality per
-  interval, every shock; raw accelerometer captures on demand
+- Binary ride log on SD card, one session per boot in dated folders: ride data every
+  5 s incl. GPS, road quality per interval, every shock, manual road labels, ride
+  states; raw accelerometer captures on demand
 - Debug log and raw Forumslader log (replayable on the device)
-- [`Tools/`](Tools/README.md): Python CLI to convert logs to CSV and GPX (sensor data
-  as Garmin TrackPointExtension, shocks as waypoints) and a small upload/archive
-  service
+- [`Tools/`](Tools/README.md): Python CLI to convert logs to CSV and GPX, and a
+  [service](Tools/BikeLogService/README.md) that fetches the sessions when the bike
+  computer shows up in the WiFi, archives them, exports GPX, syncs to Nextcloud and
+  uploads to Komoot
 
 **Web interface** (when on WiFi)
 - Download, replay and delete log files; live log with adjustable log levels
-- Ride statistics and charts, odometer and wheel calibration
-- Manage BLE sensors, sensor and accelerometer debug pages, calibration
+- Ride statistics with a chart, odometer and wheel calibration
+- Manage BLE sensors; debug pages for sensors, accelerometer, climbs and crashes
 - Firmware and filesystem update over the air
 
-**Serial console** with line editing, history and Tab completion: log levels, memory/stack report (`mem`), road-quality settings
-(`rq`), log replay.
+**Serial console** with line editing, history and Tab completion
+([doc/DEBUG.md](doc/DEBUG.md)).
+
+**For development**: a simulator build with fake sensors
+([doc/SIMULATOR.md](doc/SIMULATOR.md)), screenshots and touch input over HTTP
+(`Tools/uishot.py`), host tests for the pure algorithms (`test/`, `Tools/tests/`).
 
 ## Hardware
 
@@ -78,20 +99,27 @@ pio run -e trgb-esp32-s3 -t uploadfs      # web interface files (data/site)
 
 `trgb-esp32-s3-ota` and `trgb-esp32-s3-FL-ota` are the same builds, uploaded over WiFi
 to the device's `/update` endpoint. Target is `TRGB-BC.local`; if mDNS doesn't resolve,
-pass the IP: `pio run -e trgb-esp32-s3-ota -t upload --upload-port 192.168.x.y`
+pass the IP: `pio run -e trgb-esp32-s3-ota -t upload --upload-port 192.168.x.y`.
+`trgb-esp32-s3-sim` is the simulator build.
 
 The build applies small patches to two libraries (`apply_patches.py`), which needs
 the `patch` tool.
 
 ## Documentation
 
-- [ROADMAP.md](ROADMAP.md) -- open work and ideas
-- [doc/PITFALLS.md](doc/PITFALLS.md) -- hardware and framework pitfalls (PSRAM and
-  display flicker, NimBLE, internal heap, ...) -- German
-- [doc/design/rim-ridge-design-system.md](doc/design/rim-ridge-design-system.md) -- UI
-  design system -- German
-- [doc/DEBUG.md](doc/DEBUG.md) -- serial console, logging and core dumps
-- [Tools/README.md](Tools/README.md) -- log format and tools -- German
+| Document | Content |
+|---|---|
+| [ROADMAP.md](ROADMAP.md) | state of the features, open work, planned features |
+| [doc/USABILITY-TODO.md](doc/USABILITY-TODO.md) | what is still missing on the device for use on the road -- German |
+| [doc/CLIMB.md](doc/CLIMB.md) | climbs: categories, settings, demo -- German |
+| [doc/design/ride-state-machine.md](doc/design/ride-state-machine.md) | ride states and how the statistics count -- German |
+| [doc/RIDE-TEST-CHEATSHEET.md](doc/RIDE-TEST-CHEATSHEET.md) | what to check on a test ride -- German |
+| [doc/design/rim-ridge-design-system.md](doc/design/rim-ridge-design-system.md) | UI design system and screens -- German |
+| [Tools/README.md](Tools/README.md) | log format, files on the SD card, CLI -- German |
+| [Tools/BikeLogService/README.md](Tools/BikeLogService/README.md) | log service: fetching, GPX export, Nextcloud, Komoot -- German |
+| [doc/DEBUG.md](doc/DEBUG.md) | debug pages, remote UI testing, logging, serial console, core dumps |
+| [doc/SIMULATOR.md](doc/SIMULATOR.md) | simulator build -- German |
+| [doc/PITFALLS.md](doc/PITFALLS.md) | hardware and framework pitfalls (PSRAM and display flicker, NimBLE, internal heap, ...) -- German |
 
 Contributions are welcome, see the roadmap for where help is wanted.
 
