@@ -67,7 +67,6 @@ private:
 	bool hasBatService[DEV_COUNT] = {true, true, true, false, false};
 	int8_t batLevel[DEV_COUNT] = {-1, -1, -1, -1, -1};
 	EBLEConnState connState[DEV_COUNT] = {CONN_DEV_NOTFOUND, CONN_DEV_NOTFOUND, CONN_DEV_NOTFOUND, CONN_DEV_NOTFOUND, CONN_DEV_NOTFOUND};
-	Preferences StatPreferences;
 
 	static const int scanTime = 8; //In seconds
 	bool connectToServer(SDevToConnect& dev);

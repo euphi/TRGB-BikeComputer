@@ -58,9 +58,11 @@ exakt derselbe Blattzustand**, Icon und Tastensymbol unterscheiden sich
 nicht. Der einzige Unterschied ist unsichtbar: ob gerade eine
 Ride-Session offen ist (§4).
 
-Persistenz: `PREF_TIME_STRING[]`/NVS-Keys sind namensbasiert
-(`"TIME_IN_FREE"` neu, JSON `timeIn.FREE`, andere unverändert) -- alte gespeicherte Werte
-bleiben beim Update gültig, kein Migrationsschritt nötig.
+Persistenz: Zeiten, Trittfrequenz-Zähler und Distanzen für Total, Tour und
+Trip liegen als ein Blob im NVS (`src/Stats/StatsStore.h`, Zeiten nach
+Zustandsindex). Geschrieben wird alle 5 min, beim Wechsel nach Stop oder
+NoConn und vor dem Ausschalten (`Statistics::persistNow()`). Ein neuer
+Zustand ändert das Layout und braucht eine neue `StatsStore::VERSION`.
 
 ## 3. Taste und Icon
 
@@ -142,7 +144,7 @@ enum EAvgType {
   eine Distanz je Zustand ist dafür nicht nötig.
 * `AVG_NOCRUISE` braucht die Cruise-Distanz: `Statistics::distFree[]`
   (nur Distanz in `DS_FREE_RIDE`), wie `time_in[][]` in NVS persistiert
-  (`DIST_FREE`). Für Tour/Trip/Total heißt das "nur Ride-Anteile aller
+  (`StatsStore::Summary::distFree`). Für Tour/Trip/Total heißt das "nur Ride-Anteile aller
   Fahrten"; wer nie Start drückt, hat dort keinen Wert.
 * Stop -> Break (> 2 min): verschoben wird genau die Zeit dieses Stopps
   (`stopEpisodeMs[]`), nicht pauschal `now - timestamp_stop` -- das hat

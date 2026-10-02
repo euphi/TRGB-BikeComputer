@@ -51,7 +51,6 @@ private:
 
 	String htmlresponse;		// Buffer for response
 
-	Preferences WifiSettings;
 	String StrSSID[WifiAPCount] = {""};
 	String StrPW[WifiAPCount] = {""};
 	bool disableAPMode = false;		// AP Mode not possible

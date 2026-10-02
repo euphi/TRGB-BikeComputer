@@ -19,6 +19,7 @@
 #include "ClockSync.h"
 #include "LogSessions.h"
 #include "SessionStats.h"
+#include "NvsUtil.h"
 
 
 const char *BCLogger::TAG_STRING[LogTagMax] = { "RAW", "FL", "BLE", "STAT", "WIFI", "SD", "OP", "CLI", "UI", "WEB" };
@@ -68,6 +69,49 @@ static void completeLoglevel(uint8_t pos, SerialConsole::Matches& m) {
 	}
 }
 
+// Log levels in the NVS: one blob, a byte per [output][tag]. By position, not by tag name --
+// a blob of another size (a tag was added) is ignored and the defaults apply.
+static const char* const LOG_NAMESPACE = "Log";
+static const char* const KEY_LEVELS = "levels";
+
+void BCLogger::loadLoglevels() {
+	struct {uint8_t level[LogOutputMax][LogTagMax];} blob;
+	Preferences p;
+	p.begin(LOG_NAMESPACE, false);
+	bool stored = NvsUtil::loadBlob(p, KEY_LEVELS, blob);
+	if (!stored) {
+		// One i32 per tag name in a namespace per output, as stored before 2026-10: take
+		// them over once, then empty the two namespaces.
+		static const char* const LEGACY_NAMESPACE[LogOutputMax] = {"LSer", "LFile"};
+		for (uint_fast8_t c = 0; c < LogOutputMax; c++) {
+			Preferences legacy;
+			const bool exists = NvsUtil::namespaceExists(LEGACY_NAMESPACE[c]) && legacy.begin(LEGACY_NAMESPACE[c], false);
+			for (uint_fast8_t d = 0; d < LogTagMax; d++) {
+				const int32_t level = exists ? legacy.getLong(TAG_STRING[d], -1) : -1;
+				if (level >= 0) stored = true;
+				blob.level[c][d] = level >= 0 ? level : loglevel[c][d];
+			}
+			if (exists) legacy.end();
+		}
+		if (stored && NvsUtil::saveBlob(p, KEY_LEVELS, blob)) {
+			for (uint_fast8_t c = 0; c < LogOutputMax; c++) {
+				Preferences legacy;
+				if (NvsUtil::namespaceExists(LEGACY_NAMESPACE[c]) && legacy.begin(LEGACY_NAMESPACE[c], false)) {
+					legacy.clear();
+					legacy.end();
+				}
+			}
+		}
+	}
+	p.end();
+	if (!stored) return;
+	for (uint_fast8_t c = 0; c < LogOutputMax; c++) {
+		for (uint_fast8_t d = 0; d < LogTagMax; d++) {
+			if (blob.level[c][d] < LogTypeMax) loglevel[c][d] = static_cast<LogType>(blob.level[c][d]);
+		}
+	}
+}
+
 BCLogger::BCLogger():
 		logevents("/debug/logevent")
 {
@@ -78,20 +122,7 @@ BCLogger::BCLogger():
 void BCLogger::setup() {
 	checkTagTablesComplete();
 	ClockSync::setup();
-	logPrefs[OUT_Serial].begin("LSer", true);
-	logPrefs[OUT_File].begin("LFile", true);
-	for (uint_fast8_t c = 0; c < LogOutputMax; c++) {
-		for (uint_fast8_t d = 0; d < LogTagMax; d++) {
-			LogType level = static_cast<LogType>(logPrefs[c].getLong(TAG_STRING[d], -1));
-			if (level >= 0) {
-				loglevel[c][d] = level;
-			} else {
-				logf(Log_Info, TAG_OP, "Can't load loglevel for %s from preferences [out: %d]", TAG_STRING[d], c);
-			}
-		}
-	}
-	logPrefs[OUT_File].end();
-	logPrefs[OUT_Serial].end();
+	loadLoglevels();
 
 	logcmd = console.addCmd("loglevel", cmdCB, completeLoglevel);
 	logcmd.addPositionalArgument("logtag");
@@ -141,6 +172,7 @@ void BCLogger::setup() {
 	// Every session starts in the working directory under a running number -- the clock is
 	// rarely set this early (NTP needs WLAN, GPS the phone). It gets its date and time after
 	// the next boot, see LogSessions.h. The counter is the one the NO_TIME names always used.
+	Preferences noTimeCounter;
 	noTimeCounter.begin("NoTimeCounter");
 	uint16_t c = noTimeCounter.getShort("Counter", 40);
 	char stem[12];
@@ -394,17 +426,15 @@ void BCLogger::handleCommand(const Command &cmd) {
 	setLogLevel(static_cast<LogType>(l), static_cast<LogTag>(t), argFile, argSerial);
 }
 
-void BCLogger::storeLoglevel(LogType level, LogTag tag, bool file, bool serial) {
-	if (file) {
-		logPrefs[OUT_File].begin("LFile");
-		logPrefs[OUT_File].putLong(TAG_STRING[tag], loglevel[OUT_File][tag]);
-		logPrefs[OUT_File].end();
+void BCLogger::storeLoglevels() {
+	struct {uint8_t level[LogOutputMax][LogTagMax];} blob;
+	for (uint_fast8_t c = 0; c < LogOutputMax; c++) {
+		for (uint_fast8_t d = 0; d < LogTagMax; d++) blob.level[c][d] = loglevel[c][d];
 	}
-	if (serial) {
-		logPrefs[OUT_Serial].begin("LSer");
-		logPrefs[OUT_Serial].putLong(TAG_STRING[tag], loglevel[OUT_Serial][tag]);
-		logPrefs[OUT_Serial].end();
-	}
+	Preferences p;
+	p.begin(LOG_NAMESPACE, false);
+	NvsUtil::saveBlob(p, KEY_LEVELS, blob);
+	p.end();
 }
 
 void BCLogger::setLogLevel(LogType level, LogTag tag, bool file, bool serial) {
@@ -422,7 +452,7 @@ void BCLogger::setLogLevel(LogType level, LogTag tag, bool file, bool serial) {
 		loglevel[OUT_File][tag] = level;
 	if (serial)
 		loglevel[OUT_Serial][tag] = level;
-	storeLoglevel(level, tag, file, serial);
+	storeLoglevels();
 }
 
 

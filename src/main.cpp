@@ -4,6 +4,7 @@
 #include "BootLogoRimRidge.h"
 #include "WebInstrument.h"
 #include "CrashInfo.h"
+#include "NvsUtil.h"
 
 #include <Battery.h>
 Battery batt = Battery(3000, 4200, BAT_VOLT_PIN);
@@ -44,6 +45,7 @@ void setup() {
 	batt.begin(3300, 2.0/4.0 * 1.03, &sigmoidal); // divider ratio is 2, but ESP32-S3 has 4096 bit DAC instead of 1024, so an additional division by 4 is needed --> 0.5 ratio  + 3% error correction (individual setting?)
 
 	bclog.setup();
+	NvsUtil::removeStaleKeys();
 	CrashInfo::logBoot();
     cli.setOnError(errorCallback);
     cmdPing = console.addCmd("ping", [](cmd* c) {Serial.println("Pong!");});

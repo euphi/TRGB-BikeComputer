@@ -49,7 +49,7 @@ static void shutdownTask(void* arg) {
 	const bool sleep = (arg != nullptr);
 	bclog.log(BCLogger::Log_Info, BCLogger::TAG_OP, sleep ? "Deep sleep requested on the settings screen"
 	                                                    : "Restart requested on the settings screen");
-	stats.getDistHandler().store();		// otherwise up to 60 s of distance are lost (store ticker period)
+	stats.persistNow();		// otherwise up to 5 min of statistics are lost (Statistics::PERSIST_INTERVAL_MS)
 	bclog.flushFiles();
 	if (sleep) {
 		trgb.deepSleep();

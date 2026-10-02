@@ -14,11 +14,13 @@
 #include <esp_heap_caps.h>
 #include <new>				// placement new for the PSRAM-backed rb_timedata, see the constructor
 
+// State names for the log and /stat/summary (after "TIME_IN_"). They were the NVS keys
+// before the statistics became one blob, StatsStore::migrateLegacy() still reads them.
 const char* Statistics::PREF_TIME_STRING[Statistics::EDrivingStateMax] = {
 		"TIME_IN_NOCONN",	//		DS_NO_CONN,
 		"TIME_IN_BREAK",	//		DS_BREAK,
 		"TIME_IN_STOP",		//		DS_STOP,
-		"TIME_IN_FREE",		//		DS_FREE_RIDE,  -- new key, name-keyed NVS storage so old data stays valid (NVS keys: max. 15 chars)
+		"TIME_IN_FREE",		//		DS_FREE_RIDE,
 		"TIME_IN_COAST",	//		DS_DRIVE_COASTING,
 		"TIME_IN_DRIVE"		//		DS_DRIVE_POWER,
 };
@@ -88,12 +90,13 @@ void Statistics::allocPsramBuffers() {
 
 void Statistics::setup() {
 	allocPsramBuffers();
+	persistMutex = xSemaphoreCreateMutex();
 	restoreStats();
 	distHandler.setup();
 	// What kind of sorcery is this?  --> See https://stackoverflow.com/questions/60985496/arduino-esp8266-esp32-ticker-callback-class-member-function
 	statCycle.attach_ms(500, +[](Statistics *thisInstance) {thisInstance->cycle();}, this);
 	statDataStore.attach(5, +[](Statistics *thisInstance) {thisInstance->dataStore();}, this);
-	statStore.attach(15, +[](Statistics *thisInstance) {thisInstance->autoStore();}, this);
+	statSeries.attach(15, +[](Statistics *thisInstance) {thisInstance->seriesTick();}, this);
 
 	// Serve the array data as JSON
 	webserver.getServer().on("/stat/data", HTTP_GET, [this](AsyncWebServerRequest *request) {
@@ -128,46 +131,61 @@ String Statistics::generateJSONArray() {
 	return jsonArray;
 }
 
-// NVS keys next to PREF_TIME_STRING[] in the same namespace (max. 15 chars each)
-static const char* const PREF_DIST_FREE = "DIST_FREE";
-static const char* const PREF_SPEED_MAX = "SPEED_MAX";
-static const char* const PREF_CAD_MREVS = "CAD_MREVS";
-static const char* const PREF_CAD_MS    = "CAD_MS";
+static_assert(StatsStore::STATES == Statistics::EDrivingStateMax && StatsStore::SUMMARIES == Statistics::SUM_ESP_START,
+		"StatsStore::Blob layout");
 
 void Statistics::restoreStats() {
-	for (uint_fast8_t c = 0 ; c < SUM_ESP_START; c++) {
-		StatPreferences[c].begin((String(NVS_STAT_PREFIX) + SUM_TYPE_STRING[c]).c_str());
-		for (uint_fast8_t d = 0 ; d < EDrivingStateMax ; d++) {
-			time_in[d][c] = StatPreferences[c].getLong(PREF_TIME_STRING[d], 0);
-			bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Loaded time in %s for %s from preferences: %d", PREF_TIME_STRING[d], SUM_TYPE_STRING[c], time_in[d][c]);
-		}
-		// isKey() first: Preferences logs an [E] line for every missing key otherwise (they
-		// only exist after the first autoStore() that has something to write).
-		Preferences& p = StatPreferences[c];
-		distFree[c]     = p.isKey(PREF_DIST_FREE) ? p.getFloat(PREF_DIST_FREE, 0.0) : 0.0;
-		speed_max[c]    = p.isKey(PREF_SPEED_MAX) ? p.getFloat(PREF_SPEED_MAX, 0.0) : 0.0;
-		cadMilliRevs[c] = p.isKey(PREF_CAD_MREVS) ? p.getULong64(PREF_CAD_MREVS, 0) : 0;
-		cadMs[c]        = p.isKey(PREF_CAD_MS)    ? p.getULong64(PREF_CAD_MS, 0) : 0;
-		//StatPreferences[c].end();
+	StatsStore::Blob blob = {};
+	blob.version = StatsStore::VERSION;
+	if (!StatsStore::load(blob) && !StatsStore::migrateLegacy(blob)) {
+		bclog.log(BCLogger::Log_Info, BCLogger::TAG_STAT, "No statistics stored - starting at zero");
 	}
+	for (uint_fast8_t c = 0 ; c < SUM_ESP_START; c++) {
+		const StatsStore::Summary& s = blob.sum[c];
+		for (uint_fast8_t d = 0 ; d < EDrivingStateMax ; d++) {
+			time_in[d][c] = s.timeMs[d];
+			bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Loaded time in %s for %s: %d", PREF_TIME_STRING[d] + 8, SUM_TYPE_STRING[c], time_in[d][c]);
+		}
+		distFree[c] = s.distFree;
+		speed_max[c] = s.speedMax;
+		cadMilliRevs[c] = s.cadMilliRevs;
+		cadMs[c] = s.cadMs;
+	}
+	distHandler.restore(blob);
+	lastStored = blob;
+	lastPersistMs = millis();
 }
 
-void Statistics::autoStore() {
-	bclog.log(BCLogger::Log_Debug, BCLogger::TAG_STAT, "Store distance and time to preferences");
+void Statistics::persistNow() {
+	xSemaphoreTake(persistMutex, portMAX_DELAY);		// cycle() and the shutdown task
+	persistRequested = false;
+	stopPersistPending = false;
+	lastPersistMs = millis();
+	StatsStore::Blob blob = {};
+	blob.version = StatsStore::VERSION;
 	for (uint_fast8_t c = 0 ; c < SUM_ESP_START; c++) {
-		Preferences& p = StatPreferences[c];
+		StatsStore::Summary& s = blob.sum[c];
 		for (uint_fast8_t d = 0 ; d < EDrivingStateMax ; d++) {
-			if (!p.putLong(PREF_TIME_STRING[d], time_in[d][c])) {
-				bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_STAT, "Can't save time in %s for %s to preferences", PREF_TIME_STRING[d], SUM_TYPE_STRING[c]);
-			}
+			s.timeMs[d] = time_in[d][c];
 		}
-		// These only change while riding -- skip the flash write when nothing changed (and
-		// check isKey() first, see restoreStats()).
-		if (!p.isKey(PREF_DIST_FREE) || p.getFloat(PREF_DIST_FREE, 0.0) != distFree[c])      p.putFloat(PREF_DIST_FREE, distFree[c]);
-		if (!p.isKey(PREF_SPEED_MAX) || p.getFloat(PREF_SPEED_MAX, 0.0) != speed_max[c])     p.putFloat(PREF_SPEED_MAX, speed_max[c]);
-		if (!p.isKey(PREF_CAD_MREVS) || p.getULong64(PREF_CAD_MREVS, 0) != cadMilliRevs[c])  p.putULong64(PREF_CAD_MREVS, cadMilliRevs[c]);
-		if (!p.isKey(PREF_CAD_MS)    || p.getULong64(PREF_CAD_MS, 0) != cadMs[c])            p.putULong64(PREF_CAD_MS, cadMs[c]);
+		s.distFree = distFree[c];
+		s.speedMax = speed_max[c];
+		s.cadMilliRevs = cadMilliRevs[c];
+		s.cadMs = cadMs[c];
 	}
+	distHandler.fill(blob);
+	if (memcmp(&blob, &lastStored, sizeof(blob)) != 0) {
+		if (StatsStore::save(blob)) {
+			lastStored = blob;
+			bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_STAT, "Statistics stored: total %.2f m at %d revs", blob.sum[SUM_ESP_TOTAL].distTotal, blob.sum[SUM_ESP_TOTAL].revs);
+		} else {
+			bclog.log(BCLogger::Log_Error, BCLogger::TAG_STAT, "❌ Can't store the statistics to NVS");
+		}
+	}
+	xSemaphoreGive(persistMutex);
+}
+
+void Statistics::seriesTick() {
 	updateTimeSeries();			// FIXME: test only - there may be time or distance mode so maybe move it to cycle or updateRevs.
 	for (uint_fast8_t j=0; j < 4 ; j++) {
 		createChartArray(j);	// FIXME: test only
@@ -234,6 +252,16 @@ void Statistics::cycle() {
 		}
 	}
 
+	if (sleepRequested) {
+		persistNow();
+		trgb.deepSleep();
+	}
+	const uint32_t sincePersist = millis() - lastPersistMs;
+	if (persistRequested || sincePersist >= PERSIST_INTERVAL_MS
+			|| (stopPersistPending && !isMoving(curDriveState) && sincePersist >= PERSIST_MIN_GAP_MS)) {
+		persistNow();
+	}
+
 	// Driving state fsm (Connected sub-state). rideMode (manual, Pause/Start button) picks
 	// DS_FREE_RIDE vs. DS_DRIVE_COASTING/POWER on resume -- see
 	// doc/design/ride-state-machine.md for the full two-axis picture.
@@ -261,6 +289,7 @@ void Statistics::cycle() {
 		// no break - also switch off in NO_CONN
 	case DS_NO_CONN:
 		if (time_in_break > (offAfterMinutes * 60000)) {		// auto-switch off  (default 50min, can be delayed)
+			persistNow();
 			trgb.deepSleep();
 		}
 		break;
@@ -436,7 +465,7 @@ void Statistics::updateStateIcon() {
 						ui.showMsgBox(String(buffer), [this](bool ok) {
 							shutdownMsg = false;
 							if (ok) {
-								trgb.deepSleep();
+								sleepRequested = true;		// cycle() stores the statistics first -- not here, this is the UI task
 							} else {
 								delayStandby();
 							}
@@ -765,6 +794,9 @@ void Statistics::setCurDriveState(EDrivingState _curDriveState) {
 		timestamp_stop = millis();
 		for (uint_fast8_t c = 0; c < ESummaryTypeMax; c++) stopEpisodeMs[c] = 0;
 	}
+	// Standing still or the sensor gone: a good moment to store, a flicker hurts least now
+	// (cycle() does it, and not more often than PERSIST_MIN_GAP_MS).
+	if (_curDriveState == DS_STOP || _curDriveState == DS_NO_CONN) stopPersistPending = true;
 	bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Driving state changed to %s", (PREF_TIME_STRING[curDriveState]+8));
 	logRideState();
 }

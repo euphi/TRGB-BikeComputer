@@ -5,7 +5,7 @@
 Linked from `/debug/menu`:
 
 * **Live log** (`/debug/`) -- the same lines as the serial console, filterable by tag
-* **NVS contents** (`/debug/nvs`) -- stored settings (only with `-DDEBUG_APP`)
+* **NVS contents** (`/debug/nvs`) -- stored keys and fill level (only with `-DDEBUG_APP`)
 * **Accelerometer** (`/debug/imu`) -- BMI160 state, calibration, road quality, shocks,
   gradient, I²C error counters
 * **Climbs** (`/debug/climb`) -- elevation profile state, climb settings, demo profile

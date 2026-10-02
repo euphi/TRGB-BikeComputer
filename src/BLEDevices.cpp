@@ -374,20 +374,21 @@ void BLEDevices::updateDisconnectedDev(const EDevType dt) {
  * specific device type, a log message is generated.
  */
 void BLEDevices::restoreAdresses() {
-	StatPreferences.begin("BLEConn");
+	Preferences addrPrefs;
+	addrPrefs.begin("BLEConn");
 	for (uint16_t c = 0; c < DEV_NAV; c++) {
 		const char* key = DEV_STRING[c];
 		// getType() probes quietly; getBytesLength()/getBytes() emit a log_e on a missing key
 		// or an undersized buffer, which CORE_DEBUG_LEVEL=1 would print on every boot.
-		PreferenceType pt = StatPreferences.getType(key);
+		PreferenceType pt = addrPrefs.getType(key);
 		if (pt == PT_INVALID) {
 			bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "No BLE address stored in preferences for %s", key);
 			continue;
 		}
 
 		uint8_t raw[ESP_BD_ADDR_LEN];
-		if (pt == PT_BLOB && StatPreferences.getBytesLength(key) == ESP_BD_ADDR_LEN
-				&& StatPreferences.getBytes(key, raw, sizeof(raw)) == ESP_BD_ADDR_LEN) {
+		if (pt == PT_BLOB && addrPrefs.getBytesLength(key) == ESP_BD_ADDR_LEN
+				&& addrPrefs.getBytes(key, raw, sizeof(raw)) == ESP_BD_ADDR_LEN) {
 			// Deliberately NOT BLEAddress(uint8_t[6]): under NimBLE that constructor
 			// reverse-copies (it expects display order), while storeAdress() wrote the raw
 			// native bytes -- the asymmetric pair is what flipped the address on every boot.
@@ -402,11 +403,11 @@ void BLEDevices::restoreAdresses() {
 			// two are indistinguishable), so it can't be interpreted: drop it once. The slot
 			// is free afterwards, the sensor is re-learned on the next scan and re-stored in
 			// the new format. Same effect as the manual /dev/reset?dev=N, just automatic.
-			StatPreferences.remove(key);
+			addrPrefs.remove(key);
 			bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_BLE, "Dropped stale pre-NimBLE address for %s - will be re-learned on next scan", key);
 		}
 	}
-	StatPreferences.end();
+	addrPrefs.end();
 }
 
 /**
@@ -421,12 +422,13 @@ void BLEDevices::restoreAdresses() {
  */
 void BLEDevices::storeAdress(EDevType type, BLEAddress &addr) {
 	if (type == DEV_NAV) return;	// TrailBridge (Android peripheral) likely uses a random/rotating address
-	StatPreferences.begin("BLEConn");
+	Preferences addrPrefs;
+	addrPrefs.begin("BLEConn");
 	// ESP_BD_ADDR_LEN, not 16: m_address is a 6-byte array, so the old length read 10 bytes
 	// past the end of the BLEAddress object. restoreAdresses() reverses this exactly.
-	size_t rc = StatPreferences.putBytes(DEV_STRING[type], addr.getNative(), ESP_BD_ADDR_LEN);
+	size_t rc = addrPrefs.putBytes(DEV_STRING[type], addr.getNative(), ESP_BD_ADDR_LEN);
 	bclog.logf(rc > 0 ? BCLogger::Log_Debug : BCLogger::Log_Error, BCLogger::TAG_BLE, "Stored %d bytes to pref %s: %s", rc, DEV_STRING[type],	addr.toString().c_str());
-	StatPreferences.end();
+	addrPrefs.end();
 }
 
 /**
@@ -444,8 +446,9 @@ void BLEDevices::storeAdress(EDevType type, BLEAddress &addr) {
  * @param type The device type whose address should be removed.
  */
 void BLEDevices::resetAdress(EDevType type) {
-	StatPreferences.begin("BLEConn");
-	bool succ = StatPreferences.remove(DEV_STRING[type]);
+	Preferences addrPrefs;
+	addrPrefs.begin("BLEConn");
+	bool succ = addrPrefs.remove(DEV_STRING[type]);
 	bclog.logf(succ ? BCLogger::Log_Debug : BCLogger::Log_Warn, BCLogger::TAG_BLE, "Removed stored address for pref %s: %s", DEV_STRING[type], succ ? "OK":"FAILED");
 	if (succ) {
 		if (pStoredAddress[type]) {
@@ -461,7 +464,7 @@ void BLEDevices::resetAdress(EDevType type) {
 			pStoredAddress[type] = nullptr;
 		}
 	}
-	StatPreferences.end();
+	addrPrefs.end();
 }
 
 // ---------------------------------------------

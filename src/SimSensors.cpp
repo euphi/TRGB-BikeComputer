@@ -242,7 +242,7 @@ void SimSensors::getPage(String& out) {
 		"<p class=\"eyebrow\">Simulator build: fakes a CSC speed sensor, a cadence sensor and a heart-rate strap. "
 		"Their notifications go through the normal BLE parser, so distance and statistics run the real code. "
 		"Real sensors are ignored while the simulator is active. Statistics are kept apart from the normal firmware's "
-		"(own NVS namespaces).</p>\n"
+		"(own NVS namespace).</p>\n"
 		"<h3>Manual</h3>\n"
 		"<div class=\"row\">"
 		"<label>km/h <input type=\"number\" id=\"sp\" min=\"0\" max=\"120\" step=\"0.5\" value=\"20\"></label>"

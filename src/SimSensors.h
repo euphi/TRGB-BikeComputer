@@ -29,7 +29,7 @@
  *           /debug/sim/stop
  *   GPX     python3 -m bikelog sim ride.gpx --serial /dev/ttyACM0 | --http TRGB-BC.local
  *
- * The simulator build keeps its ride statistics in NVS namespaces of its own
+ * The simulator build keeps its ride statistics in an NVS namespace of its own
  * (NVS_STAT_PREFIX, include/global_settings.h), so fake kilometres never reach the real
  * odometer. See doc/SIMULATOR.md.
  */

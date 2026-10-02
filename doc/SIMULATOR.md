@@ -57,8 +57,8 @@ Strecke mit GPS-Spur *und* Statistik ohne Fahren.
 
 ## Eigene Statistik-Ablage
 
-Der Simulator-Build legt die Fahrstatistik in eigenen NVS-Namespaces ab
-(`S_ST_*`, `S_DIST_<rad>_*`, `NVS_STAT_PREFIX` in
+Der Simulator-Build legt die Fahrstatistik in einem eigenen NVS-Namespace ab
+(`S_Stats` statt `Stats`, `NVS_STAT_PREFIX` in
 `include/global_settings.h`). Gesamt-/Tour-/Trip-km der normalen Firmware
 bleiben unberührt; nach dem Zurückflashen sind die echten Werte wieder da.
 Geteilt bleiben WLAN, BLE-Adressen, Radumfang, Log-Einstellungen, IMU-Kalibrierung.

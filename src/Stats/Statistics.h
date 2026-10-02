@@ -8,7 +8,8 @@
 
 #include <Arduino.h>
 #include <Ticker.h>
-#include <Preferences.h>
+#include <atomic>
+#include "StatsStore.h"
 //#include <Stats/Distance.h>
 class Distance;
 #include "BikeGpsProtocol.h"
@@ -73,7 +74,7 @@ private:
 	void applyRideModeToCurrentMovement();	// re-evaluates curDriveState right after rideMode changes, instead of waiting for the next cycle()
 
 	time_t timestamp_last;
-	uint32_t time_in[EDrivingStateMax][ESummaryTypeMax];	// ms per driving state (NVS-persisted except START)
+	uint32_t time_in[EDrivingStateMax][ESummaryTypeMax];	// ms per driving state (persisted except START, see persistNow())
 	// Time of the current stop so far, per summary type -- what moves from DS_STOP to
 	// DS_BREAK once the stop gets longer than 2 min (only this stop, not older stop time).
 	uint32_t stopEpisodeMs[ESummaryTypeMax] = {};
@@ -225,12 +226,25 @@ private:
 	uint8_t offAfterMinutes = 255;
 
 	Ticker statCycle;
-	Ticker statStore;
+	Ticker statSeries;
 	Ticker statDataStore;
-	Preferences StatPreferences[SUM_ESP_START + 1]; // FL values are not stored (because they are stored in FL). SUM_ESP_START value stores last know value
+
+	// Persistence (TOTAL, TOUR, TRIP; FL values are stored in the FL, START lives in RAM):
+	// one NVS blob, written from cycle() only -- every 5 min, when the bike stops or the
+	// sensor is lost (at most once a minute; a stop inside that minute is stored once it is
+	// over, if the bike still stands), and on request. Not more often: each NVS page erase
+	// makes the display flicker, see doc/PITFALLS.md.
+	static const uint32_t PERSIST_INTERVAL_MS = 5 * 60 * 1000;
+	static const uint32_t PERSIST_MIN_GAP_MS = 60 * 1000;
+	StatsStore::Blob lastStored = {};		// what the NVS holds
+	uint32_t lastPersistMs = 0;
+	std::atomic<bool> persistRequested{false};
+	std::atomic<bool> stopPersistPending{false};	// stopped since the last write
+	std::atomic<bool> sleepRequested{false};	// deep sleep from a task that must not write the NVS itself (UI)
+	SemaphoreHandle_t persistMutex = nullptr;
 
 	void cycle();			// 500ms ticker
-	void autoStore();		// 5s ticker
+	void seriesTick();		// 15s ticker
 	void dataStore();		// 5s ticker
 
 	void restoreStats();
@@ -277,6 +291,13 @@ public:
 	bool isConnected() {return (curDriveState != DS_NO_CONN);}
 	void delayStandby();
 	void toggleStandbyMode();
+
+	// Stores the statistics with the next cycle() (within 500 ms) -- from any task, also
+	// those that must not write the NVS themselves (UI task: stack, see doc/PITFALLS.md).
+	void requestPersist() {persistRequested = true;}
+	// Stores right away if anything changed: before a restart or deep sleep.
+	void persistNow();
+	const StatsStore::Blob& getLastStored() const {return lastStored;}
 
 	// Pause/Start button (rr_btn_pause), see doc/design/ride-state-machine.md §3/§4.
 	// Short tap: Start (opens a new ride session, resets SUM_ESP_START) the first time,

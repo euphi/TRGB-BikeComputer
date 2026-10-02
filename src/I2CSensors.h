@@ -133,7 +133,6 @@ private:
 	}
 
 	Ticker bme280Cycle;
-	Preferences sensorPreferences;
 
 	// ---------------- BMI160: FIFO acquisition and static calibration ----------------
 	// Accelerometer only, 400 Hz, +/-16 g, read in bursts from the sensor's 1024 byte FIFO
@@ -176,7 +175,7 @@ private:
 		uint16_t calProgress = 0;		// samples collected in the running calibration
 		float calMeasuredSigma[3] = {0, 0, 0};	// of the last attempt, also a failed one
 	};
-	// Persisted in Preferences namespace "RoadQ" (shared with the later road-quality code).
+	// Persisted as one blob in Preferences namespace "RoadQ" (shared with the road-quality code).
 	struct ImuCalibration {
 		bool valid = false;
 		float g0[3] = {0, 0, 0};		// gravity vector at rest [g], before scale correction

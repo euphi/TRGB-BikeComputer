@@ -84,12 +84,14 @@ void WifiWebserver::setup() {
 	LittleFS.begin();		// WifiWebserver is also responsible for enabling LittleFS, because it is only used for Website storage (Logging is on SDCARD, which is maintained in BClogger).
 
 	// Load settings from NVS
+	// Only slot 0 is ever written (/wifi/connect), and the block below overrides it.
+	Preferences WifiSettings;
 	WifiSettings.begin("WifiSettings", true);
 	for (uint_fast8_t i = 0; i < WifiAPCount; i++) {
-		String key = "SSID_" + i;
-		StrSSID[i] = WifiSettings.getString(key.c_str(), "");
-		key = "PW_" + i;
-		StrPW[i] = WifiSettings.getString(key.c_str(), "");
+		String key = String("SSID_") + i;		// isKey() first: getString() logs an [E] line for a missing key
+		StrSSID[i] = WifiSettings.isKey(key.c_str()) ? WifiSettings.getString(key.c_str(), "") : String();
+		key = String("PW_") + i;
+		StrPW[i] = WifiSettings.isKey(key.c_str()) ? WifiSettings.getString(key.c_str(), "") : String();
 		//if (i == 0 && StrSSID[0] == "") {		//TODO: For testing only - remove
 		if (true) {
 			StrSSID[0] = "IA216oT";
@@ -275,6 +277,7 @@ void WifiWebserver::checkLoop() {
 	// on here, one tick later, by which time the reply has gone out.
 	if (otaRebootAt && millis() >= otaRebootAt) {
 		bclog.log(BCLogger::Log_Info, TAG, "OTA complete - restarting");
+		stats.persistNow();		// otherwise up to 5 min of statistics are lost (Statistics::PERSIST_INTERVAL_MS)
 		ESP.restart();
 	}
 }
@@ -738,6 +741,7 @@ void WifiWebserver::setupWebserver() {
 				StrSSID[0] = request->getParam("manualSSID", true)->value();
 			}
 			StrPW[0] = request->getParam("password", true)->value();
+			Preferences WifiSettings;
 			WifiSettings.begin("WifiSettings", false);
 			WifiSettings.putString("SSID_0", StrSSID[0]);
 			WifiSettings.putString("PW_0", StrPW[0]);
@@ -857,6 +861,18 @@ void WifiWebserver::setupNvsDebug() {
 			request->send(500, "text/html", resp);
 			return;
 		}
+		// Fill level: what a page erase (= one display flicker) frees depends on it, see
+		// doc/PITFALLS.md. A key takes 1 entry, a string or blob 2 + size/32 (a float is a blob).
+		nvs_stats_t nvsStats;
+		// One page (126 entries) is the reserve for the garbage collection and never holds data.
+		if (nvs_get_stats(NULL, &nvsStats) == ESP_OK && nvsStats.total_entries > 126) {
+			const unsigned usable = nvsStats.total_entries - 126;
+			char line[160];
+			snprintf(line, sizeof(line), "<p>%u of %u usable entries hold data (%u %%), %u namespaces.</p>\n",
+			         (unsigned) nvsStats.used_entries, usable, (unsigned) (nvsStats.used_entries * 100 / usable),
+			         (unsigned) nvsStats.namespace_count);
+			resp += line;
+		}
 		resp += F("<table><thead><tr><th>Namespace</th><th>Key</th><th>Type</th></tr></thead><tbody>\n");
 		uint16_t entries = 0;
 		while (res == ESP_OK) {
@@ -875,7 +891,7 @@ void WifiWebserver::setupNvsDebug() {
 		nvs_release_iterator(it);
 		resp += F("</tbody></table>\n<p class=\"eyebrow\" style=\"margin-top:12px;\">");
 		resp += entries;
-		resp += F(" entries</p>\n");
+		resp += F(" keys</p>\n");
 		WebPage::end(resp);
 		request->send(200, "text/html", resp);
 	});

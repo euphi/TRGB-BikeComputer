@@ -17,6 +17,7 @@
 #include <sys/time.h>
 #include "LogRecords.h"
 #include "RawCapture.h"
+#include "NvsUtil.h"
 
 
 I2CSensors::I2CSensors() {
@@ -49,6 +50,7 @@ uint16_t I2CSensors::getHTMLPage(String &htmlresponse) {
 uint16_t I2CSensors::procHTMLHeight(String& htmlresponse, const float actHeight) {
 	refPres = calculateReferencePressure(actHeight, press) * 100;
 	bme280.setReferencePressure(refPres );
+	Preferences sensorPreferences;
 	sensorPreferences.begin("Sensors");
 	sensorPreferences.putFloat("RefPressure", refPres );
 	sensorPreferences.end();
@@ -106,8 +108,9 @@ void I2CSensors::initBME280() {
 	bme280.settings.humidOverSample = 1;
 
 	bme280.begin();
+	Preferences sensorPreferences;
 	sensorPreferences.begin("Sensors");
-	refPres = sensorPreferences.getFloat("RefPressure", 101300.0);
+	refPres = NvsUtil::getFloat(sensorPreferences, "RefPressure", 101300.0);
 	bme280.setReferencePressure(refPres);
 	sensorPreferences.end();
 
@@ -231,25 +234,84 @@ void I2CSensors::initBMI160() {
 	           IMU_ODR_HZ, imuCal.valid ? "loaded" : "missing");
 }
 
+// ******************** NVS, namespace "RoadQ" ********************
+// The static calibration and the learned pitch state are one blob each: replaced
+// atomically, and a few NVS entries instead of three per float (doc/PITFALLS.md). The
+// settings (rqIntv, shockG, wheelbase, gradSrc) and the baseline (baseG, baseTime, baseCal)
+// are keys of their own, they are only written by hand.
+namespace {
+
+const char* const RQ_NAMESPACE = "RoadQ";
+const char* const KEY_IMU_CAL = "imuCal";
+const char* const KEY_PITCH = "pitch";
+const uint8_t IMU_CAL_VERSION = 1;
+
+struct __attribute__((packed)) ImuCalBlob {
+	uint8_t version;
+	uint8_t valid;
+	int16_t gyroOffset[3];
+	int64_t calTime;
+	float g0[3];
+	float scale;
+	float sigma[3];
+};
+static_assert(sizeof(ImuCalBlob) == 44, "persisted layout, see IMU_CAL_VERSION");
+static_assert(sizeof(RQ::PitchEstimator::State) == 24, "persisted as it is (key \"pitch\"): a changed size drops the learned state");
+
+// One key per value, as stored before 2026-10 -- read once, then removed.
+const char* const LEGACY_CAL_KEYS[] = {"g0x", "g0y", "g0z", "scale", "sigX", "sigY", "sigZ", "gyrOffX", "gyrOffY", "gyrOffZ", "calTime", "calValid"};
+const char* const LEGACY_PITCH_KEYS[] = {"pEfX", "pEfY", "pEfZ", "pEfW", "pBias", "pBiasD"};
+
+// Stores the blob and removes the old keys once it reads back unchanged.
+template <typename T, size_t N>
+void migrateToBlob(Preferences& p, const char* key, const T& blob, const char* const (&legacyKeys)[N]) {
+	T check;
+	if (!NvsUtil::saveBlob(p, key, blob) || !NvsUtil::loadBlob(p, key, check) || memcmp(&blob, &check, sizeof(T)) != 0) {
+		bclog.logf(BCLogger::Log_Error, BCLogger::TAG_OP, "❌ Can't store NVS blob %s/%s - old keys stay", RQ_NAMESPACE, key);
+		return;
+	}
+	for (const char* k : legacyKeys) {
+		if (p.isKey(k)) p.remove(k);
+	}
+	bclog.logf(BCLogger::Log_Info, BCLogger::TAG_OP, "NVS: %s/%s is one blob now, old keys removed", RQ_NAMESPACE, key);
+}
+
+}
+
 void I2CSensors::loadIMUCalibration() {
 	ImuCalibration cal;
+	ImuCalBlob b = {};
 	Preferences p;
-	p.begin("RoadQ", true);
-	cal.valid = p.getBool("calValid", false);
-	if (cal.valid) {
-		cal.g0[0] = p.getFloat("g0x", 0);
-		cal.g0[1] = p.getFloat("g0y", 0);
-		cal.g0[2] = p.getFloat("g0z", 0);
-		cal.scale = p.getFloat("scale", 1.0f);
-		cal.sigma[0] = p.getFloat("sigX", 0);
-		cal.sigma[1] = p.getFloat("sigY", 0);
-		cal.sigma[2] = p.getFloat("sigZ", 0);
-		cal.gyroOffset[0] = p.getShort("gyrOffX", 0);
-		cal.gyroOffset[1] = p.getShort("gyrOffY", 0);
-		cal.gyroOffset[2] = p.getShort("gyrOffZ", 0);
-		cal.calTime = p.getLong64("calTime", 0);
+	p.begin(RQ_NAMESPACE, false);
+	bool stored = NvsUtil::loadBlob(p, KEY_IMU_CAL, b) && b.version == IMU_CAL_VERSION;
+	if (!stored && p.getBool("calValid", false)) {
+		b.version = IMU_CAL_VERSION;
+		b.valid = 1;
+		b.g0[0] = NvsUtil::getFloat(p, "g0x", 0);
+		b.g0[1] = NvsUtil::getFloat(p, "g0y", 0);
+		b.g0[2] = NvsUtil::getFloat(p, "g0z", 0);
+		b.scale = NvsUtil::getFloat(p, "scale", 1.0f);
+		b.sigma[0] = NvsUtil::getFloat(p, "sigX", 0);
+		b.sigma[1] = NvsUtil::getFloat(p, "sigY", 0);
+		b.sigma[2] = NvsUtil::getFloat(p, "sigZ", 0);
+		b.gyroOffset[0] = p.getShort("gyrOffX", 0);
+		b.gyroOffset[1] = p.getShort("gyrOffY", 0);
+		b.gyroOffset[2] = p.getShort("gyrOffZ", 0);
+		b.calTime = p.getLong64("calTime", 0);
+		migrateToBlob(p, KEY_IMU_CAL, b, LEGACY_CAL_KEYS);
+		stored = true;
 	}
 	p.end();
+	if (stored && b.valid) {
+		cal.valid = true;
+		for (uint8_t i = 0; i < 3; i++) {
+			cal.g0[i] = b.g0[i];
+			cal.sigma[i] = b.sigma[i];
+			cal.gyroOffset[i] = b.gyroOffset[i];
+		}
+		cal.scale = b.scale;
+		cal.calTime = b.calTime;
+	}
 
 	if (cal.valid) {
 		BMI160.setXGyroOffset(cal.gyroOffset[0]);
@@ -265,20 +327,19 @@ void I2CSensors::loadIMUCalibration() {
 
 void I2CSensors::storeIMUCalibration() {
 	// Called from ImuTask only, which is also the only writer of imuCal -- no lock needed to read it.
+	ImuCalBlob b = {};
+	b.version = IMU_CAL_VERSION;
+	b.valid = imuCal.valid;
+	for (uint8_t i = 0; i < 3; i++) {
+		b.g0[i] = imuCal.g0[i];
+		b.sigma[i] = imuCal.sigma[i];
+		b.gyroOffset[i] = imuCal.gyroOffset[i];
+	}
+	b.scale = imuCal.scale;
+	b.calTime = imuCal.calTime;
 	Preferences p;
-	p.begin("RoadQ", false);
-	p.putFloat("g0x", imuCal.g0[0]);
-	p.putFloat("g0y", imuCal.g0[1]);
-	p.putFloat("g0z", imuCal.g0[2]);
-	p.putFloat("scale", imuCal.scale);
-	p.putFloat("sigX", imuCal.sigma[0]);
-	p.putFloat("sigY", imuCal.sigma[1]);
-	p.putFloat("sigZ", imuCal.sigma[2]);
-	p.putShort("gyrOffX", imuCal.gyroOffset[0]);
-	p.putShort("gyrOffY", imuCal.gyroOffset[1]);
-	p.putShort("gyrOffZ", imuCal.gyroOffset[2]);
-	p.putLong64("calTime", imuCal.calTime);
-	p.putBool("calValid", imuCal.valid);		// last, so a torn write leaves the old flag
+	p.begin(RQ_NAMESPACE, false);
+	NvsUtil::saveBlob(p, KEY_IMU_CAL, b);
 	p.end();
 }
 
@@ -545,20 +606,23 @@ void I2CSensors::rqLoad() {
 	RqSettings s;
 	RQ::PitchEstimator::State st;
 	Preferences p;
-	p.begin("RoadQ", true);
+	p.begin(RQ_NAMESPACE, false);
 	s.intervalS = p.getUChar("rqIntv", s.intervalS);
-	s.shockAbsG = p.getFloat("shockG", s.shockAbsG);
-	s.wheelbaseM = p.getFloat("wheelbase", s.wheelbaseM);
+	s.shockAbsG = NvsUtil::getFloat(p, "shockG", s.shockAbsG);
+	s.wheelbaseM = NvsUtil::getFloat(p, "wheelbase", s.wheelbaseM);
 	s.gradSrc = p.getUChar("gradSrc", s.gradSrc);
-	float baseline = p.getFloat("baseG", 0);
+	float baseline = NvsUtil::getFloat(p, "baseG", 0);
 	bool baselineCal = p.getBool("baseCal", false);
 	baselineTime = p.getLong64("baseTime", 0);
-	st.ef[0] = p.getFloat("pEfX", 0);
-	st.ef[1] = p.getFloat("pEfY", 0);
-	st.ef[2] = p.getFloat("pEfZ", 0);
-	st.efWeight = p.getFloat("pEfW", 0);
-	st.biasRad = p.getFloat("pBias", 0);
-	st.biasDistM = p.getFloat("pBiasD", 0);
+	if (!NvsUtil::loadBlob(p, KEY_PITCH, st) && p.isKey("pEfW")) {
+		st.ef[0] = NvsUtil::getFloat(p, "pEfX", 0);
+		st.ef[1] = NvsUtil::getFloat(p, "pEfY", 0);
+		st.ef[2] = NvsUtil::getFloat(p, "pEfZ", 0);
+		st.efWeight = NvsUtil::getFloat(p, "pEfW", 0);
+		st.biasRad = NvsUtil::getFloat(p, "pBias", 0);
+		st.biasDistM = NvsUtil::getFloat(p, "pBiasD", 0);
+		migrateToBlob(p, KEY_PITCH, st, LEGACY_PITCH_KEYS);
+	}
 	p.end();
 
 	portENTER_CRITICAL(&imuMux);
@@ -587,7 +651,7 @@ void I2CSensors::rqSaveBaseline() {
 	time(&now);
 	baselineTime = now > 1672531200 ? now : 0;
 	Preferences p;
-	p.begin("RoadQ", false);
+	p.begin(RQ_NAMESPACE, false);
 	p.putFloat("baseG", roadq.config().baselineG);
 	p.putLong64("baseTime", baselineTime);
 	p.putBool("baseCal", true);
@@ -597,13 +661,8 @@ void I2CSensors::rqSaveBaseline() {
 void I2CSensors::rqSavePitch(uint32_t nowMs) {
 	RQ::PitchEstimator::State st = pitch.state();
 	Preferences p;
-	p.begin("RoadQ", false);
-	p.putFloat("pEfX", st.ef[0]);
-	p.putFloat("pEfY", st.ef[1]);
-	p.putFloat("pEfZ", st.ef[2]);
-	p.putFloat("pEfW", st.efWeight);
-	p.putFloat("pBias", st.biasRad);
-	p.putFloat("pBiasD", st.biasDistM);
+	p.begin(RQ_NAMESPACE, false);
+	NvsUtil::saveBlob(p, KEY_PITCH, st);
 	p.end();
 	pitchSaved = st;
 	pitchSavedMs = nowMs;
@@ -994,7 +1053,7 @@ void I2CSensors::handleRqCommand(const Command& cmd) {
 		portEXIT_CRITICAL(&imuMux);
 		rqSettingsChanged = true;
 		Preferences p;
-		p.begin("RoadQ", false);
+		p.begin(RQ_NAMESPACE, false);
 		p.putUChar("rqIntv", s.intervalS);
 		p.putFloat("shockG", s.shockAbsG);
 		p.putFloat("wheelbase", s.wheelbaseM);

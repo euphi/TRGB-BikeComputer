@@ -7,6 +7,8 @@
 
 #pragma once
 
+#include <stdint.h>
+
 #ifndef SETTING_BIKECOUNT
 #define SETTING_BIKECOUNT 2
 #endif
@@ -15,9 +17,9 @@
 #define SETTING_APCOUNT 3
 #endif
 
-// Prefix of the NVS namespaces holding the ride statistics (Statistics: ST_*, Distance:
-// DIST_<bike>_*). The simulator build (BC_SIM, src/SimSensors.h) keeps its own, so fake rides
-// never reach the real odometer. Namespace names: max. 15 chars ("S_DIST_0_TOTAL" is 14).
+// Prefix of the NVS namespace holding the ride statistics (StatsStore: "Stats"). The
+// simulator build (BC_SIM, src/SimSensors.h) keeps its own, so fake rides never reach the
+// real odometer. Namespace names: max. 15 chars.
 #ifdef BC_SIM
 #define NVS_STAT_PREFIX "S_"
 #else

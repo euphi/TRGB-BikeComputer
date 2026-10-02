@@ -65,8 +65,9 @@ zeigen muss.
 
 Wichtig bei Szenario 8 mit Aus- und Einschalten: Die Ride-Session lebt nur im
 RAM. Nach einem Neustart ist keine Session offen (Uhrzeit statt Stoppuhr) und
-die Ride-Spalte ist leer. Tour, Trip und Total bleiben erhalten, weil sie alle
-5 s im NVS gespeichert werden. Das ist bekanntes Verhalten, kein Fehler. Den
+die Ride-Spalte ist leer. Tour, Trip und Total bleiben erhalten: Sie werden
+alle 5 min, bei jedem Anhalten und vor dem Ausschalten im NVS gespeichert.
+Das ist bekanntes Verhalten, kein Fehler. Den
 BC-Neustart deshalb erst am Ende der Tour oder nach Szenario 10 testen.
 
 ## Nach der Fahrt zu Hause

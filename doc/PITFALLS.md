@@ -44,8 +44,50 @@ Offen: Ob der eigentliche Hebel das Alignment ist (dann würde ein Patch auf
 `heap_caps_aligned_alloc(64, ...)` über `apply_patches.py` die ganze
 Klasse erledigen) oder nur die Lage, ist nicht bewiesen.
 
-Seltenes Flackern (2-3×/10 min) und starkes Flackern während OTA-Updates
-sind unabhängig davon eine Eigenschaft der Hardware.
+Starkes Flackern während OTA-Updates ist unabhängig davon eine Eigenschaft
+der Hardware: Solange der Flash geschrieben oder gelöscht wird, steht der
+Bus, über den das Panel sein Bild aus dem PSRAM liest. Dasselbe im Kleinen
+ist die dritte Ursache:
+
+**3. NVS-Schreiben** -- Symptom: ein einzelnes kurzes Flackern, regelmäßig
+(vor 2026-10 alle 45-75 s beim Fahren, 2-3×/10 min im Stand). Siehe den
+nächsten Abschnitt.
+
+## NVS-Schreiben und Display-Flackern
+
+Nicht der einzelne Schreibvorgang flackert, sondern das **Löschen einer
+NVS-Seite** (Sektor-Erase, ~100 ms gemessen). Das NVS hängt neue Werte nur
+an; ist die Seite voll, kopiert es die noch gültigen Einträge um und löscht
+eine Seite. Wie oft das passiert, lässt sich ausrechnen:
+
+- Eine Seite fasst 126 Einträge. Eine Zahl (bis 64 Bit) kostet 1 Eintrag,
+  ein String oder Blob `2 + Größe/32` (aufgerundet). **Ein `putFloat()` ist
+  ein Blob, also 3 Einträge.**
+- Pro Löschung werden etwa `126 × (1 − Füllgrad)` Einträge frei. Der
+  Füllgrad steht auf `/debug/nvs`.
+- Löschungen pro Zeit = geschriebene Einträge pro Zeit / frei werdende
+  Einträge.
+
+Beispiel vor 2026-10: Füllgrad ~70 % → ~36 Einträge pro Löschung (gemessen:
+jeder zwölfte `putFloat()` dauerte ~100 ms länger). Die Statistik schrieb
+beim Fahren ~48 Einträge/min → eine Löschung alle ~45 s.
+
+Regeln:
+
+- **Nichts periodisch Schnelles ins NVS.** Der Hebel ist die Schreibrate,
+  nicht die Partitionsgröße: eine größere Partition senkt nur den Füllgrad
+  und bringt höchstens Faktor 126/36.
+- Zusammengehörige Werte als **ein Struct-Blob** speichern
+  (`NvsUtil::loadBlob()`/`saveBlob()`, `src/NvsUtil.h`), nicht als einzelne
+  Schlüssel -- vor allem keine einzelnen Floats.
+- Unveränderte Werte schreibt das NVS nicht (ESP-IDF vergleicht vor dem
+  Schreiben). Ein eigenes „nur wenn geändert" spart nur den Lesezugriff.
+- Die Fahrstatistik (`Statistics::persistNow()`) schreibt einen Blob von
+  8 Einträgen alle 5 min, beim Anhalten und vor dem Ausschalten -- das ist
+  rund eine Löschung in 30-50 min. Wer dort etwas hinzufügt, rechnet nach.
+- NVS nur aus Tasks mit genug Stack schreiben, nie aus dem UI-Task (siehe
+  „UI-Task: kaum Stack übrig"). Muster: `Statistics::requestPersist()` setzt
+  nur ein Flag, geschrieben wird im nächsten `cycle()`.
 
 ## BLE-Stack ist NimBLE, nicht Bluedroid
 

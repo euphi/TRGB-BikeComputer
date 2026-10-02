@@ -55,8 +55,7 @@ private:
 			                                     {Log_Info, Log_Info, Log_Info, Log_Info, Log_Info, Log_Info, Log_Info, Log_Error, Log_Info, Log_Info}};   // File
 
 
-	Preferences logPrefs[LogOutputMax];
-	Preferences noTimeCounter;
+	void loadLoglevels();
 
 	String file_data, file_nmealog, file_debuglog;		// Filename for logfiles
 	File fdata, fnmea, fdebug;
@@ -69,7 +68,7 @@ private:
 	void checkClockStep();
 	bool isActiveSessionFile(const String& path) const;
 
-	void storeLoglevel(LogType level, LogTag tag, bool file, bool serial);
+	void storeLoglevels();
 	void printLoglevels();
 	void checkTagTablesComplete() const;
 

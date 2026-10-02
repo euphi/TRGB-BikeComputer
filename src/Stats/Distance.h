@@ -8,16 +8,17 @@
 #pragma once
 
 //#include <Arduino.h>
-#include <Preferences.h>
 #include <global_settings.h>
-#include <Ticker.h>
 #include <Stats/Statistics.h>
 
 class Distance {
 public:
 	Distance();
 	void setup();
-	void store();
+	// The persisted part (base distance, lost distance and sensor revs for TOTAL, TOUR, TRIP)
+	// lives in Statistics' NVS blob: restore() at boot, fill() whenever Statistics stores.
+	void restore(const StatsStore::Blob& blob);
+	void fill(StatsStore::Blob& blob) const;
 
 	void updateRevs(uint32_t revs, uint16_t timestamp);
 #ifdef BC_FL_SUPPORT
@@ -49,12 +50,10 @@ private:
 	uint16_t lastTimestamp = 0;
 	uint8_t currentBikeIdx=0;
 
-	Ticker distanceStore;
-
 	float calculateSpeed(const uint32_t revs, const uint16_t duration);
-	void loadDistanceForBikeIdx(uint8_t idx);
+	void loadWheelCircForBikeIdx(uint8_t idx);
 
-	void storeDistanceAndResetRevs(bool resetRevs=false);		// stores current distance and reset rev count (needed for change of wheel circumference)
+	void rebaseRevs();		// current distance becomes the base at the current rev count (after the total was set by hand)
 	void updateLostRevs(const uint32_t lostRevs);
 	void rebaseCounterRestart(bool asLost, uint32_t revs);
 

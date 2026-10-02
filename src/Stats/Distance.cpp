@@ -21,6 +21,7 @@
 
 #include <Stats/Distance.h>
 #include <ArduinoJson.h>
+#include <NvsUtil.h>
 #include <Singletons.h>
 
 Distance::Distance() {
@@ -28,45 +29,58 @@ Distance::Distance() {
 }
 
 void Distance::setup() {
-	loadDistanceForBikeIdx(0);
-	distanceStore.attach(60, +[](Distance *thisInstance) {thisInstance->store();}, this);
+	loadWheelCircForBikeIdx(0);
 	bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "setup DistanceHandler with stored values: Total distance: %.2fm\tRevs: %d\tCircumference: %.04fm",
 			distanceFromNVS[Statistics::SUM_ESP_TOTAL], revsFromNVS[Statistics::SUM_ESP_TOTAL], wheel_c);
 	setupWebserver();
 }
 
-void Distance::loadDistanceForBikeIdx(uint8_t idx) {
+void Distance::loadWheelCircForBikeIdx(uint8_t idx) {
 	if (! (idx < bikecount)) {
-		bclog.logf(BCLogger::Log_Error, BCLogger::TAG_STAT, "❌ Try to load distance from NVS for invalid bikecount idx %d (count %d).", idx, bikecount);
+		bclog.logf(BCLogger::Log_Error, BCLogger::TAG_STAT, "❌ Try to load wheel circumference from NVS for invalid bikecount idx %d (count %d).", idx, bikecount);
 		idx = 0;	//To avoid instable behavior due to unitialized data fallback to idx 0
 	}
 	currentBikeIdx = idx;
-	//ESP32 NVS Storage
 	Preferences params;											// wheel circumference (other params could be added later)
-	Preferences storedDist; //[Statistics::SUM_ESP_TRIP + 1];		// Distance (in m and delta as revs) for TOTAL, TOUR, TRIP
-	String idx_str(idx);
-	params.begin((String("DIST_PARAMS_") + idx_str).c_str(), true);
-	wheel_c = params.getFloat("wheel_circ", 2.220);
+	params.begin((String("DIST_PARAMS_") + String(idx)).c_str(), true);
+	wheel_c = NvsUtil::getFloat(params, "wheel_circ", 2.220);
 	bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Loaded wheel circumference from NVS: %.04fm", wheel_c);
 	params.end();
+}
+
+void Distance::restore(const StatsStore::Blob& blob) {
 	for (uint_fast8_t j=0; j <= Statistics::SUM_ESP_TRIP; j++) {
-		String prefString = String(NVS_STAT_PREFIX "DIST_") + idx_str + String("_") + String(Statistics::SUM_TYPE_STRING[j]+3);
-		storedDist.begin(prefString.c_str(), true);		// +3 to skip first three chars "ST_"
-		distanceFromNVS[j]  = storedDist.getFloat("total", 0.0);		// Total distance in m (as float). It is only updated sporadically, so the actual total distance is total + (revs * wheel_circ).
-		lostDistanceFromNVS[j] = storedDist.getFloat("lost_total", 0.0);	// Total distance lost
+		const StatsStore::Summary& s = blob.sum[j];
+		distanceFromNVS[j] = s.distTotal;		// Total distance in m (as float). It is only stored now and then, so the actual total distance is total + (revs * wheel_circ).
+		lostDistanceFromNVS[j] = s.distLost;
 		if (isnan(distanceFromNVS[j])) {
 			bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_STAT, "%s: Loaded distance from NVS invalid (NAN) - setting to zero.", Statistics::SUM_TYPE_STRING[j]);
 			distanceFromNVS[j] = 0.0;
 		}
-		revsKnown[j] = storedDist.isKey("revs");
-		revsFromNVS[j] = storedDist.getULong("revs", 0);
-		storedDist.end();
+		revsKnown[j] = blob.revsKnownMask & (1 << j);
+		revsFromNVS[j] = s.revs;
 		curTotalDistance[j] = distanceFromNVS[j];
-		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "%s: Loaded %s total distance %.2fm at %d revs.",
-				Statistics::SUM_TYPE_STRING[j], prefString.c_str(), distanceFromNVS[j], revsFromNVS[j]);
+		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "%s: Loaded total distance %.2fm at %d revs.",
+				Statistics::SUM_TYPE_STRING[j], distanceFromNVS[j], revsFromNVS[j]);
 	}
 	distanceFromNVS[Statistics::SUM_ESP_START] = 0.0;	// since power-on
 	curTotalDistance[Statistics::SUM_ESP_START] = 0.0;
+}
+
+// To minimize added up floating point error, the values are just stored, the running ones
+// keep their base as loaded at startup.
+//    --> Error only adds up once per restart. Error is smaller than half wheel_c till approx 6500km total distance.
+void Distance::fill(StatsStore::Blob& blob) const {
+	blob.revsKnownMask = 0;
+	for (uint_fast8_t j=0; j <= Statistics::SUM_ESP_TRIP; j++) {
+		StatsStore::Summary& s = blob.sum[j];
+		s.distTotal = curTotalDistance[j];
+		s.distLost = lostDistanceFromNVS[j];
+		// Before the sensor's first message curTotalDistance[] is still the loaded base, and
+		// the revs that go with it are the loaded ones -- lastRevs is not a sensor value yet.
+		s.revs = revsInitialized ? lastRevs : revsFromNVS[j];
+		if (revsInitialized || revsKnown[j]) blob.revsKnownMask |= 1 << j;
+	}
 }
 
 void Distance::updateRevs(uint32_t revs, uint16_t timestamp) {
@@ -182,7 +196,7 @@ void Distance::rebaseCounterRestart(bool asLost, uint32_t revs) {
 	for (uint_fast8_t j = 0; j <= Statistics::SUM_ESP_START; j++) {
 		curTotalDistance[j] = distanceFromNVS[j] + revs * wheel_c;
 	}
-	storeDistanceAndResetRevs(false);		// persist right away, the stored revs would otherwise still be the old counter's
+	stats.requestPersist();		// right away, the stored revs would otherwise still be the old counter's
 }
 
 void Distance::updateLostRevs(const uint32_t lostRevs) {
@@ -192,13 +206,6 @@ void Distance::updateLostRevs(const uint32_t lostRevs) {
 		lostDistanceFromNVS[j] += lostDist;
 		bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_STAT, "Lost distance %s now %.1f m", (Statistics::SUM_TYPE_STRING[j] + 3), lostDistanceFromNVS[j]);
 	}
-}
-
-void Distance::store() {
-	bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_STAT, "Ticker: Store in Preferences: %d revs.", lastRevs);
-	// To minimize added up floating point error, just store, but continue to use values as loaded at startup.
-	//    --> Error only adds up once per restart. Error is smaller than half wheel_c till approx 6500km total distance.
-	storeDistanceAndResetRevs(false);
 }
 
 float Distance::calculateSpeed(const uint32_t revs, const uint16_t duration) {
@@ -254,48 +261,22 @@ void Distance::resetDistToZero(Statistics::ESummaryType eSummaryType) {
 	distanceFromNVS[eSummaryType] = 0;
 	lostDistanceFromNVS[eSummaryType] = 0;
 	revsFromNVS[eSummaryType] = lastRevs;
+	// Reset before the sensor connected: the old counter value must not be taken as the
+	// new start, or the first message would count everything since then as lost.
 	revsKnown[eSummaryType] = revsInitialized;
-	if (!revsInitialized) {
-		// Reset before the sensor connected: the old counter value must not be taken as the
-		// new start, or the first message would count everything since then as lost.
-		Preferences storedDist;
-		String prefString = String(NVS_STAT_PREFIX "DIST_") + String(currentBikeIdx) + String("_") + String(Statistics::SUM_TYPE_STRING[eSummaryType]+3);
-		storedDist.begin(prefString.c_str(), false);
-		storedDist.remove("revs");
-		storedDist.end();
-	}
-	storeDistanceAndResetRevs();
 	stats.reset(eSummaryType);
+	stats.requestPersist();
 }
 
-void Distance::storeDistanceAndResetRevs(bool resetRevs) {
-	Preferences storedDist; // Distance (in m and delta as revs) for TOTAL, TOUR, TRIP
-	String idx_str(currentBikeIdx);
-	for (uint_fast8_t j=0; j <= Statistics::SUM_ESP_TRIP; j++) {
-		String prefString = String(NVS_STAT_PREFIX "DIST_") + idx_str + String("_") + String(Statistics::SUM_TYPE_STRING[j]+3); // +3 to skip first three chars "ST_"
-		storedDist.begin(prefString.c_str(), false);
-		size_t bytes = storedDist.putFloat("total", curTotalDistance[j]);		// Total distance in m (as float). It is only updated sporadically, so the actual total distance is total + (revs * wheel_circ).
-		bytes += storedDist.putFloat("lost_total", lostDistanceFromNVS[j]);
-		bytes += revsInitialized ? storedDist.putULong("revs", lastRevs) : 4;	// only save lastRevs once received from the sensor
-		storedDist.end();
-		if (bytes < 12) {
-			bclog.logf(BCLogger::Log_Error, BCLogger::TAG_STAT, "Cannot write to NVS to store wheel circ for %s", prefString.c_str());
-		} else {
-			bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_STAT, "Updated NVS for %s", prefString.c_str());
-		}
-		//	It seems better to not reset revs, so floating point addition errors do not sum up. However, in some case it is necessary, e.g. if CSC resets its revs
-		if (resetRevs) {
-			bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_STAT, "%s: Reset revs", Statistics::SUM_TYPE_STRING[j]);
-			distanceFromNVS[j] = curTotalDistance[j];
-			revsFromNVS[j] = lastRevs;
-		}
-		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "%s: Stored total distance %.2fm at %d revs", Statistics::SUM_TYPE_STRING[j], curTotalDistance[j], lastRevs);
+// It seems better to not reset revs, so floating point addition errors do not sum up. However,
+// in some cases it is necessary, e.g. after the total distance was set by hand.
+void Distance::rebaseRevs() {
+	for (uint_fast8_t j=0; j <= Statistics::SUM_ESP_START; j++) {
+		distanceFromNVS[j] = curTotalDistance[j];
+		// Without a sensor value yet, the base stays at the stored rev count (lastRevs is 0).
+		if (revsInitialized) revsFromNVS[j] = lastRevs;
 	}
-	if (resetRevs) {
-		bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_STAT, "%s: Reset revs", Statistics::SUM_TYPE_STRING[Statistics::SUM_ESP_START]);
-		distanceFromNVS[Statistics::SUM_ESP_START] = curTotalDistance[Statistics::SUM_ESP_START];
-		revsFromNVS[Statistics::SUM_ESP_START] = lastRevs;
-	}
+	bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Distance rebased: total %.2fm at %d revs", curTotalDistance[Statistics::SUM_ESP_TOTAL], revsFromNVS[Statistics::SUM_ESP_TOTAL]);
 }
 
 
@@ -303,16 +284,12 @@ void Distance::setupWebserver() {
 	webserver.getServer().on("/stat/getDistanceInfo", HTTP_GET, [this](AsyncWebServerRequest *request) {
 		JsonDocument jsonDoc;
 		jsonDoc["overall"]["revs"] = lastRevs;
+		const StatsStore::Blob& stored = stats.getLastStored();		// what the NVS holds; START is not stored
 		for (uint_fast8_t j = 0; j <= Statistics::SUM_ESP_START; j++) {
-			Preferences storedDist;
-			String typeString = String(Statistics::SUM_TYPE_STRING[j] + 3);
-			String prefString = String(NVS_STAT_PREFIX "DIST_0_") + String(Statistics::SUM_TYPE_STRING[j]+3);
-			storedDist.begin(prefString.c_str(), true);		// +3 to skip first three chars "ST_"
-			float sDist = storedDist.getFloat("total", 0.0);		// Total distance in m (as float). It is only updated sporadically, so the actual total distance is total + (revs * wheel_circ).
-			uint32_t sRev = storedDist.getULong("revs", 0);
-			storedDist.end();
-			jsonDoc[typeString]["storedTotal"] = sDist;
-			jsonDoc[typeString]["storedRevs"] = sRev;
+			String typeString = String(Statistics::SUM_TYPE_STRING[j] + 3);		// +3 to skip first three chars "ST_"
+			const bool isStored = j <= Statistics::SUM_ESP_TRIP;
+			jsonDoc[typeString]["storedTotal"] = isStored ? stored.sum[j].distTotal : 0.0f;
+			jsonDoc[typeString]["storedRevs"] = isStored ? stored.sum[j].revs : 0;
 			jsonDoc[typeString]["actualDistance"] = curTotalDistance[j];
 			jsonDoc[typeString]["totalDistance"] = distanceFromNVS[j];
 			jsonDoc[typeString]["deltaRevs"] = lastRevs - revsFromNVS[j];
@@ -368,12 +345,14 @@ void Distance::setupWebserver() {
 			if (dataType == "totalDistance") {
 				bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Received new total distance: %.3f km", dataValue / 1000.0);
 				curTotalDistance[Statistics::SUM_ESP_TOTAL] = dataValue;
-				storeDistanceAndResetRevs(true);
+				rebaseRevs();
+				stats.requestPersist();
 				request->send(200, "text/plain", "Total distance updated");
 			} else if (dataType == "totalDistanceLost") {
 				bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "Received new total LOST distance: %.3f km", dataValue / 1000.0);
 				lostDistanceFromNVS[Statistics::SUM_ESP_TOTAL] = dataValue;
-				storeDistanceAndResetRevs(true);
+				rebaseRevs();
+				stats.requestPersist();
 				request->send(200, "text/plain", "Total LOST distance updated");
 			// NOTE: this was "} if (...)" -- a missing else. Every totalDistance or
 			// totalDistanceLost update therefore fell through into the wheelData test,
