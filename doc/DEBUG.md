@@ -1,4 +1,4 @@
-# DEBUG
+# Debugging
 
 ## Debug pages (web interface)
 
@@ -23,7 +23,7 @@ Log levels are set on `/log.html` (click a level) or on the serial console, see 
 
 Screens can be checked on the real hardware without touching it (`src/UiDebug.h`):
 a screenshot of the active screen and synthetic touch input over HTTP. The host side is
-[`Tools/uishot.py`](../Tools/uishot.py):
+[`Tools/uishot.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/uishot.py):
 
 ```
 python3 Tools/uishot.py shot main.png          # screenshot (PNG, 480x480)
@@ -53,11 +53,11 @@ showloglevel                      # current table
 Files on the SD card, one set per session (= one boot). The running session writes to
 `/BIKECOMP/CUR/`; the next boot moves it to `/BIKECOMP/<YYYYMMDD>/` (or
 `/BIKECOMP/NO_TIME/` if the clock was never set). Naming and the summary file `I_*.txt`
-are described in [`Tools/README.md`](../Tools/README.md).
+are described in [log format and CLI](TOOLS.md).
 
 | File | Content |
 |---|---|
-| `L_<HHMMSS>.bin` | binary ride log (format: `src/LogRecords.h`, tools: [`Tools/`](../Tools/README.md)) |
+| `L_<HHMMSS>.bin` | binary ride log (format: `src/LogRecords.h`, tools: [log format and CLI](TOOLS.md)) |
 | `D_<HHMMSS>.log` | debug log (text) |
 | `N_<HHMMSS>.log` | raw Forumslader data (text, replayable with `replay <path>`) |
 | `R_<HHMMSS>_NN.bin`, `S_<HHMMSS>.bin` | raw accelerometer captures / shock snippets |
@@ -110,7 +110,7 @@ By default, Arduino ESP32 is configured so that core dumps are written to flash 
 
 Without USB: `/debug/coredump` shows the task and backtrace of the last crash, and
 `/debug/coredump.elf` downloads the dump for `esp-coredump` (command and caveats in
-[PITFALLS.md](PITFALLS.md), "Abstürze ohne USB"). The steps below read it over USB.
+[pitfalls](PITFALLS.md), "Crashes without USB"). The steps below read it over USB.
 
 ### How to get a coredump
 

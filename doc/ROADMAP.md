@@ -1,7 +1,7 @@
 # Roadmap
 
 What is open, roughly by priority. What already works is described in the
-[README](README.MD); this file says how well it has been tested and what comes next.
+[overview](index.md); this page says how well it has been tested and what comes next.
 Help is welcome, especially where marked.
 
 ## Where things stand
@@ -11,7 +11,7 @@ Help is welcome, especially where marked.
 | Sensors, main screen, logging, web interface | in regular use |
 | Navigation from OsmAnd | ridden |
 | Road quality and manual road labels | one test ride; the thresholds are still the first guesses |
-| Ride states and statistics | tested with the simulator build; a real ride is pending ([cheat sheet](doc/RIDE-TEST-CHEATSHEET.md)) |
+| Ride states and statistics | tested with the simulator build; a real ride is pending ([cheat sheet](RIDE-TEST-CHEATSHEET.md)) |
 | GPX route navigation and climb screen | tested with TrailBridge's simulated ride and the demo profile; no real climb ridden yet |
 | Settings screen, log sessions, log service | working; setting the clock from GPS has not been checked on its own |
 | Forumslader variant | builds, rarely tested; its screen is the last one from the old SquareLine UI |
@@ -30,7 +30,7 @@ Open, to be fixed.
 ## Next: usable on the road
 
 Once the device is in its case there is no USB and usually no WiFi, so everything a
-ride needs must work on the display. Details: [doc/USABILITY-TODO.md](doc/USABILITY-TODO.md).
+ride needs must work on the display. Details: [usability backlog](USABILITY-TODO.md).
 
 - Road labels that can be hit on a rough road, and a rule for mis-taps.
 - Detect "bike upright" (lift) and "bike on the car" and leave them out of the ride.
@@ -58,7 +58,7 @@ Not designed yet.
   Builds on the per-bike odometer.
 - **Waypoints in navigation**: show the waypoints of a route (summit, feed zone,
   gravel sector) with name and distance. Needs an extension of the
-  [TrailBridge protocol](https://github.com/euphi/TrailBridge/blob/main/PROTOCOL.md);
+  [TrailBridge protocol](trailbridge/PROTOCOL.md);
   today `Tools/gpxenrich` can only pass them on as a named "straight on".
 - **Climb overview for the whole route**: which climb of how many, and the altitude
   still to gain. Needs a protocol extension as well.
@@ -78,7 +78,7 @@ Not designed yet.
 - Forumslader screen in the Rim & Ridge design; Forumslader distance in the statistics.
 - Elevation profile during OsmAnd navigation (today only with a GPX route).
 - Binary log replay on the device (only the Forumslader text log can be replayed).
-- New case for the Canyon CP0007 gravel cockpit -- parametric model in [`cad/`](cad/),
+- New case for the Canyon CP0007 gravel cockpit -- parametric model in [`cad/`](https://github.com/euphi/TRGB-BikeComputer/tree/main/cad),
   measurements from photos still to be checked with a caliper.
 
 Low priority:
@@ -101,4 +101,4 @@ Low priority:
 - The bike computer connects to the first TrailBridge instance it finds. Android
   rotates its BLE address, so the phone cannot be locked like the sensors.
 - A log session is one boot, not one ride. Ride start and stop are marked inside it.
-- Climbs longer than 5 km come in a coarser raster, see [doc/CLIMB.md](doc/CLIMB.md).
+- Climbs longer than 5 km come in a coarser raster, see [climbs](CLIMB.md).

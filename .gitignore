@@ -52,3 +52,8 @@ Tools/.build/
 
 # Testtracks etc
 Tools/TestData/
+
+# Copied from the TrailBridge repo when the documentation site is built
+# (doc/fetch_trailbridge.sh); the source of truth is ../TrailBridge/PROTOCOL.md
+/doc/trailbridge/PROTOCOL.md
+/doc/trailbridge/PROTOCOL.de.md

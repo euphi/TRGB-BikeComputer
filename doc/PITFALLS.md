@@ -1,328 +1,301 @@
-# Bekannte Fallstricke
+# Known pitfalls
 
-Probleme, die auf dieser Hardware bzw. mit diesem Framework-Stand schon
-einmal Zeit gekostet haben -- mit Symptom, Ursache und Regel.
+Problems that have already cost time on this hardware or with this state of the
+framework -- with symptom, cause and rule.
 
-## PSRAM und Display-Flackern
+## PSRAM and display flicker
 
-Das RGB-Panel liest seinen Framebuffer per DMA in Echtzeit direkt aus dem
-PSRAM, **ohne Bounce-Buffer** (`fb_in_psram = 1`, kein
-`bounce_buffer_size_px` in `TRGBArduinoSupport/src/TRGBSuppport.cpp`).
-Jeder konkurrierende PSRAM-Zugriff kann den DMA kurz aushungern und wird
-als Bildverschiebung sichtbar. Zwei unabhängige Ursachen:
+The RGB panel reads its framebuffer by DMA in real time straight from PSRAM, **without a
+bounce buffer** (`fb_in_psram = 1`, no `bounce_buffer_size_px` in
+`TRGBArduinoSupport/src/TRGBSuppport.cpp`). Every competing PSRAM access can starve the
+DMA for a moment and shows as a shifted picture. Two independent causes:
 
-**1. Häufiger PSRAM-Zugriff aus einem Hot-Path** -- Symptom: Pixel
-**nach rechts** verschoben, mit Umbruch, unregelmäßig.
-Beispiel: `Statistics::timeData.currentMinMax` lag im PSRAM und wurde bei
-jeder BLE-Sensor-Notification beschrieben → Flackern etwa 1×/s.
+**1. Frequent PSRAM access from a hot path** -- symptom: pixels shifted **to the right**,
+wrapping around, irregular. Example: `Statistics::timeData.currentMinMax` was in PSRAM
+and written on every BLE sensor notification → flicker about once a second.
 
-Regel: Vor dem Verschieben einer Datenstruktur ins PSRAM ihre
-**Zugriffshäufigkeit und ihren Auslöser** prüfen, nicht nur die Größe.
-- OK: groß, aber selten berührt (z. B. Verlaufs-Ring, alle 5-15 s).
-- Nicht OK: auch kleine Felder, die aus BLE-Callbacks, pro LVGL-Frame oder
-  sonst unvorhersehbar oft geschrieben/gelesen werden -- inkl. Arrays, die
-  LVGL direkt referenziert (`lv_chart_set_ext_y_array`).
+Rule: before moving a data structure into PSRAM, check **how often it is accessed and
+what triggers the access**, not only its size.
 
-**2. PSRAM-Allokation vor `trgb.init()`** -- Symptom: Bild **nach links**
-verschoben, leicht unregelmäßig, mit Pausen bis ~2 s.
-`TRGBSuppport.cpp` legt die beiden 460-KB-LVGL-Draw-Buffer mit einfachem
-`heap_caps_malloc(..., MALLOC_CAP_SPIRAM)` ohne Alignment an. Alles, was
-vorher PSRAM belegt, verschiebt deren Lage. Statische Objekte (siehe
-`Singletons.cpp`) werden vor `main()` konstruiert, also vor `trgb.init()`.
+- OK: large but rarely touched (e.g. a history ring, every 5-15 s).
+- Not OK: even small fields that are written or read from BLE callbacks, per LVGL frame
+  or otherwise unpredictably often -- including arrays that LVGL references directly
+  (`lv_chart_set_ext_y_array`).
 
-Regel: **Nie PSRAM im Konstruktor eines statisch angelegten Objekts
-allokieren**, egal wie selten die Daten benutzt werden. Stattdessen aus
-einem `setup()`, das nach `trgb.init()` läuft (Muster:
-`Statistics::allocPsramBuffers()`).
+**2. PSRAM allocation before `trgb.init()`** -- symptom: picture shifted **to the left**,
+slightly irregular, with pauses of up to ~2 s. `TRGBSuppport.cpp` allocates the two
+460 KB LVGL draw buffers with a plain `heap_caps_malloc(..., MALLOC_CAP_SPIRAM)` without
+alignment. Everything that takes PSRAM before that moves their position. Static objects
+(see `Singletons.cpp`) are constructed before `main()`, i.e. before `trgb.init()`.
 
-Diagnose: Serial-CLI `mem` gibt über `WebInstr::reportDisplayBuffers()`
-Adressen und Alignment der Draw-Buffer aus. Den Diagnose-Build **vor** dem
-Fix flashen und messen -- nur den reparierten Stand zu messen zeigt den
-guten Zustand und führt zum falschen Schluss.
+Rule: **never allocate PSRAM in the constructor of a statically created object**, no
+matter how rarely the data is used. Do it from a `setup()` that runs after `trgb.init()`
+(pattern: `Statistics::allocPsramBuffers()`).
 
-Offen: Ob der eigentliche Hebel das Alignment ist (dann würde ein Patch auf
-`heap_caps_aligned_alloc(64, ...)` über `apply_patches.py` die ganze
-Klasse erledigen) oder nur die Lage, ist nicht bewiesen.
+Diagnosis: the serial command `mem` prints the addresses and alignment of the draw
+buffers via `WebInstr::reportDisplayBuffers()`. Flash the diagnostic build **before** the
+fix and measure -- measuring only the repaired state shows the good state and leads to
+the wrong conclusion.
 
-Starkes Flackern während OTA-Updates ist unabhängig davon eine Eigenschaft
-der Hardware: Solange der Flash geschrieben oder gelöscht wird, steht der
-Bus, über den das Panel sein Bild aus dem PSRAM liest. Dasselbe im Kleinen
-ist die dritte Ursache:
+Open: whether the real lever is the alignment (then a patch to
+`heap_caps_aligned_alloc(64, ...)` via `apply_patches.py` would settle the whole class)
+or only the position has not been proven.
 
-**3. NVS-Schreiben** -- Symptom: ein einzelnes kurzes Flackern, regelmäßig
-(vor 2026-10 alle 45-75 s beim Fahren, 2-3×/10 min im Stand). Siehe den
-nächsten Abschnitt.
+Heavy flicker during OTA updates is, independently of that, a property of the hardware:
+while the flash is written or erased, the bus over which the panel reads its picture
+from PSRAM stands still. The same thing on a small scale is the third cause:
 
-## NVS-Schreiben und Display-Flackern
+**3. Writing to NVS** -- symptom: a single short flicker, regularly (before 2026-10
+every 45-75 s while riding, 2-3 times per 10 min at standstill). See the next section.
 
-Nicht der einzelne Schreibvorgang flackert, sondern das **Löschen einer
-NVS-Seite** (Sektor-Erase, ~100 ms gemessen). Das NVS hängt neue Werte nur
-an; ist die Seite voll, kopiert es die noch gültigen Einträge um und löscht
-eine Seite. Wie oft das passiert, lässt sich ausrechnen:
+## Writing to NVS and display flicker
 
-- Eine Seite fasst 126 Einträge. Eine Zahl (bis 64 Bit) kostet 1 Eintrag,
-  ein String oder Blob `2 + Größe/32` (aufgerundet). **Ein `putFloat()` ist
-  ein Blob, also 3 Einträge.**
-- Pro Löschung werden etwa `126 × (1 − Füllgrad)` Einträge frei. Der
-  Füllgrad steht auf `/debug/nvs`.
-- Löschungen pro Zeit = geschriebene Einträge pro Zeit / frei werdende
-  Einträge.
+It is not the single write that flickers but the **erase of an NVS page** (sector erase,
+~100 ms measured). NVS only appends new values; when the page is full, it copies the
+entries that are still valid and erases a page. How often that happens can be calculated:
 
-Beispiel vor 2026-10: Füllgrad ~70 % → ~36 Einträge pro Löschung (gemessen:
-jeder zwölfte `putFloat()` dauerte ~100 ms länger). Die Statistik schrieb
-beim Fahren ~48 Einträge/min → eine Löschung alle ~45 s.
+- A page holds 126 entries. A number (up to 64 bit) costs 1 entry, a string or blob
+  `2 + size/32` (rounded up). **A `putFloat()` is a blob, i.e. 3 entries.**
+- Each erase frees about `126 × (1 − fill level)` entries. The fill level is shown on
+  `/debug/nvs`.
+- Erases per time = entries written per time / entries freed.
 
-Regeln:
+Example before 2026-10: fill level ~70 % → ~36 entries per erase (measured: every twelfth
+`putFloat()` took ~100 ms longer). The statistics wrote ~48 entries/min while riding →
+one erase every ~45 s.
 
-- **Nichts periodisch Schnelles ins NVS.** Der Hebel ist die Schreibrate,
-  nicht die Partitionsgröße: eine größere Partition senkt nur den Füllgrad
-  und bringt höchstens Faktor 126/36.
-- Zusammengehörige Werte als **ein Struct-Blob** speichern
-  (`NvsUtil::loadBlob()`/`saveBlob()`, `src/NvsUtil.h`), nicht als einzelne
-  Schlüssel -- vor allem keine einzelnen Floats.
-- Unveränderte Werte schreibt das NVS nicht (ESP-IDF vergleicht vor dem
-  Schreiben). Ein eigenes „nur wenn geändert" spart nur den Lesezugriff.
-- Die Fahrstatistik (`Statistics::persistNow()`) schreibt einen Blob von
-  8 Einträgen alle 5 min, beim Anhalten und vor dem Ausschalten -- das ist
-  rund eine Löschung in 30-50 min. Wer dort etwas hinzufügt, rechnet nach.
-- NVS nur aus Tasks mit genug Stack schreiben, nie aus dem UI-Task (siehe
-  „UI-Task: kaum Stack übrig"). Muster: `Statistics::requestPersist()` setzt
-  nur ein Flag, geschrieben wird im nächsten `cycle()`.
+Rules:
 
-## BLE-Stack ist NimBLE, nicht Bluedroid
+- **Nothing periodic and fast into NVS.** The lever is the write rate, not the partition
+  size: a larger partition only lowers the fill level and gains a factor of 126/36 at most.
+- Store values that belong together as **one struct blob** (`NvsUtil::loadBlob()`/
+  `saveBlob()`, `src/NvsUtil.h`), not as single keys -- above all no single floats.
+- NVS does not write unchanged values (ESP-IDF compares before writing). An own "only if
+  changed" only saves the read.
+- The ride statistics (`Statistics::persistNow()`) write a blob of 8 entries every 5 min,
+  when stopping and before powering off -- that is about one erase in 30-50 min. Whoever
+  adds something there does the sum again.
+- Write NVS only from tasks with enough stack, never from the UI task (see "UI task:
+  hardly any stack left"). Pattern: `Statistics::requestPersist()` only sets a flag, the
+  write happens in the next `cycle()`.
 
-Mit der pioarduino-Plattform (Arduino-ESP32 3.3.x) läuft der BLE-Stack auf
-NimBLE. `BLEAddress` ist eine Kompatibilitätsschicht über beide Stacks und
-verhält sich dort asymmetrisch:
+## The BLE stack is NimBLE, not Bluedroid
 
-- `getNative()` liefert unter NimBLE die Bytes **umgekehrt** (Bluedroid:
-  Anzeigereihenfolge).
-- `BLEAddress(uint8_t[6])` kopiert unter NimBLE ebenfalls umgekehrt --
-  `getNative()` raus / Konstruktor rein ist also **kein** Roundtrip.
-- `equals()`/`operator==` vergleicht zusätzlich den Adresstyp.
+With the pioarduino platform (Arduino-ESP32 3.3.x) the BLE stack runs on NimBLE.
+`BLEAddress` is a compatibility layer over both stacks and behaves asymmetrically there:
 
-Regel (`src/BLEDevices.cpp`): mit `getNative()` speichern, beim Laden per
-`memcpy` in `getNative()` eines default-konstruierten `BLEAddress`
-zurückschreiben; Peers mit dem dateilokalen `sameAddress()` vergleichen,
-nicht mit `equals()`. Bei Problemen mit Peer-Identität oder
-Adressanzeige zuerst hier suchen.
+- `getNative()` returns the bytes **reversed** under NimBLE (Bluedroid: display order).
+- `BLEAddress(uint8_t[6])` also copies reversed under NimBLE -- `getNative()` out /
+  constructor in is therefore **not** a round trip.
+- `equals()`/`operator==` additionally compares the address type.
 
-## Arduino `String` und `c_str()`
+Rule (`src/BLEDevices.cpp`): store with `getNative()`, on loading write back by `memcpy`
+into `getNative()` of a default-constructed `BLEAddress`; compare peers with the
+file-local `sameAddress()`, not with `equals()`. With problems of peer identity or
+address display, look here first.
 
-BLE-`readValue()`/`getValue()` liefern unter Arduino-ESP32 3.x `String`.
-Ein `c_str()`-Zeiger ist nur gültig, solange das `String`-Objekt lebt und
-nicht verändert wird. Beim Weiterreichen an LVGL oder über
-Task-/Queue-/Callback-Grenzen prüfen, dass niemand den Zeiger behält.
-`lv_label_set_text()` kopiert, `lv_label_set_text_static()` **nicht**.
+## Arduino `String` and `c_str()`
 
-## Zwei USB-Ports
+BLE `readValue()`/`getValue()` return `String` under Arduino-ESP32 3.x. A `c_str()`
+pointer is only valid as long as the `String` object lives and is not modified. When
+passing it on to LVGL or across task, queue or callback boundaries, check that nobody
+keeps the pointer. `lv_label_set_text()` copies, `lv_label_set_text_static()` does **not**.
 
-Das Board hat einen nativen USB-CDC-Port (verschwindet bei Hard-Reset kurz
-vom Bus) und einen externen USB-Seriell-Wandler (bleibt enumeriert). Ob ein
-Reset stattgefunden hat, daher an Boot-Markern im Log erkennen (z. B.
-`"👨‍🏭 Start"` aus `BLEDevices::scanAndConnectTask()`), nicht an
-USB-Disconnect-Events.
+## Two USB ports
 
-Beim Öffnen von `/dev/ttyACM0` aus eigenen Skripten **nicht** `dtr = False`/`rts =
-False` vor `open()` setzen: pyserial schaltet danach erst DTR ab, und DTR=0 bei RTS=1
-löst beim USB-JTAG-Port einen Reset aus ("Reset reason: USB"). Mit den Standardwerten
-(beide gesetzt) bleibt das Board an.
+The board has a native USB CDC port (disappears from the bus for a moment on a hard
+reset) and an external USB serial converter (stays enumerated). Whether a reset has
+happened is therefore to be seen from boot markers in the log (e.g. `"👨‍🏭 Start"` from
+`BLEDevices::scanAndConnectTask()`), not from USB disconnect events.
 
-## UI-Task: kaum Stack übrig
+When opening `/dev/ttyACM0` from own scripts, do **not** set `dtr = False`/`rts = False`
+before `open()`: pyserial then switches DTR off first, and DTR=0 with RTS=1 triggers a
+reset on the USB-JTAG port ("Reset reason: USB"). With the defaults (both set) the board
+stays on.
 
-Der UI-Task (`UIFacade::initDisplay()`, 4096 Byte) hat im Betrieb weniger als 1 KB frei
-(`mem` → `STACK UI Task`). EEZ-Actions und LVGL-Timer laufen in diesem Task. Alles
-Schwere dort nicht direkt ausführen, sondern einen eigenen kurzlebigen Task starten:
-NVS-Schreiben, SD-Zugriffe, `delay()`, Rendern eines ganzen Screens (`lv_snapshot` legt
-zusätzlich ~500 Byte Display-Strukturen auf den Stack). Muster: `shutdownTask()` in
-`src/ui/RimRidgeSettingsCustFunc.cpp`, `snapTask()` in `src/UiDebug.cpp`
-(mit `UIFacade::runLocked()`).
+## UI task: hardly any stack left
 
-## Fehlende Zeilen im Debug-Log
+The UI task (`UIFacade::initDisplay()`, 4096 bytes) has less than 1 KB free in operation
+(`mem` → `STACK UI Task`). EEZ actions and LVGL timers run in this task. Don't run
+anything heavy there directly but start a short-lived task of its own: NVS writes, SD
+access, `delay()`, rendering a whole screen (`lv_snapshot` puts another ~500 bytes of
+display structures on the stack). Pattern: `shutdownTask()` in
+`src/ui/RimRidgeSettingsCustFunc.cpp`, `snapTask()` in `src/UiDebug.cpp` (with
+`UIFacade::runLocked()`).
 
-`BCLogger::log()` wartet höchstens 100 ms auf den Datei-Mutex und verwirft die Zeile
-danach (nur `"File Log output blocked"` auf `printf`). Das passiert, wenn gerade ein
-SD-Flush oder ein NVS-Schreibvorgang läuft, z. B. beim Speichern der Distanz. Eine
-fehlende Logzeile beweist also nicht, dass der Code nicht lief; lieber eine Folgewirkung
-prüfen (Reset-Grund, gespeicherter Wert, spätere Zeile).
+## Missing lines in the debug log
 
-## EEZ Studio / LVGL-Build
+`BCLogger::log()` waits at most 100 ms for the file mutex and drops the line after that
+(only `"File Log output blocked"` on `printf`). This happens while an SD flush or an NVS
+write is running, e.g. when the distance is saved. A missing log line therefore does not
+prove that the code did not run; rather check a consequence (reset reason, stored value,
+later line).
 
-- `src/ui_eez/` wird bei jedem Export komplett überschrieben -- eigene
-  Logik gehört nach `src/ui/RimRidge*CustFunc.*`.
-- EEZ-generierter Code inkludiert `<lvgl/lvgl.h>`; der Shim
-  `include/lvgl/lvgl.h` leitet auf `<lvgl.h>` um.
-- Bei der Umrechnung von SquareLine-Layouts gilt: Positionen von Kindern
-  eines Flex-Containers sind bedeutungslos, LVGL rechnet sie zur Laufzeit.
+## EEZ Studio / LVGL build
 
-## LVGL-Widgets auf EEZ-Screens
+- `src/ui_eez/` is overwritten completely on every export -- own logic belongs into
+  `src/ui/RimRidge*CustFunc.*`.
+- EEZ-generated code includes `<lvgl/lvgl.h>`; the shim `include/lvgl/lvgl.h` redirects
+  to `<lvgl.h>`.
+- When converting SquareLine layouts: positions of children of a flex container are
+  meaningless, LVGL computes them at run time.
 
-Alle Punkte hier scheitern still: kein Build-Fehler, nur falsches Verhalten
-auf dem Gerät.
+## LVGL widgets on EEZ screens
 
-- **Gesten kommen nicht an.** Zwei Bedingungen, beide nötig:
-  1. `SCROLLABLE` auf dem Screen-Root und auf dem Container löschen. EEZ
-     lässt es auf Page-Roots standardmäßig an; ein scrollbarer Vorfahre
-     unterdrückt die Gesten-Erkennung für den ganzen Druck.
-  2. `GESTURE_BUBBLE` auf dem **Container mit dem Handler** löschen
-     (Kinder dürfen es behalten). LVGL reicht die Geste an den ersten
-     Vorfahren *ohne* dieses Flag weiter -- sonst landet sie am
-     Screen-Root. Handler direkt auf einem Screen-Root brauchen das nicht.
-- **Große Arcs/Slider schlucken Touches.** Nur-Anzeige-Arcs (Speed-,
-  Distanz-Ring) brauchen `clickableFlag: false`, sonst beanspruchen sie
-  jeden Druck für ihr eigenes Ziehen, und Gesten/Klicks darunter feuern nie.
-- **`zoom`/`angle` wirkt nicht** auf Bilder im Format `INDEXED_*` oder
-  `ALPHA_1/2/4BIT` (LVGL 8.4 transformiert nur Formate, die der Decoder
-  komplett dekodiert: `TRUE_COLOR*`, `ALPHA_8BIT`, `RGB565A8`). Betrifft
-  die alten Nav-Icons in `src/ui/img/ui_img_nav_*allimages.c` (1 bit) --
-  diese nur in nativer Größe verwenden. Umrechnen auf `ALPHA_8BIT` kostet
-  ~4 KB pro 64-px-Icon; Flash ist knapp.
-- **Icons rendern schwarz** ohne `img_recolor` im `localStyles`, weil die
-  RimRidge-Icons reine Alpha-Masken sind. Bei jedem neuen Icon-Widget
-  prüfen. Ebenso: Das Platzhalter-Bitmap im Canvas sollte ungefähr die
-  native Auflösung des Bitmaps haben, das zur Laufzeit eingesetzt wird --
-  `zoom` skaliert relativ dazu.
-- **Platzhalter bleibt sichtbar.** Widgets, die zur Laufzeit per
-  `lv_img_set_src()` befüllt werden, starten mit dem sichtbaren
-  EEZ-Platzhalter. Wenn die C-Logik nur auf Übergänge reagiert
-  (`static bool shown`), beim ersten Aufruf einmal explizit in den
-  richtigen Anfangszustand zwingen.
-- **Geometrie zur Laufzeit.** Grundregel: Position/Größe gehören ins
-  `.eez-project`, nicht in C. Bewusste Ausnahme: der "geschobene" Zustand
-  von `rr_nav_pill` bei sichtbarer Spur-Anzeige (EEZ kann keine
-  zustandsabhängige Geometrie ausdrücken). Die Ruheposition im Canvas
-  bleibt maßgeblich.
+All points here fail silently: no build error, only wrong behaviour on the device.
 
-## `xUIDrawMutex` und EEZ-Actions
+- **Gestures don't arrive.** Two conditions, both needed:
+    1. Clear `SCROLLABLE` on the screen root and on the container. EEZ leaves it on for
+       page roots by default; a scrollable ancestor suppresses gesture detection for the
+       whole press.
+    2. Clear `GESTURE_BUBBLE` on the **container with the handler** (children may keep
+       it). LVGL passes the gesture on to the first ancestor *without* this flag --
+       otherwise it ends up at the screen root. Handlers directly on a screen root don't
+       need this.
+- **Large arcs/sliders swallow touches.** Display-only arcs (speed ring, distance ring)
+  need `clickableFlag: false`, otherwise they claim every press for their own dragging,
+  and gestures/clicks underneath never fire.
+- **`zoom`/`angle` has no effect** on images in the format `INDEXED_*` or
+  `ALPHA_1/2/4BIT` (LVGL 8.4 only transforms formats that the decoder decodes completely:
+  `TRUE_COLOR*`, `ALPHA_8BIT`, `RGB565A8`). Concerns the old nav icons in
+  `src/ui/img/ui_img_nav_*allimages.c` (1 bit) -- use these in native size only.
+  Converting to `ALPHA_8BIT` costs ~4 KB per 64 px icon; flash is tight.
+- **Icons render black** without `img_recolor` in `localStyles`, because the RimRidge
+  icons are pure alpha masks. Check for every new icon widget. Likewise: the placeholder
+  bitmap in the canvas should have roughly the native resolution of the bitmap that is
+  set at run time -- `zoom` scales relative to it.
+- **Placeholder stays visible.** Widgets that are filled at run time by
+  `lv_img_set_src()` start with the visible EEZ placeholder. If the C logic only reacts
+  to transitions (`static bool shown`), force the right initial state explicitly once on
+  the first call.
+- **Geometry at run time.** Basic rule: position and size belong into the
+  `.eez-project`, not into C. Deliberate exception: the "pushed" state of `rr_nav_pill`
+  when the lane display is visible (EEZ cannot express state-dependent geometry). The
+  rest position in the canvas stays authoritative.
 
-EEZ-Action-Callbacks laufen synchron in `lv_timer_handler()`, und das ruft
-`UIFacade::updateHandler()` bei gehaltenem `xUIDrawMutex` auf. Der Mutex
-ist nicht rekursiv; ein zweites `xSemaphoreTake` aus demselben Task läuft
-in den Timeout. Jede `UIFacade`-Methode, die eine Action erreichen kann,
-braucht das Muster
+## `xUIDrawMutex` and EEZ actions
+
+EEZ action callbacks run synchronously in `lv_timer_handler()`, and
+`UIFacade::updateHandler()` calls that while holding `xUIDrawMutex`. The mutex is not
+recursive; a second `xSemaphoreTake` from the same task runs into the timeout. Every
+`UIFacade` method that an action can reach needs the pattern
 `bool uiTask = isDrawTask(); if (uiTask || xSemaphoreTake(...))`.
 
-## LVGL nur unter `xUIDrawMutex` -- auch im UI-Task selbst
+## LVGL only under `xUIDrawMutex` -- in the UI task itself, too
 
-- Symptom: endlose Zeilen `lcd_panel: esp_lcd_panel_draw_bitmap(35): start position must
-  be smaller than end position` auf der seriellen Konsole, danach „Task watchdog …
-  async_tcp", laufend `UI Task` (Core-Dump 2026-10-02 00:22).
-- Ursache: Zwei Tasks tragen gleichzeitig eine Invalid-Fläche ein (`_lv_inv_area()`), übrig
-  bleibt eine aus beiden gemischte mit `y2 < y1`. Daran läuft `refr_area()` in LVGL 8.4 in
-  einer Schleife mit negativer Zeilenzahl; jeder Durchlauf ruft den Display-Treiber mit
-  einer ungültigen Fläche.
-- Der Fast- und der Slow-Block in `UIFacade::updateHandler()` liefen ohne Mutex, weil sie
-  im UI-Task laufen. Das schützt aber nur vor `lv_timer_handler()`, nicht vor dem BLE-Task
-  (Nav-Frames) und dem `esp_timer`-Task (Fahrzustand), die unter dem Mutex zeichnen.
-  Aufgefallen ist es erst mit der TrailBridge-Testfahrt: Nav-Frame und simulierte
-  Geschwindigkeit kommen beide im Sekundentakt.
-- Regel: jeder LVGL-Aufruf außerhalb von `lv_timer_handler()` braucht den Mutex, auch im
-  UI-Task. Der Core-Dump enthält nur Stacks; die Fläche steht in `sub_area` im Frame von
+- Symptom: endless lines `lcd_panel: esp_lcd_panel_draw_bitmap(35): start position must
+  be smaller than end position` on the serial console, then "Task watchdog … async_tcp",
+  running `UI Task` (core dump of 2026-10-02 00:22).
+- Cause: two tasks enter an invalid area at the same time (`_lv_inv_area()`), what
+  remains is one mixed from both with `y2 < y1`. On that, `refr_area()` in LVGL 8.4 runs
+  in a loop with a negative line count; every pass calls the display driver with an
+  invalid area.
+- The fast and the slow block in `UIFacade::updateHandler()` ran without the mutex
+  because they run in the UI task. But that only protects against `lv_timer_handler()`,
+  not against the BLE task (navigation frames) and the `esp_timer` task (driving state),
+  which draw under the mutex. It only showed with the TrailBridge test ride: navigation
+  frame and simulated speed both arrive once a second.
+- Rule: every LVGL call outside `lv_timer_handler()` needs the mutex, also in the UI
+  task. The core dump only contains stacks; the area is in `sub_area` in the frame of
   `refr_area`.
 
-## Struct-Layouts: `time_t` ist 8 Byte
+## Struct layouts: `time_t` is 8 bytes
 
-Auf dieser Toolchain ist `time_t` 8 Byte, nicht 4 -- relevant für
-`BCLogger::LogData` und alles, was binär geschrieben und in `Tools/`
-gelesen wird. Echte Offsets ermitteln statt zählen: absichtlich falsches
-`static_assert(offsetof(T, feld) == 999, "x")` -- GCC meldet den echten
-Wert in "the comparison reduces to ...".
+On this toolchain `time_t` is 8 bytes, not 4 -- relevant for `BCLogger::LogData` and
+everything that is written in binary and read in `Tools/`. Determine real offsets instead
+of counting: a deliberately wrong `static_assert(offsetof(T, field) == 999, "x")` -- GCC
+reports the real value in "the comparison reduces to ...".
 
-## Serielle Konsole
+## Serial console
 
-`src/SerialConsole.*` hält die Eingabezeile (Prompt, halb getippter Befehl) als letzte
-Bildschirmzeile. Zwei Regeln:
+`src/SerialConsole.*` keeps the input line (prompt, half-typed command) as the last line
+on the screen. Two rules:
 
-- **Serial-Ausgaben aus anderen Tasks** gehen über `bclog` oder werden in
-  `SerialConsole::Output out(console);` eingeschlossen -- sonst landen sie mitten
-  in der Eingabezeile. Befehls-Callbacks laufen im Loop-Task ohne sichtbaren
-  Prompt und dürfen direkt `Serial.print` benutzen, sollten aber mit
-  Zeilenumbruch enden.
-- **Keine ANSI-Escape-Sequenzen und kein `\a` ausgeben.** Der Standardfilter von
-  miniterm und `pio device monitor` zeigt ESC und die meisten Steuerzeichen als
-  Symbol (`␛[K`). Die Konsole zeichnet deshalb nur mit `\r`, `\b` und Leerzeichen.
+- **Serial output from other tasks** goes through `bclog` or is wrapped in
+  `SerialConsole::Output out(console);` -- otherwise it lands in the middle of the input
+  line. Command callbacks run in the loop task without a visible prompt and may use
+  `Serial.print` directly, but should end with a line break.
+- **Don't output ANSI escape sequences or `\a`.** The default filter of miniterm and
+  `pio device monitor` shows ESC and most control characters as a symbol (`␛[K`). The
+  console therefore draws with `\r`, `\b` and spaces only.
 
-Befehle mit `console.addCmd()` registrieren, nicht mit `cli.addCmd()`, sonst gibt
-es keine Tab-Completion (SimpleCLI bietet keine Liste der Befehle an).
+Register commands with `console.addCmd()`, not with `cli.addCmd()`, otherwise there is no
+Tab completion (SimpleCLI does not offer a list of its commands).
 
-## Webserver: Regex-Routen und Stack-Größe
+## Web server: regex routes and stack size
 
-`ASYNCWEBSERVER_REGEX` bleibt bewusst aus: `AsyncCallbackWebHandler::canHandle()`
-baut für jede Regex-Route bei **jedem** Request ein `std::regex` auf dem
-internen Heap. Routen als Präfix-Routen anlegen (siehe
-`src/WifiWebserver.cpp`).
+`ASYNCWEBSERVER_REGEX` deliberately stays off: `AsyncCallbackWebHandler::canHandle()`
+builds a `std::regex` on the internal heap for every regex route on **every** request.
+Create routes as prefix routes (see `src/WifiWebserver.cpp`).
 
-`CONFIG_ASYNC_TCP_STACK_SIZE` ist auf gemessene Auslastung plus Reserve
-eingestellt (Details im Kommentar in `platformio.ini`). Nach Änderungen an
-Web-Handlern oder OTA neu messen (`mem` auf der Serial-CLI), bevor der
-Wert weiter gesenkt wird.
+`CONFIG_ASYNC_TCP_STACK_SIZE` is set to the measured usage plus a reserve (details in
+the comment in `platformio.ini`). After changes to web handlers or OTA, measure again
+(`mem` on the serial console) before lowering the value further.
 
-## Interner Heap ist das knappe Gut
+## The internal heap is the scarce resource
 
-PSRAM ist reichlich da, aber alles unter `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL`
-(4 KB) sowie Task-Stacks, FreeRTOS-Queues/-Puffer, offene SD-Dateien (~4 KB
-je Datei), WLAN, BLE-Verbindungen und jede TCP-Verbindung des Webservers
-kommen aus dem **internen** Heap. Gemessen 2026-09-26 (`mem`, Zeile `MEM int=`):
-nach dem Boot mit WLAN + TrailBridge + HR ca. 50–64 KB frei; 8 parallele
-HTTP-Requests ziehen davon ~45–60 KB ab. Läuft der interne Heap leer,
-hängen Webserver/mDNS, und das Gerät kann abstürzen.
+There is plenty of PSRAM, but everything below `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL`
+(4 KB) as well as task stacks, FreeRTOS queues and buffers, open SD files (~4 KB per
+file), WiFi, BLE connections and every TCP connection of the web server come from the
+**internal** heap. Measured 2026-09-26 (`mem`, line `MEM int=`): after boot with WiFi +
+TrailBridge + heart rate about 50–64 KB free; 8 parallel HTTP requests take ~45–60 KB of
+that. If the internal heap runs empty, web server and mDNS hang, and the device can crash.
 
-Regel: Jeden neuen dauerhaften Puffer/Stack/offenen File im internen RAM mit
-`mem` vorher/nachher messen (Leerlauf und unter Web-Last). Dateien, die selten
-geschrieben werden, nicht die ganze Sitzung offen halten. Die Middleware in
-`WifiWebserver.cpp` lehnt Requests unter 20 KB freiem internem Heap mit 503
-ab -- das schützt aber erst nach dem Annehmen der Verbindung.
+Rule: measure every new permanent buffer, stack or open file in internal RAM with `mem`
+before and after (idle and under web load). Don't keep files that are rarely written open
+for the whole session. The middleware in `WifiWebserver.cpp` rejects requests below 20 KB
+of free internal heap with 503 -- but that only protects after the connection has been
+accepted.
 
-## SD-Karte: offene Dateien nicht löschen oder umbenennen
+## SD card: don't delete or rename open files
 
-`CONFIG_FATFS_FS_LOCK` ist 0: FATFS verhindert nicht, dass eine Datei gelöscht
-oder umbenannt wird, die ein anderer Task noch offen hat -- das Ergebnis ist ein
-beschädigtes Dateisystem, kein Fehlercode. Die Dateien der laufenden Sitzung in
-`/BIKECOMP/CUR/` sind die ganze Fahrt offen. `BCLogger::deleteFile()` und der
-Cleanup lassen sie deshalb aus (`isActiveSessionFile()`), ebenso alles in `CUR/`,
-solange der Finalizer (`LogSessions`) läuft. Neue Wege, Dateien zu löschen oder
-zu verschieben, brauchen dieselbe Prüfung.
+`CONFIG_FATFS_FS_LOCK` is 0: FATFS does not prevent a file from being deleted or renamed
+while another task still has it open -- the result is a damaged file system, not an error
+code. The files of the running session in `/BIKECOMP/CUR/` are open for the whole ride.
+`BCLogger::deleteFile()` and the cleanup therefore skip them (`isActiveSessionFile()`),
+as well as everything in `CUR/` while the finalizer (`LogSessions`) is running. New ways
+of deleting or moving files need the same check.
 
-## BMI160: Register-Reads nie ungeprüft
+## BMI160: never read registers unchecked
 
-`BMI160Gen::serial_buffer_transfer()` prüft nicht, ob `requestFrom()` alle
-Bytes geliefert hat, und lässt bei einem kurzen Read alte Pufferbytes stehen.
-Beim FIFO-Füllstand (2 Byte) ergab das sporadisch Werte von ~80 statt ~2
-Frames; der leere FIFO liefert dann `0x8000`-Frames (-16 g auf allen Achsen),
-die als 31-g-Stöße erkannt wurden. Regel: FIFO-Zähler und -Daten über
-`I2CSensors::imuRead()` lesen (Repeated Start, Längenprüfung) und
-`0x8000/0x8000/0x8000`-Frames verwerfen -- beides ist dort umgesetzt, die
-Zähler stehen auf `/debug/imu`.
+`BMI160Gen::serial_buffer_transfer()` does not check whether `requestFrom()` delivered
+all bytes, and leaves old buffer bytes in place on a short read. For the FIFO fill level
+(2 bytes) this sporadically gave values of ~80 instead of ~2 frames; the empty FIFO then
+delivers `0x8000` frames (-16 g on all axes), which were detected as 31 g shocks. Rule:
+read FIFO count and data through `I2CSensors::imuRead()` (repeated start, length check)
+and discard `0x8000/0x8000/0x8000` frames -- both are implemented there, the counters
+are on `/debug/imu`.
 
-## Abstürze ohne USB: Neustart-Grund und Core-Dump
+## Crashes without USB: reset reason and core dump
 
-- Beim Boot steht im Debug-Log `Reset reason: …`. Bei PANIC oder einem Watchdog
-  liegt ein Core-Dump in der Partition `coredump`. Jeder Absturz überschreibt den vorigen.
-- Anzeige unter `/debug/coredump`: Task, PC, Backtrace und ob der Dump zur laufenden
-  Firmware passt.
-- Der Dump wird **nur auf Anfrage** gelesen, nie beim Boot. Ein früherer
-  Kopierversuch beim Boot hat eine Endlosschleife aus Abstürzen ausgelöst
-  (TODO in `BCLogger::setup()`). Ohne USB wäre das Gerät dann nicht mehr erreichbar.
-- Auflösen geht nur mit der **ELF genau der abgestürzten Firmware**. Vor jedem neuen Build
-  `.pio/build/trgb-esp32-s3/firmware.elf` sichern, wenn noch ein Dump aussteht.
-  Ob die Datei passt, zeigen die ersten Zeichen von `sha256sum firmware.elf`.
-  Befehl:
-  ```
-  curl -o coredump.bin http://<ip>/debug/coredump.elf
-  esp-coredump info_corefile -t raw \
-      --gdb ~/.platformio/packages/tool-xtensa-esp-elf-gdb/bin/xtensa-esp32s3-elf-gdb \
-      -c coredump.bin firmware.elf
-  ```
-  `-t raw`, weil die Partition vor der ELF noch einen Kopf hat.
-- Bei „Task watchdog … IDLE0“ ist der Task mit dem Absturz meist nur der, der gerade lief.
-  Wichtig ist die Thread-Liste: Wer steht **nicht** in einer Wartefunktion
-  (`0x400559e0 in ??` = blockiert)?
+- At boot the debug log contains `Reset reason: …`. After a PANIC or a watchdog there is
+  a core dump in the partition `coredump`. Every crash overwrites the previous one.
+- Shown on `/debug/coredump`: task, PC, backtrace and whether the dump matches the
+  running firmware.
+- The dump is read **only on request**, never at boot. An earlier attempt to copy it at
+  boot caused an endless loop of crashes (TODO in `BCLogger::setup()`). Without USB the
+  device would then be unreachable.
+- Resolving it needs the **ELF of exactly the firmware that crashed**. Before every new
+  build, save `.pio/build/trgb-esp32-s3/firmware.elf` if a dump is still pending. Whether
+  the file matches is shown by the first characters of `sha256sum firmware.elf`. Command:
 
-## Nie `vTaskDelay(0)` in einer Task-Schleife mit hoher Priorität
+    ```
+    curl -o coredump.bin http://<ip>/debug/coredump.elf
+    esp-coredump info_corefile -t raw \
+        --gdb ~/.platformio/packages/tool-xtensa-esp-elf-gdb/bin/xtensa-esp32s3-elf-gdb \
+        -c coredump.bin firmware.elf
+    ```
 
-- `vTaskDelay(0)` gibt nur an Tasks gleicher oder höherer Priorität ab, nie an IDLE0.
-- Der UI-Task (Priorität 20) hat mit `vTaskDelay(next_ms)` so lange gerechnet, wie LVGL
-  `0` zurückgab (Rendering kam nicht hinterher, viele Updates nach BLE-Reconnects).
-  Nach 5 s hat der Task-Watchdog das Gerät neu gestartet (Core-Dump 2026-09-27).
-- Jetzt gilt ein Minimum von 2 ms in `UIFacade::updateHandler()`. Dasselbe gilt für
-  jede eigene Schleife: immer mindestens 1 Tick warten.
+    `-t raw` because the partition has a header in front of the ELF.
+- With "Task watchdog … IDLE0" the task of the crash is usually just the one that
+  happened to run. What matters is the thread list: who is **not** in a wait function
+  (`0x400559e0 in ??` = blocked)?
+
+## Never `vTaskDelay(0)` in a task loop with high priority
+
+- `vTaskDelay(0)` only yields to tasks of the same or higher priority, never to IDLE0.
+- The UI task (priority 20) kept computing with `vTaskDelay(next_ms)` for as long as LVGL
+  returned `0` (rendering could not keep up, many updates after BLE reconnects). After
+  5 s the task watchdog restarted the device (core dump of 2026-09-27).
+- Now a minimum of 2 ms applies in `UIFacade::updateHandler()`. The same holds for every
+  loop of one's own: always wait at least 1 tick.

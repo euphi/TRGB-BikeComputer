@@ -1,0 +1,103 @@
+# Documentation site: https://euphi.github.io/TRGB-BikeComputer/
+# Sources are the files in doc/: X.md is English, X.de.md is German.
+# Local preview: pip install -r doc/requirements.txt && doc/fetch_trailbridge.sh && mkdocs serve
+site_name: T-RGB Bike Computer
+site_url: https://euphi.github.io/TRGB-BikeComputer/
+site_description: Bike computer on the LilyGO T-RGB with navigation, climbs, road quality and ride logging
+repo_url: https://github.com/euphi/TRGB-BikeComputer
+repo_name: euphi/TRGB-BikeComputer
+edit_uri: edit/main/doc/
+docs_dir: doc
+exclude_docs: |
+  FreeCAD/
+  Resources/
+  *.xmi
+  Screenshot_2023*.png
+  requirements.txt
+  fetch_trailbridge.sh
+
+theme:
+  name: material
+  logo: design/logo.svg
+  favicon: design/logo.svg
+  palette:
+    scheme: slate
+    primary: custom
+    accent: custom
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - content.action.edit
+    - search.highlight
+
+extra_css:
+  - stylesheets/rimridge.css
+
+markdown_extensions:
+  - tables
+  - attr_list
+  - md_in_html
+  - admonition
+  - toc:
+      permalink: true
+  - pymdownx.highlight
+  - pymdownx.superfences
+
+plugins:
+  - search
+  - include-markdown
+  - i18n:
+      docs_structure: suffix
+      fallback_to_default: true
+      reconfigure_material: true
+      reconfigure_search: true
+      languages:
+        - locale: en
+          default: true
+          name: English
+          build: true
+        - locale: de
+          name: Deutsch
+          build: true
+          site_name: T-RGB Fahrradcomputer
+          site_description: Fahrradcomputer auf dem LilyGO T-RGB mit Navigation, Anstiegen, Wegequalität und Fahrtenlog
+          nav_translations:
+            Overview: Überblick
+            Roadmap: Roadmap
+            Using it: Benutzung
+            Climbs: Anstiege
+            Rides and statistics: Fahrten und Statistik
+            Usability backlog: Bedienung unterwegs (offen)
+            Ride test cheat sheet: Testfahrt-Cheatsheet
+            Logs and tools: Logs und Werkzeuge
+            Log format and CLI: Logformat und CLI
+            Log service: Log-Dienst
+            Development: Entwicklung
+            Debugging: Debugging
+            Simulator: Simulator
+            Pitfalls: Fallstricke
+            Design system: Design-System
+            TrailBridge: TrailBridge
+            App: App
+            BLE protocol: BLE-Protokoll
+
+nav:
+  - Overview: index.md
+  - Roadmap: ROADMAP.md
+  - Using it:
+      - Climbs: CLIMB.md
+      - Rides and statistics: design/ride-state-machine.md
+      - Usability backlog: USABILITY-TODO.md
+      - Ride test cheat sheet: RIDE-TEST-CHEATSHEET.md
+  - Logs and tools:
+      - Log format and CLI: TOOLS.md
+      - Log service: LOGSERVICE.md
+  - Development:
+      - Debugging: DEBUG.md
+      - Simulator: SIMULATOR.md
+      - Pitfalls: PITFALLS.md
+      - Design system: design/rim-ridge-design-system.md
+  - TrailBridge:
+      - App: trailbridge/index.md
+      - BLE protocol: trailbridge/PROTOCOL.md

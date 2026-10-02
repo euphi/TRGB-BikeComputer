@@ -1,150 +1,143 @@
-# Sensor-Simulator (Debug-Build)
+# Sensor simulator (debug build)
 
-Statistik, Fahrzustände und Distanz am Schreibtisch testen, ohne zu fahren.
-Nur im Build `trgb-esp32-s3-sim` (`-DBC_SIM`) enthalten – die normalen
-Builds (`trgb-esp32-s3`, `-FL`, `-ota`) enthalten nichts davon.
+Test statistics, driving states and distance at the desk, without riding. Only contained
+in the build `trgb-esp32-s3-sim` (`-DBC_SIM`) -- the normal builds (`trgb-esp32-s3`,
+`-FL`, `-ota`) contain none of it.
 
-## Was simuliert wird
+## What is simulated
 
-`src/SimSensors.*` erzeugt einmal pro Sekunde die BLE-Notifications, die ein
-echter CSC-Speed-Sensor (Slot CSC_1), ein Cadence-Sensor (CSC_2) und ein
-Pulsgurt schicken würden – kumulierte Umdrehungen mit der Zeit der letzten
-Umdrehung in 1/1024 s – und schickt sie durch
-`BLEDevices::notifyCallbackCSC()`. Ab da läuft alles wie am Rad:
-`Distance::updateRevs()` (Umdrehungen, Radumfang, Reconnect/Lost Distance),
-`Statistics` (Zustände Stop/Pause/Fahrt/Rollen, Zeiten, Durchschnitte,
-Trittfrequenz), Binärlog, UI.
+`src/SimSensors.*` produces once a second the BLE notifications that a real CSC speed
+sensor (slot CSC_1), a cadence sensor (CSC_2) and a heart-rate strap would send --
+cumulative revolutions with the time of the last revolution in 1/1024 s -- and sends them
+through `BLEDevices::notifyCallbackCSC()`. From there on everything runs as on the bike:
+`Distance::updateRevs()` (revolutions, wheel circumference, reconnect/lost distance),
+`Statistics` (states stop/break/ride/coast, times, averages, cadence), binary log, UI.
 
-- Radumfang: der eingestellte (`/stat/calibration`), geteilt mit der normalen
-  Firmware.
-- Umdrehungszähler starten bei jedem Boot bei 0 (wie ein Sensor, der seinen
-  Zähler neu beginnt).
-- `sim stop` = Sensoren aus (Disconnect → `DS_NO_CONN`); das nächste `sim …`
-  ist ein Reconnect.
-- Trittfrequenz 0 bei Fahrt = Rollen; Trittfrequenz/Puls weglassen (`-`) =
-  dieser Sensor ist nicht da.
-- Solange der Simulator aktiv ist, werden echte Speed/Cadence/HR-Sensoren
-  ignoriert (Daten und Disconnects). Trotzdem besser ausgeschaltet lassen: Nach
-  `sim stop` übernimmt ein echter Speed-Sensor mit ganz anderem Zählerstand.
+- Wheel circumference: the configured one (`/stat/calibration`), shared with the normal
+  firmware.
+- Revolution counters start at 0 on every boot (like a sensor that restarts its counter).
+- `sim stop` = sensors off (disconnect → `DS_NO_CONN`); the next `sim …` is a reconnect.
+- Cadence 0 while moving = coasting; leaving out cadence or heart rate (`-`) = this
+  sensor does not exist.
+- While the simulator is active, real speed/cadence/heart-rate sensors are ignored (data
+  and disconnects). Still better to leave them switched off: after `sim stop` a real
+  speed sensor takes over with a completely different counter value.
 
-## Speisung durch TrailBridge (Testfahrt)
+## Fed by TrailBridge (test ride)
 
-Die Android-App kann ihre GPX-Route "abfahren" (Button "Testfahrt") und schickt
-dabei Position, Geschwindigkeit und -- aus der GPX oder emuliert -- Puls und
-Trittfrequenz im GPS-Positions-Frame, gekennzeichnet mit `SIM_FLAGS`
-(`PROTOCOL.md` im TrailBridge-Repo, "Sensorwerte und Simulationsmodus"). Der
-Simulator-Build speist das wie ein `sim <km/h> <rpm> <bpm>` pro Sekunde ein
-(`SimSensors::feedFromTrailBridge()`): Statistik, Distanz und Binärlog laufen
-mit simulierten Sensoren, die Position kommt zusätzlich ins Log -- die erste
-Strecke mit GPS-Spur *und* Statistik ohne Fahren.
+The Android app can "ride" its GPX route (button "Testfahrt") and sends position, speed
+and -- from the GPX or emulated -- heart rate and cadence in the GPS position frame,
+marked with `SIM_FLAGS`
+([protocol](trailbridge/PROTOCOL.md), "sensor
+values and simulation mode"). The simulator build feeds that in like a
+`sim <km/h> <rpm> <bpm>` per second (`SimSensors::feedFromTrailBridge()`): statistics,
+distance and binary log run with simulated sensors, and the position goes into the log as
+well -- the first ride with a GPS track *and* statistics without riding.
 
-- Fehlt im Frame ein Puls oder eine Trittfrequenz, gibt es diesen Sensor nicht.
-- **Höhe:** `BARO_HEIGHT_DM` ersetzt solange das Barometer (`I2CSensors::getHeight()`).
-  Die Steigung kommt aus der normalen Rechnung (`Statistics::calculateGradient()`:
-  Höhen- durch Streckenänderung, Strecke aus den simulierten Radumdrehungen) --
-  sie wird nicht übertragen. Ohne Höhe im Frame (GPX ohne Höhendaten) bleibt das
-  echte Barometer.
-- **Leistung:** `POWER_W` wird geparst und gehalten (`SimSensors::getPower()`,
-  `/debug/sim.json`), aber noch nirgends angezeigt oder geloggt -- der Binärlog
-  hat kein Feld dafür (Satz voll, 64 Byte) und die UI keine Anzeige.
-- Ende: erster Frame ohne `SIM_SENSORS`, `POSITION_NONE`, ein Fix älter als 5 s oder
-  Trennung vom Handy -> Sensoren aus (`sim stop`). Nur eine von TrailBridge gestartete
-  Simulation wird so beendet; ein manuelles `sim ...` bleibt.
-- Die normale Firmware ignoriert die Sensorwerte (keine Fake-Kilometer im Odometer),
-  markiert aber Log-Sätze mit simulierter Position als `LOG_SIMULATED`.
-- `/debug/sim.json` zeigt unter `source`, woher die laufende Simulation kommt
+- If the frame has no heart rate or no cadence, that sensor does not exist.
+- **Altitude:** `BARO_HEIGHT_DM` replaces the barometer for the time being
+  (`I2CSensors::getHeight()`). The gradient comes from the normal calculation
+  (`Statistics::calculateGradient()`: change of altitude by change of distance, distance
+  from the simulated wheel revolutions) -- it is not transmitted. Without altitude in the
+  frame (GPX without elevation data) the real barometer stays.
+- **Power:** `POWER_W` is parsed and held (`SimSensors::getPower()`, `/debug/sim.json`),
+  but not shown or logged anywhere yet -- the binary log has no field for it (record
+  full, 64 bytes) and the UI no display.
+- End: the first frame without `SIM_SENSORS`, `POSITION_NONE`, a fix older than 5 s or
+  disconnection from the phone -> sensors off (`sim stop`). Only a simulation started by
+  TrailBridge is ended this way; a manual `sim ...` stays.
+- The normal firmware ignores the sensor values (no fake kilometres in the odometer), but
+  marks log records with a simulated position as `LOG_SIMULATED`.
+- `/debug/sim.json` shows under `source` where the running simulation comes from
   (`trailbridge` / `manual`).
 
-## Eigene Statistik-Ablage
+## Separate statistics storage
 
-Der Simulator-Build legt die Fahrstatistik in einem eigenen NVS-Namespace ab
-(`S_Stats` statt `Stats`, `NVS_STAT_PREFIX` in
-`include/global_settings.h`). Gesamt-/Tour-/Trip-km der normalen Firmware
-bleiben unberührt; nach dem Zurückflashen sind die echten Werte wieder da.
-Geteilt bleiben WLAN, BLE-Adressen, Radumfang, Log-Einstellungen, IMU-Kalibrierung.
+The simulator build keeps the ride statistics in an NVS namespace of its own (`S_Stats`
+instead of `Stats`, `NVS_STAT_PREFIX` in `include/global_settings.h`). Total, tour and
+trip kilometres of the normal firmware stay untouched; after flashing back, the real
+values are there again. Shared: WiFi, BLE addresses, wheel circumference, log settings,
+IMU calibration.
 
-Nicht getrennt: die Sitzungen auf der SD-Karte (`/BIKECOMP/…`). Simulierte
-Fahrten erscheinen als normale Sitzungen und werden vom BikeLogService
-abgeholt, wenn er läuft – ohne GPS-Spur (die kommt nur von TrailBridge).
+Not separated: the sessions on the SD card (`/BIKECOMP/…`). Simulated rides appear as
+normal sessions and are fetched by the log service if it is running -- without a GPS
+track (that only comes from TrailBridge).
 
-## Markierung im Log
+## Marking in the log
 
-Während der Simulator aktiv ist, markiert die Firmware ihre Log-Sätze
-(ohne Formatversionssprung, die Bits waren bisher immer 0):
+While the simulator is active, the firmware marks its log records (without a new format
+version, the bits were always 0 so far):
 
-- Fahrdaten (`L_*.bin`, Typ 0): Bit `LOG_SIMULATED` (0x80) in `gpsFlags`
-  (teilt sich nur das Byte mit den GPS-Bits, das Datenlayout hat sonst keine
-  freien Bits). Reader: `Record.simulated`.
-- Fahrzustand (Typ 4): `RSF_SIMULATED` (0x04) in `flags`,
-  `RideStateRecord.simulated`.
+- Ride data (`L_*.bin`, type 0): bit `LOG_SIMULATED` (0x80) in `gpsFlags` (it only shares
+  the byte with the GPS bits, the data layout has no other free bits). Reader:
+  `Record.simulated`.
+- Ride state (type 4): `RSF_SIMULATED` (0x04) in `flags`, `RideStateRecord.simulated`.
 
-Export: `bikelog info` meldet `SIMULIERT: n von m Fahrdaten-Datensätzen`,
-GPX bekommt `[SIM] ` vor dem Namen, „SIMULIERT“ in der Beschreibung,
-Schlüsselwort `simuliert`, `<bc:simulated>1</bc:simulated>` an Trackpunkten
-und Fahrzustands-Segmenten; CSV mit `--roadq` hat die Spalte `Simuliert`.
-Eine rein simulierte Sitzung hat allerdings keine GPS-Position (die kommt nur
-von TrailBridge), der GPX-Export bleibt dann leer.
+Export: `bikelog info` reports `SIMULIERT: n von m Fahrdaten-Datensätzen`, GPX gets
+`[SIM] ` in front of the name, "SIMULIERT" in the description, the keyword `simuliert`,
+`<bc:simulated>1</bc:simulated>` on track points and ride-state segments; CSV with
+`--roadq` has the column `Simuliert`. A purely simulated session has no GPS position
+though (that only comes from TrailBridge), the GPX export then stays empty.
 
-## Bauen und flashen
+## Build and flash
 
 ```sh
 pio run -e trgb-esp32-s3-sim -t upload        # USB
-pio run -e trgb-esp32-s3-sim-ota -t upload    # WLAN (/update)
+pio run -e trgb-esp32-s3-sim-ota -t upload    # WiFi (/update)
 ```
 
-Zurück zur normalen Firmware: `pio run -e trgb-esp32-s3[-ota] -t upload`.
-Beim Booten meldet der Simulator-Build sich im Log mit `SIMULATOR BUILD`.
+Back to the normal firmware: `pio run -e trgb-esp32-s3[-ota] -t upload`. At boot the
+simulator build announces itself in the log with `SIMULATOR BUILD`.
 
-## Bedienung
+## Operation
 
-### Serielle Konsole
+### Serial console
 
 ```
-sim 25 85 140     25 km/h, 85 rpm, Puls 140
-sim 25 0          rollen (Trittfrequenz 0), kein Pulsgurt
-sim 25 - -        nur Speed-Sensor
-sim 0             stehen (Sensoren bleiben verbunden)
-sim stop          Sensoren aus
-sim               Status
+sim 25 85 140     25 km/h, 85 rpm, heart rate 140
+sim 25 0          coasting (cadence 0), no heart-rate strap
+sim 25 - -        speed sensor only
+sim 0             standing (sensors stay connected)
+sim stop          sensors off
+sim               status
 ```
 
-### Web: `/debug/sim` (auch im Debug-Menü)
+### Web: `/debug/sim` (also in the debug menu)
 
-Manuelle Eingabe, Sensoren aus, Live-Statistik (Start/Trip/Tour aus
-`/stat/summary`) und ein GPX-Player im Browser. Der Player läuft im Tab –
-im Vordergrund lassen, Hintergrund-Tabs werden gedrosselt.
+Manual input, sensors off, live statistics (start/trip/tour from `/stat/summary`) and a
+GPX player in the browser. The player runs in the tab -- keep it in the foreground,
+background tabs are throttled.
 
-Direkt: `/debug/sim/set?speed=25&cad=85&hr=140` (`cad`/`hr` leer oder `-` =
-aus), `/debug/sim/stop`, `/debug/sim.json`.
+Directly: `/debug/sim/set?speed=25&cad=85&hr=140` (`cad`/`hr` empty or `-` = off),
+`/debug/sim/stop`, `/debug/sim.json`.
 
-### GPX abspielen vom Rechner: `bikelog sim`
+### Playing a GPX from the computer: `bikelog sim`
 
 ```sh
 cd Tools
-python3 -m bikelog sim fahrt.gpx --http TRGB-BC.local
-python3 -m bikelog sim fahrt.gpx --serial /dev/ttyACM0 --summary-host TRGB-BC.local
-python3 -m bikelog sim fahrt.gpx --dry-run 30        # nur ansehen, was gesendet würde
+python3 -m bikelog sim ride.gpx --http TRGB-BC.local
+python3 -m bikelog sim ride.gpx --serial /dev/ttyACM0 --summary-host TRGB-BC.local
+python3 -m bikelog sim ride.gpx --dry-run 30        # only show what would be sent
 ```
 
-Optionen: `--cadence 80` (wenn die GPX keine hat), `--max-gap 150` (lange
-Aufzeichnungspausen kürzen – 150 s reicht, um den Übergang Stopp → Pause bei
-2 min zu sehen), `--start MIN`, `--duration MIN`, `--echo` (serielle Ausgabe
-zeigen). Die serielle Konsole kann nur ein Programm gleichzeitig offen haben
-– Monitor vorher schließen.
+Options: `--cadence 80` (if the GPX has none), `--max-gap 150` (shorten long recording
+pauses -- 150 s is enough to see the transition stop → break at 2 min), `--start MIN`,
+`--duration MIN`, `--echo` (show the serial output). Only one program can have the serial
+console open at a time -- close the monitor first.
 
-Regeln (gleich im Browser-Player):
+Rules (the same in the browser player):
 
-- Geschwindigkeit aus der Geometrie, Distanzdifferenz über ±2 s,
-- Puls/Trittfrequenz aus der TrackPointExtension, falls vorhanden,
-- sonst Trittfrequenz: Vorgabe beim Fahren, 0 unter 3 km/h und bergab
-  steiler als 4 % (Rollen).
+- speed from the geometry, distance difference over ±2 s,
+- heart rate and cadence from the TrackPointExtension, if present,
+- otherwise cadence: the given value while riding, 0 below 3 km/h and downhill steeper
+  than 4 % (coasting).
 
-Alles in Echtzeit: Die Statistik rechnet mit der Uhr des Geräts, schneller
-abspielen geht nicht.
+Everything in real time: the statistics work with the device's clock, playing faster is
+not possible.
 
-Am Ende druckt das Tool, was es gesendet hat (Strecke, Fahrzeit mit der
-Hysterese der Firmware > 5,5 / < 0,3 km/h, Ø, max, Ø Trittfrequenz), neben der
-Änderung der Trip-Statistik des Geräts. Für einen sauberen Vergleich vorher
-Trip zurücksetzen (max und Ø Trittfrequenz sind Trip-Gesamtwerte). Kleine
-Abweichungen sind normal: Der Sensor meldet nur ganze Umdrehungen, und die
-Firmware sieht jede Änderung erst mit der nächsten Notification.
+At the end the tool prints what it sent (distance, moving time with the firmware's
+hysteresis > 5.5 / < 0.3 km/h, average, maximum, average cadence), next to the change of
+the device's trip statistics. For a clean comparison reset the trip first (maximum and
+average cadence are totals of the trip). Small deviations are normal: the sensor only
+reports whole revolutions, and the firmware sees every change only with the next
+notification.

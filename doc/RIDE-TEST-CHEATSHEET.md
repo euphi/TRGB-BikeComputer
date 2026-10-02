@@ -1,109 +1,103 @@
-# Testfahrt-Cheatsheet: Ride-Zustandsautomat und Statistik
+# Test ride cheat sheet: ride states and statistics
 
-Für die erste echte Fahrt mit dem Ride-Zustandsautomaten. Unterwegs gibt es
-nur Tap, Long-Press und Wischen. Die Durchschnittswerte stehen nicht auf dem
-Display, du prüfst sie zu Hause auf `/stat/statistics.html`. Unterwegs
-kontrollierst du deshalb nur, was du **sehen** kannst, und notierst die
-**Uhrzeit** jeder Aktion (z. B. als Sprachnotiz auf dem Handy).
+For the first real ride with the ride state machine. On the road there is only tap, long
+press and swipe. The averages are not on the display, you check them at home on
+`/stat/statistics.html`. On the road you therefore only check what you can **see**, and
+note the **time** of every action (e.g. as a voice memo on the phone).
 
-Modell: [`design/ride-state-machine.md`](design/ride-state-machine.md).
+Model: [rides and statistics](design/ride-state-machine.md).
 
-## Was du siehst
+## What you see
 
-| Element | Bedeutung |
+![Main screen](screenshots/main.png){ width="260" }
+
+| Element | Meaning |
 |---|---|
-| StateIcon (über der RQ-Linie) | Pedaling / Coasting (Ride), FreeRide (auch Cruise), Stop, Break (> 2 min), Kettenglied unterbrochen (kein Speed-Sensor) |
-| Taste unten | **Start-Pfeil** = gerade nicht im Ride-Modus, **Pause-Symbol** = Ride-Modus |
-| Zeit-Widget | **Uhr-Icon + Uhrzeit** = keine Session offen, **Stoppuhr + Laufzeit** = Session läuft |
-| Stoppuhr-Wert | Session-Zeit **mit** Stops und Breaks, **ohne** Zeit ohne Sensor |
-| Distanzfeld mit Label | Wischen links/rechts: `START` / `TRIP` / `TOUR` / `TOTAL`. `START` = aktuelle Session |
-| StateIcon-Farbe bei Break/kein Sensor | **grün** = Auto-Off aus, neutral = Auto-Off an (blinkt in der letzten Minute) |
+| State icon (above the road-quality line) | pedaling / coasting (ride), free ride (also cruise), stop, break (> 2 min), broken chain link (no speed sensor) |
+| Button at the bottom | **start arrow** = currently not in ride mode, **pause symbol** = ride mode |
+| Time widget | **clock icon + time of day** = no session open, **stopwatch + running time** = session running |
+| Stopwatch value | session time **with** stops and breaks, **without** time without a sensor |
+| Distance field with label | swipe left/right: `START` / `TRIP` / `TOUR` / `TOTAL`. `START` = current session |
+| State icon colour at break / no sensor | **green** = auto-off is off, neutral = auto-off is on (blinks in the last minute) |
 
-Wischen hoch/runter wechselt die Ø-Art, hat auf RimRidge aber noch kein
-Anzeige-Widget. Du siehst davon also nichts.
+Swiping up/down changes the kind of average, but RimRidge has no widget for it yet. So
+you see nothing of that.
 
-## Bedienung
+## Operation
 
-| Geste | Keine Session offen | Session offen |
+| Gesture | No session open | Session open |
 |---|---|---|
-| **Tap** Start/Pause | Neue Session: `START` auf 0, Stoppuhr ab 0:00, Ride-Modus | Ride ↔ Cruise umschalten, Session bleibt offen |
-| **Long-Press** Start/Pause | ⚠ Auto-Off umschalten (**kein** Stop!) | Session beenden (Stop) |
+| **Tap** start/pause | new session: `START` to 0, stopwatch from 0:00, ride mode | toggle ride ↔ cruise, session stays open |
+| **Long press** start/pause | ⚠ toggle auto-off (**not** a stop!) | end the session (stop) |
 
-Achtung: Ein Long-Press ohne offene Session schaltet den Auto-Off **ein**. Das
-erkennst du bei Break am neutralen statt grünen Icon. Ein zweiter Long-Press
-schaltet ihn wieder aus.
+Careful: a long press without an open session switches auto-off **on**. You recognise
+that at a break by the neutral instead of green icon. A second long press switches it off
+again.
 
-## Vorbereitung zu Hause
+## Preparation at home
 
-1. `/stat/statistics.html` öffnen und einen **Screenshot** machen. Die Spalten
-   Total, Tour und Trip dienen als Ausgangsstand. Nach der Fahrt muss die
-   Differenz genau diese Fahrt sein.
-2. Optional das Textlog auf der SD einschalten, per Serial:
-   `showloglevel` prüfen, sonst `loglevel STAT INFO -file`. Danach stehen
-   `Ride session started/stopped` und `Connected/Disconnected from speed
-   sensor` mit Zeitstempel auf der Karte.
-3. Das Handy mit TrailBridge mitnehmen. GPS im Binärlog ist der unabhängige
-   Vergleich für Distanz und Geschwindigkeit.
+1. Open `/stat/statistics.html` and take a **screenshot**. The columns Total, Tour and
+   Trip are the starting point. After the ride the difference must be exactly this ride.
+2. Optionally switch on the text log on the SD card, via serial: check `showloglevel`,
+   otherwise `loglevel STAT INFO -file`. Then `Ride session started/stopped` and
+   `Connected/Disconnected from speed sensor` are on the card with a timestamp.
+3. Take the phone with TrailBridge along. GPS in the binary log is the independent
+   comparison for distance and speed.
 
-## Szenarien
+## Scenarios
 
-Die Reihenfolge ergibt eine sinnvolle Tour. Rechts steht, was das Display
-zeigen muss.
+The order makes a sensible tour. On the right is what the display must show.
 
-| # | Aktion | Erwartung |
+| # | Action | Expectation |
 |---|---|---|
-| 1 | Einschalten, losfahren **ohne** Tap | FreeRide-Icon, Start-Pfeil, **Uhrzeit** (keine Stoppuhr), `START` = 0,0 km. `TRIP` zählt trotzdem |
-| 2 | Während der Fahrt **Tap** | Pedaling-Icon, Pause-Symbol, Stoppuhr ab 0:00, `START` ab 0 |
-| 3 | Bei > 5,5 km/h Beine still halten (rollen) | Coasting-Icon (< 40 rpm), bei wieder > 50 rpm Pedaling. Stoppuhr läuft einfach weiter |
-| 4 | Ampel, **< 2 min** stehen | Stop-Icon, Stoppuhr läuft weiter. Beim Anfahren (> 5,5 km/h) wieder Pedaling |
-| 5 | **Tap** während der Fahrt (Cruise) | FreeRide-Icon, Start-Pfeil, **Stoppuhr läuft weiter**, `START` zählt weiter. Ein paar hundert Meter fahren, Uhrzeit notieren |
-| 6 | Im Cruise anhalten, im Stand **Tap**, dann anfahren | Im Stand: Stop-Icon, Taste wechselt auf Pause. Beim Anfahren: Pedaling (Ride), nicht FreeRide |
-| 7 | Pause **> 2 min** | Nach 2 min Break-Icon (grün, solange Auto-Off aus ist). Stoppuhr läuft weiter |
-| 8 | **Sensor weg**: in der Pause warten, bis der Speed-Sensor schläft, oder den BC kurz aus- und nach ein paar hundert Metern wieder einschalten | Kettenglied-Icon. **Stoppuhr steht still**. Nach dem Reconnect springt die Distanz um die Strecke ohne Sensor |
-| 9 | **Long-Press** während der Fahrt | Uhrzeit statt Stoppuhr, FreeRide-Icon, Start-Pfeil. `START` bleibt auf dem Endstand stehen |
-| 10 | Danach **Tap** | Neue Session: `START` = 0, Stoppuhr 0:00 |
+| 1 | Switch on, ride off **without** a tap | free-ride icon, start arrow, **time of day** (no stopwatch), `START` = 0.0 km. `TRIP` counts anyway |
+| 2 | **Tap** while riding | pedaling icon, pause symbol, stopwatch from 0:00, `START` from 0 |
+| 3 | Keep the legs still above 5.5 km/h (coast) | coasting icon (< 40 rpm), pedaling again above 50 rpm. The stopwatch simply keeps running |
+| 4 | Traffic light, stand for **< 2 min** | stop icon, stopwatch keeps running. Pedaling again when moving off (> 5.5 km/h) |
+| 5 | **Tap** while riding (cruise) | free-ride icon, start arrow, **stopwatch keeps running**, `START` keeps counting. Ride a few hundred metres, note the time |
+| 6 | Stop while in cruise, **tap** at standstill, then move off | at standstill: stop icon, button changes to pause. When moving off: pedaling (ride), not free ride |
+| 7 | Break of **> 2 min** | break icon after 2 min (green as long as auto-off is off). Stopwatch keeps running |
+| 8 | **Sensor gone**: wait in the break until the speed sensor sleeps, or switch the bike computer off briefly and on again after a few hundred metres | chain-link icon. **Stopwatch stands still**. After the reconnect the distance jumps by the distance without a sensor |
+| 9 | **Long press** while riding | time of day instead of stopwatch, free-ride icon, start arrow. `START` stays at its final value |
+| 10 | Then **tap** | new session: `START` = 0, stopwatch 0:00 |
 
-Wichtig bei Szenario 8 mit Aus- und Einschalten: Die Ride-Session lebt nur im
-RAM. Nach einem Neustart ist keine Session offen (Uhrzeit statt Stoppuhr) und
-die Ride-Spalte ist leer. Tour, Trip und Total bleiben erhalten: Sie werden
-alle 5 min, bei jedem Anhalten und vor dem Ausschalten im NVS gespeichert.
-Das ist bekanntes Verhalten, kein Fehler. Den
-BC-Neustart deshalb erst am Ende der Tour oder nach Szenario 10 testen.
+Important for scenario 8 with switching off and on: the ride session only lives in RAM.
+After a restart no session is open (time of day instead of stopwatch) and the ride column
+is empty. Tour, trip and total are kept: they are stored in NVS every 5 min, on every
+stop and before powering off. This is known behaviour, not a bug. So test the restart of
+the bike computer only at the end of the tour or after scenario 10.
 
-## Nach der Fahrt zu Hause
+## After the ride, at home
 
-Auf `/stat/statistics.html`:
+On `/stat/statistics.html`:
 
-- **Differenz zum Screenshot** in Tour und Trip ≈ gefahrene Strecke. Total
-  steigt um denselben Wert.
-- **Ride-Spalte** (letzte Session): Die Fahrzeit („Moving“) muss zu deinen
-  Notizen passen. Stops und Breaks tauchen getrennt auf.
-- **„of it cruise“** (Distanz und Zeit) ≈ die Strecke aus Szenario 5.
-- **„without sensor“** ≈ die Strecke aus Szenario 8. Sonst sollte der Wert
-  0 oder sehr klein sein, denn der erste Zählerstand nach dem Connect
-  landet dort.
-- **Ø-Werte**: „Moving“ ≥ „incl. stops“ ≥ „incl. stops and breaks“. „Ride
-  mode only“ lässt die Cruise-Strecke aus Szenario 5 weg.
-- **Max speed** ist plausibel (≤ 120 km/h werden gespeichert, mehr wird
-  verworfen) und stimmt ungefähr mit GPS überein.
-- **Cadence** (Ø beim Treten) liegt im üblichen Bereich, typisch 60 bis 90 rpm.
+- **Difference to the screenshot** in tour and trip ≈ distance ridden. Total rises by
+  the same value.
+- **Ride column** (last session): the moving time ("Moving") must match your notes. Stops
+  and breaks appear separately.
+- **"of it cruise"** (distance and time) ≈ the distance from scenario 5.
+- **"without sensor"** ≈ the distance from scenario 8. Otherwise the value should be 0 or
+  very small, because the first counter value after the connect ends up there.
+- **Averages**: "Moving" ≥ "incl. stops" ≥ "incl. stops and breaks". "Ride mode only"
+  leaves out the cruise distance from scenario 5.
+- **Max speed** is plausible (up to 120 km/h is stored, more is discarded) and roughly
+  agrees with GPS.
+- **Cadence** (average while pedaling) is in the usual range, typically 60 to 90 rpm.
 
-GPX: `bikelog gpx -i L_….bin -o test.gpx --ride-states`. Jeder Zustandswechsel beginnt ein
-neues `<trkseg>` mit `<bc:RideState>` (Fahrt, Rollen, Cruise, FreeRide,
-Stopp, Pause, Getrennt). Die Segmente sollten zu deinen notierten Uhrzeiten
-passen.
+GPX: `bikelog gpx -i L_….bin -o test.gpx --ride-states`. Every change of state starts a
+new `<trkseg>` with `<bc:RideState>` (ride, coasting, cruise, free ride, stop, break,
+disconnected). The segments should match the times you noted.
 
-Gegenprobe über das Binärlog (`L_*.bin`, Reader in `Tools/bikelog/`): Alle
-5 s stehen dort `speed`, `dist_m` (seit dem Einschalten) und GPS. Zeiten mit
-`speed > 0` ergeben die Fahrzeit, der `dist_m`-Endstand die Distanz. Das
-Textlog (falls in der Vorbereitung eingeschaltet) ordnet Session-Start und
--Stop sowie Connect und Disconnect den notierten Uhrzeiten zu.
+Cross-check with the binary log (`L_*.bin`, reader in `Tools/bikelog/`): every 5 s it
+contains `speed`, `dist_m` (since switching on) and GPS. Times with `speed > 0` give the
+moving time, the final `dist_m` the distance. The text log (if switched on in the
+preparation) maps session start and stop as well as connect and disconnect to the times
+you noted.
 
-## Bekannte Lücken, auf die du stoßen kannst
+## Known gaps you may run into
 
-- Auto-Off lässt sich mit offener Session nicht umschalten, weil der
-  Long-Press dann die Session beendet. Standardmäßig ist Auto-Off beim Boot
-  aus.
-- Ohne Cadence-Sensor steht das Icon im Ride-Modus immer auf Coasting (siehe
-  Design-Doc §7).
-- Ein manuell gesetzter Gesamtkilometerstand hebt den Total-Durchschnitt an.
+- Auto-off cannot be toggled while a session is open, because the long press then ends
+  the session. By default auto-off is off at boot.
+- Without a cadence sensor the icon always shows coasting in ride mode (see the design
+  document, §7).
+- A manually set total odometer value raises the total average.

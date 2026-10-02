@@ -1,0 +1,19 @@
+/* Rim & Ridge colours (design/rim-ridge-design-system.md): anthracite and brass */
+[data-md-color-scheme="slate"] {
+  --md-default-bg-color: #161B1F;
+  --md-default-fg-color: #E7E2D6;
+  --md-default-fg-color--light: #9BA097;
+  --md-primary-fg-color: #1E252B;
+  --md-primary-bg-color: #E7E2D6;
+  --md-accent-fg-color: #CBA36B;
+  --md-typeset-a-color: #CBA36B;
+  --md-code-bg-color: #1E252B;
+  --md-footer-bg-color: #11161A;
+}
+.md-typeset h1, .md-typeset h2 { color: #E7E2D6; }
+.md-typeset table:not([class]) th { color: #CBA36B; }
+.shots { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; margin: 1em 0; }
+.shots figure { margin: 0; text-align: center; }
+.shots img { width: 220px; border-radius: 50%; display: block; }
+.shots.phone img { width: 230px; border-radius: 12px; }
+.shots figcaption { font-size: 0.75rem; color: #9BA097; margin-top: 4px; }

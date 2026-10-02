@@ -29,7 +29,7 @@ cp -r "$TOOLS/BikeLogService/bikelogservice" "$BUILD/BikeLogService/"
 
 if [ ! -f "$PREFIX/bikelog.env" ]; then
     cat > "$PREFIX/bikelog.env" <<EOF
-# BikeLog service configuration -- see Tools/BikeLogService/README.md
+# BikeLog service configuration -- see doc/LOGSERVICE.md
 BIKELOG_PORT=8080
 BIKELOG_DATA_DIR=$PREFIX/data
 BIKELOG_PULL=1

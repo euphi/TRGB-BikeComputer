@@ -6,11 +6,22 @@ LVGL 8.4). Sensoren: Herzfrequenz, CSC (Speed/Cadence), Forumslader
 der Android-Companion-App [TrailBridge](../TrailBridge/) (Paket
 `com.euphi.trailbridge`).
 
-**Stand und offene Arbeit:** [`ROADMAP.md`](ROADMAP.md) (Reifegrad je Feature,
-bekannte Probleme, geplante Features), Bedienung unterwegs:
+**Stand und offene Arbeit:** [`doc/ROADMAP.md`](doc/ROADMAP.md) (Reifegrad je Feature,
+bekannte Fehler, geplante Features), Bedienung unterwegs:
 [`doc/USABILITY-TODO.md`](doc/USABILITY-TODO.md). Beide aktuell halten, wenn ein
 Punkt erledigt ist -- erledigte Punkte dort löschen, Features im
-[`README.MD`](README.MD) nachtragen.
+[`README.MD`](README.MD) und in `doc/index.de.md` nachtragen.
+
+**Doku ist zweisprachig** und wird als Seite veröffentlicht
+(<https://euphi.github.io/TRGB-BikeComputer/>, MkDocs, `mkdocs.yml`,
+`.github/workflows/docs.yml`): in `doc/` ist `X.md` Englisch und `X.de.md` Deutsch.
+**Jede inhaltliche Änderung in beiden Dateien machen.** Die Startseite `doc/index.md`
+bindet die Feature-Liste aus `README.MD` ein (zwischen den `features-start`/`-end`-
+Kommentaren), `doc/index.de.md` ist deren Übersetzung. Das TrailBridge-Protokoll wird beim
+Bauen aus dem TrailBridge-Repo kopiert (`doc/fetch_trailbridge.sh`; dort `PROTOCOL.md`
+deutsch, `PROTOCOL.en.md` englisch). Links auf Quelldateien in `doc/` als GitHub-URL
+schreiben, relative Links nur auf andere Seiten in `doc/`. Lokal prüfen:
+`doc/fetch_trailbridge.sh && mkdocs build --strict`.
 
 **Bekannte Fallstricke (PSRAM/Display-Flackern, NimBLE, USB, ...):
 [`doc/PITFALLS.md`](doc/PITFALLS.md) -- vor Änderungen an Speicherlayout,

@@ -1,0 +1,4 @@
+mkdocs>=1.6,<2
+mkdocs-material>=9.5
+mkdocs-static-i18n>=1.2
+mkdocs-include-markdown-plugin>=6.0

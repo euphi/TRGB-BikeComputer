@@ -7,10 +7,21 @@ from your phone, logs every ride to SD card and rates the road surface with its 
 accelerometer.
 
 <p>
-  <img src="doc/design/mainscreen.svg" width="300" alt="Main screen design">
-  <img src="doc/design/navscreen.svg" width="300" alt="Navigation screen design">
+  <img src="doc/screenshots/main.png" width="240" alt="Main screen">
+  <img src="doc/screenshots/nav.png" width="240" alt="Navigation screen">
+  <img src="doc/screenshots/climb.png" width="240" alt="Climb screen">
+</p>
+<p>
+  <img src="doc/screenshots/roadlabels.png" width="240" alt="Road label screen">
+  <img src="doc/screenshots/settings.png" width="240" alt="Settings screen">
 </p>
 
+Screenshots from the device, taken during a simulated ride: main screen, navigation,
+climb, road labels, settings.
+
+**Documentation in English and German: <https://euphi.github.io/TRGB-BikeComputer/>**
+
+<!-- features-start -->
 ## Features
 
 **Display** -- "Rim & Ridge" UI (LVGL 8, designed in EEZ Studio) with five screens:
@@ -46,7 +57,7 @@ accelerometer.
 - Turn-by-turn instructions from OsmAnd, or from a GPX route that TrailBridge plays
   itself -- then with the elevation profile for the climb screen
 - The phone's GPS position for the log, and its time for the clock when there is no WiFi
-- [`Tools/gpxenrich`](Tools/gpxenrich/) turns a plain GPX track into such a route
+- [`Tools/gpxenrich`](https://github.com/euphi/TRGB-BikeComputer/tree/main/Tools/gpxenrich) turns a plain GPX track into such a route
   (turn hints from BRouter)
 
 **Road quality** from the BMI160 at 400 Hz: roughness class per interval, shock
@@ -58,8 +69,8 @@ asphalt, and gradient from the accelerometer as an alternative to the barometer.
   5 s incl. GPS, road quality per interval, every shock, manual road labels, ride
   states; raw accelerometer captures on demand
 - Debug log and raw Forumslader log (replayable on the device)
-- [`Tools/`](Tools/README.md): Python CLI to convert logs to CSV and GPX, and a
-  [service](Tools/BikeLogService/README.md) that fetches the sessions when the bike
+- Python [tools](doc/TOOLS.md) to convert logs to CSV and GPX, and a
+  [service](doc/LOGSERVICE.md) that fetches the sessions when the bike
   computer shows up in the WiFi, archives them, exports GPX, syncs to Nextcloud and
   uploads to Komoot
 
@@ -83,7 +94,7 @@ asphalt, and gradient from the accelerometer as an alternative to the barometer.
 - Optional: BME280 and BMI160 on the I²C bus
 - LiPo battery
 - 3D-printed case and handlebar mounts -- a parametric model for the Canyon CP0007
-  gravel cockpit is in [`cad/`](cad/)
+  gravel cockpit is in [`cad/`](https://github.com/euphi/TRGB-BikeComputer/tree/main/cad)
 
 ![T-RGB Bike Computer on the handlebar (older UI)](doc/IMG20230406075242-cropped.jpg)
 
@@ -105,21 +116,26 @@ pass the IP: `pio run -e trgb-esp32-s3-ota -t upload --upload-port 192.168.x.y`.
 The build applies small patches to two libraries (`apply_patches.py`), which needs
 the `patch` tool.
 
+<!-- features-end -->
+
 ## Documentation
+
+Everything is on <https://euphi.github.io/TRGB-BikeComputer/> in English and German. The
+sources are in [`doc/`](doc/): `X.md` is English, `X.de.md` German.
 
 | Document | Content |
 |---|---|
-| [ROADMAP.md](ROADMAP.md) | state of the features, open work, planned features |
-| [doc/USABILITY-TODO.md](doc/USABILITY-TODO.md) | what is still missing on the device for use on the road -- German |
-| [doc/CLIMB.md](doc/CLIMB.md) | climbs: categories, settings, demo -- German |
-| [doc/design/ride-state-machine.md](doc/design/ride-state-machine.md) | ride states and how the statistics count -- German |
-| [doc/RIDE-TEST-CHEATSHEET.md](doc/RIDE-TEST-CHEATSHEET.md) | what to check on a test ride -- German |
-| [doc/design/rim-ridge-design-system.md](doc/design/rim-ridge-design-system.md) | UI design system and screens -- German |
-| [Tools/README.md](Tools/README.md) | log format, files on the SD card, CLI -- German |
-| [Tools/BikeLogService/README.md](Tools/BikeLogService/README.md) | log service: fetching, GPX export, Nextcloud, Komoot -- German |
-| [doc/DEBUG.md](doc/DEBUG.md) | debug pages, remote UI testing, logging, serial console, core dumps |
-| [doc/SIMULATOR.md](doc/SIMULATOR.md) | simulator build -- German |
-| [doc/PITFALLS.md](doc/PITFALLS.md) | hardware and framework pitfalls (PSRAM and display flicker, NimBLE, internal heap, ...) -- German |
+| [ROADMAP](doc/ROADMAP.md) | state of the features, known bugs, planned features |
+| [USABILITY-TODO](doc/USABILITY-TODO.md) | what is still missing on the device for use on the road |
+| [CLIMB](doc/CLIMB.md) | climbs: categories, settings, demo |
+| [Ride states](doc/design/ride-state-machine.md) | ride states and how the statistics count |
+| [Ride test cheat sheet](doc/RIDE-TEST-CHEATSHEET.md) | what to check on a test ride |
+| [Design system](doc/design/rim-ridge-design-system.md) | UI design system and screens |
+| [TOOLS](doc/TOOLS.md) | log format, files on the SD card, CLI |
+| [LOGSERVICE](doc/LOGSERVICE.md) | log service: fetching, GPX export, Nextcloud, Komoot |
+| [DEBUG](doc/DEBUG.md) | debug pages, remote UI testing, logging, serial console, core dumps |
+| [SIMULATOR](doc/SIMULATOR.md) | simulator build |
+| [PITFALLS](doc/PITFALLS.md) | hardware and framework pitfalls (PSRAM and display flicker, NimBLE, internal heap, ...) |
 
 Contributions are welcome, see the roadmap for where help is wanted.
 
