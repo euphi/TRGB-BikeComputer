@@ -153,29 +153,31 @@ void UIFacade::updateData() {
 void UIFacade::updateHandler() {
 	static unsigned long next_millis = 0;
 	while (true) {
-		// Fast update - use this only for data that should be shown with no (further) delay
-		if (xSemaphoreTake(xUpdateFast, static_cast<TickType_t>(0) ) == pdTRUE) {		// Semaphore is used for message "please update" only. So there is no reason to wait.
-			// Old-screen fan-out (ui_ScrMain*/ui_ScrNavi*/ui_SMainNoFL*) removed
-			// 2026-09-18 when those screens were disabled, then the screens
-			// themselves removed 2026-09-26 (see memory
-			// ui-tooling-eez-studio-migration).
-			ui_RimRidgeUpdateSpeed(speed);
-			ui_RimRidgeUpdateCadence(cad);
-			ui_RimRidgeUpdateHR(hr);
-			ui_RimRidgeUpdateGrad(grad, height);
-			// RimRidgeNav shows the same speed/gradient/HR as RimRidge -
-			// fan out from the same data here rather than duplicating the
-			// NaN/formatting logic in a second call site.
-			ui_RimRidgeNavUpdateSpeed(speed);
-			ui_RimRidgeNavUpdateGrad(grad);
-			ui_RimRidgeNavUpdateHR(hr);
-			// RimRidgeRQ shows the same speed/HR too (no gradient widget there).
-			ui_RimRidgeRQUpdateSpeed(speed);
-			ui_RimRidgeRQUpdateHR(hr);
-		}
-
 		int32_t next_ms = 20; // wait 20ms if Mutex can't be taken within 100ms (this should never happen)
 		if (xSemaphoreTake(xUIDrawMutex, static_cast<TickType_t>(100 / portTICK_PERIOD_MS)) == pdTRUE) {
+			// Fast update - use this only for data that should be shown with no (further) delay.
+			// Under xUIDrawMutex like every other LVGL call: this block used to run before the
+			// mutex was taken, and then raced with the tasks that draw under it (BLE: nav frames,
+			// esp_timer: state icon). Two tasks adding an invalid area at the same moment leave a
+			// mixed-up one behind (y2 < y1), on which LVGL's refresh loops for ever -- "lcd_panel:
+			// start position must be smaller than end position" in an endless stream, then the
+			// task watchdog (core dump 2026-10-02 00:22, TrailBridge test ride: nav frame and
+			// simulated speed both once a second).
+			if (xSemaphoreTake(xUpdateFast, static_cast<TickType_t>(0) ) == pdTRUE) {		// Semaphore is used for message "please update" only. So there is no reason to wait.
+				ui_RimRidgeUpdateSpeed(speed);
+				ui_RimRidgeUpdateCadence(cad);
+				ui_RimRidgeUpdateHR(hr);
+				ui_RimRidgeUpdateGrad(grad, height);
+				// RimRidgeNav shows the same speed/gradient/HR as RimRidge -
+				// fan out from the same data here rather than duplicating the
+				// NaN/formatting logic in a second call site.
+				ui_RimRidgeNavUpdateSpeed(speed);
+				ui_RimRidgeNavUpdateGrad(grad);
+				ui_RimRidgeNavUpdateHR(hr);
+				// RimRidgeRQ shows the same speed/HR too (no gradient widget there).
+				ui_RimRidgeRQUpdateSpeed(speed);
+				ui_RimRidgeRQUpdateHR(hr);
+			}
 			next_ms = lv_timer_handler();	// --> call lvgl main loop
 			xSemaphoreGive(xUIDrawMutex);
 		} else {
@@ -187,8 +189,14 @@ void UIFacade::updateHandler() {
 		unsigned long mil_start = millis();
 		// Slow update is used for more expensive updates
 		if (xSemaphoreTake(xUpdateSlow, static_cast<TickType_t>(0) ) == pdTRUE) {		// Semaphore is used for message "please update" only. So there is no reason to wait.
-			updateStats();
-			updateIntBatteryInt();
+			// LVGL calls: under the mutex, see the fast update above
+			if (xSemaphoreTake(xUIDrawMutex, 50 / portTICK_PERIOD_MS) == pdTRUE) {
+				updateStats();
+				updateIntBatteryInt();
+				xSemaphoreGive(xUIDrawMutex);
+			} else {
+				xSemaphoreGive(xUpdateSlow);	// next round
+			}
 		}
 		if (millis() > next_millis) {
 			timeval tv;

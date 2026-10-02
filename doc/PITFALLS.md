@@ -160,6 +160,24 @@ in den Timeout. Jede `UIFacade`-Methode, die eine Action erreichen kann,
 braucht das Muster
 `bool uiTask = isDrawTask(); if (uiTask || xSemaphoreTake(...))`.
 
+## LVGL nur unter `xUIDrawMutex` -- auch im UI-Task selbst
+
+- Symptom: endlose Zeilen `lcd_panel: esp_lcd_panel_draw_bitmap(35): start position must
+  be smaller than end position` auf der seriellen Konsole, danach „Task watchdog …
+  async_tcp", laufend `UI Task` (Core-Dump 2026-10-02 00:22).
+- Ursache: Zwei Tasks tragen gleichzeitig eine Invalid-Fläche ein (`_lv_inv_area()`), übrig
+  bleibt eine aus beiden gemischte mit `y2 < y1`. Daran läuft `refr_area()` in LVGL 8.4 in
+  einer Schleife mit negativer Zeilenzahl; jeder Durchlauf ruft den Display-Treiber mit
+  einer ungültigen Fläche.
+- Der Fast- und der Slow-Block in `UIFacade::updateHandler()` liefen ohne Mutex, weil sie
+  im UI-Task laufen. Das schützt aber nur vor `lv_timer_handler()`, nicht vor dem BLE-Task
+  (Nav-Frames) und dem `esp_timer`-Task (Fahrzustand), die unter dem Mutex zeichnen.
+  Aufgefallen ist es erst mit der TrailBridge-Testfahrt: Nav-Frame und simulierte
+  Geschwindigkeit kommen beide im Sekundentakt.
+- Regel: jeder LVGL-Aufruf außerhalb von `lv_timer_handler()` braucht den Mutex, auch im
+  UI-Task. Der Core-Dump enthält nur Stacks; die Fläche steht in `sub_area` im Frame von
+  `refr_area`.
+
 ## Struct-Layouts: `time_t` ist 8 Byte
 
 Auf dieser Toolchain ist `time_t` 8 Byte, nicht 4 -- relevant für
