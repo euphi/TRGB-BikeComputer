@@ -30,6 +30,8 @@ pyproject.toml      macht Tools/ installierbar (für den Dienst, siehe BikeLogSe
 tests/              pytest-Suite für beides
 ReadTachoBin.py     Altbekannter CSV-Konverter, jetzt Wrapper um "bikelog csv"
 csv2influx.py       Unverändert: CSV nach InfluxDB
+gpxenrich/          GPX-Track -> Route für TrailBridge: Abbiegehinweise von BRouter, Wegpunkte als
+                    benannte Hinweise (Beschreibung im Kopf von gpx_enrich.py)
 ```
 
 ## Dateien auf der SD-Karte
