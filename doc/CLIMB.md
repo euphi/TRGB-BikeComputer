@@ -1,8 +1,8 @@
 # Anstiege: Höhenprofil und Kletter-Anzeige
 
-TrailBridge schickt beim Abfahren einer GPX-Route das Höhenprofil voraus
-(`PROTOCOL.md` im TrailBridge-Repo, „Höhenprofil-Service"). Der BikeComputer
-erkennt darin Anstiege, bewertet sie und zeigt sie auf dem Screen
+TrailBridge schickt beim Abfahren einer GPX-Route das Höhenprofil des
+nächsten Anstiegs (`PROTOCOL.md` im TrailBridge-Repo, „Höhenprofil-Service").
+Der BikeComputer findet darin Fuß und Gipfel, bewertet den Anstieg und zeigt ihn auf dem Screen
 `RimRidgeClimb` ([Design](design/rim-ridge-design-system.md), §6).
 
 | Teil | Datei |
@@ -14,23 +14,26 @@ erkennt darin Anstiege, bewertet sie und zeigt sie auf dem Screen
 
 ## Was vom Handy kommt, und was die Firmware daraus macht
 
-TrailBridge schickt keinen „Anstieg", sondern ein Fenster der Route: bis zu
-5 km Höhen im 25-m-Raster **ab der aktuellen Position**, sobald die nächsten
-200 m im Mittel 4 % steigen – also auch für jeden kleinen Hügel. Bei langen
-Anstiegen folgt das nächste Fenster, wenn die Mitte des letzten erreicht ist.
-`PROFILE_NONE` kommt, wenn die nächsten 200 m flacher als 2 % sind.
+TrailBridge schickt den Anstieg voraus: die Höhen **von der aktuellen Position
+bis zum Gipfel**, sobald der Fuß höchstens 500 m entfernt ist – in einem Frame.
+Bis 5 km im 25-m-Raster, für längere Anstiege gröber (bis 250 m; der 36 km
+lange Galibier von Süden kommt mit 200 m). `PROFILE_NONE` kommt am Gipfel.
+Auch kleine Hügel (ab 10 m Höhenunterschied) werden geschickt.
 
 Die Firmware
 
-- **fügt die Fenster zusammen** (gleiches Raster, überlappend) und behält den
-  schon gefahrenen Teil, bis zu 8 km. So zeigt das Profil den Anstieg ab dem
-  Fuß, nicht ab der Position des letzten Fensters.
 - **findet den Anstieg**: Fuß = erster Punkt, ab dem die nächsten 100 m im
   Mittel 3 % steigen. Gipfel = der letzte Punkt vor einem Gefälle von mehr als
-  10 m oder vor 500 m ohne mittlere Steigung von 1,5 %. Ein kurzes Flachstück
-  oder eine Senke beendet den Anstieg also nicht.
-- **führt einen Anstieg fort**, wenn das Handy an so einer Stufe `PROFILE_NONE`
-  und kurz danach ein neues Profil schickt.
+  30 m oder vor 2 km ohne mittlere Steigung von 0,5 % – oder das Profilende.
+  Ein kürzeres Flachstück oder eine Senke beendet den Anstieg also nicht; der
+  Galibier von Norden sind zwei Anstiege (Abfahrt vom Télégraphe nach Valloire).
+  TrailBridge sucht mit denselben Kriterien (`ElevationProfile.java` dort) –
+  die Standardwerte beider Seiten gehören zusammen.
+- **fügt Frames zusammen** (gleiches Raster, überlappend) und behält den schon
+  gefahrenen Teil, bis zu 320 Schritte. Das braucht es nur, wenn ein Anstieg
+  selbst im 250-m-Raster nicht in einen Frame passt.
+- **führt einen Anstieg fort**, wenn das Handy `PROFILE_NONE` und kurz danach
+  ein neues Profil schickt.
 - **kennt die Position** aus der Restdistanz der Nav-Frames, zwischen zwei
   Frames fortgeschrieben mit der Strecke des Speed-Sensors.
 
@@ -63,11 +66,10 @@ im Mittel flacher als 3 %, oder unter 20 m Höhenunterschied.
   Einstellungen da, ist er danach das Ziel von „zurück".
 - Von Hand: Tipp auf Höhe oder Steigung des Hauptscreens öffnet ihn, Wischen
   schließt ihn. Ein weggewischter Anstieg kommt nicht von selbst wieder.
-- Profilfarbe nach Steigung des 25-m-Abschnitts: unter 1 % blau, bis 4 % grün,
+- Profilfarbe nach Steigung des Raster-Abschnitts (25 m, bei langen Anstiegen
+  bis 250 m): unter 1 % blau, bis 4 % grün,
   bis 7 % gelb, bis 10 % orange, darüber rot. Der gefahrene Teil ist
   abgedunkelt.
-- `>` vor einer Zahl: der Gipfel liegt noch nicht im Profil, der Wert ist ein
-  Mindestwert. Die Kategorie kann dann noch steigen.
 
 ## Einstellungen
 
@@ -86,9 +88,9 @@ Ohne USB: `/debug/climb` (Tabelle mit Eingabefeldern), `/debug/climb.json`,
 | Name | Standard | Bedeutung |
 |---|---|---|
 | `startgrade` / `startwindow` | 3 % / 100 m | Fuß: mittlere Steigung über diese Strecke |
-| `contgrade` | 1,5 % | mittlere Steigung ab dem bisherigen Gipfel, mit der der Anstieg weitergeht |
-| `summitflat` | 500 m | Flachstück, das den Anstieg beendet; auch der Abstand, in dem ein neuer Anstieg den alten fortsetzt |
-| `summitdip` | 10 m | Gefälle, das den Anstieg beendet |
+| `contgrade` | 0,5 % | mittlere Steigung ab dem bisherigen Gipfel, mit der der Anstieg weitergeht |
+| `summitflat` | 2000 m | Flachstück, das den Anstieg beendet; auch der Abstand, in dem ein neuer Anstieg den alten fortsetzt |
+| `summitdip` | 30 m | Gefälle, das den Anstieg beendet |
 | `summitpass` | 50 m | so weit hinter dem Gipfel ist der Anstieg vorbei |
 | `minlength` / `mingrade` | 300 m / 3 % | darunter nicht bewertet |
 | `cat6` … `cat1`, `cathc` | siehe oben | Punktzahl je Kategorie |
@@ -118,8 +120,10 @@ sich mit dem Speed-Sensor (im Simulator-Build mit `sim <km/h>`) oder per
 
 - Nur mit einer in TrailBridge abgespielten GPX-Route mit Höhendaten. Bei
   OsmAnd-Navigation gibt es kein Profil.
-- Das Handy schickt höchstens 5 km voraus. Bei längeren Anstiegen sind
-  Gipfel, Rest-Höhenmeter und Kategorie zunächst Mindestwerte (`>`).
-- `PROFILE_NONE` kommt je nach Gelände 70–130 m vor dem Gipfel. Die Anzeige
-  endet dort, die letzten Höhenmeter zählt sie nicht herunter.
+- Anstiege über 5 km kommen in gröberem Raster (bis 250 m); „Steigung voraus"
+  und Profilfarben mitteln dann über einen solchen Abschnitt.
+- Über 50 km (oder bei kleiner MTU) passt der Anstieg nicht in einen Frame.
+  Das Profilende gilt dann vorläufig als Gipfel, bis das nächste Stück kommt.
+- Im NVS gespeicherte Werte für `contgrade`, `summitflat` und `summitdip`
+  gehen den neuen Standardwerten vor (`climb defaults` setzt sie zurück).
 - Verbindet sich der BikeComputer erst im Anstieg, zählt der Anstieg ab dort.

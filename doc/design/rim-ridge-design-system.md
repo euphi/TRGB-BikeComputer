@@ -432,8 +432,8 @@ mindestens 20 m, damit ein kleiner Hügel nicht wie ein Pass aussieht.
   Spalte, und die Zahl hat zwei bis vier Stellen.
 - „von 340 m" setzt den Hero fort („212 m von 340 m") und spart eine
   Beschriftung.
-- `>` vor Werten, solange der Gipfel nicht im Profil liegt (das Handy schickt
-  höchstens 5 km voraus).
+- `>` vor Werten, solange der Gipfel nicht im Profil liegt (kommt nicht mehr
+  vor: das Handy schickt den Anstieg bis zum Gipfel).
 - Das Wechselfeld zeigt immer nur einen Wert mit seinem Icon. Fehlende Werte
   (kein Trittfrequenz-Sensor, keine Temperatur) werden übersprungen.
 

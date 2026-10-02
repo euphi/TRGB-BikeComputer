@@ -5,8 +5,9 @@
  *   g++ -std=c++17 -O2 -Wall -Isrc src/ClimbProfile.cpp test/native_climb/climb_test.cpp -o /tmp/climb_test && /tmp/climb_test
  *
  * Exit code 0 = all checks passed. The rides are fed the way TrailBridge does it
- * (RouteNavigator/ElevationProfile there): a window of at most 200 steps from the rider
- * when the next 200 m rise by 4 %, the next one past the middle, PROFILE_NONE below 2 %.
+ * (RouteNavigator/ElevationProfile there): the profile from the rider to the summit once the
+ * foot of a climb is 500 m ahead, on a raster that fits it into 200 steps, PROFILE_NONE at
+ * the summit.
  */
 
 #include "ClimbProfile.h"
@@ -41,31 +42,64 @@ struct Route {
 		int i = (int)x;
 		return alt[i] + (x - i) * (alt[i + 1] - alt[i]);
 	}
-	float gradeAhead(float from, float look) const {
-		float end = std::min(from + look, totalM());
-		if (end - from < 50) return 0;
-		return (altAt(end) - altAt(from)) / (end - from);
+	// ElevationProfile.findClimbs(): {foot, summit} as raster indices
+	std::vector<std::pair<int, int>> climbs() const {
+		std::vector<std::pair<int, int>> out;
+		const int last = (int)alt.size() - 1, window = 100 / STEP;
+		int i = 0;
+		while (i + 2 <= last) {
+			int j = std::min(i + window, last);
+			if (alt[j] - alt[i] < 3.0f * (j - i) / window) {i++; continue;}
+			int foot = i;
+			while (foot + 1 < j && alt[foot + 1] - alt[foot] < 0.005f * STEP) foot++;
+			int summit = foot;
+			for (int k = foot + 1; k <= last; k++) {
+				float dist = (k - summit) * (float)STEP, rise = alt[k] - alt[summit];
+				if (rise > 0 && rise >= 0.005f * dist) summit = k;
+				else if (-rise > 30 || dist > 2000) break;
+			}
+			if (alt[summit] - alt[foot] >= 10) out.push_back({foot, summit});
+			i = std::max(summit, i) + 1;
+		}
+		return out;
 	}
 	// ElevationProfile.slice() + ProfileFrameEncoder.encode()
-	std::vector<uint8_t> slice(float fromM, int maxSteps, float* startAlong = nullptr, int* length = nullptr) const {
-		int i0 = (int)lroundf(fromM / STEP);
-		int steps = std::min(maxSteps, (int)alt.size() - 1 - i0);
+	std::vector<uint8_t> slice(float fromM, float toM, int maxSteps = 200, int stepM = 0, float* startAlong = nullptr, int* length = nullptr) const {
+		const int last = (int)alt.size() - 1;
+		int iFrom = std::max(0, std::min((int)lroundf(fromM / STEP), last));
+		int iTo = std::max(0, std::min((int)lroundf(toM / STEP), last));
+		if (iTo <= iFrom) return {};
+		int factor = stepM > 0 ? stepM / STEP : std::min(10, (iTo - iFrom + maxSteps - 1) / maxSteps);
+		int steps = (iTo - iFrom + factor - 1) / factor;
+		int i0 = iTo - steps * factor;
+		if (i0 < 0) {i0 += factor; steps--;}
+		steps = std::min(steps, maxSteps);
 		if (steps < 8) return {};
+		const int base = (int)lroundf(alt[i0] * 10);
+		std::vector<int8_t> deltas;
+		int scale = 0;
+		for (bool fits = false; !fits;) {
+			scale++;
+			deltas.clear();
+			fits = true;
+			int prev = 0;
+			for (int k = 0; k < steps && fits; k++) {
+				int cur = (int)lroundf((alt[i0 + (k + 1) * factor] * 10 - base) / scale);
+				fits = cur - prev >= -127 && cur - prev <= 127;
+				deltas.push_back((int8_t)(cur - prev));
+				prev = cur;
+			}
+		}
 		std::vector<uint8_t> f = {PROFILE_PROTOCOL_VERSION, PROFILE_MSG_PROFILE_UPDATE};
 		uint32_t remaining = (uint32_t)lroundf(totalM() - i0 * STEP);
 		f.insert(f.end(), {PROFILE_TAG_START_REMAINING_DISTANCE_M, 4, (uint8_t)remaining, (uint8_t)(remaining >> 8), (uint8_t)(remaining >> 16), (uint8_t)(remaining >> 24)});
-		f.insert(f.end(), {PROFILE_TAG_STEP_M, 1, (uint8_t)STEP});
-		int prev = (int)lroundf(alt[i0] * 10);
-		f.insert(f.end(), {PROFILE_TAG_BASE_ALT_DM, 2, (uint8_t)prev, (uint8_t)(prev >> 8)});
+		f.insert(f.end(), {PROFILE_TAG_STEP_M, 1, (uint8_t)(STEP * factor)});
+		f.insert(f.end(), {PROFILE_TAG_BASE_ALT_DM, 2, (uint8_t)base, (uint8_t)(base >> 8)});
+		if (scale != 1) f.insert(f.end(), {PROFILE_TAG_DELTA_SCALE_DM, 1, (uint8_t)scale});
 		f.insert(f.end(), {PROFILE_TAG_DELTAS_DM, (uint8_t)steps});
-		for (int k = 0; k < steps; k++) {
-			int cur = (int)lroundf(alt[i0 + k + 1] * 10);
-			int d = std::max(-127, std::min(127, cur - prev));
-			f.push_back((uint8_t)(int8_t)d);
-			prev += d;
-		}
+		for (int8_t d : deltas) f.push_back((uint8_t)d);
 		if (startAlong) *startAlong = i0 * STEP;
-		if (length) *length = steps * STEP;
+		if (length) *length = steps * STEP * factor;
 		return f;
 	}
 };
@@ -74,34 +108,42 @@ struct Route {
 struct Phone {
 	const Route& route;
 	Tracker& tracker;
-	bool climbing = false, sent = false;
+	std::vector<std::pair<int, int>> climbs;
+	int maxSteps;
+	int sentClimb = -1;
 	float sentStart = 0;
-	int sentLength = 0;
+	int sentLength = 0, sentStepM = 0;
 	int frames = 0, nones = 0;
-	Phone(const Route& r, Tracker& t) : route(r), tracker(t) {}
+	Phone(const Route& r, Tracker& t, int maxSteps = 200) : route(r), tracker(t), climbs(r.climbs()), maxSteps(maxSteps) {}
 
-	void cut(float progress) {
-		std::vector<uint8_t> f = route.slice(progress, 200, &sentStart, &sentLength);
-		if (f.empty()) return;
-		sent = true;
+	int climbAhead(float progress) const {
+		for (size_t k = 0; k < climbs.size(); k++) {
+			if (progress < climbs[k].second * STEP - STEP / 2.0f) return progress >= climbs[k].first * STEP - 500 ? (int)k : -1;
+		}
+		return -1;
+	}
+	bool cut(float progress, int k, int stepM) {
+		std::vector<uint8_t> f = route.slice(progress, climbs[k].second * STEP, maxSteps, stepM, &sentStart, &sentLength);
+		if (f.empty()) return false;
+		sentStepM = f[10];
+		sentClimb = k;
 		frames++;
 		CHECK(tracker.feedFrame(f.data(), f.size()) == Tracker::FRAME_PROFILE, "frame rejected at %.0f m", progress);
+		return true;
 	}
 	void onFix(float progress) {
-		float grade = route.gradeAhead(progress, 200);
-		if (!climbing && grade >= 0.04f) {
-			climbing = true;
-			cut(progress);
-		} else if (climbing && grade < 0.02f) {
-			climbing = false;
-			if (sent) {
-				const uint8_t none[] = {PROFILE_PROTOCOL_VERSION, PROFILE_MSG_PROFILE_NONE};
-				tracker.feedFrame(none, sizeof(none));
-				nones++;
-			}
-			sent = false;
-		} else if (climbing && sent && progress > sentStart + sentLength / 2.0f && sentStart + sentLength < route.totalM() - STEP) {
-			cut(progress);
+		const int k = climbAhead(progress);
+		bool sent = false;
+		if (k >= 0 && k != sentClimb) {
+			sent = cut(progress, k, 0);
+		} else if (k >= 0 && sentStart + sentLength < climbs[k].second * STEP - STEP / 2.0f && progress > sentStart + sentLength / 2.0f) {
+			sent = cut(progress, k, sentStepM);
+		}
+		if (!sent && sentClimb >= 0 && k != sentClimb) {
+			const uint8_t none[] = {PROFILE_PROTOCOL_VERSION, PROFILE_MSG_PROFILE_NONE};
+			tracker.feedFrame(none, sizeof(none));
+			nones++;
+			sentClimb = -1;
 		}
 		tracker.setRemaining(route.totalM() - progress);		// the nav frame's REMAINING_DISTANCE_M
 	}
@@ -123,6 +165,14 @@ static void testFrames() {
 	Tracker u;
 	CHECK(u.feedFrame(unk, sizeof(unk)) == Tracker::FRAME_PROFILE, "unknown tag");
 	CHECK(u.pointCount() == 3 && u.altitudesDm()[0] == -10 && u.altitudesDm()[2] == -10 && u.startRemainingM() == 10000, "unknown tag content");
+
+	// Coarse raster: 200 m steps, deltas in 0.2 m (DELTA_SCALE_DM = 2)
+	const uint8_t scaled[] = {0x01, 0x01, 0x01, 0x04, 0xA0, 0x8C, 0x00, 0x00, 0x02, 0x01, 0xC8, 0x03, 0x02, 0xE0, 0x2E, 0x05, 0x01, 0x02, 0x04, 0x03, 0x3C, 0x45, 0xFD};
+	Tracker sc;
+	CHECK(sc.feedFrame(scaled, sizeof(scaled)) == Tracker::FRAME_PROFILE, "scaled frame");
+	CHECK(sc.pointCount() == 4 && sc.stepM() == 200 && sc.altitudesDm()[0] == 12000 && sc.altitudesDm()[1] == 12120 && sc.altitudesDm()[3] == 12252, "scaled altitudes");
+	const uint8_t scale0[] = {0x01, 0x01, 0x01, 0x04, 0xA0, 0x8C, 0x00, 0x00, 0x02, 0x01, 0xC8, 0x03, 0x02, 0xE0, 0x2E, 0x05, 0x01, 0x00, 0x04, 0x01, 0x3C};
+	CHECK(sc.feedFrame(scale0, sizeof(scale0)) == Tracker::FRAME_INVALID && sc.pointCount() == 4, "scale 0");
 
 	const uint32_t v = t.version();
 	const uint8_t trunc[] = {0x01, 0x01, 0x01, 0x04, 0x68, 0x10, 0x00, 0x00, 0x02, 0x01, 0x19, 0x03, 0x02, 0x59, 0x01, 0x04, 0x09, 0x0C};
@@ -150,13 +200,13 @@ static void testSingleClimb() {
 	for (float pos = 0; pos <= r.totalM(); pos += 5) {
 		phone.onFix(pos);
 		const Status& s = t.status();
-		if (pos < 800) CHECK(!s.hasProfile, "profile before the climb at %.0f", pos);
+		if (pos < 480) CHECK(!s.hasProfile, "profile before the climb at %.0f", pos);
+		if (pos > 520 && pos < 2980) CHECK(s.active, "no climb at %.0f", pos);
 		if (!s.active) continue;
 		id = s.climbId;
 		CHECK(s.rank == RANK_CAT4, "rank %u at %.0f (score 12000 = category 4)", s.rank, pos);
 		CHECK(NEAR(s.totalAscentM, 120, 1.0f) && NEAR(s.lengthM, 2000, 26), "ascent %.1f length %.0f at %.0f", s.totalAscentM, s.lengthM, pos);
 		CHECK(NEAR(s.avgGradePct, 6, 0.2f), "avg %.2f", s.avgGradePct);
-		CHECK(!s.summitOpen, "summit open at %.0f", pos);
 		if (s.toFootM > 0) {
 			seenApproach = true;
 			CHECK(!s.onClimb && NEAR(s.toFootM, 1000 - pos, 26) && NEAR(s.remainingAscentM, 120, 1), "approach at %.0f: toFoot %.0f", pos, s.toFootM);
@@ -192,14 +242,14 @@ static void testHill() {
 	Route r2(200);
 	r2.add(500, 0).add(250, 9).add(1000, 0);
 	Tracker t2;
-	std::vector<uint8_t> f = r2.slice(400, 200);
+	std::vector<uint8_t> f = r2.slice(400, 750);
 	t2.feedFrame(f.data(), f.size());
 	t2.setRemaining(r2.totalM() - 400);
 	CHECK(t2.status().active && t2.status().rank == RANK_NONE, "250 m: active %d rank %u", t2.status().active, t2.status().rank);
 	Route r3(200);
 	r3.add(500, 0).add(325, 9).add(1000, 0);
 	Tracker t3;
-	f = r3.slice(400, 200);
+	f = r3.slice(400, 825);
 	t3.feedFrame(f.data(), f.size());
 	t3.setRemaining(r3.totalM() - 400);
 	CHECK(t3.status().rank == RANK_CAT6, "325 m: rank %u", t3.status().rank);
@@ -229,52 +279,108 @@ static void testStep(float flatM, bool expectOne) {
 			CHECK(NEAR(s.totalAscentM, 60, 1.5f) && s.rank == RANK_CAT5, "ascent %.1f rank %u at %.0f", s.totalAscentM, s.rank, pos);
 		}
 	}
-	CHECK(phone.nones == 2, "the phone takes the profile back on the step (%d)", phone.nones);
+	CHECK(phone.frames == (expectOne ? 1 : 2) && phone.nones == phone.frames, "the phone sent %d profiles, %d none", phone.frames, phone.nones);
 	CHECK(firstId == 1 && lastId == (expectOne ? 1 : 2), "ids %u..%u", firstId, lastId);
 }
 
 static void testLongClimb() {
-	printf("Long climb in three windows: 10 km at 7 %%\n");
+	printf("Long climb in one frame: 10 km at 7 %%\n");
 	Route r(400);
-	r.add(500, 0).add(10000, 7).add(2000, -6).add(1000, 0);
+	r.add(1000, 0).add(10000, 7).add(2000, -6).add(1000, 0);
 	Tracker t;
 	Phone phone(r, t);
-	uint8_t rankAtStart = 0, rankAtEnd = 0;
-	bool openAtStart = false, closedAtEnd = false, footDropped = false;
+	bool seenApproach = false;
 	for (float pos = 0; pos <= r.totalM(); pos += 5) {
 		const uint32_t before = t.version();
 		phone.onFix(pos);
 		const Status& s = t.status();
-		if (t.version() != before && s.hasProfile) printf("  profile at %5.0f m: %3u points from %u m remaining, foot %.0f m, summit %.0f m%s, rank %s, %.0f m up\n",
-				pos, t.pointCount(), (unsigned)t.startRemainingM(), s.footM, s.summitM, s.summitOpen ? " (open)" : "", rankLabel(s.rank), s.totalAscentM);
+		if (t.version() != before && s.hasProfile) printf("  profile at %5.0f m: %3u points every %u m from %u m remaining, foot %.0f m, summit %.0f m, rank %s, %.0f m up\n",
+				pos, t.pointCount(), t.stepM(), (unsigned)t.startRemainingM(), s.footM, s.summitM, rankLabel(s.rank), s.totalAscentM);
+		if (pos > 520 && pos < 10980) CHECK(s.active, "no climb at %.0f", pos);
 		if (!s.active) continue;
-		CHECK(s.climbId == 1, "climb id %u at %.0f", s.climbId, pos);
-		if (pos > 500 && pos < 600) {rankAtStart = s.rank; openAtStart = s.summitOpen;}
-		if (pos > 9000 && pos < 9100) {rankAtEnd = s.rank; closedAtEnd = !s.summitOpen;}
-		if (s.footM < 0) footDropped = true;
-		if (s.onClimb && pos > 9000) {
-			CHECK(NEAR(s.totalAscentM, 700, 1.5f) && NEAR(s.lengthM, 10000, 26), "ascent %.1f length %.0f at %.0f", s.totalAscentM, s.lengthM, pos);
-			CHECK(NEAR(s.remainingAscentM, (10500 - pos) * 0.07f, 1.5f), "remaining %.1f at %.0f", s.remainingAscentM, pos);
-		}
-		if (s.onClimb) CHECK(NEAR(s.posM - s.footM, pos - 500, 13), "position %.0f in the climb at %.0f", s.posM - s.footM, pos);
+		// the whole climb is known from the first frame on
+		CHECK(s.climbId == 1 && s.rank == RANK_CAT1, "climb id %u rank %u at %.0f (score 70000 = category 1)", s.climbId, s.rank, pos);
+		CHECK(NEAR(s.totalAscentM, 700, 4) && NEAR(s.lengthM, 10000, 76), "ascent %.1f length %.0f at %.0f", s.totalAscentM, s.lengthM, pos);
+		CHECK(NEAR(s.toSummitM, 11000 - pos, 1), "to summit %.0f at %.0f", s.toSummitM, pos);
+		if (s.toFootM > 0) seenApproach = true;
+		if (s.onClimb && pos > 1100) CHECK(NEAR(s.remainingAscentM, (11000 - pos) * 0.07f, 1.5f), "remaining %.1f at %.0f", s.remainingAscentM, pos);
 	}
-	CHECK(phone.frames >= 3, "%d windows", phone.frames);
-	CHECK(rankAtStart == RANK_CAT2 && openAtStart, "start: rank %u open %d (5 km known = 35000)", rankAtStart, openAtStart);
-	CHECK(rankAtEnd == RANK_CAT1 && closedAtEnd, "end: rank %u closed %d (70000)", rankAtEnd, closedAtEnd);
-	CHECK(footDropped, "8 km buffer: the foot has to drop out");
+	CHECK(phone.frames == 1 && phone.nones == 1, "%d profiles, %d none", phone.frames, phone.nones);
+	CHECK(t.stepM() == 75, "raster %u m", t.stepM());
+	CHECK(seenApproach, "no approach");
+}
+
+// A pass road from (distance m, altitude m) corner points
+static Route road(std::initializer_list<std::pair<float, float>> pts) {
+	Route r(pts.begin()->second);
+	const std::pair<float, float>* prev = pts.begin();
+	for (const std::pair<float, float>* p = prev + 1; p != pts.end(); prev = p++) {
+		r.add(p->first - prev->first, (p->second - prev->second) / (p->first - prev->first) * 100);
+	}
+	return r;
+}
+
+static void testGalibier() {
+	printf("Galibier from the south: 36 km with false flats, a level km and a dip -> one climb, one frame\n");
+	Route south = road({{0, 1200}, {2000, 1200}, {4000, 1260}, {10000, 1400}, {16000, 1475}, {17000, 1475}, {22000, 1700}, {22400, 1685}, {29500, 2058}, {38000, 2642}, {43000, 2300}});
+	{
+		Tracker t;
+		Phone phone(south, t);
+		for (float pos = 0; pos <= south.totalM(); pos += 10) {
+			const uint32_t before = t.version();
+			phone.onFix(pos);
+			const Status& s = t.status();
+			if (t.version() != before && s.hasProfile) printf("  profile at %5.0f m: %3u points every %u m, foot %.0f m, summit %.0f m, rank %s, %.0f m up\n",
+					pos, t.pointCount(), t.stepM(), s.footM, s.summitM, rankLabel(s.rank), s.totalAscentM);
+			if (pos > 1520 && pos < 37950) CHECK(s.active && s.climbId == 1, "active %d id %u at %.0f", s.active, s.climbId, pos);
+			if (!s.active) continue;
+			CHECK(s.rank == RANK_HC && NEAR(s.totalAscentM, 1442, 8) && NEAR(s.lengthM, 36000, 400), "rank %u ascent %.1f length %.0f at %.0f", s.rank, s.totalAscentM, s.lengthM, pos);
+			CHECK(NEAR(s.toSummitM, 38000 - pos, 1), "to summit %.0f at %.0f", s.toSummitM, pos);
+			CHECK(NEAR(s.altM, south.altAt(pos), 3), "altitude %.1f at %.0f (route %.1f)", s.altM, pos, south.altAt(pos));
+		}
+		CHECK(phone.frames == 1 && phone.nones == 1 && t.stepM() == 200, "%d profiles, %d none, raster %u m", phone.frames, phone.nones, t.stepM());
+	}
+
+	printf("Galibier from the north: Telegraphe, 4.8 km down to Valloire, Galibier -> two climbs\n");
+	Route north = road({{0, 710}, {2000, 710}, {14000, 1566}, {18800, 1400}, {36800, 2642}, {42000, 2280}});
+	{
+		Tracker t;
+		Phone phone(north, t);
+		for (float pos = 0; pos <= north.totalM(); pos += 10) {
+			phone.onFix(pos);
+			const Status& s = t.status();
+			if (pos > 1520 && pos < 13950) CHECK(s.active && s.climbId == 1 && NEAR(s.totalAscentM, 856, 5) && NEAR(s.toSummitM, 14000 - pos, 1), "Telegraphe: active %d id %u ascent %.1f at %.0f", s.active, s.climbId, s.totalAscentM, pos);
+			if (pos > 14100 && pos < 18200) CHECK(!s.hasProfile, "profile on the descent at %.0f", pos);
+			if (pos > 18320 && pos < 36750) CHECK(s.active && s.climbId == 2 && NEAR(s.totalAscentM, 1242, 5) && NEAR(s.toSummitM, 36800 - pos, 1), "Galibier: active %d id %u ascent %.1f at %.0f", s.active, s.climbId, s.totalAscentM, pos);
+		}
+		CHECK(phone.frames == 2 && phone.nones == 2, "%d profiles, %d none", phone.frames, phone.nones);
+	}
+
+	printf("Too long for one frame (40 steps): the next stretch joins on the same raster\n");
+	{
+		Tracker t;
+		Phone phone(south, t, 40);
+		for (float pos = 0; pos <= south.totalM(); pos += 10) {
+			phone.onFix(pos);
+			const Status& s = t.status();
+			if (pos > 2300 && pos < 37950) CHECK(s.active && s.climbId == 1, "active %d id %u at %.0f", s.active, s.climbId, pos);
+			if (pos > 36000 && pos < 37950) CHECK(NEAR(s.toSummitM, 38000 - pos, 1), "to summit %.0f at %.0f", s.toSummitM, pos);
+		}
+		CHECK(phone.frames > 4 && t.stepM() == 250, "%d profiles, raster %u m", phone.frames, t.stepM());
+	}
 }
 
 static void testDip() {
-	printf("Dip: 8 m keeps the climb, 15 m ends it\n");
-	for (float dip : {8.0f, 15.0f}) {
+	printf("Dip: 20 m keeps the climb, 40 m ends it\n");
+	for (float dip : {20.0f, 40.0f}) {
 		Route r(100);
 		r.add(1000, 6).add(dip / 0.05f, -5).add(1000, 6).add(1000, -5);
 		Tracker t;
-		std::vector<uint8_t> f = r.slice(0, 200);
+		std::vector<uint8_t> f = r.slice(0, r.totalM());		// the whole route, beyond what the phone would send
 		t.feedFrame(f.data(), f.size());
 		t.setRemaining(r.totalM());
 		const Status& s = t.status();
-		if (dip < 10) CHECK(NEAR(s.totalAscentM, 120 - dip, 1.5f) && !s.summitOpen, "dip %.0f: ascent %.1f", dip, s.totalAscentM);
+		if (dip < 30) CHECK(NEAR(s.totalAscentM, 120 - dip, 1.5f), "dip %.0f: ascent %.1f", dip, s.totalAscentM);
 		else CHECK(NEAR(s.totalAscentM, 60, 1.5f) && NEAR(s.summitM, 1000, 26), "dip %.0f: ascent %.1f summit %.0f", dip, s.totalAscentM, s.summitM);
 	}
 }
@@ -284,14 +390,14 @@ static void testPosition() {
 	Route r(100);
 	r.add(3000, 6);
 	Tracker t;
-	std::vector<uint8_t> f = r.slice(1000, 40);		// 1000..2000 m
+	std::vector<uint8_t> f = r.slice(1000, 2000, 40);
 	t.feedFrame(f.data(), f.size());
 	t.setRemaining(r.totalM() - 900);
 	CHECK(!t.status().positionValid && !t.status().active, "100 m before the profile");
 	t.setRemaining(r.totalM() - 990);
 	CHECK(t.status().positionValid && NEAR(t.status().posM, 0, 0.1f), "10 m before: clamped to its start");
 	t.setRemaining(r.totalM() - 1500);
-	CHECK(t.status().positionValid && t.status().active && t.status().summitOpen, "inside, open summit");
+	CHECK(t.status().positionValid && t.status().active && NEAR(t.status().toSummitM, 500, 1), "inside, summit at the end of the profile");
 	CHECK(NEAR(t.status().altM, 190, 0.2f), "altitude %.1f", t.status().altM);
 	t.setRemaining(r.totalM() - 2100);
 	CHECK(!t.status().positionValid, "100 m past the profile");
@@ -305,7 +411,7 @@ static void testPosition() {
 	Route r2(500);
 	r2.add(4000, 5);
 	t.feedFrame(f.data(), f.size());
-	std::vector<uint8_t> g = r2.slice(1000, 40);
+	std::vector<uint8_t> g = r2.slice(1000, 2000, 40);
 	t.feedFrame(g.data(), g.size());
 	CHECK(t.pointCount() == 41 && t.altitudesDm()[0] == 5500, "replaced: %u points, %d dm", t.pointCount(), t.altitudesDm()[0]);
 }
@@ -338,7 +444,7 @@ static void testParams() {
 	Tracker t;
 	Route r(0);
 	r.add(100, 0).add(4000, 8).add(500, -5);		// 320 m: category 2
-	std::vector<uint8_t> f = r.slice(0, 200);
+	std::vector<uint8_t> f = r.slice(0, r.totalM());
 	t.feedFrame(f.data(), f.size());
 	t.setRemaining(r.totalM());
 	CHECK(t.status().rank == RANK_CAT2, "320 m gain: rank %u", t.status().rank);
@@ -352,8 +458,10 @@ int main() {
 	testSingleClimb();
 	testHill();
 	testStep(300, true);
-	testStep(800, false);
+	testStep(1500, true);
+	testStep(2500, false);
 	testLongClimb();
+	testGalibier();
 	testDip();
 	testPosition();
 	testParams();

@@ -129,7 +129,7 @@ Tracker::FrameResult Tracker::feedFrame(const uint8_t* data, size_t length) {
 	case PROFILE_MSG_PROFILE_UPDATE: {
 		bool hasStart = false, hasStep = false, hasBase = false;
 		uint32_t start = 0;
-		uint8_t stepM = 0;
+		uint8_t stepM = 0, scale = 1;
 		int16_t base = 0;
 		const int8_t* deltas = nullptr;
 		uint16_t n = 0;
@@ -155,13 +155,16 @@ Tracker::FrameResult Tracker::feedFrame(const uint8_t* data, size_t length) {
 				deltas = reinterpret_cast<const int8_t*>(val);
 				n = len;
 				break;
+			case PROFILE_TAG_DELTA_SCALE_DM:
+				if (len >= 1) scale = val[0];
+				break;
 			default:
 				break;	// unknown tag: skipped by its length
 			}
 			pos += len;
 		}
-		if (!hasStart || !hasStep || !hasBase || stepM == 0 || n == 0) return FRAME_INVALID;
-		setProfile(start, stepM, base, deltas, n);
+		if (!hasStart || !hasStep || !hasBase || stepM == 0 || scale == 0 || n == 0) return FRAME_INVALID;
+		setProfile(start, stepM, base, deltas, n, scale);
 		return FRAME_PROFILE;
 	}
 
@@ -170,8 +173,8 @@ Tracker::FrameResult Tracker::feedFrame(const uint8_t* data, size_t length) {
 	}
 }
 
-void Tracker::setProfile(uint32_t startRemainingM, uint8_t stepM, int16_t baseAltDm, const int8_t* deltasDm, uint16_t n) {
-	if (stepM == 0 || n == 0) return;
+void Tracker::setProfile(uint32_t startRemainingM, uint8_t stepM, int16_t baseAltDm, const int8_t* deltasDm, uint16_t n, uint8_t deltaScaleDm) {
+	if (stepM == 0 || n == 0 || deltaScaleDm == 0) return;
 	if (n > MAX_POINTS - 1) n = MAX_POINTS - 1;
 
 	// Same raster and overlapping what we have: keep the points behind its start (the part of
@@ -204,7 +207,7 @@ void Tracker::setProfile(uint32_t startRemainingM, uint8_t stepM, int16_t baseAl
 	int16_t a = baseAltDm;
 	alt[keep] = a;
 	for (uint16_t i = 0; i < n; i++) {
-		a += deltasDm[i];
+		a += deltasDm[i] * deltaScaleDm;
 		alt[keep + 1 + i] = a;
 	}
 	count = keep + n + 1;
@@ -255,24 +258,21 @@ float Tracker::altitudeAtM(float offsetM) const {
 
 // ******************** Climbs ********************
 
-// Walks on from the summit so far (fromIndex) as long as the profile keeps rising.
+// Walks on from the summit so far (fromIndex) as long as the profile keeps rising. The end of
+// the profile is a summit, too: that is where the phone ends it.
 void Tracker::scanSummit(Segment& seg, int32_t fromIndex) {
 	int32_t c = fromIndex;
-	bool closed = false;
 	for (int32_t i = c + 1; i < count; i++) {
 		const float distM = static_cast<float>(i - c) * step;
 		const float riseM = (alt[i] - alt[c]) / 10.0f;
 		if (riseM > 0 && riseM >= cfg.contGradePct / 100.0f * distM) {
 			c = i;
 		} else if (-riseM > cfg.summitDipM || distM > cfg.summitFlatM) {
-			closed = true;
 			break;
 		}
 	}
-	if (!closed && remOfIndex(count - 1) <= step) closed = true;		// the route ends here
 	seg.summitRem = remOfIndex(c);
 	seg.summitAltDm = alt[c];
-	seg.open = !closed;
 }
 
 // The next climb at or ahead of the rider.
@@ -371,8 +371,8 @@ void Tracker::update() {
 		if (summitIndex < 0 || summitIndex >= count) {
 			cur = Segment();					// its points are gone
 		} else {
-			if (cur.open) scanSummit(cur, summitIndex);		// more of the profile may have arrived
-			if (!cur.open && remM <= cur.summitRem - static_cast<int32_t>(cfg.summitPassM)) {
+			scanSummit(cur, summitIndex);		// more of the profile may have arrived (a climb longer than one frame)
+			if (remM <= cur.summitRem - static_cast<int32_t>(cfg.summitPassM)) {
 				prev = cur;
 				cur = Segment();
 			}
@@ -382,7 +382,6 @@ void Tracker::update() {
 	if (!cur.valid) return;
 
 	st.active = true;
-	st.summitOpen = cur.open;
 	st.climbId = cur.id;
 	st.rank = rate(cur);
 	st.footM = static_cast<float>(static_cast<int32_t>(startRem) - cur.footRem);

@@ -30,8 +30,8 @@
  *   arc                   share of the climb's height that is done
  *   group_rq_mode         the state icon/RQ line group all screens share (RimRidgeCustFunc.cpp)
  *
- * A ">" in front of a figure: the summit is not in the profile yet (TrailBridge sends at
- * most 5 km ahead), so it is "at least".
+ * A ">" in front of a figure: the summit is not in the profile yet, so it is "at least".
+ * No longer shown: TrailBridge sends a climb up to its summit (Status::summitOpen stays false).
  */
 
 #pragma once
