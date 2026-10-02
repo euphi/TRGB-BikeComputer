@@ -56,6 +56,7 @@ void setup() {
     cmdMem.setDescription("Log free internal/DMA/PSRAM heap, open requests and task stack watermarks");
 	ui.initDisplay();
     stats.setup();
+	climb.setup();
 	bleDevs.setup();
 #ifdef BC_SIM
 	sim.setup();

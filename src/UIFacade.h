@@ -16,6 +16,7 @@
 #endif
 #include <Stats/Statistics.h>		//TODO: Move statistics data types to separate class
 #include "BikeNavProtocol.h"
+#include <lvgl.h>
 
 class UIFacade {
 public:
@@ -76,6 +77,13 @@ public:
 	// screen itself. Refreshed once a second while shown (calibration progress).
 	void showSettingsScreen();
 	void hideSettingsScreen();
+
+	// Climb screen (RimRidgeClimb, elevation profile of the climb ahead -- ClimbMonitor.h).
+	// Shown automatically while a rated climb is ridden (see updateClimb()), by hand with a
+	// tap on the altitude/gradient value of RimRidge; any swipe on it goes back. A climb
+	// swiped away is not shown again by itself.
+	void showClimbScreen();
+	void hideClimbScreen();
 
 	// Received (BLE TLV tags 0x0A-0x0D, PROTOCOL.md "Fahrspur-
 	// Informationen") and rendered on BOTH RimRidge's compact lane-row
@@ -168,6 +176,22 @@ private:
 	// Leaving RimRidgeNav by hand (swipe, or a tap on the state icon/RQ line): the
 	// current maneuver counts as dismissed, see hideNavScreen(). xUIDrawMutex held.
 	void dismissNavScreen();
+
+	// Once a second, xUIDrawMutex held: fetches the climb state from ClimbMonitor, refreshes
+	// RimRidgeClimb and switches to it / back:
+	//  - to it when a climb of at least Climb::Config::autoShowMinRank is no further than
+	//    showAheadM ahead (autoShow on) -- from the main screen only; from any other screen
+	//    it becomes the screen to return to;
+	//  - back to the main screen hideDelayS after that is no longer the case (summit passed,
+	//    PROFILE_NONE, route left).
+	void updateClimb();
+	// Where "back" leads: the climb screen while it is on, else the main screen.
+	lv_obj_t* baseScreen();
+	bool climbScreenActive = false;		// the climb screen is the base screen (shown, or covered by nav/RQ/settings)
+	bool climbScreenAuto = false;		// ... because of a climb: it goes away with it (opened by hand without one, it stays)
+	uint16_t climbCurrentId = 0;		// Climb::Status::climbId of the climb ahead, 0 = none
+	uint16_t climbDismissedId = 0;		// the climb the rider swiped away
+	uint32_t climbHideAtMs = 0;			// 0 = no delayed switch back pending
 
 
 #ifdef BC_FL_SUPPORT

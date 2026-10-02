@@ -42,6 +42,9 @@ extern BLEDevices bleDevs;
 extern I2CSensors sensors;
 #endif
 
+#include "ClimbMonitor.h"
+extern ClimbMonitor climb;
+
 #ifdef BC_SIM
 #include "SimSensors.h"
 extern SimSensors sim;

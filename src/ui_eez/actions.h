@@ -21,6 +21,8 @@ extern void action_settings_ref(lv_event_t * e);
 extern void action_settings_reset(lv_event_t * e);
 extern void action_settings_sleep(lv_event_t * e);
 extern void action_pause_click(lv_event_t * e);
+extern void action_go_to_climb(lv_event_t * e);
+extern void action_climb_screen_gesture(lv_event_t * e);
 
 #ifdef __cplusplus
 }

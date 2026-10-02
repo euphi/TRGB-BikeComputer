@@ -15,7 +15,8 @@ enum ScreensEnum {
     SCREEN_ID_RIM_RIDGE_NAV = 2,
     SCREEN_ID_RIM_RIDGE_RQ = 3,
     SCREEN_ID_RIM_RIDGE_SETTINGS = 4,
-    _SCREEN_ID_LAST = 4
+    SCREEN_ID_RIM_RIDGE_CLIMB = 5,
+    _SCREEN_ID_LAST = 5
 };
 
 typedef struct _objects_t {
@@ -23,6 +24,7 @@ typedef struct _objects_t {
     lv_obj_t *rim_ridge_nav;
     lv_obj_t *rim_ridge_rq;
     lv_obj_t *rim_ridge_settings;
+    lv_obj_t *rim_ridge_climb;
     lv_obj_t *rr_speed_arc;
     lv_obj_t *rr_ic_wifi;
     lv_obj_t *rr_ic_gps;
@@ -155,6 +157,35 @@ typedef struct _objects_t {
     lv_obj_t *rrset_group_rq_mode;
     lv_obj_t *rrset_ic_state;
     lv_obj_t *rrset_line_rq;
+    lv_obj_t *rrclimb_arc;
+    lv_obj_t *rrclimb_cat;
+    lv_obj_t *rrclimb_rem_val;
+    lv_obj_t *rrclimb_grp_total;
+    lv_obj_t *rrclimb_ic_total;
+    lv_obj_t *rrclimb_total_val;
+    lv_obj_t *rrclimb_grp_dist;
+    lv_obj_t *rrclimb_ic_dist;
+    lv_obj_t *rrclimb_dist_val;
+    lv_obj_t *rrclimb_profile;
+    lv_obj_t *rrclimb_summit_alt;
+    lv_obj_t *rrclimb_grp_ahead;
+    lv_obj_t *rrclimb_ahead_cap;
+    lv_obj_t *rrclimb_ahead_val;
+    lv_obj_t *rrclimb_grp_grad;
+    lv_obj_t *rrclimb_grad_cap;
+    lv_obj_t *rrclimb_grad_val;
+    lv_obj_t *rrclimb_grp_speed;
+    lv_obj_t *rrclimb_speed_val;
+    lv_obj_t *rrclimb_speed_unit;
+    lv_obj_t *rrclimb_grp_heart;
+    lv_obj_t *rrclimb_ic_heart;
+    lv_obj_t *rrclimb_hr_val;
+    lv_obj_t *rrclimb_grp_info;
+    lv_obj_t *rrclimb_ic_info;
+    lv_obj_t *rrclimb_info_val;
+    lv_obj_t *rrclimb_group_rq_mode;
+    lv_obj_t *rrclimb_ic_state;
+    lv_obj_t *rrclimb_line_rq;
 } objects_t;
 
 extern objects_t objects;
@@ -170,6 +201,9 @@ void tick_screen_rim_ridge_rq();
 
 void create_screen_rim_ridge_settings();
 void tick_screen_rim_ridge_settings();
+
+void create_screen_rim_ridge_climb();
+void tick_screen_rim_ridge_climb();
 
 void tick_screen_by_id(enum ScreensEnum screenId);
 void tick_screen(int screen_index);

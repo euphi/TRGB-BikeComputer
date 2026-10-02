@@ -12,6 +12,7 @@ selbst ist die Felge.
 | Mainscreen | [`mainscreen.svg`](mainscreen.svg) | **implementiert**, `EEZStudio/TRGB-BikeComputer.eez-project`, Screen `rim_ridge`, inkl. Straßenqualität-Indikator (`rr_line_rq`, §4) |
 | Navigationsscreen | [`navscreen.svg`](navscreen.svg) | **implementiert**, Screen `rim_ridge_nav` (`SCREEN_ID_RIM_RIDGE_NAV`) |
 | Einstellungen | [`settings.svg`](settings.svg) | **implementiert**, Screen `RimRidgeSettings` (`SCREEN_ID_RIM_RIDGE_SETTINGS`), gegenüber der SVG um WLAN-Reconnect, Kalibrierung und Referenzfahrt erweitert (§6) |
+| Kletter-Screen | [`climbscreen.svg`](climbscreen.svg) | **implementiert**, Screen `RimRidgeClimb` (`SCREEN_ID_RIM_RIDGE_CLIMB`), Höhenprofil mit Farbe nach Steigung (§6) |
 | RQ-Ride-Screen | [`rqscreen.svg`](rqscreen.svg) | **Umgesetzt** (Screen `RimRidgeRQ`) — Nav-Pille, Speed, Puls, Wegzähler (Tourstrecke) mit echten Daten; RQ-Index aus `ui_RimRidgeUpdateRoadQuality()`; Untergrund-Pillen, Qualitäts-Regler und Aufnahme-Taste live über `I2CSensors::setRoadLabel*()`/`startRoadCapture()` verdrahtet (Tap togglet, zweiter Tap auf den aktiven Wert setzt ihn zurück) |
 
 Jede SVG-Datei ist 1:1 im Ziel-Koordinatensystem (480×480 Einheiten =
@@ -261,15 +262,15 @@ Konzeptdokument liegt außerhalb des Repos unter
   bei jeder Ampelpause, die Linie ist durchgehend präsent, nur die Farbe
   trägt die Information. Identisch mit dem JSON-Default in EEZ Studio, vor
   der ersten echten Klasse.
-- **Auf allen vier Screens identisch** (seit 2026-09-27): `rr_group_rq_mode`
+- **Auf allen fünf Screens identisch** (seit 2026-09-27): `rr_group_rq_mode`
   (Container `BOTTOM_MID`, Offset `(0,-5)`, `197×40`, darin Fahrzustand-Icon
   `TOP_MID` und `rr_line_rq` `BOTTOM_MID`) ist 1:1 als `rq_group_rq_mode`
-  (RQ-Ride), `rrnav_group_rq_mode` (Navigation) und `rrset_group_rq_mode`
-  (Einstellungen) kopiert. Icon und Linienfarbe setzen
+  (RQ-Ride), `rrnav_group_rq_mode` (Navigation), `rrset_group_rq_mode`
+  (Einstellungen) und `rrclimb_group_rq_mode` (Kletter-Screen) kopiert. Icon und Linienfarbe setzen
   `ui_RimRidgeUpdateStateIcon()`/`ui_RimRidgeUpdateRoadQuality()` auf allen
   Kopien. Tipp auf die Gruppe öffnet den RQ-Ride-Screen, auf dem RQ-Ride-Screen
   selbst geht es damit zurück zum Mainscreen (Action `GoToRq`). Änderungen an
-  der Gruppe immer auf allen vier Screens gleich machen.
+  der Gruppe immer auf allen fünf Screens gleich machen.
 - Verdrahtet in `ui_RimRidgeUpdateRoadQuality()`
   (`src/ui/RimRidgeCustFunc.cpp`) — Datenkette
   `RoadQuality`/`I2CSensors` → `Statistics::updateRoadQualityUi()` →
@@ -384,6 +385,58 @@ Text `MUTED`.
 - Keine Helligkeitsregelung (Entscheidung 2026-09-27: das dunkle Design ist auch
   nachts nicht zu hell; ggf. später ein kontraststärkeres Tag-Design).
 
+### Kletter-Screen — [`climbscreen.svg`](climbscreen.svg)
+
+**Umgesetzt** als `RimRidgeClimb` (2026-10-01). Zeigt den Anstieg aus dem
+Höhenprofil von TrailBridge; Erkennung, Kategorien und Einstellwerte stehen in
+[`CLIMB.md`](../CLIMB.md). Blendet sich an bewerteten Anstiegen selbst ein und
+danach wieder aus. Manuell: Tipp auf Höhe oder Steigung des Mainscreens
+(Action `GoToClimb`), Wischen in beliebige Richtung schließt. Logik:
+`src/ui/RimRidgeClimbCustFunc.cpp`.
+
+Die Rangfolge folgt dem, was man am Berg wissen will: wie viel noch (Hero),
+wie steil gleich (Profil, Steigung voraus in ihrer Farbe), erst dann Tempo
+und Puls. Kein Statuszeilen-Kopf, unten die gemeinsame Fahrzustand/RQ-Gruppe.
+
+| Element | Box (x, y, w, h) | Font/Farbe | Inhalt |
+|---|---|---|---|
+| `rrclimb_arc` | 5, 5, 470, 470 | Gapped Arc (§4) | Anteil der geschafften Höhenmeter |
+| `rrclimb_cat` | TOP_MID, y=46 | 18, Abstand 2, `BRASS` | „KAT. 3", „KAT. HC", „ANSTIEG" (nicht bewertet), „KEIN ANSTIEG" |
+| `rrclimb_rem_val` | TOP_MID, y=62 | 48, `PARCHMENT_BRIGHT` | Höhenmeter bis zum Gipfel, „212 m" |
+| `rrclimb_grp_total` | 86, 112, 150, 32 | Höhen-Icon `SAGE` + 18 | Höhenmeter des ganzen Anstiegs, „von 340 m" |
+| `rrclimb_grp_dist` | 250, 112, 144, 32 | Lineal-Icon + 18 | Strecke bis zum Gipfel, „2.4 km" |
+| `rrclimb_profile` | 60, 150, 360, 126 | `PANEL_BG`, Rahmen `BRASS` 1 px, `rx=9` | Profil, in C gezeichnet (unten) |
+| `rrclimb_summit_alt` | im Profil, 8, 3 | 14, `MUTED` | „Gipfel 812 m" / „kein Höhenprofil" |
+| `rrclimb_grp_ahead` | 70, 282, 160, 46 | 14 `MUTED` über 26 | „NÄCHSTE 25 m" + mittlere Steigung voraus, in ihrer Profilfarbe |
+| `rrclimb_grp_grad` | 250, 282, 160, 46 | 14 `MUTED` über 26 `PARCHMENT` | „GEMESSEN" + gemessene Steigung |
+| `rrclimb_grp_speed` | 96, 334, 136, 32 | 26 + Einheit 14 `MUTED` | Geschwindigkeit, rechtsbündig an der Einheit |
+| `rrclimb_grp_heart` | 262, 334, 110, 32 | Herz-Icon + 26 | Puls |
+| `rrclimb_grp_info` | 188, 370, 150, 32 | Icon + 22 | Wechselfeld: Uhrzeit, Distanz, Temperatur, Trittfrequenz, Höhe; Icon wechselt mit, Einblenden 400 ms |
+| `rrclimb_group_rq_mode` | BOTTOM_MID | | gemeinsame Gruppe (§4) |
+
+**Profil:** eine Spalte je Pixel, Höhe aus dem linear interpolierten Profil,
+Farbe aus der Steigung des 25-m-Abschnitts in fünf Bändern auf den
+Zonenfarben (§1): unter 1 % `ZONE_BLUE`, bis 4 % `ZONE_GREEN`, bis 7 %
+`ZONE_YELLOW`, bis 10 % `ZONE_ORANGE`, darüber `ZONE_RED`. Nach den HF-Zonen
+und dem RQ-Indikator die dritte Stelle, an der Farbe Funktion trägt, mit
+derselben Bedeutung ruhig → hart. Der gefahrene Teil steht bei 35 %
+Deckkraft, der Fahrer ist eine helle senkrechte Linie mit Punkt auf dem
+Profil, der Gipfel trägt ein Fähnchen in `BRASS`. Sichtbar ist der Anstieg
+von 100 m vor dem Fuß bis 150 m hinter dem Gipfel; die Höhenskala umfasst
+mindestens 20 m, damit ein kleiner Hügel nicht wie ein Pass aussieht.
+
+**Entschiedene Punkte:**
+
+- Der Hero ist „noch bis oben" mit Einheit in derselben Größe („212 m"), als
+  ein zentriertes Label. Zahl und Einheit in zwei Größen bräuchten eine feste
+  Spalte, und die Zahl hat zwei bis vier Stellen.
+- „von 340 m" setzt den Hero fort („212 m von 340 m") und spart eine
+  Beschriftung.
+- `>` vor Werten, solange der Gipfel nicht im Profil liegt (das Handy schickt
+  höchstens 5 km voraus).
+- Das Wechselfeld zeigt immer nur einen Wert mit seinem Icon. Fehlende Werte
+  (kein Trittfrequenz-Sensor, keine Temperatur) werden übersprungen.
+
 ### RQ-Ride-Screen — [`rqscreen.svg`](rqscreen.svg)
 
 Ein eigener Ride-Screen fürs gezielte Sammeln von Referenzdaten zur
@@ -449,8 +502,12 @@ Neustart nicht übersteht.
   Chip-Flächen. Für die neuen Screens fortführen, z. B. `rr_settings_build`,
   `rr_btn_reset`, `rr_btn_deepsleep`.
 - **Screens:** `SCREEN_ID_RIM_RIDGE`, `SCREEN_ID_RIM_RIDGE_NAV`,
-  `SCREEN_ID_RIM_RIDGE_RQ`, `SCREEN_ID_RIM_RIDGE_SETTINGS`. Präfixe der
-  Widgets: `rr_`, `rrnav_`, `rq_`, `rrset_`.
+  `SCREEN_ID_RIM_RIDGE_RQ`, `SCREEN_ID_RIM_RIDGE_SETTINGS`,
+  `SCREEN_ID_RIM_RIDGE_CLIMB`. Präfixe der Widgets: `rr_`, `rrnav_`, `rq_`,
+  `rrset_`, `rrclimb_`.
+- **Selbst gezeichnete Inhalte:** ein Container im EEZ-Projekt legt Lage und
+  Rahmen fest, C zeichnet im Draw-Event hinein (`rrclimb_profile`). Der Canvas
+  zeigt dann den leeren Rahmen.
 - **Prüfen auf dem Gerät:** Screenshot und synthetische Touches per
   `Tools/uishot.py` (siehe `doc/DEBUG.md`, „Remote UI testing").
 - **Fahrzeit/Uhrzeit-Widget:** `rr_ic_time` (Icon) + `rr_time_val` (Text)

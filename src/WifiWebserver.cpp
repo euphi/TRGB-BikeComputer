@@ -626,6 +626,7 @@ void WifiWebserver::setupWebserver() {
 #ifdef TRGBBC_SENSORS_I2C
 			{ "/debug/imu",           "IMU (BMI160)",    "Accelerometer, calibration, road quality, shocks, gradient" },
 #endif
+			{ "/debug/climb",         "Climbs",          "Elevation profile, climb categories and their settings, demo" },
 #ifdef BC_SIM
 			{ "/debug/sim",           "Sensor Simulator","Fake speed, cadence and heart rate, GPX playback" },
 #endif

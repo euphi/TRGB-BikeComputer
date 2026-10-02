@@ -19,10 +19,19 @@ unserem Projekt**.
 | Edit-Skripte (Einmal-Patches, nicht in git) | `EEZStudio/tmp/*.py` |
 
 Screens: `rim_ridge` (Main), `rim_ridge_nav` (Navigation), `rim_ridge_rq`
-(RQ-Ride), `rim_ridge_settings` (Einstellungen). Handgeschriebene Logik je Screen
-in `src/ui/RimRidge*CustFunc.*`. Die Fahrzustand/RQ-Gruppe unten
-(`*_group_rq_mode`) ist auf allen vier Screens identisch -- Änderungen dort
-überall gleich machen (`EEZStudio/tmp/add_settings_screen.py` hat sie geklont).
+(RQ-Ride), `rim_ridge_settings` (Einstellungen), `rim_ridge_climb` (Kletter-Anzeige).
+Handgeschriebene Logik je Screen in `src/ui/RimRidge*CustFunc.*`. Die
+Fahrzustand/RQ-Gruppe unten (`*_group_rq_mode`) ist auf allen fünf Screens
+identisch -- Änderungen dort überall gleich machen
+(`EEZStudio/tmp/add_settings_screen.py` hat sie geklont). Wer einen Screen
+ergänzt, trägt seine Kopie in die beiden Listen in `src/ui/RimRidgeCustFunc.cpp`
+ein (`ui_RimRidgeUpdateStateIcon()`, `ui_RimRidgeUpdateRoadQuality()`).
+
+Textbreiten ohne PIL: `EEZStudio/tmp/fontmetrics.py` liest Laufweite, Zeilenhöhe
+und Ink-Bereich aus den generierten `src/ui_eez/ui_font_*.c` -- also genau das,
+was das Gerät zeichnet. `EEZStudio/tmp/add_climb_screen.py` rechnet damit sein
+Worksheet (breitester Laufzeit-Text gegen den Kreis r=205) und rendert die Seite
+als SVG (`--mock`).
 
 ## Build-System-Unterschied
 

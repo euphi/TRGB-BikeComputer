@@ -21,7 +21,7 @@ ist das Protokoll die Quelle der Wahrheit.
 - Rollen: **TrailBridge (Handy) = Peripheral/GATT-Server, dieser ESP32 =
   Central/GATT-Client** -- wie bei allen anderen Sensoren in
   `src/BLEDevices.cpp`. Nicht umdrehen ohne Rücksprache.
-- Zwei unabhängige Services auf demselben Peer, beide Indicate + Read, je
+- Drei unabhängige Services auf demselben Peer, alle Indicate + Read, je
   eigene Subscription:
   - **Navigation** (`f7ac2b76-986b-45fd-8e44-f116a61f319d` /
     `7473da02-2de8-4f48-9e46-21b36380c176`) -- wird beworben, darüber wird
@@ -33,6 +33,11 @@ ist das Protokoll die Quelle der Wahrheit.
     `subscribeGpsPosition()`/`handleGpsData()`, Konstanten in
     `src/BikeGpsProtocol.h`. `FIX_AGE_MS` beachten, sonst wird ein
     veralteter Heartbeat-Fix als aktuell angezeigt.
+  - **Höhenprofil** (`3c1f6a90-5b2e-4d7a-9c48-e0a1b7d25f63` /
+    `a84e0d17-6f3b-4c52-8e9d-1b70c2f4a596`) -- nicht beworben, kein Heartbeat,
+    nur bei abgespielter GPX-Route. `subscribeProfile()`, Konstanten in
+    `src/BikeProfileProtocol.h`, Auswertung in `ClimbMonitor`. Position im
+    Profil = `REMAINING_DISTANCE_M` des Nav-Frames.
 - Frames: Byte 0 Version, Byte 1 Message-Type, danach TLV (Tag 1 Byte |
   Länge 1 Byte | Wert). Unbekannte Tags über die Länge überspringen, nie
   als Fehler behandeln.
@@ -41,8 +46,9 @@ ist das Protokoll die Quelle der Wahrheit.
 ## UI
 
 - Aktiver Main-Screen ist **RimRidge** (EEZ Studio), dazu **RimRidgeNav**
-  (Navigation), **RimRidgeRQ** (Wege-Labels) und **RimRidgeSettings**
-  (Einstellungen: IP/WLAN, Kalibrierung, Neustart/Tiefschlaf). Projekt:
+  (Navigation), **RimRidgeRQ** (Wege-Labels), **RimRidgeSettings**
+  (Einstellungen: IP/WLAN, Kalibrierung, Neustart/Tiefschlaf) und
+  **RimRidgeClimb** (Kletter-Anzeige mit Höhenprofil). Projekt:
   `EEZStudio/TRGB-BikeComputer.eez-project`, Design-System:
   [`doc/design/rim-ridge-design-system.md`](doc/design/rim-ridge-design-system.md).
 - `src/ui_eez/` ist **generiert** und wird bei jedem EEZ-Export komplett
@@ -95,6 +101,23 @@ ist das Protokoll die Quelle der Wahrheit.
   aus dem Repo): holt Sitzungen per mDNS-Trigger vom BC ab (`/logfiles/` bzw.
   `/logfiles.json` + `/log/...`). Ändert sich das Namensschema auf der SD
   oder die HTML-Liste, `bikelogservice/sdlayout.py`/`puller.py` mitziehen.
+
+## Anstiege (Höhenprofil)
+
+[`doc/CLIMB.md`](doc/CLIMB.md): Kategorien, Einstellungen, Demo.
+
+- `src/ClimbProfile.*` ist der reine Algorithmus (Fenster zusammenfügen, Fuß
+  und Gipfel finden, bewerten) samt aller Einstellwerte (`Climb::Config`,
+  Tabelle `PARAMS`). Host-Test: `test/native_climb/climb_test.cpp`
+  (Build-Befehl im Dateikopf) -- er füttert die Fahrten so, wie TrailBridge
+  sie schickt. Ändert sich dort `RouteNavigator`/`ElevationProfile`, den
+  Test mitziehen.
+- `src/ClimbMonitor.*`: Anbindung (BLE-Task rein, UI-Task raus, eigener
+  Mutex), NVS-Namespace `Climb`, CLI `climb`, `/debug/climb`. Ein neuer
+  Einstellwert braucht nur ein Feld in `Climb::Config` und eine Zeile in
+  `PARAMS`.
+- Das Profil wird im Draw-Event von `rrclimb_profile` gezeichnet
+  (`src/ui/RimRidgeClimbCustFunc.cpp`), ohne Canvas-Puffer.
 
 ## Serielle Konsole
 

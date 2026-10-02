@@ -133,7 +133,7 @@ void ui_RimRidgeUpdateRoadQuality(uint8_t roadClass, float roughness, uint32_t s
 	static const uint32_t ZONE_COLOR[5] = { 0x6C90B0, 0x6FA98C, 0xD7B463, 0xCE8A4C, 0xC1604A };
 	uint32_t color = (roadClass >= 1 && roadClass <= 5) ? ZONE_COLOR[roadClass - 1] : 0xCBA36B;
 	// Same line on every screen that carries the state icon/RQ line group.
-	lv_obj_t* const lines[] = {objects.rr_line_rq, objects.rq_line_rq, objects.rrnav_line_rq, objects.rrset_line_rq};
+	lv_obj_t* const lines[] = {objects.rr_line_rq, objects.rq_line_rq, objects.rrnav_line_rq, objects.rrset_line_rq, objects.rrclimb_line_rq};
 	for (lv_obj_t* line : lines) {
 		lv_obj_set_style_line_color(line, lv_color_hex(color), LV_PART_MAIN | LV_STATE_DEFAULT);
 		lv_obj_clear_flag(line, LV_OBJ_FLAG_HIDDEN);
@@ -185,7 +185,7 @@ void action_pause_click(lv_event_t * e) {
 
 void ui_RimRidgeUpdateStateIcon(const lv_img_dsc_t* pIcon, lv_color_t color, bool rideMode) {
 	// Same icon on every screen that carries the state icon/RQ line group.
-	lv_obj_t* const icons[] = {objects.rr_ic_state, objects.rq_ic_state, objects.rrnav_ic_state, objects.rrset_ic_state};
+	lv_obj_t* const icons[] = {objects.rr_ic_state, objects.rq_ic_state, objects.rrnav_ic_state, objects.rrset_ic_state, objects.rrclimb_ic_state};
 	for (lv_obj_t* icon : icons) {
 		if (pIcon == nullptr) {
 			// unknown state (DS_NO_CONN has its own icon since 2026-09-28)
@@ -244,8 +244,8 @@ void action_go_to_nav(lv_event_t * e) {
 }
 
 // EEZ Studio action, wired to the CLICKED event of the state icon/RQ line
-// group - rr_group_rq_mode and its copies on RimRidgeRQ, RimRidgeNav and
-// RimRidgeSettings. Opens the RQ-Ride-Screen (see UIFacade::showRQScreen());
+// group - rr_group_rq_mode and its copies on RimRidgeRQ, RimRidgeNav,
+// RimRidgeSettings and RimRidgeClimb. Opens the RQ-Ride-Screen (see UIFacade::showRQScreen());
 // on the RQ screen itself it toggles back to the main screen, a tap being
 // easier to hit than a swipe on a bumpy road.
 void action_go_to_rq(lv_event_t * e) {

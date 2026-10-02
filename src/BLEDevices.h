@@ -103,6 +103,11 @@ private:
 	void subscribeGpsPosition(BLEClient* pClient);
 	void handleGpsData(const uint8_t* pData, size_t length);
 
+	// Elevation-profile service: third service on the DEV_NAV peer, same pattern as the GPS
+	// one. Frames go to ClimbMonitor (climb), which also gets the nav frames' remaining
+	// route distance -- the rider's position in the profile.
+	void subscribeProfile(BLEClient* pClient);
+
 	void checkBatteries();
 	int8_t readBatLevel(const EDevType dt);
 
@@ -130,6 +135,8 @@ public:
 
 	static const BLEUUID gpsServiceUUID;
 	static const BLEUUID gpsCharUUID;
+	static const BLEUUID profileServiceUUID;
+	static const BLEUUID profileCharUUID;
 
 	// Latest known GPS fix (or invalid, if none received / lost with the DEV_NAV connection).
 	// fixAgeMs is updated to reflect the time elapsed since it was received over BLE.

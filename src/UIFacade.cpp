@@ -32,6 +32,7 @@
 #include "ui/RimRidgeNavCustFunc.h"
 #include "ui/RimRidgeRQCustFunc.h"
 #include "ui/RimRidgeSettingsCustFunc.h"
+#include "ui/RimRidgeClimbCustFunc.h"
 #include "UiDebug.h"
 
 static_assert(UIFacade::WIFI_UI_OFF == RRSET_WIFI_OFF && UIFacade::WIFI_UI_CONNECTING == RRSET_WIFI_CONNECTING
@@ -84,6 +85,8 @@ void UIFacade::initDisplay() {
     ui_RimRidgeRQInitNavLink(); // rq_nav_pill tap -> showNavScreen(), same target as rr_nav_pill's GoToNav action, but wired in C (see RimRidgeRQCustFunc.cpp)
     create_screen_rim_ridge_settings();
     ui_RimRidgeSettingsInit(); // build string, calibration status, restart/deep-sleep timer
+    create_screen_rim_ridge_climb();
+    ui_RimRidgeClimbInit(); // profile draw callback, "no climb" instead of the canvas' example values
     UiDebug::setup(); // /debug/ui/*: screenshot and synthetic touch for testing screens remotely
 
     // 3. set main screen
@@ -177,6 +180,10 @@ void UIFacade::updateHandler() {
 				// RimRidgeRQ shows the same speed/HR too (no gradient widget there).
 				ui_RimRidgeRQUpdateSpeed(speed);
 				ui_RimRidgeRQUpdateHR(hr);
+				// ... and RimRidgeClimb speed, HR and the measured gradient.
+				ui_RimRidgeClimbUpdateSpeed(speed);
+				ui_RimRidgeClimbUpdateHR(hr);
+				ui_RimRidgeClimbUpdateGrad(grad);
 			}
 			next_ms = lv_timer_handler();	// --> call lvgl main loop
 			xSemaphoreGive(xUIDrawMutex);
@@ -229,6 +236,7 @@ void UIFacade::updateHandler() {
 			// both correct and safe here (nothing to self-deadlock against).
 			if (xSemaphoreTake(xUIDrawMutex, 50 / portTICK_PERIOD_MS) == pdTRUE) {
 				evaluateNaviAutoSwitch();
+				updateClimb();
 				// Calibration progress/result - only while the settings screen is shown.
 				if (lv_scr_act() == objects.rim_ridge_settings) ui_RimRidgeSettingsUpdateCal();
 				xSemaphoreGive(xUIDrawMutex);
@@ -511,7 +519,7 @@ void UIFacade::evaluateNaviAutoSwitch() {
 		if (navScreenActive) {
 			navScreenActive = false;
 			bclog.log(BCLogger::Log_Info, BCLogger::TAG_UI, "Nav auto-hide: route ended");
-			lv_disp_load_scr(ui_MainScreen);
+			lv_disp_load_scr(baseScreen());
 		}
 		autoDecidedForManeuver = NAV_MANEUVER_NONE;
 		pendingHideAtMs = 0;
@@ -563,7 +571,7 @@ void UIFacade::evaluateNaviAutoSwitch() {
 				navManeuverToString(currentManeuver), (unsigned) currentManeuverDist, hide ? "HIDE" : "STAY");
 		if (hide) {
 			navScreenActive = false;
-			lv_disp_load_scr(ui_MainScreen);
+			lv_disp_load_scr(baseScreen());
 		}
 		// Deliberately NOT setting autoDecidedForManeuver here. This used
 		// to say "autoDecidedForManeuver = currentManeuver; // decided
@@ -646,7 +654,7 @@ void UIFacade::hideRQScreen() {
 	// Manual close (swipe on RimRidgeRQ).
 	bool uiTask = isDrawTask();
 	if (uiTask || xSemaphoreTake(xUIDrawMutex, 150 / portTICK_PERIOD_MS) == pdTRUE) {
-		lv_disp_load_scr(ui_MainScreen);
+		lv_disp_load_scr(baseScreen());
 		if (!uiTask) xSemaphoreGive(xUIDrawMutex);
 	} else {
 		bclog.log(BCLogger::Log_Warn, BCLogger::TAG_UI, "Hide RQ screen blocked by mutex");
@@ -670,10 +678,84 @@ void UIFacade::hideSettingsScreen() {
 	// Manual close (swipe on RimRidgeSettings).
 	bool uiTask = isDrawTask();
 	if (uiTask || xSemaphoreTake(xUIDrawMutex, 150 / portTICK_PERIOD_MS) == pdTRUE) {
-		lv_disp_load_scr(ui_MainScreen);
+		lv_disp_load_scr(baseScreen());
 		if (!uiTask) xSemaphoreGive(xUIDrawMutex);
 	} else {
 		bclog.log(BCLogger::Log_Warn, BCLogger::TAG_UI, "Hide settings screen blocked by mutex");
+	}
+}
+
+lv_obj_t* UIFacade::baseScreen() {
+	return climbScreenActive ? objects.rim_ridge_climb : ui_MainScreen;
+}
+
+void UIFacade::updateClimb() {
+	// static: this runs in the UI task, which has little stack left (doc/PITFALLS.md)
+	static Climb::Status st;
+	static Climb::Config cfg;
+	uint32_t version;
+	climb.poll(st, cfg, version);
+
+	time_t now = time(nullptr);
+	struct tm *lt = localtime(&now);
+	char clockStr[6];
+	snprintf(clockStr, sizeof(clockStr), "%02d:%02d", lt->tm_hour, lt->tm_min);
+	const RimRidgeClimbInfo info = {clockStr, stats.getDistance(statMode), stats.getTemp(), cad, height};
+	ui_RimRidgeClimbUpdate(st, cfg, version, info);
+
+	const bool onClimb = st.hasProfile && st.positionValid && st.active;
+	climbCurrentId = onClimb ? st.climbId : 0;
+	const bool wanted = cfg.autoShow && onClimb && st.rank >= cfg.autoShowMinRank && st.toFootM <= cfg.showAheadM;
+	if (wanted) {
+		climbHideAtMs = 0;
+		if (climbScreenActive) {
+			climbScreenAuto = true;		// opened by hand before the climb: it still ends with it
+		} else if (st.climbId != climbDismissedId) {
+			climbScreenActive = true;
+			climbScreenAuto = true;
+			bclog.logf(BCLogger::Log_Info, BCLogger::TAG_UI, "Climb auto-show: climb %u, rank %u", st.climbId, st.rank);
+			if (lv_scr_act() == ui_MainScreen) lv_disp_load_scr(objects.rim_ridge_climb);
+		}
+	} else if (climbScreenActive && climbScreenAuto) {
+		if (climbHideAtMs == 0) {
+			climbHideAtMs = (millis() + cfg.hideDelayS * 1000UL) | 1;		// never 0 = "not pending"
+		} else if (static_cast<int32_t>(millis() - climbHideAtMs) >= 0) {
+			climbHideAtMs = 0;
+			climbScreenActive = false;
+			bclog.log(BCLogger::Log_Info, BCLogger::TAG_UI, "Climb auto-hide");
+			if (lv_scr_act() == objects.rim_ridge_climb) lv_disp_load_scr(ui_MainScreen);
+		}
+	}
+}
+
+void UIFacade::showClimbScreen() {
+	// Manual open (tap on rr_grp_height/rr_grp_gradient on RimRidge, or "climb show") - works
+	// without a climb, too. Same same-task mutex re-entrancy note as showNavScreen() above.
+	bool uiTask = isDrawTask();
+	if (uiTask || xSemaphoreTake(xUIDrawMutex, 150 / portTICK_PERIOD_MS) == pdTRUE) {
+		if (navScreenActive) dismissNavScreen();
+		climbScreenActive = true;
+		climbScreenAuto = false;
+		climbHideAtMs = 0;
+		lv_disp_load_scr(objects.rim_ridge_climb);
+		if (!uiTask) xSemaphoreGive(xUIDrawMutex);
+	} else {
+		bclog.log(BCLogger::Log_Warn, BCLogger::TAG_UI, "Show climb screen blocked by mutex");
+	}
+}
+
+void UIFacade::hideClimbScreen() {
+	// Manual close (swipe on RimRidgeClimb, or "climb hide"). The climb under way counts as
+	// dismissed: updateClimb() does not bring the screen back for it.
+	bool uiTask = isDrawTask();
+	if (uiTask || xSemaphoreTake(xUIDrawMutex, 150 / portTICK_PERIOD_MS) == pdTRUE) {
+		climbScreenActive = false;
+		climbHideAtMs = 0;
+		climbDismissedId = climbCurrentId;
+		if (lv_scr_act() == objects.rim_ridge_climb) lv_disp_load_scr(ui_MainScreen);
+		if (!uiTask) xSemaphoreGive(xUIDrawMutex);
+	} else {
+		bclog.log(BCLogger::Log_Warn, BCLogger::TAG_UI, "Hide climb screen blocked by mutex");
 	}
 }
 
@@ -696,7 +778,7 @@ void UIFacade::hideNavScreen() {
 	bool uiTask = isDrawTask();
 	if (uiTask || xSemaphoreTake(xUIDrawMutex, 150 / portTICK_PERIOD_MS) == pdTRUE) {
 		dismissNavScreen();
-		lv_disp_load_scr(ui_MainScreen);
+		lv_disp_load_scr(baseScreen());
 		if (!uiTask) xSemaphoreGive(xUIDrawMutex);
 	} else {
 		bclog.log(BCLogger::Log_Warn, BCLogger::TAG_UI, "Hide nav screen blocked by mutex");

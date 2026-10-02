@@ -31,6 +31,11 @@ const BLEUUID BLEDevices::charUUIDBat = BLEUUID((uint16_t) 0x2A19);
 const BLEUUID BLEDevices::gpsServiceUUID = BLEUUID("66b5835c-9be6-43d1-b24a-f9337c0fcb7f");
 const BLEUUID BLEDevices::gpsCharUUID = BLEUUID("10c49e7b-4808-4d63-9b68-9ba6c385db0d");
 
+// Elevation-profile service (see ../TrailBridge/PROTOCOL.md "Höhenprofil-Service") -- third
+// service on the DEV_NAV peer, not advertised either. Event-driven, no heartbeat.
+const BLEUUID BLEDevices::profileServiceUUID = BLEUUID("3c1f6a90-5b2e-4d7a-9c48-e0a1b7d25f63");
+const BLEUUID BLEDevices::profileCharUUID = BLEUUID("a84e0d17-6f3b-4c52-8e9d-1b70c2f4a596");
+
 const char* BLEDevices::DEV_EMOJI[DEV_COUNT] = {"❤️","🚴","🚴","⚡", "🧭"};
 const char* BLEDevices::DEV_STRING[DEV_COUNT] = {"HeartRate","CSC1","CSC2","Forumslader", "TrailBridge"};
 const char* BLEDevices::CONN_STRING[CONN_COUNT] = {"Not Found","Advertised (not yet connected)","Connected","Lost"};
@@ -332,6 +337,7 @@ void BLEDevices::updateDisconnectedDev(const EDevType dt) {
 		ui.updateNavi(String(), 0, NAV_MANEUVER_NONE);		// hide stale directions once the phone disconnects
 		ui.updateLanes(nullptr, 0, 0, nullptr, 0, 0);
 		gpsFix = SGpsFix();		// GPS-Positions-Service shares this connection, so it's gone too
+		climb.onRouteGone();	// ... and so is the elevation profile
 		break;
 	}
 }
@@ -531,6 +537,8 @@ bool BLEDevices::connectToServer(SDevToConnect& dev) {
 		// Second, independent service on the same peer, not advertised -- only shows up via
 		// GATT service discovery, which connect() already did. See PROTOCOL.md "GPS-Positions-Service".
 		subscribeGpsPosition(clients[dt].get());
+		// Third one: the elevation profile of a GPX route. See PROTOCOL.md "Höhenprofil-Service".
+		subscribeProfile(clients[dt].get());
 	}
 
 	storeAdress(dt, addr);	// update stored adress in NVS - regardless if it really has changed or not
@@ -690,6 +698,7 @@ void BLEDevices::handleNavData(const uint8_t* pData, size_t length) {
 		bclog.log(BCLogger::Log_Info, BCLogger::TAG_BLE, "🧭 No active route");
 		ui.updateNavi(String(), 0, NAV_MANEUVER_NONE, 0, NAV_MANEUVER_NONE, 0, String(), 0, 0);
 		ui.updateLanes(nullptr, 0, 0, nullptr, 0, 0);
+		climb.onRouteGone();
 		break;
 
 	case NAV_MSG_NAV_UPDATE: {
@@ -697,6 +706,7 @@ void BLEDevices::handleNavData(const uint8_t* pData, size_t length) {
 		uint8_t nextManeuver = NAV_MANEUVER_UNKNOWN;
 		uint8_t roundaboutExit = 0;
 		uint32_t maneuverDist = 0, nextManeuverDist = 0, remainingDist = 0, remainingTime = 0;
+		bool hasRemainingDist = false;
 		String street, nextStreet;
 		NavLane lanes[NAV_LANES_MAX];
 		NavLane nextLanes[NAV_LANES_MAX];
@@ -737,7 +747,7 @@ void BLEDevices::handleNavData(const uint8_t* pData, size_t length) {
 				nextStreet = String(val, len);
 				break;
 			case NAV_TAG_REMAINING_DISTANCE_M:
-				if (len >= 4) remainingDist = val[0] | (val[1] << 8) | (val[2] << 16) | ((uint32_t)val[3] << 24);
+				if (len >= 4) { hasRemainingDist = true; remainingDist = val[0] | (val[1] << 8) | (val[2] << 16) | ((uint32_t)val[3] << 24); }
 				break;
 			case NAV_TAG_REMAINING_TIME_S:
 				if (len >= 4) remainingTime = val[0] | (val[1] << 8) | (val[2] << 16) | ((uint32_t)val[3] << 24);
@@ -762,6 +772,8 @@ void BLEDevices::handleNavData(const uint8_t* pData, size_t length) {
 
 		nav_distance = maneuverDist;
 		nav_distance_int = stats.getDistance(Statistics::SUM_ESP_START, true);
+		// The rider's place in the elevation profile (PROTOCOL.md "Position im Profil ohne Wegstreckenzähler")
+		if (hasRemainingDist) climb.onNavRemaining(remainingDist);
 
 		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "🧭 %s in %d m auf %s (Rest: %d m / %d s). Next: %s in %d m auf %s",
 				navManeuverToString(maneuver), maneuverDist, street.c_str(), remainingDist, remainingTime,
@@ -821,6 +833,32 @@ void BLEDevices::subscribeGpsPosition(BLEClient* pClient) {
 	// Fallback per PROTOCOL.md: Read the last frame directly, don't wait for the first Indicate/heartbeat.
 	String initial = pCharacteristic->readValue();
 	if (initial.length() > 0) handleGpsData(reinterpret_cast<const uint8_t*>(initial.c_str()), initial.length());
+}
+
+/**
+ * @brief Subscribes to the elevation-profile service on an already-connected DEV_NAV peer.
+ *
+ * Same pattern as subscribeGpsPosition(): not advertised, found by the service discovery
+ * connect() already did; missing on a TrailBridge version without it. The frames are parsed
+ * by ClimbMonitor (Climb::Tracker::feedFrame()).
+ */
+void BLEDevices::subscribeProfile(BLEClient* pClient) {
+	BLERemoteService* pService = pClient->getService(profileServiceUUID);
+	if (pService == nullptr) {
+		bclog.log(BCLogger::Log_Warn, BCLogger::TAG_BLE, "⛰️⚠️ Elevation profile service not found on peer (older TrailBridge version?)");
+		return;
+	}
+	BLERemoteCharacteristic* pCharacteristic = pService->getCharacteristic(profileCharUUID);
+	if (pCharacteristic == nullptr) {
+		bclog.log(BCLogger::Log_Warn, BCLogger::TAG_BLE, "⛰️⚠️ Elevation profile characteristic not found");
+		return;
+	}
+	pCharacteristic->registerForNotify([](BLERemoteCharacteristic* c, uint8_t* pData, size_t length, bool isNotify) {climb.onProfileFrame(pData, length);}, false);
+	bclog.log(BCLogger::Log_Debug, BCLogger::TAG_BLE, "⛰️ Elevation profile Indicate registered");
+
+	// No heartbeat on this service: the last frame is only to be had by reading it.
+	String initial = pCharacteristic->readValue();
+	if (initial.length() > 0) climb.onProfileFrame(reinterpret_cast<const uint8_t*>(initial.c_str()), initial.length());
 }
 
 /**

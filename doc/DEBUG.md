@@ -8,6 +8,8 @@ Linked from `/debug/menu`:
 * **NVS contents** (`/debug/nvs`) -- stored settings (only with `-DDEBUG_APP`)
 * **Accelerometer** (`/debug/imu`) -- BMI160 state, calibration, road quality, shocks,
   gradient, I²C error counters
+* **Climbs** (`/debug/climb`) -- elevation profile state, climb settings, demo profile
+  (see [CLIMB.md](CLIMB.md))
 * **Chart array** (`/stat/debugarray`) and **distance details**
   (`/stat/dist_debug.html`)
 * **Raw SD browser** (`/log/`)
