@@ -1,19 +1,18 @@
 .pio
 .settings
 .cproject
+.cache
 coredump.*
 */__pycache__
 *.log
+.vscode/
+.clangd
+compile_commands.json
 
 /versioning
 include/version.h
 
-
 /Tools/DL_Data/
-
-# Output files of binary log converter
-out.csv
-out.gpx
 
 # Python venv and caches for the Tools/ log tooling (see Tools/README.md --
 # recreate with: python3 -m venv Tools/.venv). The venv ignores itself via
@@ -50,3 +49,6 @@ EEZStudio/*.bak.*
 EEZStudio/tmp
 # bikelog raw replay: rq_replay, built on demand from src/RoadQuality.cpp
 Tools/.build/
+
+# Testtracks etc
+Tools/TestData/
