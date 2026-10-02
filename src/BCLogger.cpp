@@ -530,6 +530,8 @@ void BCLogger::appendDataLog(float speed, float temp, float gradient, float dist
 #ifdef BC_SIM
 	if (sim.isActive()) b.gpsFlags |= LogRec::LOG_SIMULATED;
 #endif
+	// A TrailBridge test ride (any build): position and/or the GPS speed are made up
+	if (gps.simFlags) b.gpsFlags |= LogRec::LOG_SIMULATED;
 	b.gpsLatitudeE7 = gps.latitudeE7;
 	b.gpsLongitudeE7 = gps.longitudeE7;
 	b.gpsAltitudeM = gps.altitudeM;

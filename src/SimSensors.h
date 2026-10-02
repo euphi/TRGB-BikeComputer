@@ -14,6 +14,12 @@
  * simulator is active, notifications and disconnects of real speed/cadence/HR sensors are
  * ignored.
  *
+ * Fed by TrailBridge: a test ride in the app (GPX playback) sends the values in its position
+ * frames, flagged GPS_SIM_SENSORS (PROTOCOL.md "Sensorwerte und Simulationsmodus"); BLEDevices
+ * passes them to feedFromTrailBridge(). It ends with the first frame without the flag, with
+ * POSITION_NONE, a stale frame or the disconnect of the phone -- and only a simulation that
+ * TrailBridge started: a manual "sim ..." is not switched off by the phone's real frames.
+ *
  * Control:
  *   serial  sim <km/h> [<rpm>|-] [<bpm>|-]   set (starts the simulation), "-" = no such sensor
  *           sim stop                           sensors off (disconnect, like switching them off)
@@ -47,7 +53,22 @@ public:
 	// real sensor's do, so the next set() is a reconnect.
 	void stop();
 
+	// The phone's test ride (see above): simulated = the frame carries GPS_SIM_SENSORS.
+	// Speed in km/h, cadence/hr/power < 0 = no such sensor, heightM NAN = no barometer.
+	void feedFromTrailBridge(bool simulated, float speedKmh, int16_t cadenceRpm, int16_t hr, float heightM, int32_t powerW);
+	// Switches the simulation off, if (and only if) TrailBridge started it.
+	void endTrailBridgeFeed();
+
 	bool isActive() const {return active;}
+
+	// The simulated barometer height (m above sea level), if the simulation has one: replaces
+	// I2CSensors::getHeight(), so the gradient comes out of the normal height/distance
+	// calculation (Statistics::calculateGradient()). Only a TrailBridge test ride sets it.
+	bool getHeight(float& heightM) const {
+		heightM = simHeightM;
+		return active && !isnan(simHeightM);
+	}
+	int32_t getPower() const {return simPowerW;}	// W, -1 = no power meter; nothing consumes it yet
 	void getJson(String& out);
 
 private:
@@ -60,6 +81,9 @@ private:
 	Ticker ticker;
 
 	volatile bool active = false;	// requested by set()/stop()
+	volatile bool fedByTrailBridge = false;	// the current simulation comes from the phone
+	volatile float simHeightM = NAN;		// from the phone only, see getHeight()
+	volatile int32_t simPowerW = -1;
 	bool running = false;			// applied by tick() -- only tick() touches stats
 	float speedKmh = 0;
 	int16_t cadenceRpm = -1;

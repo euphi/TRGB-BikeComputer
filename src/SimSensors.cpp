@@ -91,10 +91,34 @@ void SimSensors::set(float _speedKmh, int16_t _cadenceRpm, int16_t _hr) {
 	active = true;
 	updates++;
 	portEXIT_CRITICAL(&mux);
+	fedByTrailBridge = false;	// a manual setting takes over; feedFromTrailBridge() marks its own after this
+	simHeightM = NAN;
+	simPowerW = -1;
 }
 
 void SimSensors::stop() {
 	active = false;
+}
+
+void SimSensors::feedFromTrailBridge(bool simulated, float _speedKmh, int16_t _cadenceRpm, int16_t _hr, float heightM, int32_t powerW) {
+	if (!simulated) {
+		endTrailBridgeFeed();
+		return;
+	}
+	if (!fedByTrailBridge) bclog.log(BCLogger::Log_Info, BCLogger::TAG_OP, "Simulator fed by TrailBridge test ride");
+	set(_speedKmh, _cadenceRpm, _hr);
+	simHeightM = heightM;
+	simPowerW = powerW;
+	fedByTrailBridge = true;
+}
+
+void SimSensors::endTrailBridgeFeed() {
+	if (!fedByTrailBridge) return;
+	fedByTrailBridge = false;
+	simHeightM = NAN;
+	simPowerW = -1;
+	stop();
+	bclog.log(BCLogger::Log_Info, BCLogger::TAG_OP, "TrailBridge test ride ended");
 }
 
 void SimSensors::tick() {
@@ -183,6 +207,10 @@ void SimSensors::printStatus() {
 	Serial.printf("Simulator %s: %.1f km/h, cadence %d, HR %d (-1 = off) | wheel %lu revs, crank %u revs, %lu updates\r\n",
 			act ? "ACTIVE" : "off", v, cad, bpm, static_cast<unsigned long>(wheelPos), static_cast<unsigned>(crankPos),
 			static_cast<unsigned long>(updates));
+	if (fedByTrailBridge) {
+		Serial.printf("From TrailBridge: height %.1f m (NaN = none), power %ld W (-1 = none)\r\n",
+				static_cast<float>(simHeightM), static_cast<long>(simPowerW));
+	}
 	Serial.printf("Statistics: state %s, distance since power-on %lu m\r\n",
 			Statistics::PREF_TIME_STRING[stats.getCurDriveState()] + 8, static_cast<unsigned long>(stats.getDistance(Statistics::SUM_ESP_START)));
 }
@@ -196,6 +224,9 @@ void SimSensors::getJson(String& out) {
 	doc["hr"] = hr;
 	portEXIT_CRITICAL(&mux);
 	doc["updates"] = updates;
+	doc["source"] = fedByTrailBridge ? "trailbridge" : "manual";
+	doc["height"] = simHeightM;		// NAN: serialised as null
+	doc["power"] = simPowerW;
 	doc["wheelRevs"] = static_cast<uint32_t>(wheelPos);
 	doc["crankRevs"] = static_cast<uint32_t>(crankPos);
 	doc["wheelC"] = stats.getDistHandler().revsToDistance(1);

@@ -27,6 +27,34 @@ Trittfrequenz), Binärlog, UI.
   ignoriert (Daten und Disconnects). Trotzdem besser ausgeschaltet lassen: Nach
   `sim stop` übernimmt ein echter Speed-Sensor mit ganz anderem Zählerstand.
 
+## Speisung durch TrailBridge (Testfahrt)
+
+Die Android-App kann ihre GPX-Route "abfahren" (Button "Testfahrt") und schickt
+dabei Position, Geschwindigkeit und -- aus der GPX oder emuliert -- Puls und
+Trittfrequenz im GPS-Positions-Frame, gekennzeichnet mit `SIM_FLAGS`
+(`PROTOCOL.md` im TrailBridge-Repo, "Sensorwerte und Simulationsmodus"). Der
+Simulator-Build speist das wie ein `sim <km/h> <rpm> <bpm>` pro Sekunde ein
+(`SimSensors::feedFromTrailBridge()`): Statistik, Distanz und Binärlog laufen
+mit simulierten Sensoren, die Position kommt zusätzlich ins Log -- die erste
+Strecke mit GPS-Spur *und* Statistik ohne Fahren.
+
+- Fehlt im Frame ein Puls oder eine Trittfrequenz, gibt es diesen Sensor nicht.
+- **Höhe:** `BARO_HEIGHT_DM` ersetzt solange das Barometer (`I2CSensors::getHeight()`).
+  Die Steigung kommt aus der normalen Rechnung (`Statistics::calculateGradient()`:
+  Höhen- durch Streckenänderung, Strecke aus den simulierten Radumdrehungen) --
+  sie wird nicht übertragen. Ohne Höhe im Frame (GPX ohne Höhendaten) bleibt das
+  echte Barometer.
+- **Leistung:** `POWER_W` wird geparst und gehalten (`SimSensors::getPower()`,
+  `/debug/sim.json`), aber noch nirgends angezeigt oder geloggt -- der Binärlog
+  hat kein Feld dafür (Satz voll, 64 Byte) und die UI keine Anzeige.
+- Ende: erster Frame ohne `SIM_SENSORS`, `POSITION_NONE`, ein Fix älter als 5 s oder
+  Trennung vom Handy -> Sensoren aus (`sim stop`). Nur eine von TrailBridge gestartete
+  Simulation wird so beendet; ein manuelles `sim ...` bleibt.
+- Die normale Firmware ignoriert die Sensorwerte (keine Fake-Kilometer im Odometer),
+  markiert aber Log-Sätze mit simulierter Position als `LOG_SIMULATED`.
+- `/debug/sim.json` zeigt unter `source`, woher die laufende Simulation kommt
+  (`trailbridge` / `manual`).
+
 ## Eigene Statistik-Ablage
 
 Der Simulator-Build legt die Fahrstatistik in eigenen NVS-Namespaces ab

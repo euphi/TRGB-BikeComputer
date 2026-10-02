@@ -338,6 +338,9 @@ void BLEDevices::updateDisconnectedDev(const EDevType dt) {
 		ui.updateLanes(nullptr, 0, 0, nullptr, 0, 0);
 		gpsFix = SGpsFix();		// GPS-Positions-Service shares this connection, so it's gone too
 		climb.onRouteGone();	// ... and so is the elevation profile
+#ifdef BC_SIM
+		sim.endTrailBridgeFeed();
+#endif
 		break;
 	}
 }
@@ -889,6 +892,9 @@ void BLEDevices::handleGpsData(const uint8_t* pData, size_t length) {
 	case GPS_MSG_POSITION_NONE:
 		bclog.log(BCLogger::Log_Info, BCLogger::TAG_BLE, "📍 No GPS fix (GPS off, permission missing, or no reception yet)");
 		gpsFix = SGpsFix();
+#ifdef BC_SIM
+		sim.endTrailBridgeFeed();
+#endif
 		break;
 
 	case GPS_MSG_POSITION_UPDATE: {
@@ -935,6 +941,21 @@ void BLEDevices::handleGpsData(const uint8_t* pData, size_t length) {
 					fix.utcTimeMs = static_cast<int64_t>(t);
 				}
 				break;
+			case GPS_TAG_HEART_RATE_BPM:
+				if (len >= 1) { fix.hasHeartRate = true; fix.heartRateBpm = val[0]; }
+				break;
+			case GPS_TAG_CADENCE_RPM:
+				if (len >= 1) { fix.hasCadence = true; fix.cadenceRpm = val[0]; }
+				break;
+			case GPS_TAG_SIM_FLAGS:
+				if (len >= 1) fix.simFlags = val[0];
+				break;
+			case GPS_TAG_BARO_HEIGHT_DM:
+				if (len >= 4) { fix.hasBaroHeight = true; fix.baroHeightDm = (int32_t)(val[0] | (val[1] << 8) | (val[2] << 16) | ((uint32_t)val[3] << 24)); }
+				break;
+			case GPS_TAG_POWER_W:
+				if (len >= 2) { fix.hasPower = true; fix.powerW = val[0] | (val[1] << 8); }
+				break;
 			default:
 				break;	// unknown tag: length already respected below, value ignored
 			}
@@ -945,6 +966,14 @@ void BLEDevices::handleGpsData(const uint8_t* pData, size_t length) {
 		gpsFixReceivedMillis = millis();
 		// Both values come from this frame, so their sum is the phone's time at sending.
 		if (fix.hasUtcTime) ClockSync::offerGpsTime(fix.utcTimeMs + fix.fixAgeMs);
+#ifdef BC_SIM
+		// A TrailBridge test ride (GPX playback) stands in for the speed/cadence/HR sensors.
+		// A stale frame (heartbeat resend while the app is gone) counts as the end of it.
+		sim.feedFromTrailBridge((fix.simFlags & GPS_SIM_SENSORS) && fix.fixAgeMs <= 5000,
+				fix.hasSpeed ? fix.speedCms * 0.036f : 0.0f,
+				fix.hasCadence ? fix.cadenceRpm : -1, fix.hasHeartRate ? fix.heartRateBpm : -1,
+				fix.hasBaroHeight ? fix.baroHeightDm / 10.0f : NAN, fix.hasPower ? fix.powerW : -1);
+#endif
 
 		bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "📍 %.7f, %.7f (fix age %u ms)", fix.latitudeE7 / 1e7, fix.longitudeE7 / 1e7, fix.fixAgeMs);
 		break;

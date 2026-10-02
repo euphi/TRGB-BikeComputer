@@ -81,7 +81,9 @@ enum LabelFlags : uint8_t {
 // value field is 0 when its bit is clear.
 // LOG_SIMULATED is not about GPS, it only shares the byte (Data has no other spare bits):
 // speed, cadence and heart rate of this record come from the sensor simulator
-// (src/SimSensors.h, simulator build only). Always 0 in older files -- no version bump.
+// (src/SimSensors.h, simulator build only), and/or the GPS position is made up by a
+// TrailBridge test ride (SGpsFix::simFlags, any build). Always 0 in older files -- no
+// version bump.
 enum GpsFlags : uint8_t {
 	LOG_GPS_VALID        = 0x01,
 	LOG_GPS_HAS_ALTITUDE = 0x02,

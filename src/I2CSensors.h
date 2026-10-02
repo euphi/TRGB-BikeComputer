@@ -106,7 +106,7 @@ public:
 	};
 	CalibrationState getCalibrationState();
 
-	float getHeight() const {return height;}
+	float getHeight() const;			// barometric; the simulator build can override it (SimSensors::getHeight())
 	float getHumid() const {return humid;}
 	float getPress() const {return press;}
 	float getTemp() const {return temp;}

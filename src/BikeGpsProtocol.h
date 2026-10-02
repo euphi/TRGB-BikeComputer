@@ -35,8 +35,20 @@ typedef enum {
 	GPS_TAG_BEARING_DEG_X100 = 0x05,		// uint16 LE, degrees * 100 (0..35999), only if the fix has a bearing
 	GPS_TAG_ACCURACY_M_X10 = 0x06,			// uint16 LE, meters * 10 (horizontal accuracy), only if the fix has one
 	GPS_TAG_FIX_AGE_MS = 0x07,				// uint32 LE, ms since this fix, always present
-	GPS_TAG_UTC_TIME_MS = 0x08				// uint64 LE, UTC of the fix in ms since 1970 (Location.getTime()), if known
+	GPS_TAG_UTC_TIME_MS = 0x08,			// uint64 LE, UTC of the fix in ms since 1970 (Location.getTime()), if known
+	GPS_TAG_HEART_RATE_BPM = 0x09,			// uint8, bpm -- a heart rate TrailBridge knows (today: simulated, see SIM_FLAGS)
+	GPS_TAG_CADENCE_RPM = 0x0A,			// uint8, rpm, 0 = coasting
+	GPS_TAG_SIM_FLAGS = 0x0B,				// uint8 bit field, EGpsSimFlags; absent/0 = everything in the frame is real
+	GPS_TAG_BARO_HEIGHT_DM = 0x0C,			// int32 LE, decimetres above sea level -- what the barometer would say (gradient is NOT sent: we derive it)
+	GPS_TAG_POWER_W = 0x0D					// uint16 LE, watts, 0 = coasting
 } EGpsTlvTag;
+
+// Bits of GPS_TAG_SIM_FLAGS (PROTOCOL.md "Sensorwerte und Simulationsmodus"). Simulated data must
+// never be treated as a real measurement.
+typedef enum {
+	GPS_SIM_POSITION = 0x01,				// lat/lon/altitude/bearing are made up (e.g. TrailBridge's GPX test ride)
+	GPS_SIM_SENSORS = 0x02					// speed is that of a simulated wheel sensor; HR/cadence/height/power simulated, absent = no such sensor
+} EGpsSimFlags;
 
 // In-memory representation of the latest parsed GPS fix, shared between
 // BLEDevices (producer, parses the BLE frame) and BCLogger (consumer,
@@ -64,4 +76,16 @@ struct SGpsFix {
 	// it only sets the clock (ClockSync), and every record carries the clock anyway.
 	bool hasUtcTime = false;
 	int64_t utcTimeMs = 0;
+	// Sensor values the phone knows about (only simulated ones exist today). Without
+	// GPS_SIM_SENSORS they would be real values relayed by the phone -- not built yet, the
+	// firmware ignores them then.
+	bool hasHeartRate = false;
+	uint8_t heartRateBpm = 0;
+	bool hasCadence = false;
+	uint8_t cadenceRpm = 0;
+	bool hasBaroHeight = false;
+	int32_t baroHeightDm = 0;
+	bool hasPower = false;
+	uint16_t powerW = 0;				// no consumer yet: the binary log has no field for it, the UI no display
+	uint8_t simFlags = 0;				// EGpsSimFlags, 0 = all real
 };

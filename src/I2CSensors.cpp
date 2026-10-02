@@ -114,6 +114,14 @@ void I2CSensors::initBME280() {
 	bme280Cycle.attach_ms(1000, +[](I2CSensors* thisInstance) { thisInstance->readBME280(); }, this);
 }
 
+float I2CSensors::getHeight() const {
+#ifdef BC_SIM
+	float simulated;
+	if (sim.getHeight(simulated)) return simulated;
+#endif
+	return height;
+}
+
 void I2CSensors::readBME280() {
 	BME280_SensorMeasurements measurement;
 
