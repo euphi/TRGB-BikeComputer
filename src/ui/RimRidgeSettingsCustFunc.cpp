@@ -119,23 +119,31 @@ void ui_RimRidgeSettingsInit() {
 	lv_timer_create(rrsetShutdownTimer, 100, NULL);
 }
 
-void ui_RimRidgeSettingsUpdateWifi(const char* ipText, uint8_t state) {
-	static const char* const BUTTON_TEXT[] = {"WLAN verbinden", "verbinde ...", "WLAN verbunden"};
-	if (state > RRSET_WIFI_ONLINE) state = RRSET_WIFI_OFF;
+static uint8_t wifiState = RRSET_WIFI_OFF;		// what the pills show, for the actions below
+
+void ui_RimRidgeSettingsUpdateWifi(const char* ipText, uint8_t state, const char* caption) {
+	if (state > RRSET_WIFI_AP) state = RRSET_WIFI_OFF;
+	wifiState = state;
 	lv_label_set_text(objects.rrset_ip_val, ipText);
-	lv_label_set_text(objects.rrset_btn_wifi_lbl, BUTTON_TEXT[state]);
-	if (state == RRSET_WIFI_OFF) {
-		lv_obj_clear_state(objects.rrset_btn_wifi, LV_STATE_DISABLED);
-		lv_obj_clear_state(objects.rrset_btn_wifi_lbl, LV_STATE_DISABLED);
+	lv_label_set_text(objects.rrset_ip_caption, (caption && caption[0]) ? caption : "IP-ADRESSE");
+	const bool radioOn = (state == RRSET_WIFI_CONNECTING || state == RRSET_WIFI_ONLINE);
+	lv_label_set_text(objects.rrset_btn_wifi_lbl, radioOn ? "WLAN aus" : "WLAN an");
+	lv_label_set_text(objects.rrset_btn_ap_lbl, state == RRSET_WIFI_AP ? "Hotspot aus" : "Hotspot");
+}
+
+// WifiWebserver::checkLoop() reports back via UIFacade::updateIP()
+void action_settings_wifi(lv_event_t* e) {
+	(void) e;
+	if (wifiState == RRSET_WIFI_CONNECTING || wifiState == RRSET_WIFI_ONLINE) {
+		webserver.requestDisable();
 	} else {
-		lv_obj_add_state(objects.rrset_btn_wifi, LV_STATE_DISABLED);
-		lv_obj_add_state(objects.rrset_btn_wifi_lbl, LV_STATE_DISABLED);
+		webserver.requestReconnect();
 	}
 }
 
-void action_settings_wifi(lv_event_t* e) {
+void action_settings_ap(lv_event_t* e) {
 	(void) e;
-	webserver.requestReconnect();	// WifiWebserver::checkLoop() reports back via UIFacade::updateIP()
+	webserver.requestAccessPoint(wifiState != RRSET_WIFI_AP);
 }
 
 // ---------------- calibration / reference ride ----------------

@@ -34,8 +34,9 @@ climb, road labels, settings.
   category; opens by itself at the foot of a rated climb ([doc/CLIMB.md](doc/CLIMB.md))
 - **Road labels**: mark surface and quality by hand while riding, as ground truth for
   the automatic road-quality class
-- **Settings**: IP address and WiFi reconnect, accelerometer calibration and reference
-  ride, restart, power off
+- **Settings**: IP address, WiFi on/off, hotspot, WiFi setup (scan, pick a network, type the
+  password on the display keyboard), accelerometer calibration and reference ride, restart,
+  power off
 
 **Rides and statistics**
 - One button starts a ride, pauses it ("cruise") and ends it; stops and breaks are
@@ -78,6 +79,7 @@ asphalt, and gradient from the accelerometer as an alternative to the barometer.
 - Download, replay and delete log files; live log with adjustable log levels
 - Ride statistics with a chart, odometer and wheel calibration
 - Manage BLE sensors; debug pages for sensors, accelerometer, climbs and crashes
+- WiFi: saved networks and their priority, hotspot settings ([doc/WIFI.md](doc/WIFI.md))
 - Firmware and filesystem update over the air
 
 **Serial console** with line editing, history and Tab completion

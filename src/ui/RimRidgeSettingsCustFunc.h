@@ -6,8 +6,9 @@
  * Same pattern as RimRidgeCustFunc.h - lives outside src/ui_eez/ because that
  * whole directory gets overwritten on every EEZ Studio export.
  *
- * Content: build string, IP address + WLAN reconnect, IMU calibration and
- * reference ride (start, progress, result), restart and deep sleep.
+ * Content: build string, IP address, WLAN on/off, hotspot and the way to the network
+ * list (RimRidgeWifi, see RimRidgeWifiCustFunc.h), IMU calibration and reference ride
+ * (start, progress, result), restart and deep sleep.
  *
  * Screen switching: opened by a tap on rr_btn_settings (RimRidge, action
  * GoToSettings), closed by any swipe on the screen itself (SettingsScreenGesture),
@@ -26,15 +27,17 @@ extern "C" {
 #endif
 
 // WLAN state for ui_RimRidgeSettingsUpdateWifi(), same values as UIFacade::WifiUiState.
-enum {RRSET_WIFI_OFF = 0, RRSET_WIFI_CONNECTING = 1, RRSET_WIFI_ONLINE = 2};
+enum {RRSET_WIFI_OFF = 0, RRSET_WIFI_CONNECTING = 1, RRSET_WIFI_ONLINE = 2, RRSET_WIFI_AP = 3};
 
 // Once, after create_screen_rim_ridge_settings(): build string, initial
 // calibration status, and the timer that carries out restart/deep sleep.
 void ui_RimRidgeSettingsInit();
 
-// ipText: IP address (with " (AP)" in AP mode) or a short status text ("WLAN aus",
-// "Verbindung verloren", ...). The reconnect pill is only active in RRSET_WIFI_OFF.
-void ui_RimRidgeSettingsUpdateWifi(const char* ipText, uint8_t state);
+// ipText: IP address, or a short status text ("WLAN aus", "Verbindung verloren", ...); in
+// RRSET_WIFI_AP the hotspot password, with `caption` ("HOTSPOT <ssid>") above it instead of
+// "IP-ADRESSE" (caption may be NULL/empty). The WLAN pill reads "WLAN an" when off or in AP
+// mode, else "WLAN aus"; the hotspot pill "Hotspot aus" in AP mode.
+void ui_RimRidgeSettingsUpdateWifi(const char* ipText, uint8_t state, const char* caption);
 
 // Calibration/reference-ride status and button labels, read fresh from
 // I2CSensors::getCalibrationState(). Called once a second while the screen is

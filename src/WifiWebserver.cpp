@@ -20,11 +20,10 @@
 #include <esp_heap_caps.h>
 #include "WebInstrument.h"
 #include "CrashInfo.h"
+#include "NvsUtil.h"
 
 //TODO: Read this from preferences
 const char* ntpServer = "pool.ntp.org";
-//const char* ssid = "IA216oT";
-//const char* password = "SwieSecurity";
 
 static const BCLogger::LogTag TAG = BCLogger::TAG_WIFI;
 // Refuse new HTTP requests below this much free internal heap (see the middleware in begin()).
@@ -80,198 +79,631 @@ WifiWebserver::WifiWebserver():
 
 }
 
+namespace {
+// Scoped take/give for WifiWebserver::cfgMutex.
+struct Lock {
+	SemaphoreHandle_t m;
+	explicit Lock(SemaphoreHandle_t mutex): m(mutex) {if (m) xSemaphoreTake(m, portMAX_DELAY);}
+	~Lock() {if (m) xSemaphoreGive(m);}
+};
+
+const char* const NVS_NAMESPACE = "WifiSettings";
+const char* const NVS_KEY_CFG = "cfg";
+}
+
+// ---------------------------------------------------------------------------
+// Stored networks
+// ---------------------------------------------------------------------------
+
+void WifiWebserver::loadConfig() {
+	Lock lock(cfgMutex);
+	bool save = false;
+	if (NvsUtil::namespaceExists(NVS_NAMESPACE)) {
+		Preferences p;
+		if (p.begin(NVS_NAMESPACE, false)) {
+			WifiCfg::Blob blob;
+			if (NvsUtil::loadBlob(p, NVS_KEY_CFG, blob) && !cfg.fromBlob(blob)) {
+				bclog.log(BCLogger::Log_Warn, TAG, "Stored WiFi list unusable - starting empty");
+			}
+			// Keys of the single network that used to be stored here (and mostly overwritten from
+			// the sources). Dropping them also removes that plaintext password from the NVS.
+			static const char* const LEGACY[] = {"SSID_0", "PW_0", "SSID_1", "PW_1", "SSID_2", "PW_2", "disApMode"};
+			for (const char* key : LEGACY) {
+				if (p.isKey(key)) p.remove(key);
+			}
+			p.end();
+		}
+	}
+	if (cfg.ensureAp(esp_random)) save = true;		// first boot: default SSID and a random password
+	if (save) saveConfigLocked();
+	bclog.logf(BCLogger::Log_Info, TAG, "%u WiFi network(s) stored, access point \"%s\"",
+	           (unsigned) cfg.count(), cfg.accessPoint().ssid);
+}
+
+void WifiWebserver::saveConfigLocked() {
+	WifiCfg::Blob blob;
+	cfg.toBlob(blob);
+	Preferences p;
+	if (!p.begin(NVS_NAMESPACE, false) || !NvsUtil::saveBlob(p, NVS_KEY_CFG, blob)) {
+		bclog.log(BCLogger::Log_Error, TAG, "Saving the WiFi list to NVS failed");
+	}
+	p.end();
+}
+
+size_t WifiWebserver::networkCount() {
+	Lock lock(cfgMutex);
+	return cfg.count();
+}
+
+bool WifiWebserver::isKnown(const char* ssid) {
+	Lock lock(cfgMutex);
+	return cfg.find(ssid) >= 0;
+}
+
+WifiCfg::Result WifiWebserver::addNetwork(const char* ssid, const char* password, bool hidden, bool keepPasswordIfEmpty) {
+	Lock lock(cfgMutex);
+	const WifiCfg::Result r = cfg.add(ssid, password, hidden, keepPasswordIfEmpty);
+	if (r == WifiCfg::Result::ADDED || r == WifiCfg::Result::UPDATED) {
+		saveConfigLocked();
+		bclog.logf(BCLogger::Log_Info, TAG, "WiFi network \"%s\" %s (%u stored)", ssid,
+		           r == WifiCfg::Result::ADDED ? "added" : "updated", (unsigned) cfg.count());
+	}
+	return r;
+}
+
+WifiCfg::Result WifiWebserver::removeNetwork(const char* ssid) {
+	Lock lock(cfgMutex);
+	const int i = cfg.find(ssid);
+	if (i < 0) return WifiCfg::Result::BAD_INDEX;
+	const WifiCfg::Result r = cfg.remove(i);
+	if (r == WifiCfg::Result::OK) {
+		saveConfigLocked();
+		bclog.logf(BCLogger::Log_Info, TAG, "WiFi network \"%s\" removed", ssid);
+	}
+	return r;
+}
+
+WifiCfg::Result WifiWebserver::moveNetwork(const char* ssid, int delta) {
+	Lock lock(cfgMutex);
+	const int i = cfg.find(ssid);
+	if (i < 0) return WifiCfg::Result::BAD_INDEX;
+	const int to = i + delta;
+	if (to < 0 || to >= (int) cfg.count()) return WifiCfg::Result::OK;		// already first/last
+	const WifiCfg::Result r = cfg.move(i, to);
+	if (r == WifiCfg::Result::OK) saveConfigLocked();
+	return r;
+}
+
+WifiCfg::Result WifiWebserver::setAccessPoint(const char* ssid, const char* password) {
+	Lock lock(cfgMutex);
+	const WifiCfg::Result r = cfg.setAccessPoint(ssid, password);
+	if (r == WifiCfg::Result::OK) {
+		saveConfigLocked();
+		bclog.logf(BCLogger::Log_Info, TAG, "Access point settings changed (SSID \"%s\")", ssid);
+	}
+	return r;
+}
+
+bool WifiWebserver::addNetworkAsync(const char* ssid, const char* password) {
+	struct Job {char ssid[WifiCfg::SSID_MAX + 1]; char pw[WifiCfg::PW_MAX + 1];};
+	Job* job = new (std::nothrow) Job;
+	if (!job) return false;
+	strlcpy(job->ssid, ssid, sizeof(job->ssid));
+	strlcpy(job->pw, password, sizeof(job->pw));
+	const BaseType_t ok = xTaskCreate(+[](void* arg) {
+		Job* j = static_cast<Job*>(arg);
+		const WifiCfg::Result r = webserver.addNetwork(j->ssid, j->pw);
+		// Connect right away when the radio is idle. While it is up (online or access point)
+		// the new network is just stored: it has the lowest priority, and switching would
+		// drop the connection the user may be using right now.
+		const WifiPhase p = webserver.phase.load();
+		if ((r == WifiCfg::Result::ADDED || r == WifiCfg::Result::UPDATED)
+		    && (p == WifiPhase::OFF || p == WifiPhase::WAITING)) {
+			webserver.requestReconnect();
+		}
+		delete j;
+		vTaskDelete(NULL);
+	}, "WifiAdd", 4096, job, 4, nullptr);
+	if (ok != pdPASS) {
+		delete job;
+		return false;
+	}
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Setup, CLI
+// ---------------------------------------------------------------------------
+
 void WifiWebserver::setup() {
 	LittleFS.begin();		// WifiWebserver is also responsible for enabling LittleFS, because it is only used for Website storage (Logging is on SDCARD, which is maintained in BClogger).
+	cfgMutex = xSemaphoreCreateMutex();
+	loadConfig();
 
-	// Load settings from NVS
-	// Only slot 0 is ever written (/wifi/connect), and the block below overrides it.
-	Preferences WifiSettings;
-	WifiSettings.begin("WifiSettings", true);
-	for (uint_fast8_t i = 0; i < WifiAPCount; i++) {
-		String key = String("SSID_") + i;		// isKey() first: getString() logs an [E] line for a missing key
-		StrSSID[i] = WifiSettings.isKey(key.c_str()) ? WifiSettings.getString(key.c_str(), "") : String();
-		key = String("PW_") + i;
-		StrPW[i] = WifiSettings.isKey(key.c_str()) ? WifiSettings.getString(key.c_str(), "") : String();
-		//if (i == 0 && StrSSID[0] == "") {		//TODO: For testing only - remove
-		if (true) {
-			StrSSID[0] = "IA216oT";
-			StrPW[0] = "SwieSecurity";
-		}
-//		if (!StrSSID[i].equals("")) {
-//			bclog.logf(BCLogger::Log_Info, TAG, "Adding SSID %s to WiFiMult", StrSSID[i].c_str());
-//			wifiMulti.addAP(StrSSID[i].c_str(), StrPW[i].c_str());
-//		}
-	}
-	disableAPMode = WifiSettings.getBool("disApMode", false);
-	WifiSettings.end();
-
-	// Enable WiFi
-	enableWifi();
-	bclog.log(BCLogger::Log_Info, TAG, "Connecting to WiFi and set timeserver");
 	configTzTime("CET-1CEST,M3.5.0,M10.5.0/3", ntpServer);
-	startScan();
-	WiFi.begin(StrSSID[0].c_str(), StrPW[0].c_str());
-	wifiCheckTicker.attach_ms(500, +[](WifiWebserver *thisInstance) {thisInstance->checkLoop();}, this);
 	registerCli();
-//	wifiMulti.addAP(ssid, password);
-//	wifiMulti.addAP("IA216", "xxxxx");
+	wifiCheckTicker.attach_ms(500, +[](WifiWebserver *thisInstance) {thisInstance->checkLoop();}, this);
+	startAutoconnect(false);
+}
+
+static const char* resultText(WifiCfg::Result r) {
+	switch (r) {
+	case WifiCfg::Result::OK: return "ok";
+	case WifiCfg::Result::ADDED: return "added";
+	case WifiCfg::Result::UPDATED: return "updated";
+	case WifiCfg::Result::BAD_SSID: return "SSID must be 1..32 bytes";
+	case WifiCfg::Result::BAD_PASSWORD: return "password must be 8..63 characters (empty = open network)";
+	case WifiCfg::Result::FULL: return "list is full";
+	case WifiCfg::Result::BAD_INDEX: return "unknown network";
+	}
+	return "?";
 }
 
 void WifiWebserver::registerCli() {
 	static Command wifiCmd = console.addCmd("wifi", +[](cmd* c) {
-		const String action = Command(c).getArgument("action").getValue();
+		Command command(c);
+		const String action = command.getArgument("action").getValue();
+		const String a = command.getArgument("a").getValue();
+		const String b = command.getArgument("b").getValue();
 		if (action.equalsIgnoreCase("on")) {
 			webserver.requestReconnect();
 		} else if (action.equalsIgnoreCase("off")) {
 			webserver.requestDisable();
+		} else if (action.equalsIgnoreCase("ap")) {
+			webserver.requestAccessPoint(!a.equalsIgnoreCase("off"));
+		} else if (action.equalsIgnoreCase("scan")) {
+			if (!webserver.requestScan()) bclog.log(BCLogger::Log_Info, BCLogger::TAG_CLI, "Scan not possible right now");
+		} else if (action.equalsIgnoreCase("add")) {
+			// the password is not echoed anywhere: SerialConsole::run() redacts "wifi add ..."
+			bclog.logf(BCLogger::Log_Info, BCLogger::TAG_CLI, "wifi add: %s",
+			           resultText(webserver.addNetwork(a.c_str(), b.c_str())));
+		} else if (action.equalsIgnoreCase("apset")) {
+			bclog.logf(BCLogger::Log_Info, BCLogger::TAG_CLI, "wifi apset: %s",
+			           resultText(webserver.setAccessPoint(a.c_str(), b.c_str())));
+		} else if (action.equalsIgnoreCase("del")) {
+			bclog.logf(BCLogger::Log_Info, BCLogger::TAG_CLI, "wifi del: %s", resultText(webserver.removeNetwork(a.c_str())));
+		} else if (action.equalsIgnoreCase("list")) {
+			Lock lock(webserver.cfgMutex);
+			for (size_t i = 0; i < webserver.cfg.count(); i++) {
+				bclog.logf(BCLogger::Log_Info, BCLogger::TAG_CLI, "%u. %s%s%s", (unsigned) (i + 1), webserver.cfg.ssid(i),
+				           webserver.cfg.hasPassword(i) ? "" : " (open)", webserver.cfg.hidden(i) ? " (hidden)" : "");
+			}
+			bclog.logf(BCLogger::Log_Info, BCLogger::TAG_CLI, "%u network(s), access point \"%s\"",
+			           (unsigned) webserver.cfg.count(), webserver.cfg.accessPoint().ssid);
 		}
-		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_CLI, "WiFi status %d, IPv4 %s, SSID %s",
-		           (int) WiFi.status(), WiFi.localIP().toString().c_str(), WiFi.SSID().c_str());
+		WifiStatus st;
+		webserver.getStatus(st);
+		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_CLI, "WiFi %s, IPv4 %s, SSID %s%s", phaseName(st.phase),
+		           st.ip[0] ? st.ip : "-", st.ssid[0] ? st.ssid : "-", st.scanning ? ", scanning" : "");
 	}, +[](uint8_t pos, SerialConsole::Matches& m) {
-		if (pos == 1) {m.add("status"); m.add("on"); m.add("off");}
+		if (pos == 1) {
+			m.add("status"); m.add("on"); m.add("off"); m.add("ap"); m.add("scan");
+			m.add("list"); m.add("add"); m.add("del"); m.add("apset");
+		}
 	});
 	wifiCmd.addPositionalArgument("action", "status");
-	wifiCmd.setDescription("WiFi status; \"wifi on\" reconnects (like the settings screen), \"wifi off\" switches it off");
+	wifiCmd.addPositionalArgument("a", "");
+	wifiCmd.addPositionalArgument("b", "");
+	wifiCmd.setDescription("WiFi: status | on (autoconnect, like the settings screen) | off | ap [on|off] | scan | "
+	                       "list | add <ssid> <password> | del <ssid> | apset <ssid> <password> (hotspot). Quote names with spaces.");
+}
+
+// ---------------------------------------------------------------------------
+// State
+// ---------------------------------------------------------------------------
+
+const char* WifiWebserver::phaseName(WifiPhase p) {
+	switch (p) {
+	case WifiPhase::OFF: return "off";
+	case WifiPhase::SCANNING: return "scanning";
+	case WifiPhase::CONNECTING: return "connecting";
+	case WifiPhase::WAITING: return "waiting";
+	case WifiPhase::ONLINE: return "online";
+	case WifiPhase::ACCESS_POINT: return "access point";
+	}
+	return "?";
+}
+
+void WifiWebserver::enterPhase(WifiPhase p) {
+	phase = p;
+	phaseSince = millis();
+}
+
+void WifiWebserver::getStatus(WifiStatus& out) {
+	out = WifiStatus();
+	out.phase = phase.load();
+	out.scanning = scanRunning;
+	{
+		Lock lock(cfgMutex);
+		strlcpy(out.ssid, statusSsid, sizeof(out.ssid));
+		out.scanVersion = scanVersion;
+		if (out.phase == WifiPhase::ACCESS_POINT) {
+			strlcpy(out.ssid, cfg.accessPoint().ssid, sizeof(out.ssid));
+			strlcpy(out.apPassword, cfg.accessPoint().pw, sizeof(out.apPassword));
+		}
+	}
+	if (out.phase == WifiPhase::ONLINE) {
+		strlcpy(out.ip, WiFi.localIP().toString().c_str(), sizeof(out.ip));
+		out.rssi = WiFi.RSSI();
+	} else if (out.phase == WifiPhase::ACCESS_POINT) {
+		strlcpy(out.ip, WiFi.softAPIP().toString().c_str(), sizeof(out.ip));
+		out.stations = WiFi.softAPgetStationNum();
+	}
+}
+
+// Tells the settings screen what is going on -- only called on a change, never per tick.
+void WifiWebserver::publishUi(const char* offText) {
+	WifiStatus st;
+	getStatus(st);
+	switch (st.phase) {
+	case WifiPhase::OFF:
+		ui.updateIP(String(offText ? offText : "WLAN aus"), UIFacade::WIFI_UI_OFF);
+		break;
+	case WifiPhase::ONLINE:
+		ui.updateIP(String(st.ip), UIFacade::WIFI_UI_ONLINE);
+		break;
+	case WifiPhase::ACCESS_POINT:
+		// The password is what somebody standing at the display needs to join.
+		ui.updateIP(String(st.apPassword), UIFacade::WIFI_UI_AP, String("HOTSPOT ") + st.ssid);
+		break;
+	default:
+		ui.updateIP(String("verbinde ..."), UIFacade::WIFI_UI_CONNECTING);
+		break;
+	}
+}
+
+void WifiWebserver::startMdns() {
+	if (mdnsStarted) return;
+	mdnsStarted = MDNS.begin("TRGB-BC");
+	if (mdnsStarted) MDNS.addService("http", "tcp", 80);
+}
+
+void WifiWebserver::stopMdns() {
+	if (!mdnsStarted) return;		// bound to the interface that goes away with a mode change
+	MDNS.end();
+	mdnsStarted = false;
+}
+
+void WifiWebserver::startCaptiveDns() {
+	if (dnsRun) return;
+	dns.setErrorReplyCode(DNSReplyCode::NoError);
+	if (!dns.start(53, "*", WiFi.softAPIP())) {
+		bclog.log(BCLogger::Log_Warn, TAG, "Captive portal DNS could not start");
+		return;
+	}
+	dnsRun = true;
+	dnsTaskAlive = true;
+	const BaseType_t ok = xTaskCreate(+[](void* arg) {
+		WifiWebserver* self = static_cast<WifiWebserver*>(arg);
+		while (self->dnsRun) {
+			self->dns.processNextRequest();
+			vTaskDelay(pdMS_TO_TICKS(10));
+		}
+		self->dnsTaskAlive = false;
+		vTaskDelete(NULL);
+	}, "CaptiveDNS", 3072, this, 2, nullptr);
+	if (ok != pdPASS) {
+		dnsRun = false;
+		dnsTaskAlive = false;
+		dns.stop();
+	}
+}
+
+void WifiWebserver::stopCaptiveDns() {
+	if (!dnsRun) return;
+	dnsRun = false;
+	for (int i = 0; i < 50 && dnsTaskAlive; i++) vTaskDelay(pdMS_TO_TICKS(10));
+	dns.stop();
 }
 
 void WifiWebserver::disableWifi(const char* reason) {
-	ui.updateIP(String(reason), UIFacade::WIFI_UI_OFF);
-	if (mdnsStarted) {		// bound to the STA interface that goes away with WIFI_MODE_NULL
-		MDNS.end();
-		mdnsStarted = false;
+	stopCaptiveDns();
+	stopMdns();
+	if (scanRunning) {
+		WiFi.scanDelete();
+		scanRunning = false;
 	}
+	WiFi.softAPdisconnect(true);
+	WiFi.disconnect(true);
 	WiFi.setSleep(true);
 	WiFi.mode(WIFI_MODE_NULL);
-	wifiEnabled = false;
-}
-
-void WifiWebserver::enableWifi() {
-	ui.updateIP(String("verbinde ..."), UIFacade::WIFI_UI_CONNECTING);
-	WiFi.setSleep(true);
-	WiFi.mode(WIFI_MODE_STA);
-	WiFi.enableIPv6();
-	wifiEnabled = true;
-	wifiWasConnected = false;	// reset wifiWasConnected to enable check loop again
-	lostConnTimeStamp = millis();
-}
-
-void WifiWebserver::enableAPMode(bool enable) {
-	lostConnTimeStamp = millis();
-	if (enable) {
-		APModeActive = true;
-		//TODO: Check if necessary (may be better to keep old value to restore it automatically when AP mode is disabled again)
-		wifiEnabled = true;
-		WiFi.mode(WIFI_AP);
-		WiFi.softAP("TRGB-BC", "123456");
-		String ipStr = WiFi.softAPIP().toString();
-		ui.updateIP(ipStr + " (AP)", UIFacade::WIFI_UI_ONLINE);
-		bclog.logf(BCLogger::Log_Debug, TAG, "Enabled AP mode with IPv4: %s .", ipStr.c_str());
-	} else {
-		APModeActive = false;
-		enableWifi();
-		WiFi.begin(StrSSID[0].c_str(), StrPW[0].c_str());
+	{
+		Lock lock(cfgMutex);
+		statusSsid[0] = '\0';
 	}
+	enterPhase(WifiPhase::OFF);
+	publishUi(reason);
 }
 
-void WifiWebserver::startScan() {
-	bclog.log(BCLogger::Log_Debug, TAG, "Start scanning...");
-	if (!wifiEnabled) enableWifi();
-	WiFi.scanNetworks(true);
-	scanActive = true;
+// Switches the radio to station mode and starts looking for a stored network.
+void WifiWebserver::startAutoconnect(bool force) {
+	if (networkCount() == 0 && !force) {
+		bclog.log(BCLogger::Log_Info, TAG, "No WiFi network stored - WiFi stays off");
+		disableWifi("kein Netz gespeichert");
+		return;
+	}
+	if (phase == WifiPhase::ACCESS_POINT) {
+		stopCaptiveDns();
+		stopMdns();
+		WiFi.softAPdisconnect(true);
+	}
+	WiFi.mode(WIFI_STA);
+	WiFi.setSleep(true);
+	WiFi.enableIPv6();
+	WiFi.disconnect();
+	offlineSince = millis();
+	everConnected = false;
+	candidateCount = 0;
+	enterPhase(WifiPhase::SCANNING);
+	startScan();
+	publishUi();
+}
+
+void WifiWebserver::startAccessPoint() {
+	char ssid[WifiCfg::SSID_MAX + 1], pw[WifiCfg::PW_MAX + 1];
+	{
+		Lock lock(cfgMutex);
+		if (cfg.ensureAp(esp_random)) saveConfigLocked();
+		strlcpy(ssid, cfg.accessPoint().ssid, sizeof(ssid));
+		strlcpy(pw, cfg.accessPoint().pw, sizeof(pw));
+		statusSsid[0] = '\0';
+	}
+	stopMdns();
+	if (scanRunning) {
+		WiFi.scanDelete();
+		scanRunning = false;
+	}
+	WiFi.disconnect();
+	// AP + STA: the station half stays idle but lets the web page scan for networks.
+	WiFi.mode(WIFI_AP_STA);
+	if (!WiFi.softAP(ssid, pw)) {
+		bclog.log(BCLogger::Log_Error, TAG, "Could not start the access point");
+		disableWifi("Hotspot-Fehler");
+		return;
+	}
+	offlineSince = millis();
+	enterPhase(WifiPhase::ACCESS_POINT);
+	bclog.logf(BCLogger::Log_Info, TAG, "Access point \"%s\" at %s", ssid, WiFi.softAPIP().toString().c_str());
+	startMdns();
+	startCaptiveDns();
+	if (startupComplete) setupWebserver();
+	publishUi();
+}
+
+// ---------------------------------------------------------------------------
+// Scan
+// ---------------------------------------------------------------------------
+
+bool WifiWebserver::startScan() {
+	if (scanRunning) return false;
+	if (WiFi.scanNetworks(true) == WIFI_SCAN_FAILED) {
+		bclog.log(BCLogger::Log_Warn, TAG, "WiFi scan could not be started");
+		return false;
+	}
+	scanRunning = true;
+	return true;
+}
+
+bool WifiWebserver::requestScan() {
+	const WifiPhase p = phase.load();
+	if (scanRunning || p == WifiPhase::CONNECTING) return false;
+	switchRequest = REQ_SCAN;
+	return true;
+}
+
+static uint32_t hashSsid(const char* s) {		// FNV-1a
+	uint32_t h = 2166136261u;
+	while (*s) h = (h ^ (uint8_t) *s++) * 16777619u;
+	return h;
+}
+
+// Takes the finished scan into the cache: no empty (hidden) names, one entry per SSID with
+// its strongest signal, strongest first.
+void WifiWebserver::pollScan() {
+	if (!scanRunning) return;
+	const int16_t n = WiFi.scanComplete();
+	if (n == WIFI_SCAN_RUNNING) return;
+	size_t count = 0;
+	uint32_t hash = 0;
+	{
+		Lock lock(cfgMutex);
+		for (int16_t i = 0; i < n; i++) {
+			const String ssid = WiFi.SSID(i);
+			if (ssid.isEmpty() || ssid.length() > WifiCfg::SSID_MAX) continue;
+			const int8_t rssi = WiFi.RSSI(i);
+			size_t k = 0;
+			while (k < count && strcmp(scanCache[k].ssid, ssid.c_str()) != 0) k++;
+			if (k < count) {		// same name on another channel/BSSID: keep the stronger one
+				if (rssi <= scanCache[k].rssi) continue;
+				for (; k + 1 < count; k++) scanCache[k] = scanCache[k + 1];
+				count--;
+			}
+			size_t at = 0;
+			while (at < count && scanCache[at].rssi >= rssi) at++;
+			if (count == SCAN_MAX) {
+				if (at >= SCAN_MAX) continue;
+				count--;			// drop the weakest
+			}
+			for (size_t m = count; m > at; m--) scanCache[m] = scanCache[m - 1];
+			strlcpy(scanCache[at].ssid, ssid.c_str(), sizeof(scanCache[at].ssid));
+			scanCache[at].rssi = rssi;
+			scanCache[at].open = WiFi.encryptionType(i) == WIFI_AUTH_OPEN;
+			scanCache[at].known = false;
+			count++;
+		}
+		for (size_t i = 0; i < count; i++) hash += hashSsid(scanCache[i].ssid);		// order independent
+		if (hash != scanHash || count != scanCount) scanVersion++;
+		scanHash = hash;
+		scanCount = count;
+	}
+	WiFi.scanDelete();
+	scanRunning = false;
+	bclog.logf(BCLogger::Log_Debug, TAG, "WiFi scan: %d found, %u usable", (int) n, (unsigned) count);
+}
+
+size_t WifiWebserver::getScan(WifiScanEntry* out, size_t max) {
+	Lock lock(cfgMutex);
+	const size_t n = scanCount < max ? scanCount : max;
+	for (size_t i = 0; i < n; i++) {
+		out[i] = scanCache[i];
+		out[i].known = cfg.find(out[i].ssid) >= 0;
+	}
+	return n;
+}
+
+// ---------------------------------------------------------------------------
+// The 500 ms tick
+// ---------------------------------------------------------------------------
+
+// Tries the next candidate, or ends the round and waits for the next scan.
+void WifiWebserver::connectNext() {
+	char ssid[WifiCfg::SSID_MAX + 1] = "", pw[WifiCfg::PW_MAX + 1] = "";
+	while (candidateIdx < candidateCount) {
+		{
+			Lock lock(cfgMutex);
+			const uint8_t i = candidates[candidateIdx];
+			strlcpy(ssid, cfg.ssid(i), sizeof(ssid));
+			strlcpy(pw, cfg.password(i), sizeof(pw));
+			strlcpy(statusSsid, ssid, sizeof(statusSsid));
+		}
+		if (ssid[0]) break;		// the list changed under us
+		candidateIdx++;
+	}
+	if (!ssid[0]) {
+		bclog.log(BCLogger::Log_Debug, TAG, "WiFi: no (more) network to try");
+		enterPhase(WifiPhase::WAITING);
+		return;
+	}
+	bclog.logf(BCLogger::Log_Info, TAG, "WiFi: connecting to \"%s\" (%u of %u)", ssid,
+	           (unsigned) candidateIdx + 1, (unsigned) candidateCount);
+	WiFi.disconnect();
+	WiFi.begin(ssid, pw[0] ? pw : nullptr);
+	memset(pw, 0, sizeof(pw));
+	enterPhase(WifiPhase::CONNECTING);
 }
 
 void WifiWebserver::checkLoop() {
-	if (scanActive) {
-		bclog.log(BCLogger::Log_Debug, TAG, "Wifi check loop - scan active");
-		int16_t result = WiFi.scanComplete();
-		if (result == WIFI_SCAN_RUNNING) return;
-		if (result > 0) {
-			String allSSID = "";
-			for (uint16_t i = 0 ; i < result ; i ++) {
-				allSSID += WiFi.SSID(i);
-				allSSID += "\n";
-			}
-			bclog.logf(BCLogger::Log_Debug, TAG, "WiFi Scan: %d SSID found: %s", result, allSSID.c_str());
-			ui.updateSSIDList(allSSID);
-			scanActive = false;
-		} else if (result == 0) {
-			bclog.log(BCLogger::Log_Info, TAG, "WiFi Scan: No SSID found");
-			scanActive = false;
-		} else if (result == WIFI_SCAN_FAILED) {
-			bclog.log(BCLogger::Log_Warn, TAG, "WiFi Scan: failed");
-		} else  {
-			bclog.logf(BCLogger::Log_Warn, TAG, "WiFi Scan: Invalid result 0x%02x", result);
-		}
-		scanActive = false;
+	pollScan();
 
-	}
 	switch (switchRequest.exchange(REQ_NONE)) {
 	case REQ_ON:
-		if (APModeActive || WiFi.status() == WL_CONNECTED || (wifiEnabled && !wifiWasConnected)) {
-			bclog.log(BCLogger::Log_Info, TAG, "WiFi reconnect requested, but WiFi is already on");
-		} else {
-			bclog.logf(BCLogger::Log_Info, TAG, "WiFi reconnect requested on the device - connecting to %s", StrSSID[0].c_str());
-			enableWifi();
-			WiFi.begin(StrSSID[0].c_str(), StrPW[0].c_str());
+		switch (phase.load()) {
+		case WifiPhase::OFF:
+		case WifiPhase::ACCESS_POINT:
+			bclog.log(BCLogger::Log_Info, TAG, "WiFi switched on");
+			startAutoconnect(false);
+			break;
+		case WifiPhase::WAITING:
+			enterPhase(WifiPhase::SCANNING);		// don't wait out the pause
+			startScan();
+			break;
+		default:
+			bclog.log(BCLogger::Log_Info, TAG, "WiFi on requested, but WiFi is already on");
 		}
 		break;
 	case REQ_OFF:
-		if (wifiEnabled && !APModeActive) {
+		if (phase != WifiPhase::OFF) {
 			bclog.log(BCLogger::Log_Info, TAG, "WiFi switched off on request");
-			wifiWasConnected = true;		// not "still connecting" - the check below stays quiet
-			disableWifi();
+			disableWifi("WLAN aus");
+		}
+		break;
+	case REQ_AP_ON:
+		if (phase != WifiPhase::ACCESS_POINT) startAccessPoint();
+		break;
+	case REQ_AP_OFF:
+		if (phase == WifiPhase::ACCESS_POINT) {
+			bclog.log(BCLogger::Log_Info, TAG, "Access point switched off on request");
+			disableWifi("Hotspot aus");
+		}
+		break;
+	case REQ_RESTART:
+		bclog.log(BCLogger::Log_Info, TAG, "WiFi: autoconnect restarted on request");
+		startAutoconnect(false);
+		break;
+	case REQ_SCAN:
+		switch (phase.load()) {
+		case WifiPhase::OFF:
+			startAutoconnect(true);		// the radio has to be on, and a stored network may be in range
+			break;
+		case WifiPhase::WAITING:
+			enterPhase(WifiPhase::SCANNING);
+			startScan();
+			break;
+		case WifiPhase::ONLINE:
+		case WifiPhase::ACCESS_POINT:
+			startScan();
+			break;
+		default:
+			break;		// SCANNING: running anyway; CONNECTING: not worth disturbing
 		}
 		break;
 	default:
 		break;
 	}
-	if (APModeActive) {
-		bclog.log(BCLogger::Log_Debug, TAG, "Wifi check loop - AP mode active");
-		uint8_t apStaCount = WiFi.softAPgetStationNum();
-		ui.updateWiFiState(wifiEnabled, APModeActive, disableAPMode, apStaCount);
-		return;
-	}
-    // Handle WiFi - the current logic is:
-	// - immediately start a connection to a known Access point (from preferences)
-	// - if no connection is established within 100 seconds, WiFi is disabled completely
-	// - if established connection  is lost, WiFi is disabled completely
-	// --> this is done to save power consumption of WiFi radio.
-	// - requestReconnect() (settings screen) switches it on again and starts over.
-	// The web server itself keeps its routes; setupWebserver() just calls begin() again.
-	if (!wifiWasConnected) {
-		bclog.log(BCLogger::Log_Debug, TAG, "Wifi check loop - try to connect");
-		if (WiFi.status() == WL_CONNECTED) {
-//		if (WiFi.status() != WL_CONNECTED && wifiMulti.run(10000) == WL_CONNECTED) {
-			// Wait for every module to have registered its routes -- see startupComplete.
-			// Deliberately before wifiWasConnected is set, so this retries on the next tick.
-			// NTP is unaffected: configTzTime() already ran in setup().
-			if (!startupComplete) return;
-			wifiWasConnected = true;
-			bclog.logf(BCLogger::Log_Info, TAG, "Wifi connected. IPv4: %s", WiFi.localIP().toString());
-			//bclog.logf(BCLogger::Log_Info, TAG, "Wifi connected. IPv4: %s IPv6: %s", WiFi.localIP().toString(), WiFi.localIPv6().toString());
-			// Setup Web Server
-			setupWebserver();
-			// No wait for the UI needed any more (was a delay(1000) here, blocking the
-			// esp_timer task): startupComplete is only set at the end of setup(), after
-			// ui.initDisplay(), and UIFacade::updateIP() keeps the value for a screen
-			// created later anyway.
-			ui.updateIP(WiFi.localIP().toString(), UIFacade::WIFI_UI_ONLINE);
-			if (!mdnsStarted) {
-				mdnsStarted = MDNS.begin("TRGB-BC");
-				if (mdnsStarted) MDNS.addService("http", "tcp", 80);
+
+	const uint32_t now = millis();
+	switch (phase.load()) {
+	case WifiPhase::SCANNING:
+		if (!scanRunning) {		// the cache has the result (empty if the scan failed)
+			WifiCfg::Visible visible[SCAN_MAX];
+			{
+				Lock lock(cfgMutex);
+				for (size_t i = 0; i < scanCount; i++) visible[i].ssid = scanCache[i].ssid;
+				candidateCount = cfg.candidates(visible, scanCount, candidates);
 			}
-		} else if (millis() - lostConnTimeStamp > 100000) { //disable Wifi if no connection was established within 100 seconds
-			wifiWasConnected = true;
-			bclog.log(BCLogger::Log_Warn, TAG, "Not connected to Wifi - disabling it");
-			disableWifi("kein WLAN gefunden");
-		} else {
-			bclog.log(BCLogger::Log_Debug, TAG, "Wifi check loop - can't connect (yet)");
+			candidateIdx = 0;
+			connectNext();
 		}
-	} else if (WiFi.status() == WL_CONNECTION_LOST) {
-		lostConnTimeStamp = millis();
-		bclog.log(BCLogger::Log_Warn, TAG, "Wifi connection lost - disabling it to save power");
-		disableWifi("Verbindung verloren");
+		break;
+	case WifiPhase::CONNECTING: {
+		const wl_status_t st = WiFi.status();
+		if (st == WL_CONNECTED) {
+			// Wait for every module to have registered its routes -- see startupComplete.
+			// NTP is unaffected: configTzTime() already ran in setup().
+			if (!startupComplete) break;
+			everConnected = true;
+			enterPhase(WifiPhase::ONLINE);
+			bclog.logf(BCLogger::Log_Info, TAG, "Wifi connected to \"%s\". IPv4: %s", statusSsid, WiFi.localIP().toString().c_str());
+			setupWebserver();
+			startMdns();
+			publishUi();
+		} else if (st == WL_NO_SSID_AVAIL || st == WL_CONNECT_FAILED || now - phaseSince > CONNECT_TIMEOUT_MS) {
+			bclog.logf(BCLogger::Log_Info, TAG, "WiFi: \"%s\" failed (status %d)", statusSsid, (int) st);
+			candidateIdx++;
+			connectNext();
+		}
+		break;
 	}
+	case WifiPhase::WAITING:
+		if (now - phaseSince > RESCAN_PAUSE_MS) {
+			enterPhase(WifiPhase::SCANNING);
+			startScan();
+		}
+		break;
+	case WifiPhase::ONLINE:
+		if (WiFi.status() != WL_CONNECTED) {
+			bclog.log(BCLogger::Log_Warn, TAG, "Wifi connection lost - looking for a network again");
+			stopMdns();
+			startAutoconnect(true);		// resets the 5 minutes: they count from the loss
+			everConnected = true;
+		}
+		break;
+	case WifiPhase::ACCESS_POINT:
+		if (WiFi.softAPgetStationNum() > 0) offlineSince = now;
+		break;
+	default:
+		break;
+	}
+
+	// The 5 minute rule, for everything that is not (yet) a working connection: no network found
+	// or none that works, connection lost, or an access point nobody joined.
+	const WifiPhase p = phase.load();
+	if (p != WifiPhase::OFF && p != WifiPhase::ONLINE && now - offlineSince > OFFLINE_TIMEOUT_MS) {
+		bclog.logf(BCLogger::Log_Warn, TAG, "No WiFi connection for %u min - disabling it", (unsigned) (OFFLINE_TIMEOUT_MS / 60000));
+		disableWifi(p == WifiPhase::ACCESS_POINT ? "Hotspot aus (kein Client)"
+		            : everConnected ? "Verbindung verloren" : "kein WLAN gefunden");
+	}
+
 	// A successful OTA cannot restart from the upload handler -- that runs on async_tcp
 	// and the client still has to receive the response. The flag is set there and acted
 	// on here, one tick later, by which time the reply has gone out.
@@ -280,10 +712,6 @@ void WifiWebserver::checkLoop() {
 		stats.persistNow();		// otherwise up to 5 min of statistics are lost (Statistics::PERSIST_INTERVAL_MS)
 		ESP.restart();
 	}
-}
-
-void WifiWebserver::scanResult() {
-
 }
 
 // ---------------------------------------------------------------------------
@@ -382,8 +810,8 @@ void WifiWebserver::setupOta() {
 }
 
 void WifiWebserver::setupWebserver() {
-	// checkLoop() calls this on every WiFi (re)connect -- wifiWasConnected is reset in
-	// enableWifi() and in the /wifi/connect handler. AsyncServer::begin() is idempotent
+	// checkLoop() calls this on every WiFi (re)connect and when the access point starts.
+	// AsyncServer::begin() is idempotent
 	// ("if (_pcb) return;"), but server.on() and addMiddleware() are
 	// not: they new + append unconditionally. Without this guard every reconnect leaked
 	// ~21 handler objects AND made _attachHandler() walk a longer list on every request.
@@ -733,46 +1161,7 @@ void WifiWebserver::setupWebserver() {
 	setupNvsDebug();
 #endif
 
-	server.on("/wifi/connect", HTTP_GET, [this](AsyncWebServerRequest *request) {
-		if ((request->hasParam("ssid", true) || request->hasParam("manualSSID", true)) && request->hasParam("password", true)) {
-			if (request->hasParam("ssid", true)) {
-				StrSSID[0] = request->getParam("ssid", true)->value();
-			} else {
-				StrSSID[0] = request->getParam("manualSSID", true)->value();
-			}
-			StrPW[0] = request->getParam("password", true)->value();
-			Preferences WifiSettings;
-			WifiSettings.begin("WifiSettings", false);
-			WifiSettings.putString("SSID_0", StrSSID[0]);
-			WifiSettings.putString("PW_0", StrPW[0]);
-			//WifiSettings.putBool("disApMode", disableAPMode);
-			WifiSettings.end();
-			wifiWasConnected = false;
-			lostConnTimeStamp = millis();
-			request->send(200);
-		} else {
-			request->send(400);
-		}
-	});
-
-	server.on("/wifi/ssids", HTTP_GET, [](AsyncWebServerRequest *request) {
-		int numNetworks = WiFi.scanNetworks();
-		String json = "[";
-		if (numNetworks > 0) {
-			for (int i = 0; i < numNetworks; i++) {
-				json += "\"" + WiFi.SSID(i) + "\"";
-				if (i < numNetworks - 1) {
-					json += ",";
-				}
-			}
-		}
-		json += "]";
-		request->send(200, "application/json", json);
-	});
-	server.on("/wifi/enableAP", HTTP_GET, [this](AsyncWebServerRequest *request) {
-		enableAPMode(true);
-		request->send(200);
-	});
+	setupWifiRoutes();
 
 //
 //	PrettyOTA       OTAUpdates;
@@ -805,7 +1194,13 @@ void WifiWebserver::setupWebserver() {
 	//server.serveStatic("/core/", LittleFS, "/core/").setCacheControl("max-age=31536000");
 
 	// URI not found
-	server.onNotFound([](AsyncWebServerRequest *request) {
+	server.onNotFound([this](AsyncWebServerRequest *request) {
+		// Access point: the connectivity probes of Android/iOS/Windows (any host, any path) end
+		// here, and the redirect is what makes the phone open the page and use this network.
+		if (phase.load() == WifiPhase::ACCESS_POINT) {
+			request->redirect(String("http://") + WiFi.softAPIP().toString() + "/wifi");
+			return;
+		}
 		bclog.logf(BCLogger::Log_Info, TAG, "💻 Can't handle request on : %s\n", request->url().c_str());
 		String responsetext = request->url() + " not found!\n";
 		request->send(404, "text/plain", responsetext.c_str());

@@ -62,12 +62,28 @@ ist das Protokoll die Quelle der Wahrheit.
   Eine tote Verbindung erkennt `BLEDevices::checkNavAlive()` am ausbleibenden Heartbeat
   (30 s) -- Android meldet beim Beenden der App keinen Disconnect (`doc/PITFALLS.md`).
 
+## WLAN
+
+[`doc/WIFI.md`](doc/WIFI.md). Keine Zugangsdaten in den Sourcen oder im Log -- Netze und
+Hotspot-Daten liegen als ein Blob im NVS (`src/WifiConfig.*`, reiner Teil, Host-Test
+`test/native_wificonfig/wificonfig_test.cpp`, Build-Befehl im Dateikopf). Zustandsautomat,
+Suche, Hotspot, CLI `wifi`: `src/WifiWebserver.cpp`; Seite `/wifi`: `src/WifiRoutes.cpp`.
+Reihenfolge der Liste = Priorität, 5 min ohne Verbindung (oder Hotspot ohne Client) = WLAN aus,
+wieder an nur über den Settings-Screen. Geheimnisse nur per POST-Body und nie loggen
+(`doc/PITFALLS.md`). Test am Gerät: Netz per `wifi add <ssid> <pw>` auf der seriellen
+Konsole eintragen (Passwort wird nicht geloggt). Hotspot vom Handy aus testen (ADB): am Handy
+`cmd wifi connect-network TRGB-BC wpa2 <pw>` (davor WLAN am Handy aus/an), HTTP dann mit
+`adb exec-out curl --interface wlan0 http://192.168.4.1/...` (sonst nimmt Android den
+Mobilfunk); danach das Netz mit `cmd wifi forget-network <id>` wieder vergessen.
+
 ## UI
 
 - Aktiver Main-Screen ist **RimRidge** (EEZ Studio), dazu **RimRidgeNav**
   (Navigation), **RimRidgeRQ** (Wege-Labels), **RimRidgeSettings**
-  (Einstellungen: IP/WLAN, Kalibrierung, Neustart/Tiefschlaf) und
-  **RimRidgeClimb** (Kletter-Anzeige mit Höhenprofil). Projekt:
+  (Einstellungen: IP/WLAN, Hotspot, Kalibrierung, Neustart/Tiefschlaf),
+  **RimRidgeClimb** (Kletter-Anzeige mit Höhenprofil) sowie **RimRidgeWifi** (Netzliste,
+  Suche) und **RimRidgeWifiPw** (Passwort mit Tastatur), beide von den Einstellungen aus
+  (`src/ui/RimRidgeWifiCustFunc.*`). Projekt:
   `EEZStudio/TRGB-BikeComputer.eez-project`, Design-System:
   [`doc/design/rim-ridge-design-system.md`](doc/design/rim-ridge-design-system.md).
 - `src/ui_eez/` ist **generiert** und wird bei jedem EEZ-Export komplett

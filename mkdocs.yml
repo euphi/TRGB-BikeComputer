@@ -67,6 +67,7 @@ plugins:
             Roadmap: Roadmap
             Using it: Benutzung
             Climbs: Anstiege
+            WiFi: WLAN
             Rides and statistics: Fahrten und Statistik
             Usability backlog: Bedienung unterwegs (offen)
             Ride test cheat sheet: Testfahrt-Cheatsheet
@@ -87,6 +88,7 @@ nav:
   - Roadmap: ROADMAP.md
   - Using it:
       - Climbs: CLIMB.md
+      - WiFi: WIFI.md
       - Rides and statistics: design/ride-state-machine.md
       - Usability backlog: USABILITY-TODO.md
       - Ride test cheat sheet: RIDE-TEST-CHEATSHEET.md

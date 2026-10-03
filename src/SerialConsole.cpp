@@ -149,7 +149,18 @@ void SerialConsole::run(const char* cmdLine) {
 	const char* p = cmdLine;
 	while (*p == ' ') p++;
 	if (!*p) return;
-	bclog.log(BCLogger::Log_Info, BCLogger::TAG_OP, "Received command: " + String(p));
+	// The log goes to the SD card and is picked up by the log service: nothing secret in it.
+	// "wifi add|apset <ssid> <password>" is logged up to the subcommand only.
+	size_t keep = 0;
+	if (!strncasecmp(p, "wifi add", 8) && (p[8] == ' ' || p[8] == '\0')) keep = 8;
+	else if (!strncasecmp(p, "wifi apset", 10) && (p[10] == ' ' || p[10] == '\0')) keep = 10;
+	if (keep) {
+		char shown[16];
+		snprintf(shown, sizeof(shown), "%.*s", (int) keep, p);
+		bclog.log(BCLogger::Log_Info, BCLogger::TAG_OP, "Received command: " + String(shown) + " ...");
+	} else {
+		bclog.log(BCLogger::Log_Info, BCLogger::TAG_OP, "Received command: " + String(p));
+	}
 	cli.parse(p);
 }
 

@@ -158,6 +158,10 @@ later line).
 
 All points here fail silently: no build error, only wrong behaviour on the device.
 
+- **Keyboard (`lv_keyboard`) with the RimRidge fonts**: those fonts have no `LV_SYMBOL_*` glyphs
+  (backspace, OK), so the keyboard items use the built-in `MONTSERRAT_22`. The default layout has
+  12 keys per row (30 px here); `RimRidgeWifiCustFunc.cpp` sets own maps and its own key handler,
+  so the EEZ canvas shows the LVGL default layout, the device the QWERTZ one.
 - **Gestures don't arrive.** Two conditions, both needed:
     1. Clear `SCROLLABLE` on the screen root and on the container. EEZ leaves it on for
        page roots by default; a scrollable ancestor suppresses gesture detection for the
@@ -219,6 +223,24 @@ On this toolchain `time_t` is 8 bytes, not 4 -- relevant for `BCLogger::LogData`
 everything that is written in binary and read in `Tools/`. Determine real offsets instead
 of counting: a deliberately wrong `static_assert(offsetof(T, field) == 999, "x")` -- GCC
 reports the real value in "the comparison reduces to ...".
+
+## WiFi: secrets, hotspot memory, scans
+
+- **Passwords only in POST bodies and never in a log line.** `WebInstr` and the console log the
+  URL / the command line to the SD card, which the log service uploads. `/wifi/add` and
+  `/wifi/ap` therefore take POST bodies, and `SerialConsole::run()` logs `wifi add|apset`
+  without its arguments. Anything new that handles a secret needs the same.
+- **The hotspot costs ~14 KB of internal heap** (AP + STA mode, DNS task, clients). Idle that
+  leaves ~26 KB; with a phone attached, `/debug/ui/snap` (screenshot over HTTP) took the
+  minimum down to 3.8 KB (2026-10-03). Don't take screenshots over the hotspot; normal pages
+  are fine.
+- **Don't hold `WifiWebserver::cfgMutex` while calling `ui.*`**: the UI task takes
+  `xUIDrawMutex` first and then asks `webserver` for status, so the reverse order deadlocks.
+- A **scan takes ~10 s** while BLE scans (shared radio) and fails to start while a connect
+  attempt is still running -- the autoconnect then just uses the previous result.
+- Android keeps using mobile data for the browser on a WiFi without internet unless the network
+  announces itself as a captive portal. The hotspot's DNS + redirect (`startCaptiveDns()`,
+  not-found handler) is what makes `http://192.168.4.1/wifi` reachable from a phone.
 
 ## Serial console
 

@@ -29,26 +29,24 @@ ablesen (alles auf dem Settings-Screen).
 
 ## 2. WLAN unterwegs
 
-**Ist** (`src/WifiWebserver.cpp`):
-- Es gibt nur **einen** Zugangspunkt, und der ist einkompiliert. Die per
-  `/wifi/connect` gespeicherten Zugangsdaten werden überschrieben.
-- Kommt nach dem Booten innerhalb von 100 s keine Verbindung zustande oder reißt
-  sie ab, wird das WLAN abgeschaltet. Wieder an geht es über „WLAN verbinden" auf
-  dem Settings-Screen oder `wifi on`.
-- Einen anderen Zugangspunkt, etwa den Handy-Hotspot, versucht das Gerät nie.
-- Den AP-Modus (`enableAPMode()`) gibt es im Code, am Gerät lässt er sich nicht
-  einschalten.
+WLAN wird am Gerät eingerichtet (Settings-Screen → „Netzwerke": suchen, auswählen,
+Passwort tippen) oder auf der Webseite `/wifi`: mehrere Netze in Prioritätsreihenfolge,
+ein eigener Hotspot. Siehe [WLAN](WIFI.md). Offen:
+
+- **Kein Netz gefunden = WLAN nach 5 min aus.** Danach schaltet nur der Settings-Screen es
+  wieder ein. Unterwegs mit dem Handy-Hotspot heißt das: den Hotspot *vor* dem Booten
+  einschalten, oder danach „WLAN an" drücken.
+- Eine Suche dauert etwa 10 s, solange BLE läuft (das Funkmodul ist geteilt).
+- Das Hotspot-Passwort steht nur auf dem Display. Ein QR-Code auf dem Display würde dem
+  Handy das Tippen ersparen.
+- Gespeicherte Netze lassen sich nur auf der Webseite sortieren und löschen, nicht am
+  Display (Entscheidung des Nutzers).
 - mDNS `TRGB-BC.local` wird angemeldet, Android-Browser lösen `.local` aber nicht
-  zuverlässig auf. Die IP steht auf dem Settings-Screen.
-
-**Wunsch:** Unterwegs per Handy auf den Webserver kommen.
-
-**Ideen:**
-- Mehrere Zugangspunkte speichern (WiFiMulti), darunter den Handy-Hotspot.
-- AP-Modus am Gerät einschalten.
+  zuverlässig auf. Die IP steht auf dem Settings-Screen; im Hotspot-Modus öffnet ein
+  Captive Portal die Seite von selbst.
 - Alternativ: TrailBridge meldet die IP oder übernimmt Einstellungen per BLE. Dafür
-  muss das [Protokoll](trailbridge/PROTOCOL.md)
-  abgestimmt werden.
+  muss das [Protokoll](trailbridge/PROTOCOL.md) abgestimmt werden, und es braucht den
+  Rückkanal vom Fahrradcomputer zur App (siehe „Später" in der [Roadmap](ROADMAP.de.md)).
 
 ## 3. Wege-Labels auf dem RQ-Screen
 

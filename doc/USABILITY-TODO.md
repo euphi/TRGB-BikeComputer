@@ -29,27 +29,24 @@ settings screen).
 
 ## 2. WiFi on the road
 
-**As it is** (`src/WifiWebserver.cpp`):
+WiFi is set up on the device (settings screen → "Netzwerke": scan, pick, type the password)
+or on the web page `/wifi`: several networks in priority order, a hotspot of its own. See
+[WiFi](WIFI.md). Open:
 
-- There is only **one** access point, and it is compiled in. The credentials stored via
-  `/wifi/connect` are overwritten.
-- If no connection is established within 100 s after boot, or if it breaks, WiFi is
-  switched off. It comes back with "WLAN verbinden" on the settings screen or `wifi on`.
-- The device never tries another access point, such as the phone's hotspot.
-- The AP mode (`enableAPMode()`) exists in the code but cannot be switched on from the
-  device.
+- **No network found = WiFi off after 5 min.** Then only the settings screen switches it on
+  again. On the road with the phone's hotspot that means: switch the hotspot on *before*
+  boot, or press "WLAN an" afterwards.
+- A scan takes about 10 s while BLE is running (the radio is shared).
+- The hotspot password is only on the display. A QR code on the display would let the phone
+  join without typing.
+- Saved networks cannot be reordered or deleted on the display, only on the web page (the
+  user's decision).
 - mDNS `TRGB-BC.local` is announced, but Android browsers don't resolve `.local`
-  reliably. The IP is shown on the settings screen.
-
-**Wanted:** reach the web server from the phone on the road.
-
-**Ideas:**
-
-- Store several access points (WiFiMulti), among them the phone's hotspot.
-- Switch on AP mode from the device.
+  reliably. The IP is shown on the settings screen; in hotspot mode a captive portal opens
+  the page by itself.
 - Alternatively: TrailBridge reports the IP or takes over settings by BLE. For that the
-  [protocol](trailbridge/PROTOCOL.md) has to be
-  agreed.
+  [protocol](trailbridge/PROTOCOL.md) has to be agreed, and it needs the back channel
+  from the bike computer to the app (see "Later" in the [roadmap](ROADMAP.md)).
 
 ## 3. Road labels on the RQ screen
 

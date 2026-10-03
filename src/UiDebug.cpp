@@ -96,6 +96,8 @@ const char* screenName(lv_obj_t* scr) {
 	if (scr == objects.rim_ridge_rq) return "rim_ridge_rq";
 	if (scr == objects.rim_ridge_settings) return "rim_ridge_settings";
 	if (scr == objects.rim_ridge_climb) return "rim_ridge_climb";
+	if (scr == objects.rim_ridge_wifi) return "rim_ridge_wifi";
+	if (scr == objects.rim_ridge_wifi_pw) return "rim_ridge_wifi_pw";
 	return "other";
 }
 

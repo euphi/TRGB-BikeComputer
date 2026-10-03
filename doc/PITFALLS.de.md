@@ -176,6 +176,11 @@ prüfen (Reset-Grund, gespeicherter Wert, spätere Zeile).
 Alle Punkte hier scheitern still: kein Build-Fehler, nur falsches Verhalten
 auf dem Gerät.
 
+- **Tastatur (`lv_keyboard`) mit den RimRidge-Fonts**: Diese Fonts haben keine
+  `LV_SYMBOL_*`-Glyphen (Backspace, OK), die Tasten nutzen daher die eingebaute
+  `MONTSERRAT_22`. Das Standardlayout hat 12 Tasten pro Reihe (hier 30 px);
+  `RimRidgeWifiCustFunc.cpp` setzt eigene Maps und einen eigenen Tasten-Handler, der
+  EEZ-Canvas zeigt deshalb das LVGL-Standardlayout, das Gerät das QWERTZ-Layout.
 - **Gesten kommen nicht an.** Zwei Bedingungen, beide nötig:
   1. `SCROLLABLE` auf dem Screen-Root und auf dem Container löschen. EEZ
      lässt es auf Page-Roots standardmäßig an; ein scrollbarer Vorfahre
@@ -243,6 +248,26 @@ Auf dieser Toolchain ist `time_t` 8 Byte, nicht 4 -- relevant für
 gelesen wird. Echte Offsets ermitteln statt zählen: absichtlich falsches
 `static_assert(offsetof(T, feld) == 999, "x")` -- GCC meldet den echten
 Wert in "the comparison reduces to ...".
+
+## WLAN: Geheimnisse, Hotspot-Speicher, Suchen
+
+- **Passwörter nur in POST-Bodies und nie in einer Logzeile.** `WebInstr` und die Konsole
+  schreiben die URL bzw. die Befehlszeile auf die SD-Karte, die der Log-Dienst hochlädt.
+  `/wifi/add` und `/wifi/ap` nehmen deshalb POST-Bodies, und `SerialConsole::run()` loggt
+  `wifi add|apset` ohne Argumente. Alles Neue, das ein Geheimnis verarbeitet, braucht dasselbe.
+- **Der Hotspot kostet ~14 KB internen Heap** (AP + STA, DNS-Task, Clients). Im Leerlauf
+  bleiben ~26 KB; mit einem angeschlossenen Handy drückte `/debug/ui/snap` (Screenshot über
+  HTTP) das Minimum auf 3,8 KB (2026-10-03). Keine Screenshots über den Hotspot; normale Seiten
+  sind unkritisch.
+- **`WifiWebserver::cfgMutex` nicht halten, während `ui.*` aufgerufen wird**: Der UI-Task nimmt
+  erst `xUIDrawMutex` und fragt dann `webserver` nach dem Status; die umgekehrte Reihenfolge
+  verklemmt.
+- Eine **Suche dauert ~10 s**, solange BLE sucht (geteiltes Funkmodul), und lässt sich nicht
+  starten, solange ein Verbindungsversuch läuft -- die automatische Verbindung nimmt dann das
+  letzte Ergebnis.
+- Android nutzt für den Browser weiter das Mobilfunknetz, wenn das WLAN kein Internet hat und
+  sich nicht als Captive Portal meldet. DNS + Umleitung des Hotspots (`startCaptiveDns()`,
+  Not-found-Handler) machen `http://192.168.4.1/wifi` vom Handy aus erreichbar.
 
 ## Serielle Konsole
 

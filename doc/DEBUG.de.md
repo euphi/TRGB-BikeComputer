@@ -95,9 +95,12 @@ Zeilenvorschub.
 | Strg-C | Zeile verwerfen |
 | Strg-L | Zeile neu zeichnen |
 
-`wifi` zeigt den WLAN-Zustand, `wifi off` schaltet das WLAN aus (wie nach einem
-Verbindungsverlust), `wifi on` verbindet wieder -- dasselbe wie die WLAN-Pille auf dem
-Einstellungs-Screen.
+`wifi` zeigt den WLAN-Zustand, `wifi off` schaltet das WLAN aus, `wifi on` startet die
+automatische Verbindung -- dasselbe wie die WLAN-Pille auf dem Einstellungs-Screen.
+`wifi ap [on|off]` ist die Hotspot-Pille, `wifi scan` eine Suche, `wifi list` die
+gespeicherten Netze, `wifi add <ssid> <passwort>` und `wifi del <ssid>` bearbeiten sie
+(Namen mit Leerzeichen in Anführungszeichen), `wifi apset <ssid> <passwort>` stellt den
+Hotspot ein. Das Passwort von `add`/`apset` kommt nicht ins Log. Siehe [WLAN](WIFI.md).
 
 `help` listet alle Befehle, `help <befehl>` zeigt einen. Logzeilen erscheinen über dem
 Prompt, der halb getippte Befehl bleibt stehen. Das Terminal sollte mindestens 80 Spalten

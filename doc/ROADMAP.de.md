@@ -32,10 +32,6 @@ einer Fahrt braucht, muss am Display gehen. Details: [Bedienung unterwegs](USABI
 
 - Wege-Labels, die sich auf schlechtem Weg treffen lassen, und eine Regel für Fehltipps.
 - „Rad senkrecht" (Fahrstuhl) und „Rad auf dem Auto" erkennen und aus der Fahrt herauslassen.
-- **WLAN-Konfiguration**: Das Netz ist heute in die Firmware einkompiliert, die über die
-  Web-Oberfläche gespeicherten Zugangsdaten werden ignoriert. Gewünscht: die gespeicherten
-  verwenden, mehrere Netze (Handy-Hotspot), Access-Point-Modus vom Gerät aus mit geführter
-  Ersteinrichtung, Zugangsdaten über die serielle Konsole.
 - Durchschnittsgeschwindigkeit und die übrige Statistik auf dem Display. Sie wird
   berechnet und in der Web-Oberfläche gezeigt; der Hauptscreen hat kein Widget dafür.
 - Restdistanz und Restzeit bis zum Ziel auf dem Navigations-Screen (werden empfangen,
@@ -54,16 +50,35 @@ Noch nicht entworfen.
   Umwerfer und Reifen zuletzt gewartet wurden, und die seither gefahrene Strecke zeigt.
   Baut auf dem Kilometerstand je Rad auf.
 - **Wegpunkte in der Navigation**: die Wegpunkte einer Route (Gipfel, Verpflegung,
-  Schotter-Sektor) mit Name und Entfernung anzeigen. Braucht eine Erweiterung des
-  [TrailBridge-Protokolls](trailbridge/PROTOCOL.md); heute kann `Tools/gpxenrich` sie nur
-  als benanntes „geradeaus" weiterreichen.
-- **Anstiegsübersicht für die ganze Route**: der wievielte Anstieg von wie vielen, und
-  die noch zu fahrenden Höhenmeter. Braucht ebenfalls eine Protokollerweiterung.
+  Schotter-Sektor) mit Name, Entfernung und Ankunftszeit anzeigen. TrailBridge liest die
+  Wegpunkte (`wpt`) einer GPX-Datei noch nicht, und das
+  [TrailBridge-Protokoll](trailbridge/PROTOCOL.md) hat keinen Tag dafür; heute kann
+  `Tools/gpxenrich` sie nur als benanntes „geradeaus" weiterreichen.
+- **Anstiegsübersicht für die ganze Route**: der nächste Anstieg, bevor er beginnt
+  (Entfernung bis zum Fuß, Höhenmeter), der wievielte Anstieg von wie vielen, und die
+  noch zu fahrenden Höhenmeter. Heute kommt das Profil erst 500 m vor dem Fuß.
+  TrailBridge kennt alle Anstiege, sobald die Route geladen ist; braucht ebenfalls eine
+  Protokollerweiterung.
+- **Richtung zurück zur Route**: Abseits der Route sendet TrailBridge nur die Entfernung
+  zu ihr. Gewünscht: auch die Peilung, als Pfeil angezeigt. Braucht eine
+  Protokollerweiterung.
+- **Kopplung mit dem Handy**: Die BLE-Services von TrailBridge lassen sich ohne Kopplung
+  und Verschlüsselung lesen; jedes BLE-Gerät in Reichweite kann sich verbinden und die
+  Position mitlesen. Mit Bonding wäre die Verbindung verschlüsselt, und der
+  Fahrradcomputer könnte sein Handy trotz der wechselnden Adresse wiedererkennen (siehe
+  die bekannten Grenzen unten). Braucht Änderungen in der App und in der Firmware.
 - **Sichern und Wiederherstellen** von Kilometerstand, Statistik und Einstellungen über
   die Web-Oberfläche. Sie liegen nur im Flash des Geräts und gehen verloren, wenn er
   gelöscht wird.
 - **Touch-Sperre** gegen Geistertipps durch Regentropfen.
 - **FIT-Export** im Log-Dienst, neben GPX.
+
+## TrailBridge-App
+
+Die Android-App hat ihre eigene Roadmap:
+[TrailBridge ROADMAP.md](https://github.com/euphi/TrailBridge/blob/main/ROADMAP.md).
+Dort stehen die App-Seite der Funktionen auf dieser Seite und alles, was nur die App betrifft
+(englische Übersetzung, Zeitraffer für die simulierte Fahrt, Meldungen an OsmAnd).
 
 ## Später
 
@@ -75,7 +90,12 @@ Noch nicht entworfen.
 - Ein Screen für die Wegequalität mit mehr als der farbigen Linie, und das Abstimmen der
   Schwellen an aufgezeichneten Fahrten.
 - Forumslader-Screen im Rim-&-Ridge-Design; Forumslader-Strecke in der Statistik.
-- Höhenprofil auch bei OsmAnd-Navigation (heute nur mit einer GPX-Route).
+- Streckenlinie auf dem Display: der Verlauf einer GPX-Route um die aktuelle Position,
+  um Abbiegungen kommen zu sehen und zurückzufinden. Braucht einen neuen BLE-Service
+  für die Geometrie.
+- Rückkanal vom Fahrradcomputer zu TrailBridge (heute gibt es keine schreibbare
+  Characteristic): Tasten am Gerät für die App, Fahrtdaten aufs Handy,
+  WLAN-Einstellungen vom Handy.
 - Binärlog auf dem Gerät abspielen (heute geht das nur mit dem Forumslader-Textlog).
 - Neues Gehäuse für das Canyon CP0007 Gravel-Cockpit -- parametrisches Modell in
   [`cad/`](https://github.com/euphi/TRGB-BikeComputer/tree/main/cad), die Maße aus Fotos
@@ -87,6 +107,16 @@ Niedrige Priorität:
 - Radar (Garmin Varia über BLE).
 - Restlaufzeit des Akkus. Der Akku ist ein einfacher LiPo, sein Ladezustand wird nur aus
   der Spannung geschätzt und ist ungenau; er hält etwa sechs Stunden.
+- Echte Sensorwerte, die TrailBridge weiterreicht (z. B. ein Pulsgurt am Handy). Die
+  Protokoll-Tags sind reserviert; der Fahrradcomputer koppelt seine Sensoren selbst,
+  der Nutzen ist deshalb klein.
+
+Auf der langen Bank:
+
+- Höhenprofil und Streckenlinie auch bei OsmAnd-Navigation (heute nur mit einer
+  GPX-Route). Die AIDL-Schnittstelle von OsmAnd liefert weder die Routengeometrie noch
+  Höhen; das braucht eine Erweiterung in OsmAnd selbst.
+- TrailBridge beim Start des Handys automatisch starten. Im Moment kein Bedarf.
 
 ## Hilfe gesucht
 
@@ -101,7 +131,7 @@ Niedrige Priorität:
 
 - Der Fahrradcomputer verbindet sich mit der ersten TrailBridge-Instanz, die er findet.
   Android wechselt seine BLE-Adresse, das Handy lässt sich deshalb nicht wie die Sensoren
-  fest zuordnen.
+  fest zuordnen. Eine Kopplung würde das lösen, siehe die geplanten Funktionen.
 - Eine Log-Sitzung ist ein Boot, nicht eine Fahrt. Start und Ende der Fahrt sind darin
   markiert.
 - Anstiege über 5 km kommen in gröberem Raster, siehe [Anstiege](CLIMB.md).

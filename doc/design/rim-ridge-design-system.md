@@ -12,6 +12,7 @@ motif of the boot logo — the edge of the screen itself is the rim.
 | Navigation screen | [`navscreen.svg`](navscreen.svg) | **implemented**, screen `rim_ridge_nav` (`SCREEN_ID_RIM_RIDGE_NAV`) |
 | Settings | [`settings.svg`](settings.svg) | **implemented**, screen `RimRidgeSettings` (`SCREEN_ID_RIM_RIDGE_SETTINGS`), extended beyond the SVG by WiFi reconnect, calibration and reference ride (§6) |
 | Climb screen | [`climbscreen.svg`](climbscreen.svg) | **implemented**, screen `RimRidgeClimb` (`SCREEN_ID_RIM_RIDGE_CLIMB`), elevation profile coloured by gradient (§6) |
+| WiFi screens | -- | **implemented**, screens `RimRidgeWifi` (list of the scan, rows built at run time) and `RimRidgeWifiPw` (password field + keyboard), reached from the settings screen; the settings screen's WLAN row is three pills (WLAN an/aus, Hotspot, Netzwerke), see [WiFi](../WIFI.md) |
 | RQ ride screen | [`rqscreen.svg`](rqscreen.svg) | **implemented** (screen `RimRidgeRQ`) — nav pill, speed, heart rate, distance counter (tour distance) with real data; RQ index from `ui_RimRidgeUpdateRoadQuality()`; surface pills, quality selector and record button wired live through `I2CSensors::setRoadLabel*()`/`startRoadCapture()` (a tap toggles, a second tap on the active value resets it) |
 
 Every SVG file is 1:1 in the target coordinate system (480×480 units = 480×480 physical

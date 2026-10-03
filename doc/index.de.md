@@ -30,7 +30,8 @@ Screenshots vom Gerät, aufgenommen während einer simulierten Fahrt von Villach
   öffnet sich von selbst am Fuß eines bewerteten Anstiegs ([Anstiege](CLIMB.md))
 - **Wege-Labels**: Untergrund und Qualität während der Fahrt von Hand markieren, als
   Vergleichswert für die automatische Wegequalität
-- **Einstellungen**: IP-Adresse und WLAN wieder verbinden, Kalibrierung des
+- **Einstellungen**: IP-Adresse, WLAN an/aus, Hotspot, WLAN einrichten (suchen, Netz
+  auswählen, Passwort mit der Display-Tastatur tippen), Kalibrierung des
   Beschleunigungssensors und Referenzfahrt, Neustart, Ausschalten
 
 **Fahrten und Statistik**
@@ -78,6 +79,7 @@ Steigung aus dem Beschleunigungssensor als Alternative zum Barometer.
 - Fahrstatistik mit Diagramm, Kilometerstand und Radumfang
 - BLE-Sensoren verwalten; Debug-Seiten für Sensoren, Beschleunigungssensor, Anstiege und
   Abstürze
+- WLAN: gespeicherte Netze und ihre Priorität, Hotspot-Einstellungen ([WLAN](WIFI.md))
 - Firmware und Dateisystem über WLAN aktualisieren
 
 **Serielle Konsole** mit Zeileneditor, Verlauf und Tab-Vervollständigung

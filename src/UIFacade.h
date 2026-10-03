@@ -44,12 +44,11 @@ public:
 
 	// WLAN state for the settings screen and the WLAN icon on RimRidge. Values are shared
 	// with RRSET_WIFI_* in ui/RimRidgeSettingsCustFunc.h.
-	enum WifiUiState : uint8_t {WIFI_UI_OFF = 0, WIFI_UI_CONNECTING = 1, WIFI_UI_ONLINE = 2};
-	// text: IP address, or a short status ("WLAN aus", "verbinde ...", ...). Called by
-	// WifiWebserver on every state change, also before initDisplay() (kept until then).
-	void updateIP(const String& text, WifiUiState state);
-	void updateSSIDList(const String& ssidStr);
-	void updateWiFiState(bool wifiEnabled, bool APModeActive, bool disableAPMode, uint8_t apStaCount);
+	enum WifiUiState : uint8_t {WIFI_UI_OFF = 0, WIFI_UI_CONNECTING = 1, WIFI_UI_ONLINE = 2, WIFI_UI_AP = 3};
+	// text: IP address, or a short status ("WLAN aus", "verbinde ...", ...); in WIFI_UI_AP the
+	// hotspot password, with `caption` above it ("HOTSPOT <ssid>"). Called by WifiWebserver on
+	// every state change, also before initDisplay() (kept until then).
+	void updateIP(const String& text, WifiUiState state, const String& caption = String());
 
 
 	void updateNavi(const String& navStr, uint32_t dist, uint8_t maneuver, uint8_t roundaboutExit = 0,
@@ -223,7 +222,7 @@ private:
 
 	// Last WLAN state from WifiWebserver (see updateIP()), guarded by xUIDrawMutex. Shown
 	// once displayReady is set - WifiWebserver starts before the UI.
-	String wifiText;
+	String wifiText, wifiCaption;
 	WifiUiState wifiState = WIFI_UI_OFF;
 	bool displayReady = false;
 	void applyWifiState();		// xUIDrawMutex held

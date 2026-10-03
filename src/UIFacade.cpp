@@ -33,10 +33,11 @@
 #include "ui/RimRidgeRQCustFunc.h"
 #include "ui/RimRidgeSettingsCustFunc.h"
 #include "ui/RimRidgeClimbCustFunc.h"
+#include "ui/RimRidgeWifiCustFunc.h"
 #include "UiDebug.h"
 
 static_assert(UIFacade::WIFI_UI_OFF == RRSET_WIFI_OFF && UIFacade::WIFI_UI_CONNECTING == RRSET_WIFI_CONNECTING
-		&& UIFacade::WIFI_UI_ONLINE == RRSET_WIFI_ONLINE, "WifiUiState and RRSET_WIFI_* must match");
+		&& UIFacade::WIFI_UI_ONLINE == RRSET_WIFI_ONLINE && UIFacade::WIFI_UI_AP == RRSET_WIFI_AP, "WifiUiState and RRSET_WIFI_* must match");
 
 #include <DateTime.h>
 
@@ -87,6 +88,9 @@ void UIFacade::initDisplay() {
     ui_RimRidgeSettingsInit(); // build string, calibration status, restart/deep-sleep timer
     create_screen_rim_ridge_climb();
     ui_RimRidgeClimbInit(); // profile draw callback, "no climb" instead of the canvas' example values
+    create_screen_rim_ridge_wifi();
+    create_screen_rim_ridge_wifi_pw();
+    ui_RimRidgeWifiInit(); // keyboard layout, row styles, list refresh timer
     UiDebug::setup(); // /debug/ui/*: screenshot and synthetic touch for testing screens remotely
 
     // 3. set main screen
@@ -350,13 +354,14 @@ void UIFacade::updateHeight(float _height) { // height only update,
 
 
 
-void UIFacade::updateIP(const String& text, WifiUiState state) {
+void UIFacade::updateIP(const String& text, WifiUiState state, const String& caption) {
 	// Called from WifiWebserver's check ticker (esp_timer task) and from its setup(),
 	// which runs before initDisplay() - so the value is kept and only drawn once the
 	// screens exist (displayReady, set in initDisplay()).
 	bool uiTask = isDrawTask();
 	if (uiTask || xSemaphoreTake(xUIDrawMutex, 250 / portTICK_PERIOD_MS) == pdTRUE) {
 		wifiText = text;
+		wifiCaption = caption;
 		wifiState = state;
 		if (displayReady) applyWifiState();
 		if (!uiTask) xSemaphoreGive(xUIDrawMutex);
@@ -366,29 +371,9 @@ void UIFacade::updateIP(const String& text, WifiUiState state) {
 }
 
 void UIFacade::applyWifiState() {
-	ui_RimRidgeSettingsUpdateWifi(wifiText.c_str(), wifiState);
-	// The WLAN icon on RimRidge now follows the connection (it used to be updated in AP
-	// mode only, so it stayed visible after WiFi had switched itself off).
-	ui_RimRidgeUpdateWiFiState(wifiState == WIFI_UI_ONLINE, false, false, 0);
-}
-
-void UIFacade::updateSSIDList(const String& ssidStr) {
-	// SWLAN screen removed 2026-09-26 - no RimRidge equivalent yet, wire
-	// this up once WLAN gets a RimRidge-style screen.
-	(void) ssidStr;
-}
-
-void UIFacade::updateWiFiState(bool wifiEnabled, bool APModeActive, bool disableAPMode, uint8_t apStaCount) {
-	// SWLAN-specific update removed 2026-09-18, screen itself removed
-	// 2026-09-26 - RimRidge only gets the simple show/hide for now, the
-	// AP-mode/client-count detail had no RimRidge home and is gone with it.
-	bool uiTask = isDrawTask();
-	if (uiTask || xSemaphoreTake(xUIDrawMutex, 250 / portTICK_PERIOD_MS) == pdTRUE) {
-		ui_RimRidgeUpdateWiFiState(wifiEnabled, APModeActive, disableAPMode, apStaCount);
-		if (!uiTask) xSemaphoreGive(xUIDrawMutex);
-	} else {
-		bclog.log(BCLogger::Log_Warn, BCLogger::TAG_UI, "Update Wifi State blocked by mutex");
-	}
+	ui_RimRidgeSettingsUpdateWifi(wifiText.c_str(), wifiState, wifiCaption.c_str());
+	// The WLAN icon on RimRidge follows the connection (or the hotspot).
+	ui_RimRidgeUpdateWiFiState(wifiState == WIFI_UI_ONLINE || wifiState == WIFI_UI_AP, wifiState == WIFI_UI_AP, false, 0);
 }
 
 void UIFacade::updateStateIcon(Statistics::EDrivingState state, UIColor col, bool rideMode) {

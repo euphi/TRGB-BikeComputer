@@ -32,10 +32,6 @@ ride needs must work on the display. Details: [usability backlog](USABILITY-TODO
 
 - Road labels that can be hit on a rough road, and a rule for mis-taps.
 - Detect "bike upright" (lift) and "bike on the car" and leave them out of the ride.
-- **WiFi configuration**: the network is compiled into the firmware today, and the
-  credentials stored by the web interface are ignored. Wanted: use the stored ones,
-  several networks (phone hotspot), access-point mode from the device with a guided
-  first-time setup, credentials from the serial console.
 - Average speed and the other statistics on the display. They are computed and shown
   in the web interface; the main screen has no widget for them.
 - Remaining distance and time to the destination on the navigation screen (received,
@@ -55,15 +51,32 @@ Not designed yet.
   derailleur and tyres were last serviced, and shows the distance ridden since.
   Builds on the per-bike odometer.
 - **Waypoints in navigation**: show the waypoints of a route (summit, feed zone,
-  gravel sector) with name and distance. Needs an extension of the
-  [TrailBridge protocol](trailbridge/PROTOCOL.md);
-  today `Tools/gpxenrich` can only pass them on as a named "straight on".
-- **Climb overview for the whole route**: which climb of how many, and the altitude
-  still to gain. Needs a protocol extension as well.
+  gravel sector) with name, distance and arrival time. TrailBridge does not read the
+  waypoints (`wpt`) of a GPX file yet, and the
+  [TrailBridge protocol](trailbridge/PROTOCOL.md) has no tag for them; today
+  `Tools/gpxenrich` can only pass them on as a named "straight on".
+- **Climb overview for the whole route**: the next climb before it starts (distance to
+  its foot, altitude gain), which climb of how many, and the altitude still to gain.
+  Today the profile arrives only 500 m before the foot. TrailBridge knows all climbs
+  as soon as the route is loaded; needs a protocol extension as well.
+- **Direction back to the route**: off the route TrailBridge sends only the distance
+  to it. Wanted: the bearing as well, shown as an arrow. Needs a protocol extension.
+- **Pairing with the phone**: TrailBridge's BLE services can be read without pairing
+  or encryption, so any BLE device in range can connect and read the position. With
+  bonding the link would be encrypted, and the bike computer could recognise its phone
+  despite the changing address (see the known limitations below). Needs changes in
+  the app and in the firmware.
 - **Backup and restore** of odometer, statistics and settings over the web interface.
   They live only in the device's flash and are lost when it is erased.
 - **Touch lock** against ghost touches from rain drops.
 - **FIT export** in the log service, next to GPX.
+
+## TrailBridge app
+
+The Android app has its own roadmap (in German):
+[TrailBridge ROADMAP.md](https://github.com/euphi/TrailBridge/blob/main/ROADMAP.md).
+It lists the app's side of the features on this page and what concerns only the app
+(English translation, time lapse for the simulated ride, reports to OsmAnd).
 
 ## Later
 
@@ -74,7 +87,12 @@ Not designed yet.
 - A road-quality screen with more than the coloured line, and tuning the thresholds
   on recorded rides.
 - Forumslader screen in the Rim & Ridge design; Forumslader distance in the statistics.
-- Elevation profile during OsmAnd navigation (today only with a GPX route).
+- Route line on the display: the course of a GPX route around the current position,
+  to see turns coming and to find the way back. Needs a new BLE service for the
+  geometry.
+- Back channel from the bike computer to TrailBridge (there is no writable
+  characteristic today): buttons on the device for the app, ride data to the phone,
+  WiFi settings from the phone.
 - Binary log replay on the device (only the Forumslader text log can be replayed).
 - New case for the Canyon CP0007 gravel cockpit -- parametric model in [`cad/`](https://github.com/euphi/TRGB-BikeComputer/tree/main/cad),
   measurements from photos still to be checked with a caliper.
@@ -85,6 +103,16 @@ Low priority:
 - Radar (Garmin Varia over BLE).
 - Remaining battery runtime. The battery is a plain LiPo and its state of charge is
   only estimated from the voltage, which is inaccurate; it lasts about six hours.
+- Real sensor values passed on by TrailBridge (e.g. a heart-rate strap paired with the
+  phone). The protocol tags are reserved; the bike computer pairs its sensors itself,
+  so the benefit is small.
+
+On the back burner:
+
+- Elevation profile and route line during OsmAnd navigation (today only with a GPX
+  route). OsmAnd's AIDL interface provides neither the route geometry nor altitudes,
+  so this needs an extension in OsmAnd itself.
+- Starting TrailBridge automatically when the phone boots. Not needed at the moment.
 
 ## Help wanted
 
@@ -97,6 +125,7 @@ Low priority:
 ## Known limitations
 
 - The bike computer connects to the first TrailBridge instance it finds. Android
-  rotates its BLE address, so the phone cannot be locked like the sensors.
+  rotates its BLE address, so the phone cannot be locked like the sensors. Pairing
+  would solve this, see the planned features.
 - A log session is one boot, not one ride. Ride start and stop are marked inside it.
 - Climbs longer than 5 km come in a coarser raster, see [climbs](CLIMB.md).

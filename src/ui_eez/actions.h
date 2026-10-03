@@ -23,6 +23,14 @@ extern void action_settings_sleep(lv_event_t * e);
 extern void action_pause_click(lv_event_t * e);
 extern void action_go_to_climb(lv_event_t * e);
 extern void action_climb_screen_gesture(lv_event_t * e);
+extern void action_go_to_wifi(lv_event_t * e);
+extern void action_wifi_screen_gesture(lv_event_t * e);
+extern void action_wifi_scan(lv_event_t * e);
+extern void action_wifi_back(lv_event_t * e);
+extern void action_settings_ap(lv_event_t * e);
+extern void action_wifi_pw_cancel(lv_event_t * e);
+extern void action_wifi_pw_save(lv_event_t * e);
+extern void action_wifi_pw_eye(lv_event_t * e);
 
 #ifdef __cplusplus
 }

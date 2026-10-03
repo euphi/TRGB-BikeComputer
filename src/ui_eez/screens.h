@@ -16,7 +16,9 @@ enum ScreensEnum {
     SCREEN_ID_RIM_RIDGE_RQ = 3,
     SCREEN_ID_RIM_RIDGE_SETTINGS = 4,
     SCREEN_ID_RIM_RIDGE_CLIMB = 5,
-    _SCREEN_ID_LAST = 5
+    SCREEN_ID_RIM_RIDGE_WIFI = 6,
+    SCREEN_ID_RIM_RIDGE_WIFI_PW = 7,
+    _SCREEN_ID_LAST = 7
 };
 
 typedef struct _objects_t {
@@ -25,6 +27,8 @@ typedef struct _objects_t {
     lv_obj_t *rim_ridge_rq;
     lv_obj_t *rim_ridge_settings;
     lv_obj_t *rim_ridge_climb;
+    lv_obj_t *rim_ridge_wifi;
+    lv_obj_t *rim_ridge_wifi_pw;
     lv_obj_t *rr_speed_arc;
     lv_obj_t *rr_ic_wifi;
     lv_obj_t *rr_ic_gps;
@@ -141,6 +145,10 @@ typedef struct _objects_t {
     lv_obj_t *rrset_ip_val;
     lv_obj_t *rrset_btn_wifi;
     lv_obj_t *rrset_btn_wifi_lbl;
+    lv_obj_t *rrset_btn_ap;
+    lv_obj_t *rrset_btn_ap_lbl;
+    lv_obj_t *rrset_btn_wifisetup;
+    lv_obj_t *rrset_btn_wifisetup_lbl;
     lv_obj_t *rrset_btn_cal;
     lv_obj_t *rrset_btn_cal_lbl;
     lv_obj_t *rrset_btn_ref;
@@ -186,6 +194,27 @@ typedef struct _objects_t {
     lv_obj_t *rrclimb_group_rq_mode;
     lv_obj_t *rrclimb_ic_state;
     lv_obj_t *rrclimb_line_rq;
+    lv_obj_t *rrwifi_ic;
+    lv_obj_t *rrwifi_title;
+    lv_obj_t *rrwifi_status;
+    lv_obj_t *rrwifi_list;
+    lv_obj_t *rrwifi_empty;
+    lv_obj_t *rrwifi_btn_scan;
+    lv_obj_t *rrwifi_btn_scan_lbl;
+    lv_obj_t *rrwifi_btn_back;
+    lv_obj_t *rrwifi_btn_back_lbl;
+    lv_obj_t *rrwifi_hint;
+    lv_obj_t *rrwpw_title;
+    lv_obj_t *rrwpw_ssid;
+    lv_obj_t *rrwpw_ta;
+    lv_obj_t *rrwpw_btn_eye;
+    lv_obj_t *rrwpw_btn_eye_lbl;
+    lv_obj_t *rrwpw_kb;
+    lv_obj_t *rrwpw_btn_cancel;
+    lv_obj_t *rrwpw_btn_cancel_lbl;
+    lv_obj_t *rrwpw_btn_save;
+    lv_obj_t *rrwpw_btn_save_lbl;
+    lv_obj_t *rrwpw_hint;
 } objects_t;
 
 extern objects_t objects;
@@ -204,6 +233,12 @@ void tick_screen_rim_ridge_settings();
 
 void create_screen_rim_ridge_climb();
 void tick_screen_rim_ridge_climb();
+
+void create_screen_rim_ridge_wifi();
+void tick_screen_rim_ridge_wifi();
+
+void create_screen_rim_ridge_wifi_pw();
+void tick_screen_rim_ridge_wifi_pw();
 
 void tick_screen_by_id(enum ScreensEnum screenId);
 void tick_screen(int screen_index);

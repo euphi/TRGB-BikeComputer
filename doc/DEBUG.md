@@ -93,8 +93,11 @@ miniterm's `--eol CR` -- it turns every received CR into a line feed.
 | Ctrl-C | discard the line |
 | Ctrl-L | redraw the line |
 
-`wifi` shows the WiFi status, `wifi off` switches WiFi off (as after a lost connection),
-`wifi on` reconnects -- the same as the WLAN pill on the settings screen.
+`wifi` shows the WiFi status, `wifi off` switches WiFi off, `wifi on` runs the autoconnect --
+the same as the WLAN pill on the settings screen. `wifi ap [on|off]` is the hotspot pill,
+`wifi scan` a scan, `wifi list` the saved networks, `wifi add <ssid> <password>` and
+`wifi del <ssid>` edit them (quote names with spaces), `wifi apset <ssid> <password>` sets
+the hotspot. The password of `add`/`apset` is not written to the log. See [WiFi](WIFI.md).
 
 `help` lists all commands, `help <command>` shows one. Log lines appear above the prompt, the
 half-typed command stays. The terminal should be at least 80 columns wide; longer command
