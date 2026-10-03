@@ -14,6 +14,7 @@ kommt. Hilfe ist willkommen, besonders an den markierten Stellen.
 | Fahrzustände und Statistik | mit dem Simulator-Build getestet; eine echte Fahrt steht aus ([Cheatsheet](RIDE-TEST-CHEATSHEET.md)) |
 | Navigation mit GPX-Route und Anstiegs-Screen | mit der simulierten Fahrt von TrailBridge und dem Demo-Profil getestet; noch kein echter Anstieg gefahren |
 | Einstellungen, Log-Sitzungen, Log-Dienst | funktioniert; das Stellen der Uhr per GPS wurde nicht einzeln geprüft |
+| Höhenkalibrierung ([Doku](HEIGHT.md)) | Presets, manuelle Eingabe und Webseite am Gerät getestet; die GPS-Taste braucht einen TrailBridge-Build mit `MSL_ALTITUDE_DM` (0x0E) und einen echten Fix und ist ungetestet |
 | Forumslader-Variante | baut, selten getestet; ihr Screen ist der letzte aus der alten SquareLine-Oberfläche |
 
 ## Bekannte Fehler

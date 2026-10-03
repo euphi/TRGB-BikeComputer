@@ -26,43 +26,151 @@ I2CSensors::I2CSensors() {
 }
 
 uint16_t I2CSensors::getHTMLPage(String &htmlresponse) {
-	WebPage::begin(htmlresponse, "Sensors (I2C)");
+	const HeightCalState c = getHeightCalState();
+	WebPage::begin(htmlresponse, "Sensors (I2C)",
+	               ".presets{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}"
+	               ".presets .set{display:flex;gap:6px;align-items:center}"
+	               "input.num{width:6.5em}");
+	htmlresponse.reserve(htmlresponse.length() + 3072);
 	htmlresponse += F("<div class=\"sensor-box\"><h3>BME 280</h3>\n<table><tbody>\n");
 	char buffer[320];
 	snprintf(buffer, sizeof(buffer) - 1,
 	         "<tr><td>Pressure</td><td>%.2f mbar</td></tr>\n"
-	         "<tr><td>Height</td><td>%.2f m NHN</td></tr>\n"
-	         "<tr><td>Reference pressure (0m)</td><td>%.2f mbar</td></tr>\n"
+	         "<tr><td>Height</td><td>%.1f m NHN</td></tr>\n"
+	         "<tr><td>Reference pressure (sea level)</td><td>%.2f mbar</td></tr>\n"
 	         "<tr><td>Humidity</td><td>%.2f %%rel</td></tr>\n"
 	         "<tr><td>Temperature</td><td>%.2f &deg;C</td></tr>\n",
-	         press, height, bme280.getReferencePressure() / 100, humid, temp);
+	         c.pressHPa, c.heightM, c.seaLevelHPa, humid, temp);
 	htmlresponse += buffer;
-	htmlresponse += F("</tbody></table>\n"
-	                  "<form action=\"/sensor/submit\" method=\"post\" style=\"margin-top:12px;\">"
-	                  "<label for=\"height\">Calibrate to known actual height (m):</label> "
-	                  "<input type=\"text\" id=\"height\" name=\"height\" size=\"8\"> "
-	                  "<input class=\"btn\" type=\"submit\" value=\"Submit\">"
-	                  "</form></div>\n");
+	htmlresponse += F("</tbody></table></div>\n"
+	                  "<div class=\"sensor-box\"><h3>Height calibration</h3>\n"
+	                  "<p>Tap a preset when you are at that place. The field next to it changes the preset.</p>\n"
+	                  "<div class=\"presets\">");
+	for (uint8_t i = 0; i < HEIGHT_PRESET_COUNT; i++) {
+		snprintf(buffer, sizeof(buffer) - 1,
+		         "<div class=\"set\"><button class=\"btn\" onclick=\"cal('preset=%u')\" id=\"b%u\">%.0f m</button>"
+		         "<input class=\"num\" type=\"number\" step=\"any\" id=\"p%u\" value=\"%.0f\">"
+		         "<button class=\"btn btn-ghost\" onclick=\"savePreset(%u)\">Save</button></div>\n",
+		         i, i, c.presetM[i], i, c.presetM[i], i);
+		htmlresponse += buffer;
+	}
+	htmlresponse += F("</div>\n<div class=\"presets\">"
+	                  "<button class=\"btn\" onclick=\"cal('gps=1')\">GPS height</button></div>\n"
+	                  "<div class=\"presets\">"
+	                  "<div class=\"set\"><label for=\"mh\">Known height (m)</label>"
+	                  "<input class=\"num\" type=\"number\" step=\"any\" id=\"mh\">"
+	                  "<button class=\"btn\" onclick=\"manual('height','mh')\">Calibrate</button></div>\n"
+	                  "<div class=\"set\"><label for=\"mq\">or reference pressure at sea level (mbar)</label>"
+	                  "<input class=\"num\" type=\"number\" step=\"any\" id=\"mq\">"
+	                  "<button class=\"btn\" onclick=\"manual('qnh','mq')\">Set</button></div></div>\n"
+	                  "</div>\n");
 	//TODO: Add other sensors here
-	WebPage::end(htmlresponse);
+	WebPage::end(htmlresponse,
+	             "const done=()=>setTimeout(()=>location.reload(),900);\n"
+	             "function cal(q){req('/sensor/cal?'+q,'Calibrated',done);}\n"
+	             "function manual(k,id){const v=document.getElementById(id).value;"
+	             "if(v==='')return toast('Enter a value',true);cal(k+'='+encodeURIComponent(v));}\n"
+	             "function savePreset(i){const v=document.getElementById('p'+i).value;"
+	             "if(v==='')return toast('Enter a value',true);"
+	             "req('/sensor/preset?i='+i+'&height='+encodeURIComponent(v),'Preset saved',done);}\n");
 	return 200;
 }
 
-uint16_t I2CSensors::procHTMLHeight(String& htmlresponse, const float actHeight) {
-	refPres = calculateReferencePressure(actHeight, press) * 100;
-	bme280.setReferencePressure(refPres );
-	Preferences sensorPreferences;
-	sensorPreferences.begin("Sensors");
-	sensorPreferences.putFloat("RefPressure", refPres );
-	sensorPreferences.end();
+I2CSensors::HeightCalState I2CSensors::getHeightCalState() const {
+	HeightCalState s;
+	s.pressHPa = press;
+	s.heightM = getHeight();
+	s.seaLevelHPa = refPres / 100.0f;
+	for (uint8_t i = 0; i < HEIGHT_PRESET_COUNT; i++) s.presetM[i] = heightPresets[i];
+	return s;
+}
 
-	WebPage::begin(htmlresponse, "Calibration");
-	char buffer[255];
-	snprintf(buffer, sizeof(buffer) - 1,
-	         "<p>New reference pressure <b>%.2f mbar</b> stored for height %.2f m.</p>\n", refPres, actHeight);
-	htmlresponse += buffer;
-	WebPage::end(htmlresponse);
-	return 200;
+I2CSensors::HeightCalResult I2CSensors::setSeaLevelPressure(float hPa) {
+	if (!(hPa >= SEA_LEVEL_MIN_HPA && hPa <= SEA_LEVEL_MAX_HPA)) return HeightCalResult::OUT_OF_RANGE;
+	refPres = hPa * 100.0f;
+	bme280.setReferencePressure(refPres);
+	heightCalDirty = true;
+	bclog.logf(BCLogger::Log_Info, BCLogger::TAG_OP, "Height calibration: reference pressure %.2f mbar", hPa);
+	return HeightCalResult::OK;
+}
+
+I2CSensors::HeightCalResult I2CSensors::calibrateHeight(float knownHeightM) {
+	if (!(knownHeightM >= HEIGHT_MIN_M && knownHeightM <= HEIGHT_MAX_M)) return HeightCalResult::OUT_OF_RANGE;
+	const float p = press;		// hPa; the 1 Hz reading, already IIR-filtered by the sensor
+	if (isnan(p) || p < 300.0f) return HeightCalResult::NO_PRESSURE;
+	// Inverse of the height formula in readBME280(): p / pRef = (1 - h / BARO_SCALE_M) ^ (1 / BARO_EXPONENT)
+	const float sea = p / powf(1.0f - knownHeightM / BARO_SCALE_M, 1.0f / BARO_EXPONENT);
+	const HeightCalResult r = setSeaLevelPressure(sea);
+	if (r == HeightCalResult::OK) {
+		height = knownHeightM;		// the display shows it now, not after the next reading
+		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_OP, "Height calibrated to %.1f m (%.2f mbar measured)", knownHeightM, p);
+	}
+	return r;
+}
+
+bool I2CSensors::getGpsHeight(float& heightM) const {
+	const SGpsFix fix = bleDevs.getGpsFix();
+	// A made-up position (GPX test ride of TrailBridge) is no place to calibrate against.
+	if (!fix.valid || !fix.hasMslAltitude || fix.fixAgeMs > GPS_HEIGHT_MAX_AGE_MS || (fix.simFlags & GPS_SIM_POSITION)) {
+		return false;
+	}
+	heightM = fix.mslAltitudeDm / 10.0f;
+	return true;
+}
+
+I2CSensors::HeightCalResult I2CSensors::calibrateHeightFromGps(float* usedHeightM) {
+	float h;
+	if (!getGpsHeight(h)) return HeightCalResult::NO_GPS_HEIGHT;
+	if (usedHeightM) *usedHeightM = h;
+	return calibrateHeight(h);
+}
+
+I2CSensors::HeightCalResult I2CSensors::setHeightPreset(uint8_t index, float heightM) {
+	if (index >= HEIGHT_PRESET_COUNT || !(heightM >= HEIGHT_MIN_M && heightM <= HEIGHT_MAX_M)) return HeightCalResult::OUT_OF_RANGE;
+	heightPresets[index] = roundf(heightM);
+	heightCalDirty = true;
+	return HeightCalResult::OK;
+}
+
+float I2CSensors::getHeightPreset(uint8_t index) const {
+	return index < HEIGHT_PRESET_COUNT ? heightPresets[index] : NAN;
+}
+
+const char* I2CSensors::heightCalResultText(HeightCalResult r) {
+	switch (r) {
+	case HeightCalResult::OK: return "OK";
+	case HeightCalResult::NO_PRESSURE: return "No pressure reading yet";
+	case HeightCalResult::OUT_OF_RANGE: return "Value out of range";
+	case HeightCalResult::NO_GPS_HEIGHT: return "No current GPS height from TrailBridge";
+	}
+	return "";
+}
+
+// The calibration is a few floats: one blob (NvsUtil.h), replaced atomically.
+struct HeightCalBlob {
+	float refPres;
+	float presets[I2CSensors::HEIGHT_PRESET_COUNT];
+};
+
+void I2CSensors::loadHeightCal(Preferences& prefs) {
+	HeightCalBlob b;
+	if (NvsUtil::loadBlob(prefs, "HeightCal", b)) {
+		refPres = b.refPres;
+		for (uint8_t i = 0; i < HEIGHT_PRESET_COUNT; i++) heightPresets[i] = b.presets[i];
+	} else {
+		refPres = NvsUtil::getFloat(prefs, "RefPressure", 101300.0);		// before the presets existed
+	}
+	if (!(refPres >= SEA_LEVEL_MIN_HPA * 100 && refPres <= SEA_LEVEL_MAX_HPA * 100)) refPres = 101300.0f;
+}
+
+void I2CSensors::persistHeightCal() {
+	HeightCalBlob b;
+	b.refPres = refPres;
+	for (uint8_t i = 0; i < HEIGHT_PRESET_COUNT; i++) b.presets[i] = heightPresets[i];
+	Preferences prefs;
+	prefs.begin("Sensors");
+	prefs.putBytes("HeightCal", &b, sizeof(b));
+	prefs.end();
 }
 
 void I2CSensors::initBME280() {
@@ -114,7 +222,7 @@ void I2CSensors::initBME280() {
 	}
 	Preferences sensorPreferences;
 	sensorPreferences.begin("Sensors");
-	refPres = NvsUtil::getFloat(sensorPreferences, "RefPressure", 101300.0);
+	loadHeightCal(sensorPreferences);
 	bme280.setReferencePressure(refPres);
 	sensorPreferences.end();
 
@@ -131,6 +239,9 @@ float I2CSensors::getHeight() const {
 
 void I2CSensors::readBME280() {
 	BME280_SensorMeasurements measurement;
+
+	// Height calibration changed since the last cycle (any task may do that): store it here.
+	if (heightCalDirty.exchange(false)) persistHeightCal();
 
 	// Called from the esp_timer task (Statistics::cycle(), bme280Cycle) and from the task that
 	// delivers the wheel revolutions (Statistics::calculateGradient()). The lock is taken per
@@ -152,7 +263,7 @@ void I2CSensors::readBME280() {
 			press = measurement.pressure / 100.0;
 			humid = measurement.humidity;
 			temp = measurement.temperature;
-			height = -44330.77 * (pow((press / (refPres/100)), 0.190263) - 1.0);
+			height = -BARO_SCALE_M * (powf(press / (refPres / 100), BARO_EXPONENT) - 1.0f);
 			bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_OP, "BME280: %.2f mbar, %.2f rel%%, %.2f °C, %.2f m NN", press, humid, temp, height);
 			return;
 		}

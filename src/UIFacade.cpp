@@ -32,6 +32,8 @@
 #include "ui/RimRidgeNavCustFunc.h"
 #include "ui/RimRidgeRQCustFunc.h"
 #include "ui/RimRidgeSettingsCustFunc.h"
+#include "ui/RimRidgeAltCustFunc.h"
+#include "ui/RimRidgeDevCustFunc.h"
 #include "ui/RimRidgeClimbCustFunc.h"
 #include "ui/RimRidgeWifiCustFunc.h"
 #include "UiDebug.h"
@@ -85,6 +87,13 @@ void UIFacade::initDisplay() {
     ui_RimRidgeRQUpdateLabel(0, 0, false); // nothing labeled/capturing yet - normalize away the JSON's static "Schotter/3 selected" example content
     ui_RimRidgeRQInitNavLink(); // rq_nav_pill tap -> showNavScreen(), same target as rr_nav_pill's GoToNav action, but wired in C (see RimRidgeRQCustFunc.cpp)
     create_screen_rim_ridge_settings();
+    create_screen_rim_ridge_settings_wifi();
+    create_screen_rim_ridge_settings_imu();
+    create_screen_rim_ridge_settings_alt();
+    create_screen_rim_ridge_settings_num();
+    create_screen_rim_ridge_settings_dev();
+    ui_RimRidgeDevInit(); // FL row only in the FL build
+    ui_RimRidgeAltInit(); // number entry keyboard and handler, preset labels
     ui_RimRidgeSettingsInit(); // build string, calibration status, restart/deep-sleep timer
     create_screen_rim_ridge_climb();
     ui_RimRidgeClimbInit(); // profile draw callback, "no climb" instead of the canvas' example values
@@ -241,8 +250,8 @@ void UIFacade::updateHandler() {
 			if (xSemaphoreTake(xUIDrawMutex, 50 / portTICK_PERIOD_MS) == pdTRUE) {
 				evaluateNaviAutoSwitch();
 				updateClimb();
-				// Calibration progress/result - only while the settings screen is shown.
-				if (lv_scr_act() == objects.rim_ridge_settings) ui_RimRidgeSettingsUpdateCal();
+				// Calibration progress/result, height - only while a settings screen is shown.
+				ui_RimRidgeSettingsTick();
 				xSemaphoreGive(xUIDrawMutex);
 			}
 		}
@@ -651,8 +660,8 @@ void UIFacade::showSettingsScreen() {
 	// re-entrancy note as showNavScreen() above.
 	bool uiTask = isDrawTask();
 	if (uiTask || xSemaphoreTake(xUIDrawMutex, 150 / portTICK_PERIOD_MS) == pdTRUE) {
-		ui_RimRidgeSettingsUpdateCal();		// don't show a stale status for the first second
 		lv_disp_load_scr(objects.rim_ridge_settings);
+		ui_RimRidgeSettingsTick();		// don't show a stale status for the first second
 		if (!uiTask) xSemaphoreGive(xUIDrawMutex);
 	} else {
 		bclog.log(BCLogger::Log_Warn, BCLogger::TAG_UI, "Show settings screen blocked by mutex");

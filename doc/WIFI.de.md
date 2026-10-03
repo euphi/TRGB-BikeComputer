@@ -4,9 +4,11 @@ Der Fahrradcomputer verbindet sich selbst mit bekannten Netzen, kann einen eigen
 öffnen und wird entweder am Display oder auf einer Webseite eingerichtet. In der Firmware
 steht kein Netzname und kein Passwort.
 
-![Einstellungs-Screen](screenshots/settings.png){ width="260" }
+![WLAN-Seite der Einstellungen](screenshots/settings-wifi.png){ width="260" }
 
-## Einstellungs-Screen
+## Einstellungs-Screen (WLAN-Seite)
+
+Einstellungen → **WLAN**:
 
 | Taste | Tut |
 |---|---|
@@ -19,7 +21,7 @@ gefunden", „Verbindung verloren", „kein Netz gespeichert", ...).
 
 ## Netz am Display einrichten
 
-1. Einstellungen → **Netzwerke** → **Suchen**. Die Netze in Reichweite stehen in der Liste,
+1. Einstellungen → WLAN → **Netzwerke** → **Suchen**. Die Netze in Reichweite stehen in der Liste,
    das stärkste oben; schon gespeicherte sind messingfarben. Eine Suche schaltet das WLAN ein,
    wenn es aus war.
 2. Netz antippen. Der Passwort-Screen öffnet sich: Passwort auf der Tastatur tippen (**abc**

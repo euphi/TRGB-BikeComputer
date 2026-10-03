@@ -459,6 +459,7 @@ void BLEDevices::storeAdress(EDevType type, BLEAddress &addr) {
  * @param type The device type whose address should be removed.
  */
 void BLEDevices::resetAdress(EDevType type) {
+	cscKind[type] = 0;
 	Preferences addrPrefs;
 	addrPrefs.begin("BLEConn");
 	// isKey() first: a device seen but never connected is in RAM only (storeAdress() is called
@@ -637,6 +638,7 @@ void BLEDevices::notifyCallbackCSC(BLERemoteCharacteristic *pBLERemoteCharacteri
 		if (isSpeed) {
 //#ifndef  BC_FL_SUPPORT
 			cscIsSpeed[ctype] = true;
+			cscKind[ctype] = 1;
 			speed_rev = ((uint32_t)pData[4] << 24) + (pData[3] << 16) + (pData[2] << 8) + pData[1];		// LSB first (cast: uint8_t would promote to int and shift into its sign bit)
 			speed_time = (pData[6] << 8) + pData[5];	// LSB first
 			stats.getDistHandler().updateRevs(speed_rev, speed_time);
@@ -657,6 +659,7 @@ void BLEDevices::notifyCallbackCSC(BLERemoteCharacteristic *pBLERemoteCharacteri
 //#endif
 		} else {
 			cscIsSpeed[ctype] = false;
+			cscKind[ctype] = 2;
 			crank_rev = (pData[2] << 8) + pData[1];		// LSB first
 			crank_time = (pData[4] << 8) + pData[3];	// LSB first
 			delta = crank_time - crank_time_last;
@@ -1006,6 +1009,9 @@ void BLEDevices::handleGpsData(const uint8_t* pData, size_t length) {
 			case GPS_TAG_BARO_HEIGHT_DM:
 				if (len >= 4) { fix.hasBaroHeight = true; fix.baroHeightDm = (int32_t)(val[0] | (val[1] << 8) | (val[2] << 16) | ((uint32_t)val[3] << 24)); }
 				break;
+			case GPS_TAG_MSL_ALTITUDE_DM:
+				if (len >= 4) { fix.hasMslAltitude = true; fix.mslAltitudeDm = (int32_t)(val[0] | (val[1] << 8) | (val[2] << 16) | ((uint32_t)val[3] << 24)); }
+				break;
 			case GPS_TAG_POWER_W:
 				if (len >= 2) { fix.hasPower = true; fix.powerW = val[0] | (val[1] << 8); }
 				break;
@@ -1191,6 +1197,26 @@ uint16_t BLEDevices::getHTMLPage(String &htmlresponse) {
 		"The device is disconnected and the slot freed, so a different device can pair on the next scan.'))return;"
 		"req('/dev/delete?dev='+d,'Address deleted',()=>location.reload());}\n");
 	return 200;
+}
+
+void BLEDevices::forgetTask(void* arg) {
+	bleDevs.resetAdress(static_cast<EDevType>(reinterpret_cast<intptr_t>(arg)));
+	vTaskDelete(NULL);
+}
+
+BLEDevices::DevStatus BLEDevices::getDevStatus(EDevType dt) const {
+	DevStatus s;
+	if (dt < 0 || dt >= DEV_COUNT) return s;
+	s.state = connState[dt];
+	s.battery = batLevel[dt];
+	s.hasAddress = pStoredAddress[dt] != nullptr;
+	s.cscKind = cscKind[dt];
+	return s;
+}
+
+bool BLEDevices::requestForget(EDevType dt) {
+	if (dt < 0 || dt >= DEV_COUNT || dt == DEV_NAV) return false;
+	return xTaskCreate(forgetTask, "BleForget", 4096, reinterpret_cast<void*>(static_cast<intptr_t>(dt)), 5, nullptr) == pdPASS;
 }
 
 uint16_t BLEDevices::procHTMLCmd(String& htmlresponse, const String& cmd, const String& arg) {

@@ -30,9 +30,12 @@ Screenshots vom Gerät, aufgenommen während einer simulierten Fahrt von Villach
   öffnet sich von selbst am Fuß eines bewerteten Anstiegs ([Anstiege](CLIMB.md))
 - **Wege-Labels**: Untergrund und Qualität während der Fahrt von Hand markieren, als
   Vergleichswert für die automatische Wegequalität
-- **Einstellungen**: IP-Adresse, WLAN an/aus, Hotspot, WLAN einrichten (suchen, Netz
-  auswählen, Passwort mit der Display-Tastatur tippen), Kalibrierung des
-  Beschleunigungssensors und Referenzfahrt, Neustart, Ausschalten
+- **Einstellungen**: eine Übersicht mit je einer Seite pro Gruppe -- WLAN (IP-Adresse, an/aus,
+  Hotspot, Netz einrichten mit der Display-Tastatur), IMU (Kalibrierung und Referenzfahrt), Höhe
+  (drei Presets, GPS, Höhe oder NN-Druck manuell, [Höhenkalibrierung](HEIGHT.md)), BLE-Geräte
+  (Speed, Kadenz, Puls, TrailBridge, im FL-Build der Forumslader: Farbe = Verbindung,
+  Batteriestand; lang drücken vergisst einen Sensor, damit ein anderer koppeln kann) -- dazu
+  Neustart, Ausschalten und eine Markierung für Simulator-Builds
 
 **Fahrten und Statistik**
 

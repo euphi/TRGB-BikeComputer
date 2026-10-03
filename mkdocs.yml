@@ -89,6 +89,7 @@ nav:
   - Using it:
       - Climbs: CLIMB.md
       - WiFi: WIFI.md
+      - Height calibration: HEIGHT.md
       - Rides and statistics: design/ride-state-machine.md
       - Usability backlog: USABILITY-TODO.md
       - Ride test cheat sheet: RIDE-TEST-CHEATSHEET.md

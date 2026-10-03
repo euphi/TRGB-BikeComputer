@@ -21,6 +21,7 @@
 
 class BLEDevices: public BLEAdvertisedDeviceCallbacks, BLEClientCallbacks {
 
+public:
 typedef enum {
 	DEV_UNKNOWN = -1,
 	DEV_HRM = 0,
@@ -39,6 +40,7 @@ typedef enum {
 	CONN_COUNT
 } EBLEConnState;
 
+private:
 static const char* DEV_EMOJI[DEV_COUNT];
 static const char* DEV_STRING[DEV_COUNT];
 static const char* CONN_STRING[CONN_COUNT];
@@ -88,6 +90,7 @@ private:
 	// notification, so the wheel-interpolated nav distance on Main/RQ dropped to 0 m (under
 	// 256 m) or by up to 255 m until the next nav frame repaired it.
 	bool cscIsSpeed[DEV_COUNT] = {};
+	uint8_t cscKind[DEV_COUNT] = {};		// 0 unknown, 1 speed, 2 cadence: set by the first notification
 
 	int32_t nav_distance = 0, nav_distance_int = 0;
 
@@ -121,6 +124,7 @@ private:
 	void restoreAdresses();
 	void storeAdress(EDevType type, BLEAddress& addr);
 	void resetAdress(EDevType type);
+	static void forgetTask(void* arg);
 
 	EDevType filterDevice(BLEAdvertisedDevice& dev);
 	bool isAlreadyConnected(BLEAdvertisedDevice& newDevice);
@@ -156,6 +160,19 @@ public:
 	void simNotifyCSC(bool speed, uint8_t* pData, size_t length) {notifyCallbackCSC(nullptr, pData, length, true, speed ? DEV_CSC_1 : DEV_CSC_2);}
 	void simNotifyHR(uint8_t* pData, size_t length) {notifyCallbackCSC(nullptr, pData, length, true, DEV_HRM);}
 #endif
+
+	// ---- Device status for the settings page ----
+	struct DevStatus {
+		EBLEConnState state = CONN_DEV_NOTFOUND;
+		int8_t battery = -1;			// percent, -1 unknown
+		bool hasAddress = false;		// a sensor is remembered in this slot
+		uint8_t cscKind = 0;			// CSC slots: 0 not known yet, 1 speed, 2 cadence (from the first data)
+	};
+	DevStatus getDevStatus(EDevType dt) const;
+	// Forget the sensor of a slot (stored address) and drop its connection, so a new one can be
+	// taken. Own short task: NVS access and the device mutex don't belong on the UI task.
+	// TrailBridge is refused (its address is never stored anyway).
+	bool requestForget(EDevType dt);
 
 	uint16_t getHTMLPage(String& htmlresponse);
 	uint16_t procHTMLCmd(String& htmlresponse, const String& cmd, const String& arg);

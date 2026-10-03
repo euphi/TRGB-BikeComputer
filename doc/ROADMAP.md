@@ -14,6 +14,7 @@ Help is welcome, especially where marked.
 | Ride states and statistics | tested with the simulator build; a real ride is pending ([cheat sheet](RIDE-TEST-CHEATSHEET.md)) |
 | GPX route navigation and climb screen | tested with TrailBridge's simulated ride and the demo profile; no real climb ridden yet |
 | Settings screen, log sessions, log service | working; setting the clock from GPS has not been checked on its own |
+| Height calibration ([doc](HEIGHT.md)) | presets, manual entry and web page tested on the device; the GPS button needs a TrailBridge build with `MSL_ALTITUDE_DM` (0x0E) and a real fix and is untested |
 | Forumslader variant | builds, rarely tested; its screen is the last one from the old SquareLine UI |
 
 ## Known bugs

@@ -2,7 +2,7 @@
  * RimRidgeWifiCustFunc.h
  *
  * Hand-written logic for the two EEZ Studio-generated WLAN screens (src/ui_eez/ is replaced on
- * every export, so everything dynamic lives here). Reached from the settings screen ("Netzwerke").
+ * every export, so everything dynamic lives here). Reached from the WLAN page of the settings ("Netzwerke", RimRidgeSettingsWifi).
  *
  *   RimRidgeWifi    status line (what WifiWebserver is doing), the networks of the last scan as a
  *                   scrollable list (rows are created here, rrwifi_list is only their frame),
@@ -19,7 +19,7 @@
  * default one; the layout differs from the one the EEZ canvas shows (it renders the LVGL default).
  * Shift is one-shot. The password never goes into a log line.
  *
- * Swipe on RimRidgeWifi goes back to the settings; the password screen has no swipe (it would fire
+ * Swipe on RimRidgeWifi goes back to the WLAN settings page; the password screen has no swipe (it would fire
  * while typing) -- Cancel instead. EEZ actions (action_wifi_*, action_go_to_wifi) are declared by
  * the generated src/ui_eez/actions.h.
  */

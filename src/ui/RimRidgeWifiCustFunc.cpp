@@ -292,16 +292,16 @@ void action_go_to_wifi(lv_event_t* e) {
 
 void action_wifi_back(lv_event_t* e) {
 	(void) e;
-	lv_disp_load_scr(objects.rim_ridge_settings);
+	lv_disp_load_scr(objects.rim_ridge_settings_wifi);
 }
 
-// Any swipe returns to the settings, like on the other sub screens.
+// Any swipe returns to the WLAN settings page, like on the other sub screens.
 void action_wifi_screen_gesture(lv_event_t* e) {
 	(void) e;
 	lv_indev_t* indev = lv_indev_get_act();
 	if (!indev) return;
 	lv_indev_wait_release(indev);
-	lv_disp_load_scr(objects.rim_ridge_settings);
+	lv_disp_load_scr(objects.rim_ridge_settings_wifi);
 }
 
 void action_wifi_scan(lv_event_t* e) {

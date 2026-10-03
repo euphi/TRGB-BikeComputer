@@ -18,7 +18,12 @@ enum ScreensEnum {
     SCREEN_ID_RIM_RIDGE_CLIMB = 5,
     SCREEN_ID_RIM_RIDGE_WIFI = 6,
     SCREEN_ID_RIM_RIDGE_WIFI_PW = 7,
-    _SCREEN_ID_LAST = 7
+    SCREEN_ID_RIM_RIDGE_SETTINGS_WIFI = 8,
+    SCREEN_ID_RIM_RIDGE_SETTINGS_IMU = 9,
+    SCREEN_ID_RIM_RIDGE_SETTINGS_ALT = 10,
+    SCREEN_ID_RIM_RIDGE_SETTINGS_NUM = 11,
+    SCREEN_ID_RIM_RIDGE_SETTINGS_DEV = 12,
+    _SCREEN_ID_LAST = 12
 };
 
 typedef struct _objects_t {
@@ -29,6 +34,11 @@ typedef struct _objects_t {
     lv_obj_t *rim_ridge_climb;
     lv_obj_t *rim_ridge_wifi;
     lv_obj_t *rim_ridge_wifi_pw;
+    lv_obj_t *rim_ridge_settings_wifi;
+    lv_obj_t *rim_ridge_settings_imu;
+    lv_obj_t *rim_ridge_settings_alt;
+    lv_obj_t *rim_ridge_settings_num;
+    lv_obj_t *rim_ridge_settings_dev;
     lv_obj_t *rr_speed_arc;
     lv_obj_t *rr_ic_wifi;
     lv_obj_t *rr_ic_gps;
@@ -141,20 +151,23 @@ typedef struct _objects_t {
     lv_obj_t *rrset_title;
     lv_obj_t *rrset_build_caption;
     lv_obj_t *rrset_build_val;
-    lv_obj_t *rrset_ip_caption;
-    lv_obj_t *rrset_ip_val;
-    lv_obj_t *rrset_btn_wifi;
-    lv_obj_t *rrset_btn_wifi_lbl;
-    lv_obj_t *rrset_btn_ap;
-    lv_obj_t *rrset_btn_ap_lbl;
-    lv_obj_t *rrset_btn_wifisetup;
-    lv_obj_t *rrset_btn_wifisetup_lbl;
-    lv_obj_t *rrset_btn_cal;
-    lv_obj_t *rrset_btn_cal_lbl;
-    lv_obj_t *rrset_btn_ref;
-    lv_obj_t *rrset_btn_ref_lbl;
-    lv_obj_t *rrset_cal_status;
-    lv_obj_t *rrset_ref_status;
+    lv_obj_t *rrset_build_flag;
+    lv_obj_t *rrset_nav_wifi;
+    lv_obj_t *rrset_nav_wifi_ic;
+    lv_obj_t *rrset_nav_wifi_lbl;
+    lv_obj_t *rrset_nav_wifi_val;
+    lv_obj_t *rrset_nav_dev;
+    lv_obj_t *rrset_nav_dev_ic;
+    lv_obj_t *rrset_nav_dev_lbl;
+    lv_obj_t *rrset_nav_dev_val;
+    lv_obj_t *rrset_nav_imu;
+    lv_obj_t *rrset_nav_imu_ic;
+    lv_obj_t *rrset_nav_imu_lbl;
+    lv_obj_t *rrset_nav_imu_val;
+    lv_obj_t *rrset_nav_alt;
+    lv_obj_t *rrset_nav_alt_ic;
+    lv_obj_t *rrset_nav_alt_lbl;
+    lv_obj_t *rrset_nav_alt_val;
     lv_obj_t *rrset_btn_reset;
     lv_obj_t *rrset_ic_reset;
     lv_obj_t *rrset_btn_reset_lbl;
@@ -215,6 +228,84 @@ typedef struct _objects_t {
     lv_obj_t *rrwpw_btn_save;
     lv_obj_t *rrwpw_btn_save_lbl;
     lv_obj_t *rrwpw_hint;
+    lv_obj_t *rrsw_ic;
+    lv_obj_t *rrsw_title;
+    lv_obj_t *rrset_ip_caption;
+    lv_obj_t *rrset_ip_val;
+    lv_obj_t *rrset_btn_wifi;
+    lv_obj_t *rrset_btn_wifi_lbl;
+    lv_obj_t *rrset_btn_ap;
+    lv_obj_t *rrset_btn_ap_lbl;
+    lv_obj_t *rrset_btn_wifisetup;
+    lv_obj_t *rrset_btn_wifisetup_lbl;
+    lv_obj_t *rrsw_btn_back;
+    lv_obj_t *rrsw_btn_back_lbl;
+    lv_obj_t *rrsi_ic;
+    lv_obj_t *rrsi_title;
+    lv_obj_t *rrset_btn_cal;
+    lv_obj_t *rrset_btn_cal_lbl;
+    lv_obj_t *rrset_cal_status;
+    lv_obj_t *rrset_btn_ref;
+    lv_obj_t *rrset_btn_ref_lbl;
+    lv_obj_t *rrset_ref_status;
+    lv_obj_t *rrsi_btn_back;
+    lv_obj_t *rrsi_btn_back_lbl;
+    lv_obj_t *rrsa_ic;
+    lv_obj_t *rrsa_title;
+    lv_obj_t *rrsa_height;
+    lv_obj_t *rrsa_info;
+    lv_obj_t *rrsa_btn_p1;
+    lv_obj_t *rrsa_btn_p1_lbl;
+    lv_obj_t *rrsa_btn_p2;
+    lv_obj_t *rrsa_btn_p2_lbl;
+    lv_obj_t *rrsa_btn_p3;
+    lv_obj_t *rrsa_btn_p3_lbl;
+    lv_obj_t *rrsa_btn_gps;
+    lv_obj_t *rrsa_btn_gps_lbl;
+    lv_obj_t *rrsa_btn_manual;
+    lv_obj_t *rrsa_btn_manual_lbl;
+    lv_obj_t *rrsa_status;
+    lv_obj_t *rrsa_hint;
+    lv_obj_t *rrsa_btn_back;
+    lv_obj_t *rrsa_btn_back_lbl;
+    lv_obj_t *rrsn_title;
+    lv_obj_t *rrsn_btn_mode_h;
+    lv_obj_t *rrsn_btn_mode_h_lbl;
+    lv_obj_t *rrsn_btn_mode_p;
+    lv_obj_t *rrsn_btn_mode_p_lbl;
+    lv_obj_t *rrsn_ta;
+    lv_obj_t *rrsn_unit;
+    lv_obj_t *rrsn_kb;
+    lv_obj_t *rrsn_btn_cancel;
+    lv_obj_t *rrsn_btn_cancel_lbl;
+    lv_obj_t *rrsn_btn_save;
+    lv_obj_t *rrsn_btn_save_lbl;
+    lv_obj_t *rrsn_hint;
+    lv_obj_t *rrsd_ic;
+    lv_obj_t *rrsd_title;
+    lv_obj_t *rrsd_row_csc1;
+    lv_obj_t *rrsd_row_csc1_dot;
+    lv_obj_t *rrsd_row_csc1_lbl;
+    lv_obj_t *rrsd_row_csc1_bat;
+    lv_obj_t *rrsd_row_csc2;
+    lv_obj_t *rrsd_row_csc2_dot;
+    lv_obj_t *rrsd_row_csc2_lbl;
+    lv_obj_t *rrsd_row_csc2_bat;
+    lv_obj_t *rrsd_row_hr;
+    lv_obj_t *rrsd_row_hr_dot;
+    lv_obj_t *rrsd_row_hr_lbl;
+    lv_obj_t *rrsd_row_hr_bat;
+    lv_obj_t *rrsd_row_tb;
+    lv_obj_t *rrsd_row_tb_dot;
+    lv_obj_t *rrsd_row_tb_lbl;
+    lv_obj_t *rrsd_row_tb_bat;
+    lv_obj_t *rrsd_row_fl;
+    lv_obj_t *rrsd_row_fl_dot;
+    lv_obj_t *rrsd_row_fl_lbl;
+    lv_obj_t *rrsd_row_fl_bat;
+    lv_obj_t *rrsd_hint;
+    lv_obj_t *rrsd_btn_back;
+    lv_obj_t *rrsd_btn_back_lbl;
 } objects_t;
 
 extern objects_t objects;
@@ -239,6 +330,21 @@ void tick_screen_rim_ridge_wifi();
 
 void create_screen_rim_ridge_wifi_pw();
 void tick_screen_rim_ridge_wifi_pw();
+
+void create_screen_rim_ridge_settings_wifi();
+void tick_screen_rim_ridge_settings_wifi();
+
+void create_screen_rim_ridge_settings_imu();
+void tick_screen_rim_ridge_settings_imu();
+
+void create_screen_rim_ridge_settings_alt();
+void tick_screen_rim_ridge_settings_alt();
+
+void create_screen_rim_ridge_settings_num();
+void tick_screen_rim_ridge_settings_num();
+
+void create_screen_rim_ridge_settings_dev();
+void tick_screen_rim_ridge_settings_dev();
 
 void tick_screen_by_id(enum ScreensEnum screenId);
 void tick_screen(int screen_index);

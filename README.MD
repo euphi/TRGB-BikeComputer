@@ -34,9 +34,12 @@ climb, road labels, settings.
   category; opens by itself at the foot of a rated climb ([doc/CLIMB.md](doc/CLIMB.md))
 - **Road labels**: mark surface and quality by hand while riding, as ground truth for
   the automatic road-quality class
-- **Settings**: IP address, WiFi on/off, hotspot, WiFi setup (scan, pick a network, type the
-  password on the display keyboard), accelerometer calibration and reference ride, restart,
-  power off
+- **Settings**: a hub with one page per group -- WiFi (IP address, on/off, hotspot, network
+  setup with the display keyboard), IMU (calibration and reference ride), height (three
+  presets, GPS, manual height or sea-level pressure, [doc/HEIGHT.md](doc/HEIGHT.md)), BLE devices
+  (speed, cadence, heart rate, TrailBridge, Forumslader in the FL build: colour = connection,
+  battery level; long press forgets a sensor so another one can pair) -- plus
+  restart, power off, and a mark for simulator builds
 
 **Rides and statistics**
 - One button starts a ride, pauses it ("cruise") and ends it; stops and breaks are

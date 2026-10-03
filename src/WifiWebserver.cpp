@@ -981,18 +981,49 @@ void WifiWebserver::setupWebserver() {
 	});
 
 #ifdef TRGBBC_SENSORS_I2C
+	// Height calibration. The action routes come before the "/sensor/" page route (a plain
+	// route also matches "<uri>/...", see the BMI160 note below). Plain GET like the other
+	// actions, so the page's req() helper can call them.
+	//   /sensor/cal?preset=N | gps=1 | height=<m> | qnh=<hPa>     N = 0..2
+	//   /sensor/preset?i=N&height=<m>                              change a preset
+	server.on("/sensor/cal", HTTP_GET, [](AsyncWebServerRequest *request) {
+		I2CSensors::HeightCalResult r;
+		if (request->hasArg("preset")) {
+			const long i = request->arg("preset").toInt();
+			r = (i >= 0 && i < I2CSensors::HEIGHT_PRESET_COUNT) ? sensors.calibrateHeight(sensors.getHeightPreset(i))
+			                                                    : I2CSensors::HeightCalResult::OUT_OF_RANGE;
+		} else if (request->hasArg("gps")) {
+			r = sensors.calibrateHeightFromGps();
+		} else if (request->hasArg("height")) {
+			r = sensors.calibrateHeight(request->arg("height").toFloat());
+		} else if (request->hasArg("qnh")) {
+			r = sensors.setSeaLevelPressure(request->arg("qnh").toFloat());
+		} else {
+			request->send(400, "text/plain", "Missing parameter");
+			return;
+		}
+		request->send(r == I2CSensors::HeightCalResult::OK ? 200 : 409, "text/plain", I2CSensors::heightCalResultText(r));
+	});
+
+	server.on("/sensor/preset", HTTP_GET, [](AsyncWebServerRequest *request) {
+		if (!request->hasArg("i") || !request->hasArg("height")) {
+			request->send(400, "text/plain", "Missing parameter");
+			return;
+		}
+		const I2CSensors::HeightCalResult r = sensors.setHeightPreset(request->arg("i").toInt(), request->arg("height").toFloat());
+		request->send(r == I2CSensors::HeightCalResult::OK ? 200 : 409, "text/plain", I2CSensors::heightCalResultText(r));
+	});
+
+	// Old form target (bookmarks): calibrate to a known height
+	server.on("/sensor/submit", HTTP_POST, [this](AsyncWebServerRequest *request) {
+		const I2CSensors::HeightCalResult r = sensors.calibrateHeight(request->arg("height").toFloat());
+		request->send(r == I2CSensors::HeightCalResult::OK ? 200 : 409, "text/plain", I2CSensors::heightCalResultText(r));
+	});
+
 	server.on("/sensor/", HTTP_GET,  [this](AsyncWebServerRequest *request) {
 		htmlresponse.clear();
 		sensors.getHTMLPage(htmlresponse);
 		request->send(200, "text/html", htmlresponse.c_str());
-	});
-
-	server.on("/sensor/submit", HTTP_POST, [this](AsyncWebServerRequest *request) {
-		String height = request->arg("height");
-		double heightValue = height.toDouble();
-		htmlresponse.clear();
-		int16_t code = sensors.procHTMLHeight(htmlresponse, heightValue);
-		request->send(200, "text/html", htmlresponse);
 	});
 
 	// BMI160 debug page. The action routes are registered before "/debug/imu" on purpose:

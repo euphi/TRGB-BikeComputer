@@ -4,9 +4,11 @@ The bike computer joins known networks by itself, can open a hotspot of its own,
 either on its display or on a web page. No network name or password is compiled into the
 firmware.
 
-![Settings screen](screenshots/settings.png){ width="260" }
+![WiFi settings page](screenshots/settings-wifi.png){ width="260" }
 
-## Settings screen
+## Settings screen (WLAN page)
+
+Settings → **WLAN**:
 
 | Button | Does |
 |---|---|
@@ -19,7 +21,7 @@ The line above the buttons shows the IP address, or why WiFi is off ("kein WLAN 
 
 ## Setting up a network on the display
 
-1. Settings → **Netzwerke** → **Suchen**. The networks in range are listed, strongest first;
+1. Settings → WLAN → **Netzwerke** → **Suchen**. The networks in range are listed, strongest first;
    those already saved are brass-coloured. A scan switches WiFi on if it was off.
 2. Tap a network. The password screen opens: type the password on the keyboard (**abc** shows
    or hides it, **1#** and **#+=** are the symbol pages, shift is one-shot). A saved network

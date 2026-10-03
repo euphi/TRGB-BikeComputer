@@ -31,6 +31,20 @@ extern void action_settings_ap(lv_event_t * e);
 extern void action_wifi_pw_cancel(lv_event_t * e);
 extern void action_wifi_pw_save(lv_event_t * e);
 extern void action_wifi_pw_eye(lv_event_t * e);
+extern void action_go_to_settings_wifi(lv_event_t * e);
+extern void action_go_to_settings_imu(lv_event_t * e);
+extern void action_go_to_settings_alt(lv_event_t * e);
+extern void action_settings_sub_back(lv_event_t * e);
+extern void action_settings_sub_gesture(lv_event_t * e);
+extern void action_alt_preset(lv_event_t * e);
+extern void action_alt_preset_edit(lv_event_t * e);
+extern void action_alt_gps(lv_event_t * e);
+extern void action_alt_manual(lv_event_t * e);
+extern void action_alt_num_mode(lv_event_t * e);
+extern void action_alt_num_cancel(lv_event_t * e);
+extern void action_alt_num_save(lv_event_t * e);
+extern void action_go_to_settings_dev(lv_event_t * e);
+extern void action_dev_forget(lv_event_t * e);
 
 #ifdef __cplusplus
 }

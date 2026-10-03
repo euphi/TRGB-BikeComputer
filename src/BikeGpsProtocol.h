@@ -40,7 +40,8 @@ typedef enum {
 	GPS_TAG_CADENCE_RPM = 0x0A,			// uint8, rpm, 0 = coasting
 	GPS_TAG_SIM_FLAGS = 0x0B,				// uint8 bit field, EGpsSimFlags; absent/0 = everything in the frame is real
 	GPS_TAG_BARO_HEIGHT_DM = 0x0C,			// int32 LE, decimetres above sea level -- what the barometer would say (gradient is NOT sent: we derive it)
-	GPS_TAG_POWER_W = 0x0D					// uint16 LE, watts, 0 = coasting
+	GPS_TAG_POWER_W = 0x0D,					// uint16 LE, watts, 0 = coasting
+	GPS_TAG_MSL_ALTITUDE_DM = 0x0E			// int32 LE, decimetres above sea level (geoid, not ellipsoid) -- only from a real fix whose phone knows it (Android 14+)
 } EGpsTlvTag;
 
 // Bits of GPS_TAG_SIM_FLAGS (PROTOCOL.md "Sensorwerte und Simulationsmodus"). Simulated data must
@@ -85,6 +86,10 @@ struct SGpsFix {
 	uint8_t cadenceRpm = 0;
 	bool hasBaroHeight = false;
 	int32_t baroHeightDm = 0;
+	// Height above sea level of a real fix (ALTITUDE_M is above the ellipsoid, ~47 m off in
+	// Germany). What the barometer is calibrated against ("GPS" on the height page).
+	bool hasMslAltitude = false;
+	int32_t mslAltitudeDm = 0;
 	bool hasPower = false;
 	uint16_t powerW = 0;				// no consumer yet: the binary log has no field for it, the UI no display
 	uint8_t simFlags = 0;				// EGpsSimFlags, 0 = all real

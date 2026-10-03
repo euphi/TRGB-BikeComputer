@@ -12,6 +12,8 @@
 #include "ui_eez/ui.h"
 #include "ui_eez/actions.h"
 #include "RimRidgeSettingsCustFunc.h"
+#include "RimRidgeAltCustFunc.h"
+#include "RimRidgeDevCustFunc.h"
 #include "Singletons.h"	// ui, webserver, stats, bclog, trgb, sensors (TRGBBC_SENSORS_I2C only)
 #include "Stats/Distance.h"
 #include <version.h>
@@ -104,6 +106,52 @@ void action_settings_screen_gesture(lv_event_t* e) {
 	ui.hideSettingsScreen();
 }
 
+// The hub's pills open one page per group; "Zurück" and any swipe on a page go back to the hub.
+void action_go_to_settings_wifi(lv_event_t* e) {
+	(void) e;
+	lv_disp_load_scr(objects.rim_ridge_settings_wifi);
+}
+
+void action_go_to_settings_imu(lv_event_t* e) {
+	(void) e;
+	ui_RimRidgeSettingsUpdateCal();
+	lv_disp_load_scr(objects.rim_ridge_settings_imu);
+}
+
+void action_go_to_settings_alt(lv_event_t* e) {
+	(void) e;
+	ui_RimRidgeAltUpdate();
+	lv_disp_load_scr(objects.rim_ridge_settings_alt);
+}
+
+void action_settings_sub_back(lv_event_t* e) {
+	(void) e;
+	lv_disp_load_scr(objects.rim_ridge_settings);
+}
+
+void action_settings_sub_gesture(lv_event_t* e) {
+	(void) e;
+	lv_indev_t* indev = lv_indev_get_act();
+	if (!indev) return;
+	lv_indev_wait_release(indev);
+	lv_disp_load_scr(objects.rim_ridge_settings);
+}
+
+void ui_RimRidgeSettingsTick() {
+	lv_obj_t* scr = lv_scr_act();
+	if (scr == objects.rim_ridge_settings) {		// hub: the summary of each group
+		ui_RimRidgeSettingsUpdateCal();
+		ui_RimRidgeAltUpdate();
+		ui_RimRidgeDevUpdate();
+	} else if (scr == objects.rim_ridge_settings_dev) {
+		ui_RimRidgeDevUpdate();
+	} else if (scr == objects.rim_ridge_settings_imu) {
+		ui_RimRidgeSettingsUpdateCal();
+	} else if (scr == objects.rim_ridge_settings_alt) {
+		ui_RimRidgeAltUpdate();
+	}
+}
+
 // ---------------- build / WLAN ----------------
 void ui_RimRidgeSettingsInit() {
 	char build[48];
@@ -115,7 +163,21 @@ void ui_RimRidgeSettingsInit() {
 	snprintf(build, sizeof(build), "%s #%s", GIT_VERSION, BUILD_NUMBER);
 #endif
 	lv_label_set_text(objects.rrset_build_val, build);
+	// Marks a build that is not for riding: the simulator fakes sensors (BC_SIM). Add further
+	// debug builds here.
+	const char* flag = nullptr;
+#ifdef BC_SIM
+	flag = "SIMULATOR-BUILD";
+#endif
+	if (flag) {
+		lv_label_set_text(objects.rrset_build_flag, flag);
+		lv_obj_clear_flag(objects.rrset_build_flag, LV_OBJ_FLAG_HIDDEN);
+	} else {
+		lv_obj_add_flag(objects.rrset_build_flag, LV_OBJ_FLAG_HIDDEN);
+	}
 	ui_RimRidgeSettingsUpdateCal();
+	ui_RimRidgeAltUpdate();
+	ui_RimRidgeDevUpdate();
 	lv_timer_create(rrsetShutdownTimer, 100, NULL);
 }
 
@@ -129,6 +191,12 @@ void ui_RimRidgeSettingsUpdateWifi(const char* ipText, uint8_t state, const char
 	const bool radioOn = (state == RRSET_WIFI_CONNECTING || state == RRSET_WIFI_ONLINE);
 	lv_label_set_text(objects.rrset_btn_wifi_lbl, radioOn ? "WLAN aus" : "WLAN an");
 	lv_label_set_text(objects.rrset_btn_ap_lbl, state == RRSET_WIFI_AP ? "Hotspot aus" : "Hotspot");
+	// Hub summary. In hotspot mode ipText is the password: never on the hub.
+	const char* summary = "aus";
+	if (state == RRSET_WIFI_CONNECTING) summary = "verbinde ...";
+	else if (state == RRSET_WIFI_ONLINE) summary = ipText;
+	else if (state == RRSET_WIFI_AP) summary = "Hotspot";
+	lv_label_set_text(objects.rrset_nav_wifi_val, summary);
 }
 
 // WifiWebserver::checkLoop() reports back via UIFacade::updateIP()
@@ -168,6 +236,7 @@ void ui_RimRidgeSettingsUpdateCal() {
 	char buf[48];
 
 	if (!c.imuRunning) {
+		setStatus(objects.rrset_nav_imu_val, "nicht aktiv", COLOR_ERROR);
 		setStatus(objects.rrset_cal_status, "IMU nicht aktiv", COLOR_ERROR);
 		setStatus(objects.rrset_ref_status, "IMU nicht aktiv", COLOR_ERROR);
 		lv_obj_add_state(objects.rrset_btn_cal, LV_STATE_DISABLED);
@@ -178,6 +247,11 @@ void ui_RimRidgeSettingsUpdateCal() {
 	}
 	lv_obj_clear_state(objects.rrset_btn_ref, LV_STATE_DISABLED);
 	lv_obj_clear_state(objects.rrset_btn_ref_lbl, LV_STATE_DISABLED);
+
+	// Hub summary
+	if (c.calState == I2CSensors::CAL_RUNNING) setStatus(objects.rrset_nav_imu_val, "kalibriere ...", COLOR_ACTIVE);
+	else if (c.calValid) setStatus(objects.rrset_nav_imu_val, "kalibriert", COLOR_MUTED);
+	else setStatus(objects.rrset_nav_imu_val, "nicht kalibriert", COLOR_ERROR);
 
 	// IMU calibration: 3 s standing still
 	const bool calRunning = (c.calState == I2CSensors::CAL_RUNNING);
@@ -254,6 +328,7 @@ void action_settings_ref(lv_event_t* e) {
 #else // !TRGBBC_SENSORS_I2C - FL variant, no BMI160
 
 void ui_RimRidgeSettingsUpdateCal() {
+	setStatus(objects.rrset_nav_imu_val, "nicht verfügbar", COLOR_MUTED);
 	setStatus(objects.rrset_cal_status, "nicht verfügbar", COLOR_MUTED);
 	setStatus(objects.rrset_ref_status, "nicht verfügbar", COLOR_MUTED);
 	lv_obj_add_state(objects.rrset_btn_cal, LV_STATE_DISABLED);
