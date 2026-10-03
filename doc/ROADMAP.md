@@ -20,12 +20,10 @@ Help is welcome, especially where marked.
 
 Open, to be fixed.
 
-- **Watchdog reset from the I²C bus**: BME280 and BMI160 are read from two tasks
-  without a common lock. Seen once, analysed from the core dump.
 - **Gaps in the accelerometer FIFO**: on the first test ride about a third of the
-  road-quality intervals had gaps, also at standstill.
-- **Two CSC sensors**: removing the first one while the second is connected confuses
-  the assignment until the next restart.
+  road-quality intervals had gaps, also at standstill. Possibly the same cause as the
+  watchdog reset from the I²C bus, which is fixed (see
+  [Pitfalls](PITFALLS.md)): to be checked on the next ride.
 
 ## Next: usable on the road
 

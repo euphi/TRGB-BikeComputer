@@ -58,7 +58,9 @@ ist das Protokoll die Quelle der Wahrheit.
 - Frames: Byte 0 Version, Byte 1 Message-Type, danach TLV (Tag 1 Byte |
   Länge 1 Byte | Wert). Unbekannte Tags über die Länge überspringen, nie
   als Fehler behandeln.
-- Die TrailBridge-Adresse wird nicht gespeichert (Android rotiert sie).
+- Die TrailBridge-Adresse wird nicht gespeichert (Android rotiert sie), auch nicht im RAM.
+  Eine tote Verbindung erkennt `BLEDevices::checkNavAlive()` am ausbleibenden Heartbeat
+  (30 s) -- Android meldet beim Beenden der App keinen Disconnect (`doc/PITFALLS.md`).
 
 ## UI
 

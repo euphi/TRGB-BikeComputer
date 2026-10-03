@@ -9,6 +9,7 @@
 
 #include <vector>
 #include <memory>
+#include <atomic>
 
 #include <BLEScan.h>
 #include <BLEUtils.h>
@@ -107,6 +108,11 @@ private:
 	// route distance -- the rider's position in the profile.
 	void subscribeProfile(BLEClient* pClient);
 
+	// millis() of the last nav or GPS frame, for checkNavAlive(). Six heartbeats.
+	static constexpr uint32_t NAV_TIMEOUT_MS = 30000;
+	std::atomic<uint32_t> navLastFrameMs{0};
+	void checkNavAlive();
+
 	void checkBatteries();
 	int8_t readBatLevel(const EDevType dt);
 
@@ -115,8 +121,6 @@ private:
 	void restoreAdresses();
 	void storeAdress(EDevType type, BLEAddress& addr);
 	void resetAdress(EDevType type);
-
-	EDevType nextCSCSlotAvailable();
 
 	EDevType filterDevice(BLEAdvertisedDevice& dev);
 	bool isAlreadyConnected(BLEAdvertisedDevice& newDevice);

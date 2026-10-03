@@ -20,12 +20,10 @@ kommt. Hilfe ist willkommen, besonders an den markierten Stellen.
 
 Offen, zu beheben.
 
-- **Watchdog-Reset durch den I²C-Bus**: BME280 und BMI160 werden aus zwei Tasks ohne
-  gemeinsame Sperre gelesen. Einmal aufgetreten, aus dem Core-Dump analysiert.
 - **Lücken im FIFO des Beschleunigungssensors**: Auf der ersten Testfahrt hatte etwa ein
-  Drittel der Wegequalitäts-Intervalle Lücken, auch im Stand.
-- **Zwei CSC-Sensoren**: Wird der erste entfernt, während der zweite verbunden ist, gerät
-  die Zuordnung bis zum nächsten Neustart durcheinander.
+  Drittel der Wegequalitäts-Intervalle Lücken, auch im Stand. Möglicherweise dieselbe
+  Ursache wie der Watchdog-Reset durch den I²C-Bus, der behoben ist (siehe
+  [Fallstricke](PITFALLS.md)): auf der nächsten Fahrt prüfen.
 
 ## Als Nächstes: unterwegs bedienbar
 

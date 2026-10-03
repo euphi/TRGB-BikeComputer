@@ -16,6 +16,7 @@
 #include "BikeNavProtocol.h"
 #include "BikeGpsProtocol.h"
 #include "ClockSync.h"
+#include "BleSlots.h"
 
 #include <task.h>
 
@@ -113,6 +114,7 @@ void BLEDevices::scanAndConnectTask() {
 
 
 	do {
+		checkNavAlive();
 		bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "👨‍🏭 --> Scanning");
 		// Blocks, but does not directly access data structures -> don't use Mutex
 		startBLEScan();
@@ -229,6 +231,7 @@ void BLEDevices::onDisconnect(BLEClient *pClient) {
 			EDevType dt = static_cast<EDevType>(std::distance(clients.begin(), it));  // Get index
 			bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "%s diconnected. Remove Client for %s.", DEV_EMOJI[dt], DEV_STRING[dt]);
 			it->reset();  // Delete the client and set pointer to nullptr
+			connState[dt] = CONN_LOST;
 			updateDisconnectedDev(dt);
 
 		} else {
@@ -245,28 +248,49 @@ BLEDevices::EDevType BLEDevices::filterDevice(BLEAdvertisedDevice& dev) {
 		bclog.log(BCLogger::Log_Debug, BCLogger::TAG_BLE,  "Filter: Already connected");
 		return DEV_UNKNOWN;
 	}
+	BLEAddress addr = dev.getAddress();
 	for (size_t i = 0 ; i < dev.getServiceUUIDCount(); i++) {
+		// Several slots take the same service (CSC1/CSC2): a sensor with a stored address
+		// keeps its slot, an unknown one is learned in the first free slot (BleSlots.h).
+		bool candidate[DEV_COUNT];
+		int16_t kind = DEV_UNKNOWN;
 		for (uint16_t d = DEV_HRM ; d < DEV_COUNT ; d++) {
-			if (dev.getServiceUUID(i).equals(serviceUUID[d])) {
-				bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "Filter: Found %s", DEV_EMOJI[d]);
-				//Simple "connect everything" solution: return static_cast<EDevType>(d);
-				// Now, we found a interesting device and we need to check if we want to connect it.
-
-				// Is the device address stored for this type? (Note, if no adress is stored, pStoredAddress is nullptr
-				if (pStoredAddress[d] && sameAddress(dev.getAddress(), *pStoredAddress[d])) {
-					bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "Filter: Found stored address %s --> connect", pStoredAddress[d]->toString().c_str());
-					connState[d] = CONN_ADVERTISED;
-					return static_cast<EDevType>(d);
-				} else if (pStoredAddress[d] == nullptr) {  // TODO: This relys on that it never happens that CSC1 address is free and CSC2 address not. Then if CSC2 is advertised it would also be stored as CSC1
-					pStoredAddress[d] = new BLEAddress(dev.getAddress());
-					bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "Filter: Slot free --> store address %s and connect", pStoredAddress[d]->toString().c_str());
-					connState[d] = CONN_ADVERTISED;
-					return static_cast<EDevType>(d);
-				} else {
-					bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_BLE, "\t%s no new connection to %s allowed", DEV_EMOJI[d], DEV_STRING[d]);
-				}
-			}
+			candidate[d] = dev.getServiceUUID(i).equals(serviceUUID[d]);
+			if (candidate[d] && kind == DEV_UNKNOWN) kind = d;
 		}
+		if (kind == DEV_UNKNOWN) continue;
+		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "Filter: Found %s", DEV_EMOJI[kind]);
+
+		// resetAdress() frees a slot from the web server's task
+		if (xSemaphoreTake(xDevMutex, static_cast<TickType_t>(500 / portTICK_PERIOD_MS)) != pdTRUE) {
+			bclog.logf(BCLogger::Log_Error, BCLogger::TAG_BLE, "❌⚠️❌⚠️❌ Mutex blocked while choosing the slot for %s ❌⚠️❌⚠️❌", addr.toString().c_str());
+			return DEV_UNKNOWN;
+		}
+		// TrailBridge: Android changes its address, so none is remembered, not even until the
+		// next restart -- the phone would be refused when it comes back after a lost
+		// connection. The slot takes the first phone found while it has no connection. With
+		// one, any other TrailBridge address is refused: the phone keeps advertising while
+		// connected, possibly under a new address already.
+		if (candidate[DEV_NAV]) {
+			const bool queued = std::any_of(connectDevices.begin(), connectDevices.end(), [](const SDevToConnect& c) {return c.devType == DEV_NAV;});
+			if (clients[DEV_NAV] || queued) candidate[DEV_NAV] = false;
+		}
+		const uint8_t* stored[DEV_COUNT];
+		for (uint16_t d = 0 ; d < DEV_COUNT ; d++) stored[d] = pStoredAddress[d] ? pStoredAddress[d]->getNative() : nullptr;
+		const BleSlots::Choice choice = BleSlots::choose(stored, candidate, DEV_COUNT, addr.getNative());
+		if (choice.slot != BleSlots::NO_SLOT) {
+			if (choice.learn && choice.slot != DEV_NAV) pStoredAddress[choice.slot] = new BLEAddress(addr);
+			connState[choice.slot] = CONN_ADVERTISED;
+		}
+		xSemaphoreGive(xDevMutex);
+
+		if (choice.slot != BleSlots::NO_SLOT) {
+			bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, choice.learn ? "Filter: Slot %s free --> take address %s and connect" : "Filter: Found stored address of %s: %s --> connect",
+			           DEV_STRING[choice.slot], addr.toString().c_str());
+			return static_cast<EDevType>(choice.slot);
+		}
+		// Debug for TrailBridge: every scan, as long as the connected phone advertises under another address
+		bclog.logf(kind == DEV_NAV ? BCLogger::Log_Debug : BCLogger::Log_Warn, BCLogger::TAG_BLE, "\t%s no new connection to %s allowed", DEV_EMOJI[kind], DEV_STRING[kind]);
 	}
 	if (dev.getName().indexOf("ForumsLader") != -1) {
 		bclog.log(BCLogger::Log_Info, BCLogger::TAG_BLE, "\t⚡ Found FL Device");
@@ -345,27 +369,6 @@ void BLEDevices::updateDisconnectedDev(const EDevType dt) {
 	}
 }
 
-//BLEDevices::EDevType BLEDevices::nextCSCSlotAvailable() {
-//	bool csc1Free = (pStoredAddress[DEV_CSC_1] == nullptr);
-//	bool csc2Free = (pStoredAddress[DEV_CSC_2] == nullptr);
-//	bool csc1Disconnected =  connState[DEV_CSC_1] == CONN_LOST || connState[DEV_CSC_1] == CONN_DEV_NOTFOUND;
-//	bool csc2Disconnected =  connState[DEV_CSC_2] == CONN_LOST || connState[DEV_CSC_2] == CONN_DEV_NOTFOUND;
-//	bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "🚴\tCSC1: [%c] free \t [%c] conn\n\tCSC2: [%c] free \t [%c] conn\n", csc1Free ? 'X':' ', csc2Free ? 'X':' ',csc1Disconnected ? 'X':' ',csc2Disconnected ? 'X':' ');
-//	if (! ( csc1Free || csc2Free)) return DEV_UNKNOWN;  // both connection already reserved
-//	if (csc1Free && csc1Disconnected) return DEV_CSC_1;  // CSC1 unreserved and disconnected
-//	if (csc2Free && csc2Disconnected) return DEV_CSC_2;  // CSC2 unreserved and disconnected
-//
-//	bclog.log(BCLogger::Log_Info, BCLogger::TAG_BLE, "\t🚴 No new connection allowed");
-//	return DEV_UNKNOWN;			 // no unreserved connection that is still disconnected
-//	//--> now, overwriting disconnected connection is allowed
-//	if (csc1Disconnected) return DEV_CSC_1;
-//	if (csc2Disconnected) return DEV_CSC_2;
-//	//--> both connection are already connected
-//	bclog.log(BCLogger::Log_Warn, BCLogger::TAG_BLE, "\t🚴 More than two Cycling Speed and Cadence (CSC) devices advertised - ignoring");
-//	return DEV_UNKNOWN;
-//}
-
-
 /**
  * @brief Restores previously stored BLE device addresses from NVS (persistent memory).
  *
@@ -407,6 +410,14 @@ void BLEDevices::restoreAdresses() {
 			bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_BLE, "Dropped stale pre-NimBLE address for %s - will be re-learned on next scan", key);
 		}
 	}
+	// Until 2026-10 a sensor stored as CSC2 was learned a second time as CSC1 once CSC1 had
+	// been deleted, which left no slot for another sensor. Free the second one.
+	if (pStoredAddress[DEV_CSC_1] && pStoredAddress[DEV_CSC_2] && sameAddress(*pStoredAddress[DEV_CSC_1], *pStoredAddress[DEV_CSC_2])) {
+		addrPrefs.remove(DEV_STRING[DEV_CSC_2]);
+		delete pStoredAddress[DEV_CSC_2];
+		pStoredAddress[DEV_CSC_2] = nullptr;
+		bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_BLE, "%s and %s had the same address stored - %s is free again", DEV_STRING[DEV_CSC_1], DEV_STRING[DEV_CSC_2], DEV_STRING[DEV_CSC_2]);
+	}
 	addrPrefs.end();
 }
 
@@ -432,39 +443,75 @@ void BLEDevices::storeAdress(EDevType type, BLEAddress &addr) {
 }
 
 /**
- * @brief Removes a stored BLE device address from NVS and clears internal references.
+ * @brief Forgets the device of a slot: removes its address from NVS and RAM and ends its connection.
  *
- * This method deletes a previously stored BLE address for a given device type from
- * non-volatile storage (NVS) and clears the corresponding internal pointer.
+ * The slot is free afterwards and takes the next unknown device of its kind (filterDevice()).
+ * Other slots are not touched: a sensor stored as CSC2 stays CSC2 when CSC1 is deleted.
+ * (It used to be moved to CSC1 in RAM only, while it was still connected as CSC2 and still
+ * stored as CSC2 in NVS.)
  *
- * Special handling is applied to cycling sensors (CSC): If the address of `DEV_CSC_1`
- * is removed while `DEV_CSC_2` still has a stored address, the `DEV_CSC_2` address is
- * moved to `DEV_CSC_1` to maintain consistency.
+ * The connection is ended because the slot's client would otherwise be taken over by the
+ * next device learned there, while the forgotten one keeps delivering data. A device that
+ * is still switched on and in range is simply learned again on the next scan.
  *
- * FIXME: This logic is flawed. It would work fine, if the BC is restarted immediately afterwards. However, it confuses connections if CSC2 is already connected.
+ * Called from the web server's task.
  *
  * @param type The device type whose address should be removed.
  */
 void BLEDevices::resetAdress(EDevType type) {
 	Preferences addrPrefs;
 	addrPrefs.begin("BLEConn");
-	bool succ = addrPrefs.remove(DEV_STRING[type]);
-	bclog.logf(succ ? BCLogger::Log_Debug : BCLogger::Log_Warn, BCLogger::TAG_BLE, "Removed stored address for pref %s: %s", DEV_STRING[type], succ ? "OK":"FAILED");
-	if (succ) {
-		if (pStoredAddress[type]) {
-			delete pStoredAddress[type];
-	        pStoredAddress[type] = nullptr; // Prevent use-after-free
-		}
-
-		// ensure that DEV_CSC1 cannot be empty when CSC2 has stored address. So, if this happens, move CSC2 to CSC1
-		if (type == DEV_CSC_1 && pStoredAddress[DEV_CSC_2]) {
-			pStoredAddress[DEV_CSC_1] = pStoredAddress[DEV_CSC_2];
-			pStoredAddress[DEV_CSC_2] = nullptr;
-		} else {
-			pStoredAddress[type] = nullptr;
-		}
-	}
+	// isKey() first: a device seen but never connected is in RAM only (storeAdress() is called
+	// after the connect), and remove() logs an error for a missing key.
+	bool succ = !addrPrefs.isKey(DEV_STRING[type]) || addrPrefs.remove(DEV_STRING[type]);
 	addrPrefs.end();
+	bclog.logf(succ ? BCLogger::Log_Debug : BCLogger::Log_Warn, BCLogger::TAG_BLE, "Removed stored address for pref %s: %s", DEV_STRING[type], succ ? "OK":"FAILED");
+
+	if (xSemaphoreTake(xDevMutex, static_cast<TickType_t>(500 / portTICK_PERIOD_MS)) == pdTRUE) {
+		delete pStoredAddress[type];
+		pStoredAddress[type] = nullptr;
+		// Asynchronous: onDisconnect() removes the client and updates the statistics.
+		if (clients[type]) clients[type]->disconnect();
+		xSemaphoreGive(xDevMutex);
+	} else {
+		bclog.logf(BCLogger::Log_Error, BCLogger::TAG_BLE, "❌⚠️❌⚠️❌ Mutex blocked while deleting the address of %s ❌⚠️❌⚠️❌", DEV_STRING[type]);
+	}
+}
+
+/**
+ * @brief Ends a TrailBridge connection that delivers nothing any more.
+ *
+ * TrailBridge repeats its nav and GPS frames every 5 s so that a dead connection can be told
+ * from "nothing has changed" (PROTOCOL.md, "Heartbeat"). That is needed: when the app is
+ * stopped or restarted, Android keeps the link itself up, so no disconnect arrives here --
+ * while the restarted app advertises under a new address and is refused as long as the slot
+ * has a connection (filterDevice()).
+ *
+ * Called from the scan task before each scan.
+ */
+void BLEDevices::checkNavAlive() {
+	bool removed = false, timedOut = false;
+	if (xSemaphoreTake(xDevMutex, static_cast<TickType_t>(500 / portTICK_PERIOD_MS)) != pdTRUE) return;
+	if (clients[DEV_NAV] && !clients[DEV_NAV]->isConnected()) {
+		// No disconnect to wait for, e.g. the connect went through but onDisconnect() never did
+		clients[DEV_NAV].reset();
+		connState[DEV_NAV] = CONN_LOST;
+		removed = true;
+	} else if (clients[DEV_NAV] && millis() - navLastFrameMs > NAV_TIMEOUT_MS) {
+		clients[DEV_NAV]->disconnect();		// asynchronous: onDisconnect() removes the client
+		timedOut = true;
+	}
+	xSemaphoreGive(xDevMutex);
+
+	if (removed) {
+		bclog.log(BCLogger::Log_Warn, BCLogger::TAG_BLE, "🧭 TrailBridge client without connection removed");
+		updateDisconnectedDev(DEV_NAV);
+	}
+	if (timedOut) {
+		bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_BLE, "🧭 No frame from TrailBridge for %u s - disconnecting", (unsigned)(NAV_TIMEOUT_MS / 1000));
+		// Give onDisconnect() the time to free the slot before the scan reports the phone
+		for (uint8_t i = 0; i < 10 && clients[DEV_NAV]; i++) vTaskDelay(pdMS_TO_TICKS(100));
+	}
 }
 
 // ---------------------------------------------
@@ -536,6 +583,7 @@ bool BLEDevices::connectToServer(SDevToConnect& dev) {
 	bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "🔵%s %s registered\n", DEV_EMOJI[dt], useNotify ? "Notify" : "Indicate");
 
 	if (dt == DEV_NAV) {
+		navLastFrameMs = millis();
 		// Fallback per PROTOCOL.md: Read the last frame directly, don't wait for the first Indicate/heartbeat.
 		String initial = pRemoteCharacteristic->readValue();
 		if (initial.length() > 0) handleNavData(reinterpret_cast<const uint8_t*>(initial.c_str()), initial.length());
@@ -684,6 +732,7 @@ static uint8_t parseLanes(const uint8_t* val, uint8_t len, NavLane* out) {
  * this parser.
  */
 void BLEDevices::handleNavData(const uint8_t* pData, size_t length) {
+	navLastFrameMs = millis();
 	if (length < 2) {
 		bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_BLE, "🧭 Nav frame too short (%d byte)", length);
 		return;
@@ -876,6 +925,7 @@ void BLEDevices::subscribeProfile(BLEClient* pClient) {
  * same TLV-forward-compat reasoning as the nav parser above.
  */
 void BLEDevices::handleGpsData(const uint8_t* pData, size_t length) {
+	navLastFrameMs = millis();
 	if (length < 2) {
 		bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_BLE, "📍 GPS frame too short (%d byte)", length);
 		return;
@@ -1024,6 +1074,7 @@ void BLEDevices::checkBatteries() {
 
 
 int8_t BLEDevices::readBatLevel(const EDevType dt) {
+	if (!clients[dt]) return batLevel[dt];
 	bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "Read %s battery level", DEV_EMOJI[dt]);
 	String valStr = clients[dt]->getValue(serviceUUIDBat, charUUIDBat);
 	if (!valStr.isEmpty()) {
@@ -1089,8 +1140,8 @@ uint16_t BLEDevices::getHTMLPage(String &htmlresponse) {
 		".del-addr{color:var(--rr-err,#C1604A);text-decoration:none;margin-left:8px;font-size:0.95rem}";
 
 	WebPage::begin(htmlresponse, "BLE Devices", kCss);
-	htmlresponse += F("<p class=\"eyebrow\">Deleting a stored address frees the slot, so a "
-	                  "different device of that type can pair on the next scan.</p>\n"
+	htmlresponse += F("<p class=\"eyebrow\">Deleting a stored address disconnects the device and frees the slot, "
+	                  "so a different device of that type can pair on the next scan.</p>\n"
 	                  "<table><thead><tr><th>Device</th><th>Stored Address</th><th>State</th>"
 	                  "<th>Battery</th><th>Data</th></tr></thead><tbody>\n");
 
@@ -1137,7 +1188,7 @@ uint16_t BLEDevices::getHTMLPage(String &htmlresponse) {
 
 	WebPage::end(htmlresponse,
 		"function delAddr(d,n){if(!confirm('Delete the stored address for '+n+'?\\n\\n"
-		"The slot is freed, so a different device can pair on the next scan.'))return;"
+		"The device is disconnected and the slot freed, so a different device can pair on the next scan.'))return;"
 		"req('/dev/delete?dev='+d,'Address deleted',()=>location.reload());}\n");
 	return 200;
 }

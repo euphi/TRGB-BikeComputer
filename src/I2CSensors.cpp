@@ -18,6 +18,7 @@
 #include "LogRecords.h"
 #include "RawCapture.h"
 #include "NvsUtil.h"
+#include "I2CBus.h"
 
 
 I2CSensors::I2CSensors() {
@@ -107,7 +108,10 @@ void I2CSensors::initBME280() {
 	//  1 through 5, oversampling *1, *2, *4, *8, *16 respectively
 	bme280.settings.humidOverSample = 1;
 
-	bme280.begin();
+	{
+		I2CBus::Guard guard;
+		bme280.begin();
+	}
 	Preferences sensorPreferences;
 	sensorPreferences.begin("Sensors");
 	refPres = NvsUtil::getFloat(sensorPreferences, "RefPressure", 101300.0);
@@ -128,12 +132,23 @@ float I2CSensors::getHeight() const {
 void I2CSensors::readBME280() {
 	BME280_SensorMeasurements measurement;
 
+	// Called from the esp_timer task (Statistics::cycle(), bme280Cycle) and from the task that
+	// delivers the wheel revolutions (Statistics::calculateGradient()). The lock is taken per
+	// library call and not kept while waiting, see I2CBus.h.
 	for (uint_fast8_t i = 0 ; i < 10 ; i++) {
-		if (bme280.isMeasuring()) {
+		bool measuring;
+		{
+			I2CBus::Guard guard;
+			measuring = bme280.isMeasuring();
+		}
+		if (measuring) {
 			usleep(2000);
 			yield();
 		} else {
-			bme280.readAllMeasurements(&measurement, 0);
+			{
+				I2CBus::Guard guard;
+				bme280.readAllMeasurements(&measurement, 0);
+			}
 			press = measurement.pressure / 100.0;
 			humid = measurement.humidity;
 			temp = measurement.temperature;
@@ -164,6 +179,7 @@ const char* const I2CSensors::CAL_STATE_STRING[] = {"not calibrated", "running",
 // can come between address and data, and with the length checked -- BMI160Gen's
 // serial_buffer_transfer() does neither and hands back stale buffer bytes on a short read.
 bool I2CSensors::imuRead(uint8_t reg, uint8_t* buf, uint16_t n) {
+	I2CBus::Guard guard;		// until the bytes are out of Wire's receive buffer, see I2CBus.h
 	Wire.beginTransmission(IMU_I2C_ADDR);
 	Wire.write(reg);
 	const uint8_t code = Wire.endTransmission(false);
@@ -185,10 +201,14 @@ bool I2CSensors::imuRead(uint8_t reg, uint8_t* buf, uint16_t n) {
 }
 
 void I2CSensors::initBMI160() {
+	// The UI task is running already and reads the touch controller on the same bus. Released
+	// before the ImuTask starts.
+	I2CBus::lock();
 	bool ok = BMI160.begin(BMI160GenClass::I2C_MODE, IMU_I2C_ADDR, -1);
 	uint8_t devId = BMI160.getDeviceID();
 	imuSnap.deviceId = devId;
 	if (!ok || devId != 0xD1) {
+		I2CBus::unlock();
 		bclog.logf(BCLogger::Log_Error, BCLogger::TAG_OP, "BMI160 not found (begin: %d, device id 0x%02X, expected 0xD1) - IMU disabled", ok, devId);
 		return;
 	}
@@ -200,6 +220,7 @@ void I2CSensors::initBMI160() {
 	BMI160.setGyroFIFOEnabled(false);
 	BMI160.setFIFOHeaderModeEnabled(false);
 	BMI160.setAccelFIFOEnabled(true);
+	I2CBus::unlock();
 
 	// The gyro offset used to be auto-calibrated here on every boot, which silently produced a
 	// wrong offset whenever the bike was moved while booting. It is now part of the explicit
@@ -221,7 +242,10 @@ void I2CSensors::initBMI160() {
 	rqCmd.addPositionalArgument("value", "");
 	rqCmd.setDescription("Road quality: rq [status | interval <1..10 s> | shock <g> | wheelbase <m> | gradsrc <baro|imu> | ref <start|stop> | pitchreset | raw <1..1800 s|stop> | label <surface 0..6>,<quality 0..4>]");
 
-	BMI160.resetFIFO();
+	{
+		I2CBus::Guard guard;
+		BMI160.resetFIFO();
+	}
 	imuSnap.running = true;
 	// 4096 byte (ESP-IDF counts byte): FIFO chunk buffer, bclog.logf(), NVS writes (calibration,
 	// learned pitch state), the 64-byte log records and a 482-byte snippet piece -- 5120 left
@@ -314,6 +338,7 @@ void I2CSensors::loadIMUCalibration() {
 	}
 
 	if (cal.valid) {
+		I2CBus::Guard guard;
 		BMI160.setXGyroOffset(cal.gyroOffset[0]);
 		BMI160.setYGyroOffset(cal.gyroOffset[1]);
 		BMI160.setZGyroOffset(cal.gyroOffset[2]);
@@ -389,7 +414,10 @@ void I2CSensors::imuTask() {
 		if (count >= IMU_FIFO_OVERFLOW_BYTES) {
 			// Frames are lost already; flush so the next read starts clean. A calibration in
 			// progress is simply continued -- it only needs still samples, not contiguous ones.
-			BMI160.resetFIFO();
+			{
+				I2CBus::Guard guard;
+				BMI160.resetFIFO();
+			}
 			count = 0;
 			roadq.notifyDataGap();
 			rawGap = true;
@@ -556,11 +584,16 @@ void I2CSensors::imuFinishCalibration() {
 	if (result == CAL_OK) {
 		// Gyro fast offset compensation needs the same stillness just verified. Takes up to
 		// ~250 ms; the FIFO (425 ms) covers it.
-		BMI160.autoCalibrateGyroOffset();
-		BMI160.setGyroOffsetEnabled(true);
-		cal.gyroOffset[0] = BMI160.getXGyroOffset();
-		cal.gyroOffset[1] = BMI160.getYGyroOffset();
-		cal.gyroOffset[2] = BMI160.getZGyroOffset();
+		// The library polls the sensor until it is done: the bus is taken for that long, the
+		// touch controller and the BME280 wait.
+		{
+			I2CBus::Guard guard;
+			BMI160.autoCalibrateGyroOffset();
+			BMI160.setGyroOffsetEnabled(true);
+			cal.gyroOffset[0] = BMI160.getXGyroOffset();
+			cal.gyroOffset[1] = BMI160.getYGyroOffset();
+			cal.gyroOffset[2] = BMI160.getZGyroOffset();
+		}
 		time_t now;
 		time(&now);
 		cal.calTime = now > 1672531200 ? now : 0;		// 2023-01-01: clock not set before that

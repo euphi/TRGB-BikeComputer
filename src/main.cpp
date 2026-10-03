@@ -5,6 +5,7 @@
 #include "WebInstrument.h"
 #include "CrashInfo.h"
 #include "NvsUtil.h"
+#include "I2CBus.h"
 
 #include <Battery.h>
 Battery batt = Battery(3000, 4200, BAT_VOLT_PIN);
@@ -37,6 +38,7 @@ void batCheck() {
 void setup() {
 	trgb.setLogo(bootLogoRimRidge);
 	trgb.init();
+	if (!I2CBus::guardTouch()) Serial.println("No touch device found to put the I2C lock around");
 	console.setup();
 	webserver.setup(); // start early to update system time as soon as possible
 	TRGBSuppport::print_chip_info();

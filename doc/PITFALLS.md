@@ -94,6 +94,20 @@ into `getNative()` of a default-constructed `BLEAddress`; compare peers with the
 file-local `sameAddress()`, not with `equals()`. With problems of peer identity or
 address display, look here first.
 
+## TrailBridge: no stored address, and no disconnect to rely on
+
+Android advertises under an address that changes -- on this phone with every restart of
+the app and after a failed connect, not only every few minutes. The TrailBridge slot
+therefore remembers no address, not even in RAM (it did until 2026-10, and refused the
+phone after the first lost connection until the next restart). It takes the first phone
+found while it has no connection and refuses every other TrailBridge address while it
+has one: the connected phone keeps advertising, possibly under a new address already.
+
+When the app is stopped or restarted, Android keeps the link itself up; no disconnect
+arrives. The dead connection is detected by the heartbeat of the protocol instead: no
+nav or GPS frame for 30 s ends it (`BLEDevices::checkNavAlive()`), the next scan
+connects again. Measured 2026-10-02: 46 s from restarting the app to the new connection.
+
 ## Arduino `String` and `c_str()`
 
 BLE `readValue()`/`getValue()` return `String` under Arduino-ESP32 3.x. A `c_str()`
@@ -255,6 +269,23 @@ code. The files of the running session in `/BIKECOMP/CUR/` are open for the whol
 `BCLogger::deleteFile()` and the cleanup therefore skip them (`isActiveSessionFile()`),
 as well as everything in `CUR/` while the finalizer (`LogSessions`) is running. New ways
 of deleting or moving files need the same check.
+
+## I²C: `Wire` only under `I2CBus::Guard`
+
+Touch controller (UI task), BME280 (esp_timer task and the task that delivers the wheel
+revolutions) and BMI160 (ImuTask) share `Wire`. `TwoWire`'s own lock only covers the bus
+transfer; the receive buffer is read after it is released -- by `available()`/`read()`
+and by the return value of `requestFrom()`. If another task starts a transfer in
+between, the first one gets the other device's bytes or a wrong length. Once the read
+index is ahead of the length, `available()` stays true while `read()` returns nothing:
+`while (Wire.available()) Wire.read();` in the SparkFun BME280 library then never ends.
+In the esp_timer task that was a task-watchdog reset (core dump of 2026-10-02), in the
+ImuTask it shows up as "short read" errors.
+
+Rule: hold an `I2CBus::Guard` (`src/I2CBus.h`) from the start of a transfer until its
+bytes are out of `Wire`; wrap library calls as a whole. The touch read callback of
+TRGBArduinoSupport gets the lock from `I2CBus::guardTouch()`. A new I²C device or a new
+library call needs the same.
 
 ## BMI160: never read registers unchecked
 
