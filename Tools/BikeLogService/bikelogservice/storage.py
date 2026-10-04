@@ -33,7 +33,7 @@ from bikelog.record import ReadStats, UnknownLogFormat, read_stream
 from . import sdlayout
 from .sdlayout import SdFile
 
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions (
@@ -255,7 +255,7 @@ class Storage:
                 # (Their "Komoot" button in the table stays.)
                 self._db.execute("UPDATE sessions SET komoot_prompt = 'ignored'")
                 self._db.commit()
-        if 0 < version < 9:
+        if 0 < version < 10:
             columns = {r[1] for r in self._db.execute("PRAGMA table_info(sessions)")}
             for column, kind in (("test_kind", "TEXT"), ("test_override", "TEXT"),
                                  ("idle", "INTEGER NOT NULL DEFAULT 1"), ("archived_at", "TEXT")):
@@ -263,8 +263,9 @@ class Storage:
                     self._db.execute(f"ALTER TABLE sessions ADD COLUMN {column} {kind}")
             self._db.commit()
             # 6: clock steps inside a session are repaired (bikelog.timefix); 8: test
-            # sessions, 9: idle sessions are recognised (bikelog.testride) -- every
-            # stored session gets its index columns derived again.
+            # sessions, 9: idle sessions are recognised (bikelog.testride), 10: empty
+            # logs (only zero bytes) count as idle -- every stored session gets its
+            # index columns derived again.
             self.rederive_all()
 
     def close(self) -> None:
@@ -665,6 +666,10 @@ def _summarise_log(payload: bytes, hints: bytes | None = None) -> dict:
     blank = dict(format_version=None, record_count=None, trailing_bytes=None,
                  first_time=None, last_time=None, distance_m=None, gps_points=None,
                  clock_unset=0, time_steps=0, test_kind=None, idle=1)
+    if not payload.strip(b"\0"):
+        # Nothing but zero bytes (preallocated, or the device died before the first
+        # write): no ride, no error worth anyone's attention -- idle, archived later.
+        return {**blank, "log_error": "empty log (%d zero byte)" % len(payload)}
     stats = ReadStats()
     try:
         records = list(read_stream(io.BytesIO(payload), stats, repair_time=True, time_hints=hints))

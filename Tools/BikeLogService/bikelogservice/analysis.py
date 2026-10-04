@@ -87,6 +87,13 @@ def _lower_priority() -> None:
 
 def refresh(store: Storage, background: bool = True) -> int:
     """Compute every missing or stale report; returns how many."""
+    try:
+        return _refresh(store, background)
+    except sqlite3.ProgrammingError:        # storage closed under us (shutdown): stop quietly
+        return 0
+
+
+def _refresh(store: Storage, background: bool) -> int:
     with _lock:
         if background:
             _lower_priority()
@@ -99,6 +106,8 @@ def refresh(store: Storage, background: bool = True) -> int:
         have = store.cache_keys()
         done = 0
         for session in store.sessions_with_log():
+            if session.log_error:               # known unreadable (the list says so): don't retry
+                continue
             key = cache_key(session, akey)
             if have.get(session.id) == key:
                 continue
@@ -119,7 +128,7 @@ def rides(store: Storage) -> list[training.Ride]:
     sessions are left out; one the rider marked as real counts even if the log says test."""
     out = []
     for session in store.sessions_with_log():
-        if session.is_test:
+        if session.is_test or session.log_error:
             continue
         try:
             rep = report_for(store, session)

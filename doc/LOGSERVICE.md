@@ -204,8 +204,11 @@ markieren"; API: `POST /api/v1/sessions/{id}/test?mark=test|real|auto`).
 
 Every boot of the bike computer is a session, also when it was only switched on at home.
 A session in which the wheel stood and the position got nowhere (wheel < 50 m, all GPS
-fixes within 300 m), or which has no binary log at all, is **idle**
+fixes within 300 m), or which has no binary log at all or only an empty one (nothing but
+zero bytes), is **idle**
 ([`bikelog/testride.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/bikelog/testride.py)).
+A log in an unknown format, on the other hand, stays in the list marked "Log unlesbar"
+(the hover text names the version byte found) and is not tried again for the report.
 Idle sessions never appear in the ride list (it links to them: "N Leerlauf-Sitzungen im
 Archiv") or in `GET /api/v1/sessions` (`idle=true` includes them), get no GPX and count
 nowhere.

@@ -210,8 +210,11 @@ echte Fahrt", „Als Testfahrt markieren"; API: `POST /api/v1/sessions/{id}/test
 
 Jeder Start des Fahrradcomputers ist eine Sitzung, auch wenn er nur zu Hause an war. Eine
 Sitzung, in der das Rad stand und die Position nirgendwohin kam (Rad < 50 m, alle GPS-Fixe
-innerhalb von 300 m), oder die gar kein Binärlog hat, ist **Leerlauf**
+innerhalb von 300 m), oder die gar kein oder nur ein leeres Binärlog hat (nur Nullbytes),
+ist **Leerlauf**
 ([`bikelog/testride.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/bikelog/testride.py)).
+Ein Log in unbekanntem Format bleibt dagegen mit „Log unlesbar" in der Liste (der Hover-Text
+nennt das gefundene Versions-Byte) und wird für den Bericht nicht erneut versucht.
 Leerlauf-Sitzungen erscheinen nie in der Fahrtenliste (sie verweist darauf: „N
 Leerlauf-Sitzungen im Archiv") oder in `GET /api/v1/sessions` (`idle=true` schließt sie ein),
 bekommen kein GPX und zählen nirgends.

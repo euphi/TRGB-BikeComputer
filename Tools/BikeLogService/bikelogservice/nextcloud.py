@@ -25,6 +25,7 @@ the service works without "pip install bikelog[nextcloud]" installed.
 from __future__ import annotations
 
 import logging
+import threading
 
 from .storage import Session, Storage
 
@@ -92,13 +93,19 @@ def sync_session(store: Storage, session: Session) -> str:
     return "ok"
 
 
+#: Startup, puller and upload threads may all call in; two syncs at once would upload
+#: (or delete) the same file twice.
+_lock = threading.Lock()
+
+
 def sync_pending(store: Storage) -> dict[str, int]:
     if not store.settings.nextcloud_enabled:
         return {}
     counts: dict[str, int] = {}
-    for session in store.pending_nextcloud():
-        status = sync_session(store, session)
-        counts[status] = counts.get(status, 0) + 1
+    with _lock:
+        for session in store.pending_nextcloud():
+            status = sync_session(store, session)
+            counts[status] = counts.get(status, 0) + 1
     if counts:
         log.info("Nextcloud sync to %s: %s", store.settings.nextcloud_dir,
                  ", ".join(f"{n} {k}" for k, n in sorted(counts.items())))

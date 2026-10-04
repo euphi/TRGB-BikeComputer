@@ -199,3 +199,17 @@ def test_migration_marks_old_sessions(tmp_path):
     store = Storage(settings)
     assert {s.stem: s.idle for s in store.list()} == {"_100000": 1, "_090000": 0}
     store.close()
+
+
+def test_zero_filled_log_is_idle_and_unknown_format_stays_visible(tmp_path):
+    from bikelogservice import analysis
+    settings = Settings(data_dir=tmp_path / "state")
+    store = Storage(settings)
+    zero = store.put_file("trgb", parse_path("20260920/L_100000.bin"), b"\0" * 4096).session
+    odd = store.put_file("trgb", parse_path("20260920/L_110000.bin"), b"\x07" * 128).session
+    zero, odd = store.get(zero.id, include_deleted=True), store.get(odd.id)
+    assert zero.idle and "empty log" in zero.log_error
+    assert not odd.idle and "version byte 7" in odd.log_error
+    assert analysis.refresh(store, background=False) == 0          # nothing to retry, no warning
+    assert store.cached_report(odd.id) is None
+    store.close()
