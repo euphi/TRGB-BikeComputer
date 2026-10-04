@@ -133,6 +133,8 @@ Tracker::FrameResult Tracker::feedFrame(const uint8_t* data, size_t length) {
 		int16_t base = 0;
 		const int8_t* deltas = nullptr;
 		uint16_t n = 0;
+		Announce ann;
+		uint8_t climbTags = 0;			// one bit per tag 0x07..0x0A
 
 		size_t pos = 2;
 		while (pos + 2 <= length) {
@@ -158,13 +160,30 @@ Tracker::FrameResult Tracker::feedFrame(const uint8_t* data, size_t length) {
 			case PROFILE_TAG_DELTA_SCALE_DM:
 				if (len >= 1) scale = val[0];
 				break;
+			case PROFILE_TAG_FLAGS:
+				if (len >= 1) ann.rolling = (val[0] & PROFILE_FLAG_ROLLING) != 0;
+				break;
+			case PROFILE_TAG_CLIMB_FOOT_REMAINING_M:
+				if (len >= 4) {ann.footRem = val[0] | (val[1] << 8) | (val[2] << 16) | (static_cast<uint32_t>(val[3]) << 24); climbTags |= 1;}
+				break;
+			case PROFILE_TAG_CLIMB_SUMMIT_REMAINING_M:
+				if (len >= 4) {ann.summitRem = val[0] | (val[1] << 8) | (val[2] << 16) | (static_cast<uint32_t>(val[3]) << 24); climbTags |= 2;}
+				break;
+			case PROFILE_TAG_CLIMB_FOOT_ALT_DM:
+				if (len >= 2) {ann.footAltDm = static_cast<int16_t>(val[0] | (val[1] << 8)); climbTags |= 4;}
+				break;
+			case PROFILE_TAG_CLIMB_SUMMIT_ALT_DM:
+				if (len >= 2) {ann.summitAltDm = static_cast<int16_t>(val[0] | (val[1] << 8)); climbTags |= 8;}
+				break;
 			default:
 				break;	// unknown tag: skipped by its length
 			}
 			pos += len;
 		}
 		if (!hasStart || !hasStep || !hasBase || stepM == 0 || scale == 0 || n == 0) return FRAME_INVALID;
-		setProfile(start, stepM, base, deltas, n, scale);
+		// A climb needs all four tags and a summit beyond the foot; anything else is "none close"
+		ann.hasClimb = ann.rolling && climbTags == 0x0F && ann.summitRem < ann.footRem;
+		setProfile(start, stepM, base, deltas, n, scale, &ann);
 		return FRAME_PROFILE;
 	}
 
@@ -173,7 +192,8 @@ Tracker::FrameResult Tracker::feedFrame(const uint8_t* data, size_t length) {
 	}
 }
 
-void Tracker::setProfile(uint32_t startRemainingM, uint8_t stepM, int16_t baseAltDm, const int8_t* deltasDm, uint16_t n, uint8_t deltaScaleDm) {
+void Tracker::setProfile(uint32_t startRemainingM, uint8_t stepM, int16_t baseAltDm, const int8_t* deltasDm, uint16_t n, uint8_t deltaScaleDm,
+                         const Announce* announce) {
 	if (stepM == 0 || n == 0 || deltaScaleDm == 0) return;
 	if (n > MAX_POINTS - 1) n = MAX_POINTS - 1;
 
@@ -196,7 +216,8 @@ void Tracker::setProfile(uint32_t startRemainingM, uint8_t stepM, int16_t baseAl
 	if (keep == 0) {
 		// Nothing to join it to (a join at k == 0 is a replacement, too -- but of the same
 		// stretch, so the climbs found in it stay; a new stretch starts from scratch).
-		if (!(count > 0 && stepM == step && startRemainingM == startRem)) {
+		// (A rolling phone's climb is not found in the points, so it survives a new stretch.)
+		if (!(count > 0 && stepM == step && startRemainingM == startRem) && !(announce && announce->rolling)) {
 			cur = Segment();
 			prev = Segment();
 		}
@@ -213,13 +234,58 @@ void Tracker::setProfile(uint32_t startRemainingM, uint8_t stepM, int16_t baseAl
 	count = keep + n + 1;
 	shown = true;
 	pointsVersion++;
+	applyAnnouncement(announce);
 	update();
+}
+
+// A rolling phone's word about the climb. Without the flag the climb is found in the points.
+void Tracker::applyAnnouncement(const Announce* a) {
+	if (!a || !a->rolling) {
+		if (rolling) {			// switched to a phone that does not announce: start over
+			cur = Segment();
+			prev = Segment();
+			over = false;
+		}
+		rolling = false;
+		return;
+	}
+	rolling = true;
+	if (!a->hasClimb) {
+		// The phone stops announcing a climb at its summit. Near it (or past it) the climb is over;
+		// anywhere else the phone just has none to announce.
+		if (cur.valid && cur.fromPhone) {
+			if (posKnown && remM <= static_cast<float>(cur.summitRem) + 60.0f) {
+				over = true;
+			} else {
+				cur = Segment();
+				over = false;
+			}
+		}
+		return;
+	}
+	if (cur.valid && cur.fromPhone && cur.footRem == static_cast<int32_t>(a->footRem) && cur.summitRem == static_cast<int32_t>(a->summitRem)) {
+		return;					// the same climb, again (a later frame of it): nothing changes, nor does its id
+	}
+	Segment seg;
+	seg.valid = true;
+	seg.fromPhone = true;
+	seg.footRem = static_cast<int32_t>(a->footRem);
+	seg.summitRem = static_cast<int32_t>(a->summitRem);
+	seg.footAltDm = a->footAltDm;
+	seg.summitAltDm = a->summitAltDm;
+	seg.id = ++lastId;
+	cur = seg;
+	prev = Segment();
+	over = false;
 }
 
 void Tracker::clearProfile() {
 	// The climb the rider is on may go on behind a flat step: findClimb() picks it up from prev.
-	if (cur.valid && posKnown && remM <= cur.footRem) prev = cur;
-	cur = Segment();
+	// (A rolling phone's climb stays: PROFILE_NONE is then only "off the route for a moment".)
+	if (!rolling) {
+		if (cur.valid && posKnown && remM <= cur.footRem) prev = cur;
+		cur = Segment();
+	}
 	if (shown) pointsVersion++;
 	shown = false;
 	update();
@@ -231,6 +297,8 @@ void Tracker::reset() {
 	posKnown = false;
 	cur = Segment();
 	prev = Segment();
+	rolling = false;
+	over = false;
 	pointsVersion++;
 	update();
 }
@@ -342,6 +410,8 @@ uint8_t Tracker::rate(const Segment& seg) const {
 
 void Tracker::update() {
 	st = Status();
+	st.rolling = rolling;
+	st.climbOver = rolling && over;
 	st.hasProfile = shown && count >= 2;
 	if (!st.hasProfile) return;
 
@@ -350,7 +420,7 @@ void Tracker::update() {
 	// PROTOCOL.md: outside the profile it is stale or not reached yet. One step of slack, as
 	// the profile is cut at the raster point nearest to the rider.
 	if (!posKnown || posM < -static_cast<float>(step) || posM > lengthM + step) {
-		cur = Segment();
+		if (!rolling) cur = Segment();		// a rolling phone's climb does not depend on the points
 		return;
 	}
 	if (posM < 0) posM = 0;
@@ -366,20 +436,28 @@ void Tracker::update() {
 		st.aheadGradePct = (altitudeAtM(lengthM) - st.altM) / (lengthM - posM) * 100.0f;
 	}
 
-	if (cur.valid) {
-		const int32_t summitIndex = indexOfRem(cur.summitRem);
-		if (summitIndex < 0 || summitIndex >= count) {
-			cur = Segment();					// its points are gone
-		} else {
-			scanSummit(cur, summitIndex);		// more of the profile may have arrived (a climb longer than one frame)
-			if (remM <= cur.summitRem - static_cast<int32_t>(cfg.summitPassM)) {
-				prev = cur;
-				cur = Segment();
+	if (rolling) {
+		// The phone's climb: over once the rider is past the summit (summitPassM), as it ends
+		// by the phone no longer announcing it near the summit (applyAnnouncement()).
+		if (cur.valid && !over && remM <= static_cast<float>(cur.summitRem) - static_cast<float>(cfg.summitPassM)) over = true;
+		st.climbOver = over;
+		if (!cur.valid || over) return;
+	} else {
+		if (cur.valid) {
+			const int32_t summitIndex = indexOfRem(cur.summitRem);
+			if (summitIndex < 0 || summitIndex >= count) {
+				cur = Segment();					// its points are gone
+			} else {
+				scanSummit(cur, summitIndex);		// more of the profile may have arrived (a climb longer than one frame)
+				if (remM <= cur.summitRem - static_cast<int32_t>(cfg.summitPassM)) {
+					prev = cur;
+					cur = Segment();
+				}
 			}
 		}
+		if (!cur.valid) findClimb(posM);
+		if (!cur.valid) return;
 	}
-	if (!cur.valid) findClimb(posM);
-	if (!cur.valid) return;
 
 	st.active = true;
 	st.climbId = cur.id;

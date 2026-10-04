@@ -710,7 +710,7 @@ void UIFacade::updateClimb() {
 			bclog.logf(BCLogger::Log_Info, BCLogger::TAG_UI, "Climb auto-show: climb %u, rank %u", st.climbId, st.rank);
 			if (lv_scr_act() == ui_MainScreen) lv_disp_load_scr(objects.rim_ridge_climb);
 		}
-	} else if (climbScreenActive && climbScreenAuto) {
+	} else if (climbScreenActive && climbScreenAuto && climbOverForScreen(st, onClimb)) {
 		if (climbHideAtMs == 0) {
 			climbHideAtMs = (millis() + cfg.hideDelayS * 1000UL) | 1;		// never 0 = "not pending"
 		} else if (static_cast<int32_t>(millis() - climbHideAtMs) >= 0) {
@@ -719,7 +719,25 @@ void UIFacade::updateClimb() {
 			bclog.log(BCLogger::Log_Info, BCLogger::TAG_UI, "Climb auto-hide");
 			if (lv_scr_act() == objects.rim_ridge_climb) lv_disp_load_scr(ui_MainScreen);
 		}
+	} else {
+		climbHideAtMs = 0;				// not over (again): a pending switch back is off
 	}
+}
+
+// When the climb screen that opened by itself may go away. A rolling TrailBridge announces the
+// whole climb, so it is over when the rider is past its summit (Status::climbOver) -- not when
+// data runs out for a moment (off the route, a frame in flight: test ride 2026-10-04, the screen
+// went away before the top). If nothing at all is left to show for CLIMB_LOST_HIDE_MS (route
+// ended, phone gone) it goes as well. An older TrailBridge cannot say: there the screen goes when
+// the climb is no longer ahead, as before.
+bool UIFacade::climbOverForScreen(const Climb::Status& st, bool onClimb) {
+	static constexpr uint32_t CLIMB_LOST_HIDE_MS = 120UL * 1000UL;
+	if (onClimb || st.climbOver) climbLostSinceMs = 0;
+	if (st.climbOver) return true;
+	if (!st.rolling) return true;
+	if (onClimb) return false;
+	if (climbLostSinceMs == 0) climbLostSinceMs = millis() | 1;
+	return static_cast<int32_t>(millis() - climbLostSinceMs) >= static_cast<int32_t>(CLIMB_LOST_HIDE_MS);
 }
 
 void UIFacade::showClimbScreen() {

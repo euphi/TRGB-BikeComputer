@@ -15,8 +15,10 @@
 
 namespace {
 
-// RRZoneBlue..RRZoneRed, as in ui_RimRidgeUpdateRoadQuality() (no access to theme_colors[] here)
-const uint32_t BAND_COLOR[Climb::GRADE_BANDS] = {0x6C90B0, 0x6FA98C, 0xD7B463, 0xCE8A4C, 0xC1604A};
+// RRZoneBlue..RRZoneRed, as in ui_RimRidgeUpdateRoadQuality() (no access to theme_colors[] here) --
+// except the steepest band: the muted zone red (0xC1604A) was hard to read on the road (test ride
+// 2026-10-04), here it is a full red. The profile and "gradient ahead" share it.
+const uint32_t BAND_COLOR[Climb::GRADE_BANDS] = {0x6C90B0, 0x6FA98C, 0xD7B463, 0xCE8A4C, 0xE8392A};
 const uint32_t COLOR_PARCHMENT = 0xE7E2D6;
 const uint32_t COLOR_PARCHMENT_BRIGHT = 0xF3ECDF;
 const uint32_t COLOR_BRASS = 0xCBA36B;
@@ -183,7 +185,8 @@ void updateProfileView(const Climb::Status& st, const Climb::Config& cfg, uint32
 	}
 
 	float fromM = 0, toM = lengthM();
-	const bool summitShown = st.active && !st.summitOpen;
+	// A summit beyond the end of the profile (a long climb of a rolling phone) has no flag yet
+	const bool summitShown = st.active && !st.summitOpen && st.summitM <= lengthM() + view.stepM;
 	if (st.active) {
 		fromM = st.footM - PROFILE_LEAD_M;
 		if (st.posM < fromM) fromM = st.posM;		// approaching: the rider is in the picture

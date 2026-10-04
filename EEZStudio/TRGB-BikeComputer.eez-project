@@ -8917,7 +8917,7 @@
               "left": 60,
               "top": 150,
               "width": 360,
-              "height": 126,
+              "height": 100,
               "customInputs": [],
               "customOutputs": [],
               "style": {
@@ -9020,10 +9020,10 @@
             {
               "objID": "3aebfedf-2245-4df3-bc29-3a248a60ea0e",
               "type": "LVGLContainerWidget",
-              "left": 70,
-              "top": 282,
-              "width": 160,
-              "height": 46,
+              "left": 50,
+              "top": 254,
+              "width": 190,
+              "height": 72,
               "customInputs": [],
               "customOutputs": [],
               "style": {
@@ -9100,8 +9100,8 @@
                   "type": "LVGLLabelWidget",
                   "left": 0,
                   "top": 0,
-                  "width": 73,
-                  "height": 28,
+                  "width": 170,
+                  "height": 56,
                   "customInputs": [],
                   "customOutputs": [],
                   "style": {
@@ -9135,7 +9135,7 @@
                       "MAIN": {
                         "DEFAULT": {
                           "text_color": "RRZoneYellow",
-                          "text_font": "Montserrat26",
+                          "text_font": "Montserrat48",
                           "align": "BOTTOM_MID"
                         }
                       }
@@ -9171,10 +9171,10 @@
             {
               "objID": "b61bd952-e4b6-4c6c-9a27-265d93dc1643",
               "type": "LVGLContainerWidget",
-              "left": 250,
-              "top": 282,
-              "width": 160,
-              "height": 46,
+              "left": 240,
+              "top": 254,
+              "width": 190,
+              "height": 72,
               "customInputs": [],
               "customOutputs": [],
               "style": {
@@ -9251,8 +9251,8 @@
                   "type": "LVGLLabelWidget",
                   "left": 0,
                   "top": 0,
-                  "width": 73,
-                  "height": 28,
+                  "width": 170,
+                  "height": 56,
                   "customInputs": [],
                   "customOutputs": [],
                   "style": {
@@ -9286,7 +9286,7 @@
                       "MAIN": {
                         "DEFAULT": {
                           "text_color": "RRParchment",
-                          "text_font": "Montserrat26",
+                          "text_font": "Montserrat48",
                           "align": "BOTTOM_MID"
                         }
                       }

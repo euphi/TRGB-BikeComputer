@@ -5,9 +5,10 @@
  *   g++ -std=c++17 -O2 -Wall -Isrc src/ClimbProfile.cpp test/native_climb/climb_test.cpp -o /tmp/climb_test && /tmp/climb_test
  *
  * Exit code 0 = all checks passed. The rides are fed the way TrailBridge does it
- * (RouteNavigator/ElevationProfile there): the profile from the rider to the summit once the
- * foot of a climb is 500 m ahead, on a raster that fits it into 200 steps, PROFILE_NONE at
- * the summit.
+ * (RouteNavigator/ElevationProfile there). Two phones: Phone is the older one -- the profile
+ * from the rider to the summit once the foot of a climb is 500 m ahead, on a raster that fits it
+ * into 200 steps, PROFILE_NONE at the summit; RollingPhone sends the road ahead all the time and
+ * announces the climb (frame flag ROLLING, tags 0x07..0x0A), no PROFILE_NONE at the summit.
  */
 
 #include "ClimbProfile.h"
@@ -146,6 +147,72 @@ struct Phone {
 			sentClimb = -1;
 		}
 		tracker.setRemaining(route.totalM() - progress);		// the nav frame's REMAINING_DISTANCE_M
+	}
+};
+
+// RouteNavigator.nextProfile(): the road ahead all the time, a climb announced with its whole extent
+struct RollingPhone {
+	const Route& route;
+	Tracker& tracker;
+	std::vector<std::pair<int, int>> climbs;
+	int maxSteps;
+	int sentClimb = -1, passed = -1;
+	bool haveSent = false;
+	float sentStart = 0;
+	int sentLength = 0, sentStepM = 0;
+	int frames = 0;
+	RollingPhone(const Route& r, Tracker& t, int maxSteps = 200) : route(r), tracker(t), climbs(r.climbs()), maxSteps(maxSteps) {}
+
+	int climbAhead(float progress) {
+		if (sentClimb >= 0 && progress >= climbs[sentClimb].second * STEP - STEP / 2.0f) passed = sentClimb;
+		float p = progress;
+		if (passed >= 0) {
+			const float summit = climbs[passed].second * (float)STEP;
+			if (p < summit - 100) passed = -1;
+			else p = std::max(p, summit);
+		}
+		for (size_t k = 0; k < climbs.size(); k++) {
+			if (p < climbs[k].second * STEP - STEP / 2.0f) return p >= climbs[k].first * STEP - 500 ? (int)k : -1;
+		}
+		return -1;
+	}
+	void forget() {haveSent = false; sentClimb = -1;}		// profile taken back (PROFILE_NONE sent by the caller)
+	void onFix(float progress) {
+		const int k = climbAhead(progress);
+		const float toM = k >= 0 ? climbs[k].second * (float)STEP : std::min(route.totalM(), progress + maxSteps * (float)STEP);
+		bool fresh = !haveSent || k != sentClimb;
+		bool send = fresh;
+		if (!fresh) {
+			const bool endShort = sentStart + sentLength < toM - STEP / 2.0f;
+			const bool pastMiddle = progress > sentStart + sentLength / 2.0f;
+			send = endShort && pastMiddle;
+		}
+		if (send) {
+			const int stepM = (!fresh && k >= 0) ? sentStepM : 0;
+			float start = 0;
+			int length = 0;
+			std::vector<uint8_t> f = route.slice(progress, toM, maxSteps, stepM, &start, &length);
+			if (!f.empty()) {
+				sentStart = start;
+				sentLength = length;
+				sentStepM = f[10];
+				sentClimb = k;
+				haveSent = true;
+				frames++;
+				f.insert(f.end(), {PROFILE_TAG_FLAGS, 1, PROFILE_FLAG_ROLLING});
+				if (k >= 0) {
+					const uint32_t footRem = (uint32_t)lroundf(route.totalM() - climbs[k].first * STEP);
+					const uint32_t summitRem = (uint32_t)lroundf(route.totalM() - climbs[k].second * STEP);
+					const int16_t footAlt = (int16_t)lroundf(route.alt[climbs[k].first] * 10), summitAlt = (int16_t)lroundf(route.alt[climbs[k].second] * 10);
+					f.insert(f.end(), {PROFILE_TAG_CLIMB_FOOT_REMAINING_M, 4, (uint8_t)footRem, (uint8_t)(footRem >> 8), (uint8_t)(footRem >> 16), (uint8_t)(footRem >> 24)});
+					f.insert(f.end(), {PROFILE_TAG_CLIMB_SUMMIT_REMAINING_M, 4, (uint8_t)summitRem, (uint8_t)(summitRem >> 8), (uint8_t)(summitRem >> 16), (uint8_t)(summitRem >> 24)});
+					f.insert(f.end(), {PROFILE_TAG_CLIMB_FOOT_ALT_DM, 2, (uint8_t)footAlt, (uint8_t)(footAlt >> 8)});
+					f.insert(f.end(), {PROFILE_TAG_CLIMB_SUMMIT_ALT_DM, 2, (uint8_t)summitAlt, (uint8_t)(summitAlt >> 8)});
+				}
+				CHECK(tracker.feedFrame(f.data(), f.size()) == Tracker::FRAME_PROFILE, "rolling frame rejected at %.0f m", progress);
+			}
+		}
+		tracker.setRemaining(route.totalM() - progress);
 	}
 };
 
@@ -453,8 +520,80 @@ static void testParams() {
 	CHECK(t.status().rank == RANK_CAT3, "threshold raised: rank %u", t.status().rank);
 }
 
+static void testRolling() {
+	printf("Rolling phone: 2 km at 6 %%, the profile all the time, the climb announced whole\n");
+	Route r(200);
+	r.add(1000, 0).add(2000, 6).add(1000, -5).add(2000, 0);
+	Tracker t;
+	RollingPhone phone(r, t);
+	uint16_t id = 0;
+	bool over = false;
+	float firstFootM = 1e9f;
+	for (float pos = 0; pos <= r.totalM() - 250; pos += 5) {
+		phone.onFix(pos);
+		const Status& s = t.status();
+		CHECK(s.rolling && s.hasProfile, "no profile at %.0f", pos);			// also on the flat and downhill
+		if (pos < 460) CHECK(!s.active && !s.climbOver, "climb before its foot is close at %.0f", pos);
+		if (pos > 520 && pos < 2980) {
+			CHECK(s.active && !s.climbOver, "no climb at %.0f", pos);
+			if (!s.active) continue;
+			if (!id) id = s.climbId;
+			CHECK(s.climbId == id, "climb id changed to %u at %.0f", s.climbId, pos);
+			// category and size are the whole climb's from the first frame to the last metre
+			CHECK(s.rank == RANK_CAT4, "rank %u at %.0f", s.rank, pos);
+			CHECK(NEAR(s.totalAscentM, 120, 1.5f) && NEAR(s.lengthM, 2000, 30), "ascent %.1f length %.0f at %.0f", s.totalAscentM, s.lengthM, pos);
+			if (pos > 2500) CHECK(s.footM < s.posM - 1000, "foot %.0f should be far behind the rider %.0f", s.footM, s.posM);
+			if (s.onClimb && pos < 2900) CHECK(NEAR(s.remainingAscentM, (3000 - pos) * 0.06f, 1.5f), "remaining %.1f at %.0f", s.remainingAscentM, pos);
+			firstFootM = std::min(firstFootM, s.footM);
+		}
+		if (pos > 3100) {
+			CHECK(!s.active && s.climbOver, "climb should be over at %.0f (active %d, over %d)", pos, s.active, s.climbOver);
+			over = true;
+		}
+	}
+	CHECK(over && id == 1, "over %d, id %u", over, id);
+	CHECK(phone.frames >= 2, "frames %d", phone.frames);
+
+	printf("Rolling phone: PROFILE_NONE for a moment (off the route) does not end the climb\n");
+	Tracker t2;
+	RollingPhone p2(r, t2);
+	uint16_t id2 = 0;
+	for (float pos = 400; pos <= 2400; pos += 5) {
+		p2.onFix(pos);
+		if (pos == 1500) {
+			const uint8_t none[] = {PROFILE_PROTOCOL_VERSION, PROFILE_MSG_PROFILE_NONE};
+			t2.feedFrame(none, sizeof(none));
+			p2.forget();
+			CHECK(!t2.status().hasProfile, "profile gone");
+		}
+		if (pos > 520 && t2.status().active && !id2) id2 = t2.status().climbId;
+		if (pos > 1600 && pos < 2900) CHECK(t2.status().active && t2.status().climbId == id2 && t2.status().rank == RANK_CAT4, "climb lost after NONE at %.0f", pos);
+	}
+
+	printf("Rolling phone: a flat road is a profile, not a climb\n");
+	Route flat(300);
+	flat.add(6000, 0.5f);
+	Tracker t3;
+	RollingPhone p3(flat, t3);
+	for (float pos = 0; pos <= 5500; pos += 10) {
+		p3.onFix(pos);
+		CHECK(t3.status().hasProfile && !t3.status().active && t3.status().rolling, "flat at %.0f", pos);
+	}
+	CHECK(p3.frames >= 2, "the window moves on (%d frames)", p3.frames);
+
+	printf("Older phone without the flag after a rolling one: back to finding the climb\n");
+	Tracker t4;
+	RollingPhone p4(r, t4);
+	p4.onFix(600);
+	CHECK(t4.status().rolling && t4.status().active, "rolling climb");
+	Phone old(r, t4);
+	for (float pos = 610; pos <= 700; pos += 10) old.onFix(pos);
+	CHECK(!t4.status().rolling, "no longer rolling");
+}
+
 int main() {
 	testFrames();
+	testRolling();
 	testSingleClimb();
 	testHill();
 	testStep(300, true);

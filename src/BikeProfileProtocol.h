@@ -7,9 +7,13 @@
  *
  * Third, independent service on the same peer as the navigation service (DEV_NAV in
  * BLEDevices.cpp), not advertised, its own characteristic/subscription. Event-driven, no
- * heartbeat: TrailBridge sends a profile when a climb is ahead on its GPX route -- from the
- * rider to the summit, on a raster coarse enough for the whole climb to fit one frame -- and
- * PROFILE_NONE when the summit is reached, the route ends or the rider leaves the route.
+ * heartbeat: TrailBridge sends the profile of the road ahead on its GPX route, always, climb
+ * or not (a rolling window; frames with PROFILE_FLAG_ROLLING). A climb in it -- the one the
+ * rider is on or whose foot is within 500 m -- is announced by tags 0x07..0x0A with its whole
+ * extent (foot and summit, also behind or beyond the frame), so category and length do not
+ * change while it is being ridden. Without the flag (older TrailBridge) a frame ends at the
+ * summit of a climb ahead and PROFILE_NONE comes at the summit; the firmware then finds the
+ * climb itself. PROFILE_NONE in either case: the route ends or the rider leaves it.
  */
 
 #pragma once
@@ -31,8 +35,16 @@ typedef enum {
 	PROFILE_TAG_STEP_M = 0x02,						// uint8, distance between profile points in metres (25 .. 250)
 	PROFILE_TAG_BASE_ALT_DM = 0x03,					// int16 LE, altitude of the first point in decimetres
 	PROFILE_TAG_DELTAS_DM = 0x04,					// N x int8: altitude change from point k to k+1 (N+1 points), in DELTA_SCALE_DM dm
-	PROFILE_TAG_DELTA_SCALE_DM = 0x05				// uint8, optional: unit of the deltas in decimetres (1 if absent)
+	PROFILE_TAG_DELTA_SCALE_DM = 0x05,				// uint8, optional: unit of the deltas in decimetres (1 if absent)
+	PROFILE_TAG_FLAGS = 0x06,						// uint8, optional: PROFILE_FLAG_* bits
+	PROFILE_TAG_CLIMB_FOOT_REMAINING_M = 0x07,		// uint32 LE, remaining route distance at the foot of the announced climb (may be behind the first point)
+	PROFILE_TAG_CLIMB_SUMMIT_REMAINING_M = 0x08,	// uint32 LE, ... at its summit (may be beyond the last point)
+	PROFILE_TAG_CLIMB_FOOT_ALT_DM = 0x09,			// int16 LE, altitude of the foot in decimetres
+	PROFILE_TAG_CLIMB_SUMMIT_ALT_DM = 0x0A			// int16 LE, altitude of the summit in decimetres
 } EProfileTlvTag;
+
+// PROFILE_TAG_FLAGS
+#define PROFILE_FLAG_ROLLING 0x01	// the profile is a rolling window of the road ahead; the climb is only the one announced by tags 0x07..0x0A (all four, or none = no climb close)
 
 // Point k lies at START_REMAINING_DISTANCE_M - k * STEP_M of remaining route distance. The
 // rider is at START_REMAINING_DISTANCE_M - REMAINING_DISTANCE_M (nav frame, tag 0x08) metres
