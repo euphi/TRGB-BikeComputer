@@ -560,7 +560,13 @@ bool BLEDevices::connectToServer(SDevToConnect& dev) {
 	connState[dt] = connected ? CONN_CONNECTED : CONN_LOST;
 	//--------
 	if (!connected) {
-			bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_BLE, "❌ Can't connect to device %s.", addr.toString().c_str());
+			// How many other peers hold a connection right now: NimBLE's default limit is 3 (docs: doc/PITFALLS.md,
+			// "Probably at most 3 BLE connections"). A failure always at 3 would confirm that.
+			uint8_t others = 0;
+			for (uint8_t i = 0; i < DEV_COUNT; i++) {
+				if (i != dt && clients[i] && clients[i]->isConnected()) others++;
+			}
+			bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_BLE, "❌ Can't connect to device %s (%u other peer(s) connected).", addr.toString().c_str(), (unsigned) others);
 			clients[dt].reset();	// Delete client (release() alone would leak it -- releases ownership without deleting)
 			return false;
 	}

@@ -100,7 +100,9 @@ einer, HR, zwei CSC). Den Slot zu löschen ändert nichts, wie das Log zeigt. Zu
 `BLEClient::connect()` zurückgibt bzw. NimBLE-Fehlercode und Zahl der verbundenen Clients loggen,
 wenn ein Connect scheitert. Eine Lösung braucht eine andere sdkconfig (pioarduino
 `custom_sdkconfig`, das die IDF-Bibliotheken neu baut) oder die NimBLE-Arduino-Bibliothek mit
-`-DCONFIG_BT_NIMBLE_MAX_CONNECTIONS=4` -- jede Verbindung kostet internes RAM. Bis dahin
+`-DCONFIG_BT_NIMBLE_MAX_CONNECTIONS=4` -- jede Verbindung kostet internes RAM. Die Logzeile eines gescheiterten Connects nennt jetzt, wie viele andere Gegenstellen verbunden
+waren; Fehlschläge immer bei 3 würden den Verdacht bestätigen. `pio run -e trgb-esp32-s3-ble4`
+(ungetestet) baut mit `custom_sdkconfig = CONFIG_BT_NIMBLE_MAX_CONNECTIONS=4`. Bis dahin
 verbindet sich das 4. Gerät schlicht nie.
 
 ## BLE-Stack ist NimBLE, nicht Bluedroid

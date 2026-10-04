@@ -90,7 +90,9 @@ changes nothing, as the log shows. To check: look at what `BLEClient::connect()`
 NimBLE error code and the number of connected clients when a connect fails. A fix needs a different
 sdkconfig (pioarduino `custom_sdkconfig`, which compiles the IDF libraries) or the NimBLE-Arduino
 library with `-DCONFIG_BT_NIMBLE_MAX_CONNECTIONS=4` -- every connection costs internal RAM.
-Until then the 4th device simply never connects.
+The log line of a failed connect now says how many other peers were connected; failures always at 3
+would confirm it. `pio run -e trgb-esp32-s3-ble4` (untested) builds with `custom_sdkconfig =
+CONFIG_BT_NIMBLE_MAX_CONNECTIONS=4`. Until then the 4th device simply never connects.
 
 ## The BLE stack is NimBLE, not Bluedroid
 
