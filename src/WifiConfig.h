@@ -6,8 +6,10 @@
  * a mutex and persists it as ONE blob (doc/PITFALLS.md: values that belong together go into
  * the NVS as a struct). Host test: test/native_wificonfig/wificonfig_test.cpp.
  *
- * The order of the list IS the priority: autoconnect tries the first visible network first.
- * New networks are appended, the web page reorders them (the display does not).
+ * Autoconnect tries the strongest visible network first (test ride 2026-10-04: at the flat's
+ * door "IA216" was far more reliable than "IA216oT", which stood first in the list). The order of
+ * the list only decides between networks of the same signal strength and among those that are
+ * not seen (hidden). New networks are appended, the web page reorders them (the display does not).
  *
  * Passwords never leave this class towards the web or the log: there is no accessor that
  * hands them to anything but the WiFi driver (password()).
@@ -50,6 +52,7 @@ constexpr uint8_t BLOB_VERSION = 1;
 // A scan result as far as selection needs it.
 struct Visible {
 	const char* ssid;
+	int8_t rssi = -127;		// dBm; the default is the same for all, i.e. no preference
 };
 
 enum class Result : uint8_t {
@@ -93,7 +96,9 @@ public:
 	Result setAccessPoint(const char* ssid, const char* pw);		// pw needs 8..63 characters
 
 	// Autoconnect order: the stored networks that are in `visible` (or are marked hidden),
-	// in priority order. Returns the number of indices written to `out` (<= MAX_NETWORKS).
+	// strongest signal first (a network seen several times counts with its best), then the
+	// hidden ones that were not seen; equal signals keep the list order. Returns the number of
+	// indices written to `out` (<= MAX_NETWORKS).
 	size_t candidates(const Visible* visible, size_t nVisible, uint8_t* out) const;
 
 	void toBlob(Blob& b) const;

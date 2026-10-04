@@ -79,13 +79,29 @@ static void candidates() {
 	c.add("cafe", "");
 	uint8_t out[MAX_NETWORKS];
 
+	// Same signal everywhere: list order among the seen ones, the hidden one that was not seen last
 	const Visible all[] = {{"cafe"}, {"phone"}, {"neighbour"}, {"home"}};
 	size_t k = c.candidates(all, 4, out);
-	CHECK(k == 4 && out[0] == 0 && out[1] == 1 && out[2] == 2 && out[3] == 3, "priority order, not scan order (k=%zu)", k);
+	CHECK(k == 4 && out[0] == 0 && out[1] == 1 && out[2] == 3 && out[3] == 2, "equal signal: list order, unseen hidden last (k=%zu)", k);
 
 	const Visible some[] = {{"cafe"}, {"phone"}};
 	k = c.candidates(some, 2, out);
-	CHECK(k == 3 && out[0] == 1 && out[1] == 2 && out[2] == 3, "visible + hidden only (k=%zu)", k);
+	CHECK(k == 3 && out[0] == 1 && out[1] == 3 && out[2] == 2, "visible + hidden only (k=%zu)", k);
+
+	// The strongest network first, whatever the list says (flat door 2026-10-04: "home" weak, "cafe" strong)
+	const Visible strength[] = {{"home", -80}, {"cafe", -45}, {"phone", -60}};
+	k = c.candidates(strength, 3, out);
+	CHECK(k == 4 && out[0] == 3 && out[1] == 1 && out[2] == 0 && out[3] == 2, "strongest first (k=%zu out=%d%d%d%d)", k, out[0], out[1], out[2], out[3]);
+
+	// Seen twice (two access points): the better one counts
+	const Visible twice[] = {{"home", -85}, {"phone", -70}, {"home", -50}};
+	k = c.candidates(twice, 3, out);
+	CHECK(k == 3 && out[0] == 0 && out[1] == 1 && out[2] == 2, "best of several access points (k=%zu)", k);
+
+	// A seen hidden network competes with its signal like any other
+	const Visible seenHidden[] = {{"hidden-one", -40}, {"home", -70}};
+	k = c.candidates(seenHidden, 2, out);
+	CHECK(k == 2 && out[0] == 2 && out[1] == 0, "seen hidden network sorted by signal (k=%zu)", k);
 
 	k = c.candidates(nullptr, 0, out);
 	CHECK(k == 1 && out[0] == 2, "nothing visible: only the hidden one is tried (k=%zu)", k);

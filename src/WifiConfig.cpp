@@ -113,13 +113,30 @@ Result Config::setAccessPoint(const char* s, const char* pw) {
 }
 
 size_t Config::candidates(const Visible* visible, size_t nVisible, uint8_t* out) const {
+	constexpr int16_t NOT_SEEN = -1000;		// below any dBm value: hidden networks that did not show up come last
+	int16_t rssi[MAX_NETWORKS];
 	size_t k = 0;
 	for (size_t i = 0; i < n; i++) {
 		bool take = nets[i].hidden != 0;
-		for (size_t v = 0; !take && v < nVisible; v++) {
-			take = visible[v].ssid && strcmp(visible[v].ssid, nets[i].ssid) == 0;
+		int16_t best = NOT_SEEN;
+		for (size_t v = 0; v < nVisible; v++) {
+			if (visible[v].ssid && strcmp(visible[v].ssid, nets[i].ssid) == 0) {
+				take = true;
+				if (visible[v].rssi > best) best = visible[v].rssi;
+			}
 		}
-		if (take) out[k++] = (uint8_t) i;
+		if (!take) continue;
+		// Insertion sort, strongest first; only a strictly weaker predecessor is passed,
+		// so equal signals stay in list order.
+		size_t at = k;
+		while (at > 0 && rssi[at - 1] < best) {
+			rssi[at] = rssi[at - 1];
+			out[at] = out[at - 1];
+			at--;
+		}
+		rssi[at] = best;
+		out[at] = (uint8_t) i;
+		k++;
 	}
 	return k;
 }

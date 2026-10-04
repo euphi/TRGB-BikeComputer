@@ -282,7 +282,7 @@ void Statistics::cycle() {
 		//no break
 	case DS_BREAK:
 		if (speed > 5.5) {
-			setCurDriveState(rideMode ? (cadence < 40  ? DS_DRIVE_COASTING : DS_DRIVE_POWER) : DS_FREE_RIDE);
+			setCurDriveState(rideMode ? (cadenceLow() ? DS_DRIVE_COASTING : DS_DRIVE_POWER) : DS_FREE_RIDE);
 			if (offAfterMinutes != 255) offAfterMinutes = 5;	// don't silently re-enable auto-off if the user disabled it (long-press / Pause button)
 			time_in_break = 0;	// Necessary so that next if is not true
 		}
@@ -315,7 +315,7 @@ void Statistics::cycle() {
 			setCurDriveState(DS_FREE_RIDE);
 		} else {
 			//TODO: add speed depended cadence limits to adapt to steep gradients
-			if (cadence < 40 && curDriveState == DS_DRIVE_POWER) {
+			if (cadenceLow() && curDriveState == DS_DRIVE_POWER) {
 				bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_STAT, "Speed: %f Cadence: %d", speed, cadence);
 				setCurDriveState(DS_DRIVE_COASTING);
 			} else if (cadence > 50 && curDriveState == DS_DRIVE_COASTING) {
@@ -383,7 +383,7 @@ void Statistics::applyRideModeToCurrentMovement() {
 	case DS_FREE_RIDE:
 	case DS_DRIVE_COASTING:
 	case DS_DRIVE_POWER:
-		setCurDriveState(rideMode ? (cadence < 40 ? DS_DRIVE_COASTING : DS_DRIVE_POWER) : DS_FREE_RIDE);
+		setCurDriveState(rideMode ? (cadenceLow() ? DS_DRIVE_COASTING : DS_DRIVE_POWER) : DS_FREE_RIDE);
 		break;
 	default:
 		break;

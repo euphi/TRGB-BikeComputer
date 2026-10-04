@@ -32,15 +32,15 @@ gefunden", „Verbindung verloren", „kein Netz gespeichert", ...).
 
 ![Passwort-Screen](screenshots/wifi-password.png){ width="260" }
 
-Die Reihenfolge der gespeicherten Netze (ihre Priorität) und das Löschen gehen nur auf der
-Webseite.
+Die Reihenfolge der gespeicherten Netze und das Löschen gehen nur auf der Webseite. Die
+Reihenfolge zählt nur bei gleich starkem Empfang (siehe Autoconnect).
 
 ## Webseite `/wifi`
 
 Verlinkt von der Startseite („WiFi Settings"). Sie zeigt
 
 - den Zustand (verbunden mit ..., Hotspot, ...),
-- die gespeicherten Netze mit ▲ ▼ (Priorität), **Edit** (Passwort) und **Delete**,
+- die gespeicherten Netze mit ▲ ▼ (Reihenfolge, nur bei Gleichstand), **Edit** (Passwort) und **Delete**,
 - eine Suche mit Auswahlliste oder eine SSID von Hand (auch für versteckte und offene
   Netze),
 - Name und neues Passwort des Hotspots.
@@ -52,8 +52,8 @@ Flash-Verschlüsselung.
 ## Automatische Verbindung und die 5 Minuten
 
 Nach dem Booten und wann immer das WLAN eingeschaltet wird, sucht das Gerät und probiert die
-gespeicherten Netze in Reichweite **in der Reihenfolge der Liste**, je 15 s (versteckte werden
-ungesehen probiert). Klappt keins, sucht es alle 15 s erneut. Besteht **5 Minuten** keine
+gespeicherten Netze in Reichweite, **das stärkste zuerst** (bei gleichem Empfang entscheidet die
+Liste), je 15 s; versteckte, nicht gesehene kommen zuletzt und werden ungesehen probiert. Klappt keins, sucht es alle 15 s erneut. Besteht **5 Minuten** keine
 Verbindung (nie verbunden oder Verbindung verloren), schaltet sich das WLAN zum Stromsparen
 ab. Eine Suche dauert etwa 10 s, solange BLE läuft.
 

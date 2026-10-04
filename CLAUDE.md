@@ -68,7 +68,7 @@ ist das Protokoll die Quelle der Wahrheit.
 Hotspot-Daten liegen als ein Blob im NVS (`src/WifiConfig.*`, reiner Teil, Host-Test
 `test/native_wificonfig/wificonfig_test.cpp`, Build-Befehl im Dateikopf). Zustandsautomat,
 Suche, Hotspot, CLI `wifi`: `src/WifiWebserver.cpp`; Seite `/wifi`: `src/WifiRoutes.cpp`.
-Reihenfolge der Liste = Priorität, 5 min ohne Verbindung (oder Hotspot ohne Client) = WLAN aus,
+stärkstes Netz in Reichweite zuerst (Liste nur bei Gleichstand), 5 min ohne Verbindung (oder Hotspot ohne Client) = WLAN aus,
 wieder an nur über den Settings-Screen. Geheimnisse nur per POST-Body und nie loggen
 (`doc/PITFALLS.md`). Test am Gerät: Netz per `wifi add <ssid> <pw>` auf der seriellen
 Konsole eintragen (Passwort wird nicht geloggt). Hotspot vom Handy aus testen (ADB): am Handy

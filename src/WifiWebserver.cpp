@@ -648,7 +648,10 @@ void WifiWebserver::checkLoop() {
 			WifiCfg::Visible visible[SCAN_MAX];
 			{
 				Lock lock(cfgMutex);
-				for (size_t i = 0; i < scanCount; i++) visible[i].ssid = scanCache[i].ssid;
+				for (size_t i = 0; i < scanCount; i++) {
+					visible[i].ssid = scanCache[i].ssid;
+					visible[i].rssi = scanCache[i].rssi;
+				}
 				candidateCount = cfg.candidates(visible, scanCount, candidates);
 			}
 			candidateIdx = 0;
