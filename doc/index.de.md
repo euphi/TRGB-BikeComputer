@@ -84,6 +84,9 @@ Steigung aus dem Beschleunigungssensor als Alternative zum Barometer.
 - Testfahrten (Sensor-Simulator, GPX-Testfahrt von TrailBridge) werden erkannt, markiert und
   aus Fahrtenliste, Training, Nextcloud und Komoot herausgehalten; Leerlauf-Sitzungen (an, aber
   nicht gefahren) werden archiviert und lassen sich vom Dienst aus auf dem BC löschen
+- Räder mit Gewicht und Aerodynamik, den Fahrradcomputern nach Datum zugeordnet (mehrere
+  Fahrradcomputer im selben Netz: `TRGB-BC`, `TRGB-FL`); anderswo aufgezeichnete Fahrten als
+  GPX importieren, auch als frühere Teilnahmen an einem Ziel
 
 **Web-Oberfläche** (im WLAN)
 

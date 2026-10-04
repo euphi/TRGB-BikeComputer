@@ -86,6 +86,9 @@ asphalt, and gradient from the accelerometer as an alternative to the barometer.
 - Test sessions (sensor simulator, TrailBridge GPX test ride) are recognised, marked and
   kept out of the ride list, training, Nextcloud and Komoot; idle sessions (switched on,
   no ride) are archived and can be deleted on the bike computer from the service
+- Bikes with weight and aerodynamics, assigned to the bike computers by date (several bike
+  computers in one network: `TRGB-BC`, `TRGB-FL`); rides recorded elsewhere imported as
+  GPX, also as earlier editions of a goal
 
 **Web interface** (when on WiFi)
 - Download, replay and delete log files; live log with adjustable log levels

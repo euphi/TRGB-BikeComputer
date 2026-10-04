@@ -62,6 +62,8 @@ class Ride:
     climbs: list
     #: all sessions of the ride (several when the bike computer rebooted on the way)
     session_ids: list = field(default_factory=list)
+    #: the bike's name (log service: bikes.json), None if unknown
+    bike: str | None = None
 
     @classmethod
     def from_report(cls, rep: dict, session_id: int | None = None,
@@ -83,7 +85,8 @@ class Ride:
             ascent_m=ride["ascent_m"] or 0, trimp=heart.get("trimp"), zones_s=heart.get("zones_s"),
             avg_hr=heart.get("avg"), normalized_w=power.get("normalized_w"),
             best_w=power.get("best_w") or {}, decoupling_pct=heart.get("decoupling_pct"),
-            efficiency=heart.get("efficiency_w_per_bpm"), climbs=rep.get("climbs") or [])
+            efficiency=heart.get("efficiency_w_per_bpm"), climbs=rep.get("climbs") or [],
+            bike=(rep["meta"].get("bike") or {}).get("name"))
 
 
 # --- load ----------------------------------------------------------------------
@@ -180,6 +183,8 @@ class Event:
     gpx: str | None = None
     #: event_profile() of that GPX, kept so pages need not parse it again
     profile: dict | None = None
+    #: sessions of earlier editions the rider rode (log service session ids, e.g. imported GPX)
+    participations: list = field(default_factory=list)
 
     def as_dict(self) -> dict:
         data = asdict(self)

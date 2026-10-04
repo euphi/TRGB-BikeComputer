@@ -354,7 +354,7 @@ void WifiWebserver::publishUi(const char* offText) {
 
 void WifiWebserver::startMdns() {
 	if (mdnsStarted) return;
-	mdnsStarted = MDNS.begin("TRGB-BC");
+	mdnsStarted = MDNS.begin(WifiCfg::HOSTNAME);
 	if (mdnsStarted) MDNS.addService("http", "tcp", 80);
 }
 

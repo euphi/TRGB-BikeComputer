@@ -63,7 +63,7 @@ def test_tour_report_is_cached_and_refreshed(client, tmp_path):
     store = client.app.state.storage
     analysis.refresh(store, background=False)
     group = [store.get(a), store.get(b)]
-    key = analysis.tour_key(group, analysis._athlete_key(store))
+    key = analysis.tour_key(store, group)
     assert store.cached_tour_report(key) is not None
 
 

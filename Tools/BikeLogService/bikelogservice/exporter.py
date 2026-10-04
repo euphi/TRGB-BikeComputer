@@ -72,6 +72,10 @@ def file_name(session: Session, first_fix: datetime.datetime | None) -> str:
 def export_session(store: Storage, session: Session) -> str:
     settings = store.settings
     root = settings.gpx_dir
+    if session.device == "import":
+        # Imported from a GPX (importer.py): the original is wherever it came from already.
+        store.set_export(session.id, None, "import", EXPORT_VERSION)
+        return "import"
     if session.idle:
         # Switched on, no ride: no GPX at all (archive.py takes the files later).
         if session.gpx_file:

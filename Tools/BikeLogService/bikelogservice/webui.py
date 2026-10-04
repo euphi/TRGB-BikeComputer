@@ -138,12 +138,21 @@ function newGoal(form){const inp=form.querySelector('input[type=file]');const f=
   if(!u.ok){const j=await u.json().catch(()=>({detail:u.statusText}));alert(j.detail)}
   location.href='/goals#e'+id;location.reload()})();
  return false}
+async function importGpx(){const files=document.getElementById('imp-files').files;
+ const st=document.getElementById('imp-status');if(!files.length){st.textContent='Keine Datei gewählt.';return}
+ const q=new URLSearchParams();const b=document.getElementById('imp-bike').value;
+ const e=document.getElementById('imp-event').value;if(b)q.set('bike_id',b);if(e)q.set('event_id',e);
+ const errs=[];let n=0;
+ for(const f of files){st.textContent=`Importiere ${f.name} …`;
+  const r=await fetch('/api/v1/import/gpx?'+q,{method:'PUT',body:f});
+  if(r.ok)n++;else{const j=await r.json().catch(()=>({detail:r.statusText}));errs.push(f.name+': '+j.detail)}}
+ if(errs.length)alert(errs.join('\n'));st.textContent=`${n} importiert.`;if(n)location.reload()}
 async function uploadGpx(input,id){const f=input.files[0];if(!f)return;
  const r=await fetch('/api/v1/events/'+id+'/gpx',{method:'PUT',body:f});
  if(r.ok)location.reload();else{const j=await r.json().catch(()=>({detail:r.statusText}));alert(j.detail)}}
 """
 
-NAV = (("/", "Fahrten"), ("/training", "Training"), ("/goals", "Ziele"),
+NAV = (("/", "Fahrten"), ("/training", "Training"), ("/goals", "Ziele"), ("/bikes", "Räder"),
        ("/climbs", "Anstiege"), ("/athlete", "Fahrer"), ("/archive", "Archiv"))
 
 
@@ -277,7 +286,7 @@ def test_chip(s: Session) -> str:
     return f'<span class="chip test" title="Testfahrt, zählt nicht im Training">{escape(label)}</span>'
 
 
-def _row(s: Session, tour: tuple[int, int, int] | None = None) -> str:
+def _row(s: Session, tour: tuple[int, int, int] | None = None, bike: str | None = None) -> str:
     summ = s.summary or {}
     dist = summ.get("dist_m", s.distance_m)
     move = summ.get("move_s")
@@ -289,7 +298,7 @@ def _row(s: Session, tour: tuple[int, int, int] | None = None) -> str:
         f'<td>{title} {test_chip(s)}'
         + (f' <a class="chip tour" href="/tour/{tour[2]}" title="Neustart unterwegs: eine Fahrt aus '
            f'{tour[1]} Sitzungen">Teil {tour[0]}/{tour[1]}</a>' if tour else "")
-        + f'<br><span class="mut">{escape(s.device)}</span></td>'
+        + f'<br><span class="mut">{escape(s.device)}{" · " + escape(bike) if bike else ""}</span></td>'
         f'<td class="num"><span class="big">{num((dist or 0) / 1000)}</span> km</td>'
         f'<td class="num hide-s">{hm(move)}</td>'
         f'<td class="num hide-s">{num(vavg) + " km/h" if vavg else ""}</td>'
@@ -398,14 +407,41 @@ def _filter_form(min_km: float | None, max_km: float | None, tests: bool = False
         '<button type="submit">Filtern</button>' + reset + hint + '</form>')
 
 
+def _bike_options(registry, selected: str | None = None, empty: str = "–") -> str:
+    opts = [f'<option value="">{escape(empty)}</option>']
+    for b in (registry.bikes if registry else []):
+        opts.append(f'<option value="{escape(b.id)}"{" selected" if b.id == selected else ""}>'
+                    f'{escape(b.name)}</option>')
+    return "".join(opts)
+
+
+def _import_form(registry, events) -> str:
+    """Rides recorded elsewhere, as GPX: uploaded one by one by the page's script."""
+    ev = "".join(f'<option value="{escape(e.id)}">{escape(e.name)}</option>' for e in events)
+    return ('<details style="margin-top:8px"><summary>GPX-Fahrten importieren</summary><div class="panel">'
+            '<p class="mut">Aufgezeichnete Fahrten von Garmin, Strava, Komoot &amp; Co. (GPX mit Zeiten, '
+            'Puls und Trittfrequenz werden übernommen). Sie zählen wie Fahrten des Fahrradcomputers, '
+            'werden aber nicht exportiert oder hochgeladen.</p>'
+            '<label class="f"><span>Dateien</span><input type="file" id="imp-files" multiple '
+            'accept=".gpx,application/gpx+xml"></label>'
+            f'<label class="f"><span>Rad</span><select id="imp-bike">{_bike_options(registry)}</select></label>'
+            '<label class="f"><span>Frühere Teilnahme an</span><select id="imp-event">'
+            f'<option value="">–</option>{ev}</select> <span class="mut">optional, z. B. das Rennen '
+            'vom letzten Jahr</span></label>'
+            '<button class="pri" type="button" onclick="importGpx()">Importieren</button> '
+            '<span id="imp-status" class="mut"></span></div></details>')
+
+
 def index(sessions: list[Session], pull: dict | None,
           min_km: float | None = None, max_km: float | None = None,
           prompts: list[list[Session]] | None = None, message: str | None = None,
           tests: bool = False, hidden_tests: int = 0, idle: int = 0,
-          tours: dict[int, tuple[int, int, int]] | None = None) -> str:
-    """``tours``: session id -> (part, of parts, first session id) for rides split by a reboot."""
-    tours = tours or {}
-    rows = "\n".join(_row(s, tours.get(s.id)) for s in sessions) or \
+          tours: dict[int, tuple[int, int, int]] | None = None,
+          bike_names: dict[int, str] | None = None, registry=None, events=None) -> str:
+    """``tours``: session id -> (part, of parts, first session id) for rides split by a reboot;
+    ``bike_names``: session id -> bike; ``registry``/``events`` for the import form."""
+    tours, bike_names = tours or {}, bike_names or {}
+    rows = "\n".join(_row(s, tours.get(s.id), bike_names.get(s.id)) for s in sessions) or \
         '<tr><td colspan="5" class="mut">Keine Fahrten für diesen Filter.</td></tr>'
     working = "".join(_activity(t) for t in (pull or {}).get("targets", []))
     # While something is being fetched or processed the page reloads itself, so the progress
@@ -418,6 +454,7 @@ def index(sessions: list[Session], pull: dict | None,
 {_prompts(prompts or [])}
 {_pull_line(pull)}
 {_filter_form(min_km, max_km, tests, hidden_tests, idle)}
+{_import_form(registry, events or [])}
 <table style="margin-top:14px"><thead><tr><th>Sitzung</th><th class="num">Strecke</th>
 <th class="num hide-s">Fahrzeit</th><th class="num hide-s">Ø</th><th>Dateien</th></tr></thead>
 <tbody>
@@ -486,7 +523,20 @@ def _tour_banner(s: Session, group: list[Session]) -> str:
             f'<div class="ask"><a class="btn" href="/tour/{group[0].id}">Bericht der ganzen Fahrt</a></div></div>')
 
 
-def ride_page(s: Session, rep: dict, group: list[Session] | None = None, tour: bool = False) -> str:
+def _bike_form(s: Session, registry, bike) -> str:
+    """The bike of this ride: the device's (Räder page) unless chosen here."""
+    if registry is None or not registry.bikes:
+        return ('<p class="mut">Kein Rad zugeordnet — unter <a href="/bikes">Räder</a> anlegen und dem '
+                'Fahrradcomputer zuordnen (Gewicht und Aerodynamik für die Leistungsschätzung).</p>')
+    own = " (nur diese Fahrt)" if s.bike_id else ""
+    return (f'<form class="inline" method="post" action="/ui/sessions/{s.id}/bike"><span class="mut">Rad: '
+            f'</span><b>{escape(bike.name) if bike else "–"}</b>{own} '
+            f'<select name="bike_id" onchange="this.form.submit()">'
+            f'{_bike_options(registry, s.bike_id, "wie das Gerät")}</select></form>')
+
+
+def ride_page(s: Session, rep: dict, group: list[Session] | None = None, tour: bool = False,
+              registry=None, bike=None) -> str:
     """One session's report -- or, with ``tour``, the report of the whole ride ``group``."""
     group = group or [s]
     if tour:
@@ -499,6 +549,7 @@ def ride_page(s: Session, rep: dict, group: list[Session] | None = None, tour: b
         links = _links(s) + [f'<a href="{base}/report.md">Bericht (Markdown)</a>',
                              f'<a href="{base}/report.json">JSON</a>']
         head = (f'<h1>{escape(_when(s))} {test_chip(s)}</h1><div class="chips">{"".join(links)}</div>'
+                + _bike_form(s, registry, bike)
                 + _test_banner(s, rep) + (_tour_banner(s, group) if len(group) > 1 else ""))
     if rep.get("empty"):
         return page("Fahrt", "/", head + '<p class="mut">Leeres Log.</p>')
@@ -716,6 +767,31 @@ def _event_form(e=None) -> str:
             + '<button class="pri" type="submit">Speichern</button></form>')
 
 
+def _participations(e, parts) -> str:
+    rows = []
+    for s, rep in sorted(parts, key=lambda p: p[0].first_time or 0):
+        if rep.get("empty"):
+            continue
+        ride, heart, power = rep["ride"], rep["heart"], rep["power"]
+        rows.append(
+            f'<tr><td><a href="/ride/{s.id}">{escape(_when(s)[:10])}</a></td>'
+            f'<td class=num>{num(ride["distance_km"], 1)} km</td>'
+            f'<td class=num><span class="big">{hms(ride["duration_s"])}</span></td>'
+            f'<td class="num hide-s">{hms(ride["moving_s"])}</td>'
+            f'<td class=num>{num(ride["avg_moving_kmh"])}</td>'
+            f'<td class="num hide-s">{ride["ascent_m"]} m</td>'
+            f'<td class=num>{heart["avg"] or "–"}</td>'
+            f'<td class="num hide-s">{power.get("normalized_w") or "–"}</td>'
+            f'<td class="num hide-s">{heart["trimp"] if heart["trimp"] is not None else "–"}</td>'
+            f'<td><form class="inline" method="post" action="/goals/{escape(e.id)}/participations/{s.id}/delete">'
+            '<button class="link" type="submit" title="nur die Verknüpfung, die Fahrt bleibt">entfernen</button>'
+            '</form></td></tr>')
+    return ("<table><thead><tr><th>Datum</th><th class=num>Strecke</th><th class=num>Gesamtzeit</th>"
+            "<th class='num hide-s'>Fahrzeit</th><th class=num>Ø km/h</th><th class='num hide-s'>Hm</th>"
+            "<th class=num>Puls Ø</th><th class='num hide-s'>NP*</th><th class='num hide-s'>TRIMP</th><th></th>"
+            "</tr></thead><tbody>" + "".join(rows) + "</tbody></table>")
+
+
 def _gpx_button(event_id: str, label: str, primary: bool = False) -> str:
     """A button that opens the file dialog and uploads the GPX straight away."""
     return (f'<label class="btn{" pri" if primary else ""}" style="display:inline-block">{escape(label)}'
@@ -727,7 +803,7 @@ def goals_page(items: list[tuple], today: datetime.date) -> str:
     out = ["<h1>Ziele</h1>"]
     if not items:
         out.append('<p class="mut">Noch kein Ziel eingetragen.</p>')
-    for e, r in items:
+    for e, r, parts in items:
         past = r["days_left"] < 0
         out.append(f'<div class="panel" id="e{escape(e.id)}">')
         out.append(f'<div style="display:flex;flex-wrap:wrap;gap:6px 14px;align-items:baseline">'
@@ -776,6 +852,8 @@ def goals_page(items: list[tuple], today: datetime.date) -> str:
                                  f'<td class=num>{hms(c["est_duration_s"])}</td></tr>' for c in r["climbs"])
                        + "</tbody></table><p class='mut'>* aus deiner besten VAM auf vergleichbaren Anstiegen "
                        "(mindestens halbe Höhe) der letzten 90 Tage — frisch gefahren, nicht nach 100 km.</p>")
+        if parts:
+            out.append("<h2>Deine bisherigen Teilnahmen</h2>" + _participations(e, parts))
         out.append(f'<details><summary>Bearbeiten</summary>{_event_form(e)}'
                    f'<form method="post" action="/goals/{escape(e.id)}/delete" '
                    'onsubmit="return confirm(\'Ziel löschen?\')"><button type="submit">Löschen</button></form>'
@@ -826,10 +904,10 @@ def climbs_page(groups: list[dict]) -> str:
 ATHLETE_FIELDS = (
     ("hr_max", "Maximale Herzfrequenz", "bpm", "1", "gemessen (Test, Rennen), nicht per Formel"),
     ("hr_rest", "Ruhepuls", "bpm", "1", "morgens im Liegen; für TRIMP nach Banister"),
-    ("mass_kg", "Systemgewicht", "kg", "0.1", "Fahrer + Rad + Gepäck, für die Leistungsschätzung"),
-    ("rider_kg", "Körpergewicht", "kg", "0.1", "für W/kg"),
-    ("cda", "Luftwiderstand CdA", "m²", "0.01", "Oberlenker ≈ 0,40, Unterlenker ≈ 0,32"),
-    ("crr", "Rollwiderstand Crr", "", "0.001", "Asphalt ≈ 0,005, Schotter ≈ 0,008"),
+    ("rider_kg", "Körpergewicht", "kg", "0.1", "für W/kg und, mit dem Radgewicht, die Leistungsschätzung"),
+    ("mass_kg", "Systemgewicht ohne Rad", "kg", "0.1", "Fahrer + Rad, nur für Fahrten ohne zugeordnetes Rad"),
+    ("cda", "Luftwiderstand CdA ohne Rad", "m²", "0.01", "nur für Fahrten ohne zugeordnetes Rad"),
+    ("crr", "Rollwiderstand Crr ohne Rad", "", "0.001", "nur für Fahrten ohne zugeordnetes Rad"),
 )
 
 
@@ -851,7 +929,8 @@ def athlete_page(athlete, saved: bool = False, error: str | None = None) -> str:
     body = (f"<h1>Fahrer</h1>{msg}<div class='panel'><form method='post' action='/athlete'>"
             + "".join(rows) + "<button class='pri' type='submit'>Speichern</button></form></div>"
             "<p class='mut'>Gespeichert in athlete.json im Datenverzeichnis des Dienstes. Pulszonen, "
-            "TRIMP und W/kg gibt es nur mit diesen Angaben.</p>")
+            "TRIMP und W/kg gibt es nur mit diesen Angaben. Gewicht und Aerodynamik der Räder stehen "
+            "unter <a href='/bikes'>Räder</a>.</p>")
     return page("Fahrer", "/athlete", body)
 
 
@@ -910,3 +989,84 @@ def archive_page(idle: list[Session], archived: list[Session], days: float,
     out.append(f"<h2>Archiviert, noch auf der SD-Karte ({len(archived)})</h2>")
     out.append(rows(archived, True) if archived else '<p class="mut">Keine.</p>')
     return page("Archiv", "/archive", "\n".join(out))
+
+
+# --- bikes -----------------------------------------------------------------------------------
+
+def _bike_form_full(b=None) -> str:
+    from bikelog import bikes as bikes_mod
+    v = (lambda attr: "" if b is None or getattr(b, attr) is None else escape(str(getattr(b, attr))))
+    types = "".join(f'<option{" selected" if b and b.type == t else ""}>{escape(t)}</option>'
+                    for t in bikes_mod.TYPES)
+    return ('<form method="post" action="/bikes">'
+            + (f'<input type="hidden" name="id" value="{escape(b.id)}">' if b else "")
+            + f'<label class="f"><span>Name</span><input name="name" required value="{v("name")}"></label>'
+            f'<label class="f"><span>Typ</span><select name="type">{types}</select></label>'
+            f'<label class="f"><span>Gewicht fahrbereit</span><input type="number" step="0.1" name="mass_kg" '
+            f'value="{v("mass_kg")}"> kg <span class="mut">mit Flaschen, Taschen, Licht</span></label>'
+            f'<label class="f"><span>Luftwiderstand CdA</span><input type="number" step="0.01" name="cda" '
+            f'value="{v("cda")}"> m² <span class="mut">Rennrad Unterlenker ≈ 0,32, Gravel Oberlenker ≈ 0,40, '
+            'Pendler aufrecht mit Taschen ≈ 0,55</span></label>'
+            f'<label class="f"><span>Rollwiderstand Crr</span><input type="number" step="0.001" name="crr" '
+            f'value="{v("crr")}"> <span class="mut">Rennreifen Asphalt ≈ 0,004, Gravel ≈ 0,006, '
+            'Pendler-Reifen ≈ 0,008</span></label>'
+            f'<label class="f"><span>Notiz</span><input name="notes" value="{v("notes")}"></label>'
+            '<button class="pri" type="submit">Speichern</button></form>')
+
+
+def bikes_page(registry, devices: list[str], per_bike: dict, today: datetime.date,
+               message: str | None = None) -> str:
+    out = ["<h1>Räder</h1>"]
+    if message:
+        out.append(f'<div class="msg">{escape(message)}</div>')
+    out.append('<p class="mut">Ein Rad trägt Gewicht und Aerodynamik für die Leistungsschätzung. Welcher '
+               'Fahrradcomputer ab wann an welchem Rad fährt, steht unten; eine Fahrt bekommt das Rad, das '
+               'ihrem Gerät am Fahrtag zugeordnet war (auf der Fahrtseite auch einzeln änderbar).</p>')
+    year = today.year
+    for b in registry.bikes:
+        rides = per_bike.get(b.name, [])
+        km_year = sum(r.distance_km for r in rides if r.day.year == year)
+        km_all = sum(r.distance_km for r in rides)
+        devs = sorted({a.device for a in registry.assignments if a.bike_id == b.id})
+        out.append(f'<div class="panel"><div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap">'
+                   f'<h1 style="margin:0">{escape(b.name)}</h1><span class="chip tour">{escape(b.type)}</span>'
+                   + "".join(f'<span class="chip">{escape(d)}</span>' for d in devs) + "</div>"
+                   '<div class="tiles">'
+                   + tile(f"Strecke {year}", num(km_year, 0), "km", f"{sum(1 for r in rides if r.day.year == year)} Fahrten")
+                   + tile("Gesamt", num(km_all, 0), "km", f"{len(rides)} Fahrten")
+                   + tile("Gewicht", num(b.mass_kg, 1) if b.mass_kg else "–", "kg")
+                   + tile("CdA / Crr", (num(b.cda, 2) if b.cda else "–") + " / " + (num(b.crr, 3) if b.crr else "–"), "", text=True)
+                   + "</div>"
+                   f'<details><summary>Bearbeiten</summary>{_bike_form_full(b)}'
+                   f'<form method="post" action="/bikes/{escape(b.id)}/delete" '
+                   'onsubmit="return confirm(\'Rad löschen? Die Fahrten bleiben, verlieren aber die Zuordnung.\')">'
+                   '<button type="submit">Löschen</button></form></details></div>')
+    out.append("<h2>Neues Rad</h2><div class='panel'>" + _bike_form_full() + "</div>")
+
+    out.append("<h2>Fahrradcomputer → Rad</h2>")
+    rows = []
+    for a in sorted(registry.assignments, key=lambda a: (a.device, a.since)):
+        bike = registry.bike(a.bike_id)
+        rows.append(f'<tr><td>{escape(a.device)}</td><td>{a.since:%d.%m.%Y}</td>'
+                    f'<td>{escape(bike.name) if bike else "?"}</td><td>'
+                    '<form class="inline" method="post" action="/bikes/assign/delete">'
+                    f'<input type="hidden" name="device" value="{escape(a.device)}">'
+                    f'<input type="hidden" name="since" value="{a.since.isoformat()}">'
+                    '<button class="link" type="submit">entfernen</button></form></td></tr>')
+    if rows:
+        out.append("<table><thead><tr><th>Gerät</th><th>ab</th><th>Rad</th><th></th></tr></thead><tbody>"
+                   + "".join(rows) + "</tbody></table>")
+    else:
+        out.append('<p class="mut">Noch keine Zuordnung.</p>')
+    if registry.bikes:
+        dev_opts = "".join(f"<option>{escape(d)}</option>" for d in devices)
+        out.append('<div class="panel"><form method="post" action="/bikes/assign">'
+                   f'<label class="f"><span>Gerät</span><select name="device">{dev_opts}</select> '
+                   '<span class="mut">Name des Abhol-Ziels (BIKELOG_PULL_TARGETS)</span></label>'
+                   f'<label class="f"><span>Rad</span><select name="bike_id">'
+                   + "".join(f'<option value="{escape(b.id)}">{escape(b.name)}</option>' for b in registry.bikes)
+                   + '</select></label>'
+                   f'<label class="f"><span>ab</span><input type="date" name="since" required value="2020-01-01"> '
+                   '<span class="mut">erste Fahrt mit dieser Zuordnung; beim Umbau ein neues Datum</span></label>'
+                   '<button class="pri" type="submit">Zuordnen</button></form></div>')
+    return page("Räder", "/bikes", "\n".join(out))

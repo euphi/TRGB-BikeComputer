@@ -114,7 +114,8 @@ static void candidates() {
 static void accessPoint() {
 	Config c;
 	CHECK(c.ensureAp(fakeRnd), "first call fills in the defaults");
-	CHECK(!strcmp(c.accessPoint().ssid, "TRGB-BC"), "default ssid");
+	CHECK(!strcmp(c.accessPoint().ssid, WifiCfg::DEFAULT_AP_SSID), "default ssid");
+	CHECK(!strcmp(WifiCfg::DEFAULT_AP_SSID, BC_HOSTNAME), "default ssid is the host name of the build");
 	CHECK(strlen(c.accessPoint().pw) == Config::AP_PW_LEN && Config::validPassword(c.accessPoint().pw), "generated password is a valid passphrase");
 	for (const char* p = c.accessPoint().pw; *p; p++) CHECK(!strchr("0oOl1iI", *p), "ambiguous character '%c'", *p);
 	char before[PW_MAX + 1];

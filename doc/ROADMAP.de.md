@@ -45,8 +45,11 @@ einer Fahrt braucht, muss am Display gehen. Details: [Bedienung unterwegs](USABI
 
 Noch nicht entworfen.
 
-- **Mehrere Fahrräder**: Statistik, Kilometerstand und Einstellungen (Radumfang, Sensoren,
-  Kalibrierung des Beschleunigungssensors) je Rad, mit Auswahl des Rads am Gerät.
+- **Mehrere Räder je Fahrradcomputer** (der Log-Dienst kennt Räder und welcher
+  Fahrradcomputer an welchem Rad fährt schon, siehe [Log-Dienst](LOGSERVICE.md#rader)): ein
+  Fahrradcomputer wird umgebaut, das Rad an seinen Sensoren erkannt (Adresse des
+  Trittfrequenz-/Speed-Sensors), mit Statistik, Kilometerstand und Einstellungen (Radumfang,
+  Kalibrierung des Beschleunigungssensors) je Rad auf dem Gerät.
 - **Service-Intervalle**: eine Seite, die sich merkt, wann Kettenöl, Kette, Ritzel,
   Umwerfer und Reifen zuletzt gewartet wurden, und die seither gefahrene Strecke zeigt.
   Baut auf dem Kilometerstand je Rad auf.
@@ -119,6 +122,8 @@ Niedrige Priorität:
 
 Auf der langen Bank:
 
+- Mehrere Personen: Fahrerdaten, Ziele und Training je Person im Log-Dienst, Fahrten über
+  Fahrradcomputer oder Rad zugeordnet.
 - Höhenprofil und Streckenlinie auch bei OsmAnd-Navigation (heute nur mit einer
   GPX-Route). Die AIDL-Schnittstelle von OsmAnd liefert weder die Routengeometrie noch
   Höhen; das braucht eine Erweiterung in OsmAnd selbst.

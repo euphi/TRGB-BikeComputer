@@ -76,6 +76,9 @@ CREATE TABLE IF NOT EXISTS sessions (
     -- all (yet). 1 until an L_ file says otherwise. Archived after a while (archive.py):
     idle            INTEGER NOT NULL DEFAULT 1,
     archived_at     TEXT,
+    -- the bike of this session when it is not the device's (imports; later: told apart by
+    -- the sensors). NULL: the device's bike on that day, bikes.json
+    bike_id         TEXT,
     -- Nextcloud sync (nextcloud.py): the Tours file, kept up to date the
     -- same way the local export is -- see nextcloud_gpx_version below.
     nextcloud_status    TEXT,
@@ -165,6 +168,7 @@ class Session:
     test_override: str | None = None
     idle: int = 1
     archived_at: str | None = None
+    bike_id: str | None = None
     nextcloud_status: str | None = None
     nextcloud_file: str | None = None
     nextcloud_synced_at: str | None = None
@@ -252,6 +256,11 @@ class Storage:
             for column in ("nextcloud_status TEXT", "nextcloud_file TEXT", "nextcloud_synced_at TEXT",
                            "nextcloud_gpx_version INTEGER"):
                 self._db.execute(f"ALTER TABLE sessions ADD COLUMN {column}")
+        # Columns added without a re-derive: just make sure they are there.
+        columns = {r[1] for r in self._db.execute("PRAGMA table_info(sessions)")}
+        for column, kind in (("bike_id", "TEXT"),):
+            if column not in columns:
+                self._db.execute(f"ALTER TABLE sessions ADD COLUMN {column} {kind}")
         self._db.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
         self._db.commit()
         if 0 < version < 7:
@@ -579,6 +588,11 @@ class Storage:
             self._db.execute("UPDATE sessions SET deleted_at = ?, archived_at = ?, gpx_file = NULL "
                              "WHERE id = ?", (now, now, session_id))
             self._db.execute("DELETE FROM reports WHERE session_id = ?", (session_id,))
+            self._db.commit()
+
+    def set_bike(self, session_id: int, bike_id: str | None) -> None:
+        with self._lock:
+            self._db.execute("UPDATE sessions SET bike_id = ? WHERE id = ?", (bike_id, session_id))
             self._db.commit()
 
     def set_test_override(self, session_id: int, value: str | None) -> None:

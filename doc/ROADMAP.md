@@ -46,8 +46,11 @@ ride needs must work on the display. Details: [usability backlog](USABILITY-TODO
 
 Not designed yet.
 
-- **Several bikes**: statistics, odometer and settings (wheel circumference, sensors,
-  accelerometer calibration) per bike, with a way to choose the bike on the device.
+- **Several bikes per bike computer** (the log service already knows bikes and which bike
+  computer rides on which bike, see [log service](LOGSERVICE.md#bikes)): one bike computer
+  moved between bikes, the bike recognised by its sensors (cadence/speed sensor address),
+  with statistics, odometer and settings (wheel circumference, accelerometer calibration)
+  per bike on the device.
 - **Service intervals**: a page that remembers when chain oil, chain, sprockets,
   derailleur and tyres were last serviced, and shows the distance ridden since.
   Builds on the per-bike odometer.
@@ -115,6 +118,8 @@ Low priority:
 
 On the back burner:
 
+- Several riders: rider data, goals and training per person in the log service, rides
+  assigned by bike computer or bike.
 - Elevation profile and route line during OsmAnd navigation (today only with a GPX
   route). OsmAnd's AIDL interface provides neither the route geometry nor altitudes,
   so this needs an extension in OsmAnd itself.

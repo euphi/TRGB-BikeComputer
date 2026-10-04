@@ -228,6 +228,30 @@ reachable; nothing is queued. A session whose files are all gone from the card i
 to the archive and dropped from the index. API: `POST /api/v1/archive/device-delete`
 (`session_id`, all if omitted; 409 when the device is not reachable).
 
+## Bikes
+
+The page **Räder** (`/bikes`) holds the bikes -- name, type, weight ready to ride, CdA,
+Crr -- and which bike computer rides on which bike from which day on
+([`bikelog/bikes.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/bikelog/bikes.py),
+stored in `<data>/bikes.json`). A session gets the bike its device was assigned to on the
+day of the ride; on the ride page one ride can be given another bike. The power estimate
+of the report then uses rider weight (page **Fahrer**) + bike weight, and the bike's CdA
+and Crr; rides without a bike keep the rider page's defaults. Changing a bike or an
+assignment recomputes the reports concerned. The page shows the kilometres per bike.
+
+## Importing rides (GPX)
+
+"GPX-Fahrten importieren" on the ride list takes rides recorded elsewhere (Garmin, Strava,
+Komoot ...): GPX with times; heart rate, cadence and temperature from Garmin's
+TrackPointExtension are taken over, the gradient is smoothed over ±50 m
+([`bikelog/gpximport.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/bikelog/gpximport.py)).
+An imported ride is a session of the device `import` (the log made from it next to the
+original GPX) and counts like any other ride -- report, training, climbs -- but is neither
+exported nor uploaded. Optionally with a bike and as an **earlier edition of a goal**: the
+goal then lists "Deine bisherigen Teilnahmen" with time, speed, heart rate, power and TRIMP.
+Importing the same file again replaces the session. API: `PUT /api/v1/import/gpx`
+(`bike_id`, `event_id`, body = the file).
+
 ## Session report
 
 `/ride/{id}` (click on a ride in the list) shows the report of a session: key figures,
@@ -364,10 +388,12 @@ Environment variables (in the service: `~/bikelog/bikelog.env`):
 | `BIKELOG_ATHLETE_FILE` | `<data>/athlete.json` | rider data for the session report |
 | `BIKELOG_IDLE_ARCHIVE_DAYS` | `7` | idle sessions to `archive/` after this many days, 0 = never |
 
-Both variants of the bike computer (gravel and Forumslader) announce themselves as
-`TRGB-BC` today -- the service cannot tell them apart and stores everything under one
-device. Remedy as soon as both are in the same network: an mDNS name of its own per
-variant or a `device` field in `/logfiles.json`.
+Several bike computers: each build variant has a network name of its own (mDNS host and
+default hotspot SSID, `BC_HOSTNAME` in `platformio.ini`): the gravel build `TRGB-BC`, the
+Forumslader build `TRGB-FL`. One pull target per bike computer, e.g.
+`BIKELOG_PULL_TARGETS=trgb=TRGB-BC,pendler=TRGB-FL`; the part before `=` is the device name
+the sessions are filed under and that bikes are assigned to (see [bikes](#bikes)). Keep the
+name of an existing target, the stored sessions are filed under it.
 
 ## API (v1)
 
@@ -384,6 +410,7 @@ variant or a `device` field in `/logfiles.json`.
 | `GET` | `/api/v1/sessions/{id}/report.md` | the same as a German Markdown report |
 | `POST` | `/api/v1/sessions/{id}/test` | overrule the test detection (`mark=test|real|auto`) |
 | `POST` | `/api/v1/archive/device-delete` | delete idle/archived sessions on the bike computer now (`session_id`) |
+| `PUT` | `/api/v1/import/gpx` | import a recorded ride (`bike_id`, `event_id`; body = GPX) |
 | `GET` | `/api/v1/training` | daily load (TRIMP, CTL, ATL, TSB), weeks, recurring climbs (`days`, `weeks`) |
 | `GET` | `/api/v1/events` | target events with readiness |
 | `PUT` | `/api/v1/events/{id}/gpx` | course GPX of a target event (body = file) |

@@ -235,6 +235,30 @@ der Karte sind, wandert ins Archiv und verschwindet aus dem Index. API:
 `POST /api/v1/archive/device-delete` (`session_id`, ohne = alle; 409, wenn das Gerät nicht
 erreichbar ist).
 
+## Räder
+
+Die Seite **Räder** (`/bikes`) führt die Räder -- Name, Typ, Gewicht fahrbereit, CdA, Crr --
+und welcher Fahrradcomputer ab welchem Tag an welchem Rad fährt
+([`bikelog/bikes.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/bikelog/bikes.py),
+gespeichert in `<data>/bikes.json`). Eine Sitzung bekommt das Rad, dem ihr Gerät am Fahrtag
+zugeordnet war; auf der Fahrtseite kann eine einzelne Fahrt ein anderes Rad bekommen. Die
+Leistungsschätzung des Berichts nimmt dann Körpergewicht (Seite **Fahrer**) + Radgewicht und
+CdA/Crr des Rads; Fahrten ohne Rad behalten die Standardwerte der Fahrer-Seite. Eine Änderung an
+Rad oder Zuordnung berechnet die betroffenen Berichte neu. Die Seite zeigt die Kilometer je Rad.
+
+## Fahrten importieren (GPX)
+
+„GPX-Fahrten importieren" in der Fahrtenliste nimmt anderswo aufgezeichnete Fahrten (Garmin,
+Strava, Komoot …): GPX mit Zeiten; Puls, Trittfrequenz und Temperatur aus Garmins
+TrackPointExtension werden übernommen, die Steigung über ±50 m geglättet
+([`bikelog/gpximport.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/bikelog/gpximport.py)).
+Eine importierte Fahrt ist eine Sitzung des Geräts `import` (das daraus gebaute Log neben der
+Original-GPX) und zählt wie jede andere Fahrt -- Bericht, Training, Anstiege --, wird aber weder
+exportiert noch hochgeladen. Optional mit Rad und als **frühere Teilnahme an einem Ziel**: Das
+Ziel zeigt dann „Deine bisherigen Teilnahmen" mit Zeit, Tempo, Puls, Leistung und TRIMP. Dieselbe
+Datei noch einmal ersetzt die Sitzung. API: `PUT /api/v1/import/gpx` (`bike_id`, `event_id`,
+Body = die Datei).
+
 ## Sitzungsbericht
 
 `/ride/{id}` (Klick auf eine Fahrt in der Liste) zeigt den Bericht einer Sitzung: Kennzahlen,
@@ -372,10 +396,12 @@ Umgebungsvariablen (im Dienst: `~/bikelog/bikelog.env`):
 | `BIKELOG_ATHLETE_FILE` | `<data>/athlete.json` | Fahrerdaten für den Sitzungsbericht |
 | `BIKELOG_IDLE_ARCHIVE_DAYS` | `7` | Leerlauf-Sitzungen nach so vielen Tagen nach `archive/`, 0 = nie |
 
-Beide BC-Varianten (Gravel und FL) melden sich heute als `TRGB-BC` -- der
-Dienst kann sie nicht auseinanderhalten und legt alles unter einem Gerät ab.
-Abhilfe, sobald beide im selben Netz sind: eigener mDNS-Name je Variante oder
-ein `device`-Feld in `/logfiles.json`.
+Mehrere Fahrradcomputer: Jede Build-Variante hat einen eigenen Netzwerknamen (mDNS-Host und
+Standard-Hotspot-SSID, `BC_HOSTNAME` in `platformio.ini`): der Gravel-Build `TRGB-BC`, der
+Forumslader-Build `TRGB-FL`. Ein Abhol-Ziel je Fahrradcomputer, z. B.
+`BIKELOG_PULL_TARGETS=trgb=TRGB-BC,pendler=TRGB-FL`; der Teil vor `=` ist der Gerätename, unter
+dem die Sitzungen abgelegt und dem Räder zugeordnet werden (siehe [Räder](#rader)). Den Namen
+eines bestehenden Ziels beibehalten, die gespeicherten Sitzungen liegen darunter.
 
 ## API (v1)
 
@@ -392,6 +418,7 @@ ein `device`-Feld in `/logfiles.json`.
 | `GET` | `/api/v1/sessions/{id}/report.md` | dasselbe als Markdown-Bericht |
 | `POST` | `/api/v1/sessions/{id}/test` | Test-Erkennung überstimmen (`mark=test|real|auto`) |
 | `POST` | `/api/v1/archive/device-delete` | Leerlauf-/archivierte Sitzungen sofort auf dem BC löschen (`session_id`) |
+| `PUT` | `/api/v1/import/gpx` | aufgezeichnete Fahrt importieren (`bike_id`, `event_id`; Body = GPX) |
 | `GET` | `/api/v1/training` | Tageslast (TRIMP, CTL, ATL, TSB), Wochen, wiederkehrende Anstiege (`days`, `weeks`) |
 | `GET` | `/api/v1/events` | Zielrennen mit Stand der Vorbereitung |
 | `PUT` | `/api/v1/events/{id}/gpx` | Strecken-GPX eines Zielrennens (Body = Datei) |
