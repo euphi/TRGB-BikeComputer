@@ -375,6 +375,29 @@ TOPS_HEIGHT = 16.0              # gemessen
 TOPS_DEPTH = 33.0
 REF_BAR_HALF_WIDTH = 70.0       # so breit werden die Lenker nur gezeichnet
 STEERER_TILT_DEG = 6.0          # Schaftachse gegen die Senkrechte auf den Vorbau
-HEADTUBE_R = 28.0
+# Steuerrohr und Uebergang haben dieselbe Kontur und liegen in einer Linie
+# [VORGABE]: 50 mm breit mit geraden Flanken, vorne ein Halbkreis R 25. Nach
+# hinten folgt der Rahmen; gezeichnet sind die Flanken 50 mm lang und gerade
+# abgeschlossen (dort wird nichts angebaut).
+HEADTUBE_WIDTH = 50.0
+HEADTUBE_STRAIGHT = 50.0
+# Mitte des vorderen Halbkreises auf Hoehe der Vorbau-Unterkante. GESCHAETZT
+# ("etwas weiter hinten" als im Stand davor, dort lag der Scheitel bei X +31,6).
+HEADTUBE_CENTER_X = 0.0
+# Ausschnitt in der Unterseite um den Uebergang, obere Kante verrundet
+UNTERSEITE_CUT_CLEARANCE = 1.0
+UNTERSEITE_CUT_FILLET = 3.0
+
+# --- Farben im STEP [VORGABE] ---------------------------------------------------
+# Einmal gewaehlt, bleiben ueber alle Versionen gleich. Rahmenteile dunkelgrau,
+# Elektronik rot, Druckteile kontrastreich dazu.
+COLOR_FRAME = (0.25, 0.25, 0.27)
+COLOR_ELECTRONICS = (0.85, 0.10, 0.10)
+PART_COLORS = {
+    "traeger": (0.15, 0.45, 0.90),           # blau
+    "display_gehaeuse": (1.00, 0.80, 0.10),  # gelb
+    "deckel": (0.20, 0.75, 0.35),            # gruen
+    "unterseite": (0.10, 0.80, 0.85),        # tuerkis
+}
 LAMP_HOLDER_LENGTH = 30.0
 LAMP_HOLDER_WIDTH = 30.0

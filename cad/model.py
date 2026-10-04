@@ -30,6 +30,7 @@ from build123d import (
     Align,
     Axis,
     Box,
+    Color,
     Compound,
     Cone,
     Cylinder,
@@ -457,19 +458,28 @@ def tops_solid():
     )
 
 
+def _headtube_prism(offset, z_from, z_to):
+    """Kontur von Steuerrohr und Uebergang, um offset aufgeweitet, entlang
+    der geneigten Schaftachse gezogen und zwischen zwei Hoehen abgeschnitten.
+    Gerade Flanken, vorne ein Halbkreis, hinten gerade abgeschlossen."""
+    r = d.HEADTUBE_WIDTH / 2 + offset
+    steps = 24
+    arc = [(r * math.cos(a), r * math.sin(a)) for a in (math.pi * (i / steps - 0.5) for i in range(steps + 1))]
+    points = [(-d.HEADTUBE_STRAIGHT, -r)] + arc + [(-d.HEADTUBE_STRAIGHT, r)]
+    prism = Pos(0, 0, 20.0) * extrude(Polygon(*points, align=None), amount=-150.0)
+    tube = Pos(d.HEADTUBE_CENTER_X, 0, STEM_BOTTOM_Z) * Rot(0, -d.STEERER_TILT_DEG, 0) * prism
+    return tube & _above(z_from) - _above(z_to)
+
+
 def transition_solid():
     """Uebergang vom Vorbau zum Steuerrohr unter dem Vorbau; dreht mit."""
-    return Pos(d.STEM_REAR_END_X, 0, STEM_BOTTOM_Z) * Box(
-        TRAEGER_X_MIN - d.STEM_REAR_END_X, d.STEM_WIDTH, d.BOTTOM_DEPTH_MAX,
-        align=(Align.MIN, Align.CENTER, Align.MAX),
-    )
+    return _headtube_prism(0.0, STEM_BOTTOM_Z - d.BOTTOM_DEPTH_MAX, STEM_BOTTOM_Z)
 
 
 def headtube_solid():
     """Steuerrohr, fest am Rahmen: beginnt BOTTOM_DEPTH_MAX unter dem Vorbau
-    und laeuft schraeg nach vorne unten."""
-    tube = Rot(0, -d.STEERER_TILT_DEG, 0) * Pos(0, 0, STEM_BOTTOM_Z) * Cylinder(d.HEADTUBE_R, 110, align=MAX_Z)
-    return tube - _above(STEM_BOTTOM_Z - d.BOTTOM_DEPTH_MAX)
+    und laeuft in einer Linie mit dem Uebergang schraeg nach vorne unten."""
+    return _headtube_prism(0.0, STEM_BOTTOM_Z - 110.0, STEM_BOTTOM_Z - d.BOTTOM_DEPTH_MAX)
 
 
 def lamp_holder_solid():
@@ -510,6 +520,10 @@ def sensor_solid():
     board = _box(BAY_SENSOR_LX0, x1, -half, half, 0.3, 0.3 + d.SENSOR_HEIGHT)
     pins = _box(x1 - 4.0, x1, -half, half, 0.3, 0.3 + d.SENSOR_HEIGHT + d.SENSOR_PIN_SPACE)
     return LOC * (board + pins)
+
+
+FRAME_REFS = ("ref_vorbau", "ref_lenker", "ref_oberlenker", "ref_uebergang", "ref_steuerrohr", "ref_lampenhalter")
+ELECTRONICS_REFS = ("ref_display", "ref_akku", "ref_sensor")
 
 
 def reference_solids():
@@ -735,6 +749,14 @@ def build_unterseite():
     for x, y in _screw_xy():
         body -= _bore_z(x, y, UNTERSEITE_BOTTOM_Z - 0.5, top + 0.5, d.SCREW_CLEARANCE_D)
         body -= _bore_z(x, y, UNTERSEITE_BOTTOM_Z - 0.2, UNTERSEITE_BOTTOM_Z + STACK_HEAD_DEPTH, d.SCREW_HEAD_D)
+
+    # Ausschnitt um den Uebergang zum Steuerrohr; die obere Kante ist verrundet,
+    # weil zwischen Uebergang und Vorbau ebenfalls ein Radius liegt
+    body -= _headtube_prism(d.UNTERSEITE_CUT_CLEARANCE, UNTERSEITE_BOTTOM_Z - 1.0, top + LID_CURVE_HEIGHT + 1.0)
+    rc, f = d.HEADTUBE_WIDTH / 2 + d.UNTERSEITE_CUT_CLEARANCE, d.UNTERSEITE_CUT_FILLET
+    arc = [(rc + f - f * math.cos(a), -f + f * math.sin(a)) for a in (math.pi / 2 * i / 8 for i in range(9))]
+    profile = Plane.XZ * Polygon((0, -f), *arc, (rc + f, LID_CURVE_HEIGHT + 1.0), (0, LID_CURVE_HEIGHT + 1.0), align=None)
+    body -= Pos(d.HEADTUBE_CENTER_X, 0, top) * revolve(profile, axis=Axis.Z)
     return body
 
 
@@ -807,6 +829,12 @@ def selfcheck(parts):
         ("Sonnenschutz vorne", hood_point(0), True, "deckel"),
         ("Sonnenschutz seitlich", hood_point(90), True, "deckel"),
         ("Sonnenschutz hinten offen", hood_point(180), False, "deckel"),
+        ("Ausschnitt der Unterseite um den Uebergang",
+         (TRAEGER_X_MIN + 2.0, 0, (UNTERSEITE_TOP_Z + UNTERSEITE_BOTTOM_Z) / 2), False, "unterseite"),
+        ("Unterseite reicht hinten neben dem Ausschnitt bis zur Kante",
+         (TRAEGER_X_MIN + 1.0, CAVITY_HALF + 3.0, (UNTERSEITE_TOP_Z + UNTERSEITE_BOTTOM_Z) / 2), True, "unterseite"),
+        ("Kante des Ausschnitts ist oben verrundet",
+         (d.HEADTUBE_CENTER_X + d.HEADTUBE_WIDTH / 2 + d.UNTERSEITE_CUT_CLEARANCE + 0.4, 0, UNTERSEITE_TOP_Z - 0.3), False, "unterseite"),
         ("Unterseite ist geschlossen", (CLAMP_MID, 0, (UNTERSEITE_TOP_Z + UNTERSEITE_BOTTOM_Z) / 2), True, "unterseite"),
         ("Unterseite ist unten eben", (CLAMP_MID, 0, UNTERSEITE_BOTTOM_Z - 0.3), False, "unterseite"),
     ]
@@ -1064,9 +1092,19 @@ if __name__ == "__main__":
     refs = reference_solids()
     for name, ref in refs.items():
         ref.label = name
-    assembly = Compound(children=list(parts.values()) + list(refs.values()))
+    for name, part in parts.items():
+        part.color = Color(*d.PART_COLORS[name])
+    groups = []
+    for label, rgb, names in (("Rahmen", d.COLOR_FRAME, FRAME_REFS), ("Elektronik", d.COLOR_ELECTRONICS, ELECTRONICS_REFS)):
+        members = [refs[n] for n in names]
+        for m_ in members:
+            m_.color = Color(*rgb)
+        group = Compound(children=members)
+        group.label, group.color = label, Color(*rgb)
+        groups.append(group)
+    assembly = Compound(children=list(parts.values()) + groups)
     assembly.label = "TRGB_Gehaeuse_CP0007"
     out = "export/TRGB_Gehaeuse.step"
     export_step(assembly, out)
-    print(f"Ein STEP geschrieben: {out}  ({len(parts)} Druckteile, {len(refs)} Bezugskoerper 'ref_*')")
+    print(f"Ein STEP geschrieben: {out}  ({len(parts)} Druckteile farbig, dazu 'Rahmen' und 'Elektronik')")
     raise SystemExit(0 if ok else 1)

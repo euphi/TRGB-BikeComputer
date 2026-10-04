@@ -106,7 +106,7 @@ dort ist Platz in Z *und* das Display rückt näher ans Auge.
 | Tiefe (X) des Tops-Bügels in der Mitte | ca. 33 mm | evtl. ist der 33,56-Messwert genau dies statt des Spalts — bitte klären |
 | Hinteres Vorbau-Ende ab Schaftachse | ca. 22 mm | Bezug für alle X-Lagen (`STEM_REAR_END_X`) |
 | Wo „das Steuerrohr“ in X beginnt | X +13,5 (dort begannen bisher die Wangen) | Bezug für die 50 mm oben und unten (`TRAEGER_X_MIN`, `FRONT_LIMIT_X` = +63,5) |
-| Steuerrohr: Radius, Winkel zur Senkrechten auf den Vorbau | 28 mm, 6° | nur Zeichnung (`HEADTUBE_R`, `STEERER_TILT_DEG`); maßgeblich ist die 18-mm-Grenze |
+| Steuerrohr: Lage in X, Winkel zur Senkrechten auf den Vorbau | Scheitel X +25, 6° | Kontur ist Vorgabe (50 breit, vorne R 25); Lage geschätzt (`HEADTUBE_CENTER_X`, `STEERER_TILT_DEG`) |
 | Lampenhalter | 30 × 30 mm, 18 tief, ab X +63,5 | nur Zeichnung |
 | Lenker: Hinterkante ab Schaftachse | 88 mm | nur Zeichnung (`STEM_TO_BAR_X`); Höhe aus den beiden Messwerten zum Oberlenker |
 
@@ -301,15 +301,29 @@ ebenen Oberseite auf dem Bett. Stützen brauchen nur Akku- und Kabelmulde im Tr�
 **[VORGABE]**; Brücken sind das Dach des Sensorfachs (20 mm), die Böden der
 Taschen (16 mm) und die Schlitze.
 
-### Bezugskörper
+### Bezugskörper und Farben im STEP
 
-Der Lenker liegt auf gleicher Höhe wie der Vorbau **[VORGABE]** (Z −31 … 0),
-der Oberlenker 33,56 mm darüber. In einem früheren Stand war der Lenker durch
-einen Fehler im Modell 31 mm zu tief gezeichnet, danach zu hoch.
+- Der Lenker liegt auf gleicher Höhe wie der Vorbau **[VORGABE]** (Z −31 … 0),
+  der Oberlenker 33,56 mm darüber.
+- **Steuerrohr und Übergang haben dieselbe Kontur und liegen in einer Linie
+  [VORGABE]:** 50 mm breit mit geraden Flanken, vorne ein Halbkreis R 25,
+  6° nach vorne unten geneigt. Hinten sind die Flanken 50 mm lang gezeichnet
+  und gerade abgeschlossen (dort folgt der Rahmen, es wird nichts angebaut).
+  Der Scheitel des Halbkreises liegt an der Vorbau-Unterkante bei X +25 —
+  **geschätzt** (`HEADTUBE_CENTER_X`), vom Nutzer nur als „etwas weiter
+  hinten“ als zuvor (+31,6) angegeben.
+- **Unterseite ausgeschnitten:** Der Übergang reicht damit 11,5 mm in die
+  Klemmzone. Die Unterseite ist dort mit 1 mm Luft um die Kontur
+  ausgeschnitten, die obere Kante des Ausschnitts mit R 3 verrundet (zwischen
+  Übergang und Vorbau liegt ebenfalls ein Radius). Der Träger ist unverändert.
+- **STEP:** Die Druckteile sind einzeln und fest eingefärbt (Träger blau,
+  Displaygehäuse gelb, Deckel grün, Unterseite türkis; `PART_COLORS`). Die
+  Rahmenteile bilden das Part „Rahmen“ (dunkelgrau), Display, Akku und Sensor
+  das Part „Elektronik“ (rot).
 
 ### Selbsttest
 
-78 Stichpunkte, 12 Verschraubungen (freier Weg, Wand ringsum um Buchsen und
+81 Stichpunkte, 12 Verschraubungen (freier Weg, Wand ringsum um Buchsen und
 Senkungen, Auflage der Köpfe, kein Kopf steht unter der Platte vor,
 Gewindelänge über den ganzen Klemmweg), Einbauraum (nichts vor X +63,5, nichts
 tiefer als 18 mm unter dem Vorbau, hinter den Wangen nichts unter der Platte),
