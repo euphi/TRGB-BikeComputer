@@ -187,3 +187,94 @@ def test_rebased_records_continue_distance_instead_of_resetting(client, tmp_path
     ride_records = [r for r in combined if isinstance(r, Record)]
     # without the rebase, session b's records would restart near distance 0
     assert ride_records[-1].distance > a_last_distance * 1.5
+
+
+# --- the standing question "upload to Komoot?" ------------------------------
+
+def _page(client):
+    return client.get("/").text
+
+
+def test_a_new_ride_is_asked_about_on_every_page_view_until_answered(client, tmp_path, fake_kompy):
+    payload = _ride_bytes(tmp_path, "ride.bin", seconds=200)
+    sid = _put(client, payload, "20260920/L_090000.bin").json()["session"]["id"]
+
+    first = _page(client)
+    assert "Neue Fahrt bereit" in first and "Zu Komoot hochladen" in first
+    assert f"/ui/sessions/{sid}/komoot-ignore" in first
+    # closing and reopening the page answers nothing
+    assert "Neue Fahrt bereit" in _page(client)
+    assert not fake_kompy.calls
+
+
+def test_ignoring_ends_the_question_for_good(client, tmp_path, fake_kompy):
+    payload = _ride_bytes(tmp_path, "ride.bin", seconds=200)
+    sid = _put(client, payload, "20260920/L_090000.bin").json()["session"]["id"]
+
+    resp = client.post(f"/ui/sessions/{sid}/komoot-ignore", follow_redirects=False)
+    assert resp.status_code == 303 and resp.headers["location"].startswith("/?msg=")
+    assert "Neue Fahrt bereit" not in _page(client)
+    assert client.get(f"{API}/sessions/{sid}").json()["komoot_prompt"] == "ignored"
+    assert not fake_kompy.calls
+    # the table's own Komoot button is still there for a change of mind
+    assert f"/ui/sessions/{sid}/komoot" in _page(client)
+    # and the API can put the question back
+    client.post(f"{API}/sessions/{sid}/komoot/ignore", params={"ask_again": True})
+    assert "Neue Fahrt bereit" in _page(client)
+
+
+def test_accepting_uploads_and_ends_the_question(client, tmp_path, fake_kompy):
+    payload = _ride_bytes(tmp_path, "ride.bin", seconds=200)
+    sid = _put(client, payload, "20260920/L_090000.bin").json()["session"]["id"]
+
+    resp = client.post(f"/ui/sessions/{sid}/komoot", follow_redirects=False)
+    assert resp.status_code == 303
+    assert len(fake_kompy.calls) == 1
+    assert "Neue Fahrt bereit" not in _page(client)
+    assert client.get(f"{API}/sessions/{sid}").json()["komoot_status"] == "uploaded"
+
+
+def test_a_failed_upload_keeps_asking(client, tmp_path, fake_kompy, monkeypatch):
+    monkeypatch.setattr(fake_kompy, "upload_tour", lambda self, **kw: False)
+    payload = _ride_bytes(tmp_path, "ride.bin", seconds=200)
+    sid = _put(client, payload, "20260920/L_090000.bin").json()["session"]["id"]
+    client.post(f"/ui/sessions/{sid}/komoot")
+    assert "Neue Fahrt bereit" in _page(client)
+
+
+def test_merged_sessions_are_one_question(client, tmp_path, fake_kompy):
+    t0 = 1758983000
+    first = _ride_bytes(tmp_path, "a.bin", seconds=200, start_time=t0)
+    second = _ride_bytes(tmp_path, "b.bin", seconds=200, start_time=t0 + 199 + 120)
+    sid_a = _put(client, first, "20260920/L_090000.bin").json()["session"]["id"]
+    sid_b = _put(client, second, "20260920/L_093000.bin").json()["session"]["id"]
+    assert _page(client).count("Zu Komoot hochladen</button>") == 1
+    client.post(f"/ui/sessions/{sid_a}/komoot-ignore")
+    store = client.app.state.storage
+    assert store.get(sid_b).komoot_prompt == "ignored"
+
+
+def test_short_rides_and_missing_credentials_are_not_asked_about(tmp_path, fake_kompy):
+    short = _ride_bytes(tmp_path, "short.bin", seconds=60)
+    with TestClient(create_app(Settings(data_dir=tmp_path / "a", komoot_email="x@y.z", komoot_password="p"))) as c:
+        _put(c, short, "20260920/L_090000.bin")
+        assert "Neue Fahrt bereit" not in c.get("/").text
+    real = _ride_bytes(tmp_path, "real.bin", seconds=200)
+    with TestClient(create_app(Settings(data_dir=tmp_path / "b"))) as c:
+        _put(c, real, "20260920/L_090000.bin")
+        assert "Neue Fahrt bereit" not in c.get("/").text
+
+
+def test_upgrade_does_not_ask_about_existing_sessions(tmp_path):
+    from bikelogservice.storage import Storage
+    settings = Settings(data_dir=tmp_path / "up", komoot_email="x@y.z", komoot_password="p")
+    store = Storage(settings)
+    store.put_file("gravel", __import__("bikelogservice.sdlayout", fromlist=["x"]).parse_path("20260920/L_090000.bin"),
+                   _ride_bytes(tmp_path, "r.bin", seconds=200))
+    store._db.execute("ALTER TABLE sessions DROP COLUMN komoot_prompt")
+    store._db.execute("PRAGMA user_version = 6")
+    store._db.commit()
+    store.close()
+    store = Storage(settings)
+    assert [s.komoot_prompt for s in store.list()] == ["ignored"]
+    store.close()

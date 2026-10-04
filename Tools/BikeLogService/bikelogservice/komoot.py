@@ -155,3 +155,26 @@ def upload_group(store: Storage, sessions: list[Session]) -> UploadResult:
     status = "uploaded" if ok else "error"
     store.set_komoot(ids, status, None)
     return UploadResult(status, None if ok else "Komoot rejected the upload", ids)
+
+
+def prompt_eligible(session: Session) -> bool:
+    """A ride the page should ask about: a real ride (Tours export), not uploaded yet, and
+    neither declined nor already asked-and-ignored."""
+    return (session.gpx_status == "ok" and session.komoot_status != "uploaded"
+            and session.komoot_prompt is None)
+
+
+def pending_prompts(store: Storage) -> list[list[Session]]:
+    """The tours (merge-groups) to ask "upload to Komoot?" about, oldest first. Empty if
+    Komoot is not configured. The question stays until it is answered -- uploaded, or
+    ignored (Storage.set_komoot_prompt): closing the page does not answer it."""
+    if not store.settings.komoot_enabled:
+        return []
+    out: list[list[Session]] = []
+    for device in store.devices():
+        sessions = store.sessions_for_device(device)
+        for group in group_into_tours(sessions, store.settings.komoot_merge_gap_s):
+            if any(prompt_eligible(s) for s in group) and not any(s.komoot_status == "uploaded" for s in group):
+                out.append(group)
+    out.sort(key=lambda g: g[0].first_time or 0)
+    return out

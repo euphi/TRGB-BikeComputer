@@ -664,6 +664,9 @@ void WifiWebserver::checkLoop() {
 			everConnected = true;
 			enterPhase(WifiPhase::ONLINE);
 			bclog.logf(BCLogger::Log_Info, TAG, "Wifi connected to \"%s\". IPv4: %s", statusSsid, WiFi.localIP().toString().c_str());
+			// Finish the running log session first, so the log service (which pulls on the
+			// mDNS announcement below) finds what was ridden since the last boot.
+			bclog.rotateSession(false);
 			setupWebserver();
 			startMdns();
 			publishUi();

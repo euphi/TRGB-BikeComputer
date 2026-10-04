@@ -34,6 +34,17 @@ form.filter{margin:12px 0 0;font-size:.9rem}
 form.filter input{width:5em;font:inherit;background:transparent;color:inherit;
     border:1px solid var(--line);border-radius:4px;padding:2px 5px}
 form.filter a{margin-left:8px}
+.banner{border:1px solid var(--acc);border-radius:8px;padding:10px 14px;margin:14px 0;background:color-mix(in srgb,var(--acc) 9%,transparent)}
+.banner h2{font-size:1rem;margin:0 0 6px}
+.banner .ask{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;padding:6px 0;border-top:1px solid var(--line)}
+.banner .ask:first-of-type{border-top:none}
+.banner .ask .what{flex:1 1 16em}
+.banner form{display:inline;margin:0}
+.btn{font:inherit;font-size:.9rem;padding:4px 12px;border-radius:6px;border:1px solid var(--acc);background:var(--acc);color:#fff;cursor:pointer}
+.btn.sec{background:transparent;color:var(--acc)}
+.busy{border-color:var(--warn);background:color-mix(in srgb,var(--warn) 9%,transparent)}
+progress{width:100%;height:10px}
+.msg{border:1px solid var(--line);border-radius:8px;padding:8px 12px;margin:12px 0}
 @media (max-width:640px){.hide-s{display:none}}
 """
 
@@ -81,7 +92,7 @@ def _row(s: Session) -> str:
         links.append(f'<a href="{base}/files/{escape(f.name)}" title="{escape(f.name)}">'
                      f'{escape(f.name[0])} {_fmt_size(f.size)}</a>')
     if s.gpx_status == "ok" and s.komoot_status not in ("uploaded",):
-        links.append(f'<form class="upload" method="post" action="{base}/komoot" '
+        links.append(f'<form class="upload" method="post" action="/ui/sessions/{s.id}/komoot" '
                      'onsubmit="return confirm(\'Diese Fahrt jetzt zu Komoot hochladen?\')">'
                      '<button type="submit">Komoot</button></form>')
     notes = []
@@ -116,6 +127,33 @@ def _row(s: Session) -> str:
         "</tr>")
 
 
+def _mb(n) -> str:
+    return f"{(n or 0) / 1e6:.1f} MB"
+
+
+def _activity(t: dict) -> str:
+    """What a running pull is doing, as a box with a progress bar. Empty when idle."""
+    act = t.get("activity")
+    if not (t.get("syncing") or act):
+        return ""
+    act = act or {}
+    phase = act.get("phase")
+    if phase == "downloading":
+        total = act.get("bytes_total") or 0
+        done = act.get("bytes_done") or 0
+        bar = f'<progress max="{total}" value="{done}"></progress>' if total else ""
+        text = (f'Lade von {escape(t["device"])}: Datei {act.get("index")}/{act.get("total")} '
+                f'<span class="mut">{escape(str(act.get("name", "")))}</span>'
+                + (f' &middot; {_mb(done)} von {_mb(total)}' if total else ""))
+    elif phase == "processing":
+        text = f'Verarbeite die neuen Daten: {escape(str(act.get("detail", "")))} &hellip;'
+        bar = "<progress></progress>"
+    else:
+        text = f'Verbinde mit {escape(t["device"])} und lese die Dateiliste &hellip;'
+        bar = "<progress></progress>"
+    return f'<div class="banner busy"><h2>Abruf l&auml;uft</h2>{text}{bar}</div>'
+
+
 def _pull_line(pull: dict | None) -> str:
     if not pull:
         return '<p class="mut">Pull disabled.</p>'
@@ -125,10 +163,46 @@ def _pull_line(pull: dict | None) -> str:
         text = f'{escape(t["device"])} ({escape(t["host"])}.local): {state}'
         if t["last_sync_ok"]:
             text += f', last pull {escape(t["last_sync_ok"].replace("T", " ")[:16])} UTC'
+            res = t.get("last_result") or {}
+            if res.get("fetched") or res.get("replaced"):
+                text += f' ({res.get("fetched", 0)} neue, {res.get("replaced", 0)} ge&auml;nderte Dateien)'
         if t["last_error"]:
             text += f' <span class="warn">— {escape(t["last_error"])}</span>'
         parts.append(text)
     return '<p class="mut">' + "<br>".join(parts) + "</p>"
+
+
+def _tour_label(group: list[Session]) -> tuple[str, str]:
+    """(when, what) of a merge-group for the question: start, distance, duration."""
+    first = group[0]
+    when = _when(first)
+    dist = sum(((s.summary or {}).get("dist_m", s.distance_m) or 0) for s in group)
+    start = min((s.first_time for s in group if s.first_time), default=None)
+    end = max((s.last_time for s in group if s.last_time), default=None)
+    dur = _fmt_dur(end - start) if start and end else ""
+    parts = [f"{dist / 1000:.1f} km"] + ([dur] if dur else [])
+    if len(group) > 1:
+        parts.append(f"{len(group)} Sitzungen zusammengefasst")
+    return when, " &middot; ".join(parts)
+
+
+def _prompts(groups: list[list[Session]]) -> str:
+    """The standing question per finished ride: upload to Komoot? It is shown on every page
+    view until answered with one of the two buttons -- leaving the page answers nothing."""
+    if not groups:
+        return ""
+    rows = []
+    for group in groups:
+        when, what = _tour_label(group)
+        sid = next((s.id for s in group if s.gpx_status == "ok"), group[0].id)
+        rows.append(
+            f'<div class="ask"><div class="what"><strong>{escape(when)}</strong><br>{what}</div>'
+            f'<form method="post" action="/ui/sessions/{sid}/komoot"><button class="btn" type="submit">Zu Komoot hochladen</button></form>'
+            f'<form method="post" action="/ui/sessions/{sid}/komoot-ignore"'
+            ' onsubmit="return confirm(\'Diese Fahrt nicht zu Komoot hochladen und nicht mehr fragen?\')">'
+            '<button class="btn sec" type="submit">Nicht hochladen</button></form></div>')
+    title = "Neue Fahrt bereit" if len(groups) == 1 else f"{len(groups)} neue Fahrten bereit"
+    return f'<div class="banner"><h2>{title} &ndash; zu Komoot hochladen?</h2>{"".join(rows)}</div>'
 
 
 def _filter_form(min_km: float | None, max_km: float | None) -> str:
@@ -143,16 +217,30 @@ def _filter_form(min_km: float | None, max_km: float | None) -> str:
         '</form>')
 
 
+def busy(pull: dict | None) -> bool:
+    return bool(pull and any(t.get("syncing") or t.get("activity") for t in pull["targets"]))
+
+
 def index(sessions: list[Session], pull: dict | None,
-          min_km: float | None = None, max_km: float | None = None) -> str:
+          min_km: float | None = None, max_km: float | None = None,
+          prompts: list[list[Session]] | None = None, message: str | None = None) -> str:
     rows = "\n".join(_row(s) for s in sessions) or \
         '<tr><td colspan="5" class="mut">No sessions match this filter.</td></tr>'
+    working = "".join(_activity(t) for t in (pull or {}).get("targets", []))
+    # While something is being fetched or processed the page reloads itself, so the progress
+    # (and, at the end, the question about the new ride) shows up without a click.
+    refresh = '<meta http-equiv="refresh" content="3">' if busy(pull) else ""
+    note = f'<div class="msg">{escape(message)}</div>' if message else ""
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+{refresh}
 <title>BikeLog</title><style>{CSS}</style></head>
 <body><main>
 <h1>BikeLog</h1>
+{note}
+{working}
+{_prompts(prompts or [])}
 {_pull_line(pull)}
 {_filter_form(min_km, max_km)}
 <table><thead><tr><th>Session</th><th>Distance</th><th class="hide-s">Moving</th>

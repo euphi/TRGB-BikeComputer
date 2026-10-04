@@ -260,3 +260,33 @@ def test_failed_pull_is_retried(bc):
     p.http = Down()
     assert p.check(target) is None
     assert "trgb" in p._due
+
+
+def test_sync_reports_what_it_is_doing(store):
+    seen = []
+    sync(store, "trgb", "http://bc", FakeDevice(FILES), pause_s=0, progress=lambda **kw: seen.append(kw))
+    assert seen[0]["phase"] == "listing"
+    downloads = [s for s in seen if s["phase"] == "downloading"]
+    assert [d["index"] for d in downloads] == [1, 2, 3]
+    assert all(d["total"] == 3 for d in downloads)
+    assert downloads[-1]["bytes_total"] == sum(len(b) for p, b in FILES.items() if not p.startswith("CUR/"))
+
+
+def test_a_second_sync_downloads_nothing_to_report(store):
+    sync(store, "trgb", "http://bc", FakeDevice(FILES), pause_s=0)
+    seen = []
+    sync(store, "trgb", "http://bc", FakeDevice(FILES), pause_s=0, progress=lambda **kw: seen.append(kw))
+    assert [s["phase"] for s in seen] == ["listing"]
+
+
+def test_the_page_shows_a_running_pull_and_refreshes_itself():
+    from bikelogservice import webui
+    pull = {"targets": [{"device": "trgb", "host": "TRGB-BC", "online": True, "syncing": True,
+                         "last_sync_ok": None, "last_error": None, "last_result": None,
+                         "activity": {"phase": "downloading", "name": "20261004/L_122743.bin",
+                                      "index": 2, "total": 5, "bytes_done": 1_000_000, "bytes_total": 4_000_000}}]}
+    html = webui.index([], pull)
+    assert "Abruf l" in html and "Datei 2/5" in html and "L_122743.bin" in html
+    assert 'http-equiv="refresh"' in html
+    idle = {"targets": [{**pull["targets"][0], "syncing": False, "activity": None}]}
+    assert 'http-equiv="refresh"' not in webui.index([], idle)

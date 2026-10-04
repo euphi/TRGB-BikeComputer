@@ -18,7 +18,9 @@ When to pull:
   have cached, and a quick reboot keeps the entry in its cache (PTR TTL 75 min).
 * **Polling** as a safety net: every ``pull_interval_s`` one multicast address
   query (no traffic to the device if it is away). If it answers and was absent
-  before -- or the last pull is older than RESYNC_S -- it pulls.
+  before -- or the last pull is older than RESYNC_S -- it pulls. (The firmware
+  finishes a log session when the ride session is ended or the WLAN connects,
+  so a session can appear while the device stays online.)
 
 Triggered pulls wait BOOT_SETTLE_S: right after boot the device is busy (BLE,
 LogSessions moving the last session out of CUR/). While CUR/ still holds more
@@ -51,7 +53,7 @@ log = logging.getLogger("bikelog.pull")
 
 #: Pull again after this long even without a new appearance -- covers a reboot
 #: fast enough to fall between two polls without the announcement being seen.
-RESYNC_S = 1800
+RESYNC_S = 600
 #: mDNS announcements come in bursts (the firmware's plus retransmissions).
 TRIGGER_DEBOUNCE_S = 15
 #: Delay between a probe/announcement and the pull.
@@ -176,25 +178,52 @@ class SyncResult:
                 f"{self.replaced} replaced, {self.failed} failed")
 
 
+Progress = Callable[..., None]
+
+
+def _needs_fetch(entry: Listed, known: dict) -> bool:
+    if entry.file.day == sdlayout.WORKDIR:
+        return False
+    if entry.file.path in known:
+        have = known[entry.file.path]
+        if have is None or entry.size is None or have == entry.size:
+            return False
+    return True
+
+
 def sync(storage, device: str, base_url: str, http: Http | None = None,
-         pause_s: float = DOWNLOAD_PAUSE_S) -> SyncResult:
-    """Fetch everything from one device that is not stored yet."""
+         pause_s: float = DOWNLOAD_PAUSE_S, progress: Progress | None = None) -> SyncResult:
+    """Fetch everything from one device that is not stored yet.
+
+    ``progress(phase=..., ...)`` is told what is going on, for the status page: phase
+    "listing", then "downloading" with name/index/total/bytes_done/bytes_total.
+    """
     http = http or Http()
+    note = progress or (lambda **_: None)
     result = SyncResult()
+    note(phase="listing")
     listing = fetch_listing(http, base_url)
     known = storage.known_files(device)
     result.workdir_sessions = len({e.file.stem for e in listing
                                    if e.file.day == sdlayout.WORKDIR})
+    todo = [e for e in listing if _needs_fetch(e, known)]
+    total_bytes = sum(e.size or 0 for e in todo)
+    if todo:
+        sessions = len({(e.file.day, e.file.stem) for e in todo})
+        log.info("%s: %d file(s) of %d session(s) to fetch%s", device, len(todo), sessions,
+                 f", {total_bytes / 1e6:.1f} MB" if total_bytes else "")
+    index = 0
     for entry in listing:
         sdfile = entry.file
         if sdfile.day == sdlayout.WORKDIR:
             continue
         result.listed += 1
-        if sdfile.path in known:
-            have = known[sdfile.path]
-            if have is None or entry.size is None or have == entry.size:
-                result.skipped += 1
-                continue
+        if not _needs_fetch(entry, known):
+            result.skipped += 1
+            continue
+        index += 1
+        note(phase="downloading", name=sdfile.path, index=index, total=len(todo),
+             bytes_done=result.bytes, bytes_total=total_bytes)
         try:
             payload = http.get(f"{base_url}/log/{sdfile.path}")
         except HttpError as exc:
@@ -217,6 +246,8 @@ def sync(storage, device: str, base_url: str, http: Http | None = None,
             result.replaced += 1
         elif put.status == "new":
             result.fetched += 1
+        log.info("%s: %s %s (%d byte, %d/%d)", device, put.status, sdfile.path, len(payload),
+                 index, len(todo))
         if pause_s:
             time.sleep(pause_s)
     return result
@@ -342,6 +373,9 @@ class TargetStatus:
     last_result: dict | None = None
     last_error: str | None = None
     syncing: bool = False
+    #: What the pull is doing right now (None when idle): phase "listing" |
+    #: "downloading" (name, index, total, bytes_done, bytes_total) | "processing" (detail)
+    activity: dict | None = None
 
 
 def _now_iso() -> str:
@@ -513,25 +547,36 @@ class Puller:
         st = self.status[target.device]
         self._mono_attempt[target.device] = time.monotonic()
         st.syncing, st.last_sync = True, _now_iso()
+        st.activity = {"phase": "listing", "since": _now_iso()}
         base = f"http://{address}"
         log.info("%s: pulling from %s", target.device, base)
+
+        def note(**activity) -> None:
+            st.activity = {"since": (st.activity or {}).get("since", _now_iso()), **activity}
+
         try:
-            result = sync(self.storage, target.device, base, self.http)
+            result = sync(self.storage, target.device, base, self.http, progress=note)
         except Exception as exc:
             st.last_error = str(exc)
             log.warning("%s: pull failed: %s", target.device, exc)
+            st.syncing, st.activity = False, None
             return None
-        finally:
-            st.syncing = False
         st.last_result = asdict(result)
         st.last_error = "; ".join(result.errors[:3]) or None
         if not result.failed:
             st.last_sync_ok = st.last_sync
             self._mono_sync_ok[target.device] = time.monotonic()
         log.info("%s: %s", target.device, result.summary())
+        try:
+            if result.fetched or result.replaced:
+                note(phase="processing", detail="GPX-Export")
+                exporter.export_pending(self.storage)
+                note(phase="processing", detail="Nextcloud-Abgleich")
+                nextcloud.sync_pending(self.storage)
+        finally:
+            st.syncing, st.activity = False, None
         if result.fetched or result.replaced:
-            exporter.export_pending(self.storage)
-            nextcloud.sync_pending(self.storage)
+            log.info("%s: new data is ready -- the page asks about the Komoot upload", target.device)
         return result
 
     def as_dict(self) -> dict:

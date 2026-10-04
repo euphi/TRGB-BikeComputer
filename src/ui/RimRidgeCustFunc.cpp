@@ -209,13 +209,18 @@ void ui_RimRidgeUpdateStateIcon(const lv_img_dsc_t* pIcon, lv_color_t color, boo
 }
 
 void ui_RimRidgeUpdateTime(bool stopwatchMode, uint32_t elapsedS, const char* clockStr) {
-	// img_recolor (brass) is baked into rr_ic_time's own JSON style - unlike
-	// rr_ic_state above, the color here never varies, so no C override for
-	// it (see add_rimridge_time_widget.py).
+	// A running ride session must be recognisable at a glance (test ride 2026-10-04: the
+	// stopwatch icon alone was "hardly noticeable"): icon and value turn ZONE_GREEN
+	// (doc/design/rim-ridge-design-system.md, the one deliberately colourful palette) while
+	// the session is open, and are BRASS / PARCHMENT_BRIGHT otherwise -- the same values the
+	// widgets' JSON styles carry (theme_colors[19] / [21]), hardcoded like the RQ zone
+	// colors below because this file can't reach the generated theme table.
 	static int8_t modeLast = -1;
 	if ((int8_t) stopwatchMode != modeLast) {
 		modeLast = stopwatchMode;
 		lv_img_set_src(objects.rr_ic_time, stopwatchMode ? &img_rr_icon_stopwatch : &img_rr_icon_clock);
+		lv_obj_set_style_img_recolor(objects.rr_ic_time, lv_color_hex(stopwatchMode ? 0x6FA98C : 0xCBA36B), LV_PART_MAIN | LV_STATE_DEFAULT);
+		lv_obj_set_style_text_color(objects.rr_time_val, lv_color_hex(stopwatchMode ? 0x6FA98C : 0xF3ECDF), LV_PART_MAIN | LV_STATE_DEFAULT);
 	}
 	if (stopwatchMode) {
 		uint32_t h = elapsedS / 3600, m = (elapsedS % 3600) / 60, s = elapsedS % 60;

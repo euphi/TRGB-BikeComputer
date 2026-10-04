@@ -33,7 +33,7 @@ from .storage import Session, Storage
 
 log = logging.getLogger("bikelog.export")
 
-EXPORT_VERSION = 4
+EXPORT_VERSION = 3
 
 #: Below this, a session goes to Debug_Archive instead of Tours -- see the
 #: module docstring. Raise/lower it here, not per-session; the automatic
@@ -94,6 +94,8 @@ def export_session(store: Storage, session: Session) -> str:
     if old and old != rel:
         (root / old).unlink(missing_ok=True)     # renamed, moved between Tours/Debug_Archive, or no longer valid
     store.set_export(session.id, rel, status, EXPORT_VERSION)
+    log.info("session %d (%s%s): GPX %s%s", session.id, session.day, session.stem, status,
+             f" -> {rel} ({stats.written} points)" if rel else "")
     return status
 
 

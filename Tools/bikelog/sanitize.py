@@ -62,6 +62,12 @@ def trim_jitter(records: list[Record], opts: SanitizeOptions | None = None) -> l
         return records
 
     stopped = [records[idx].speed < opts.moving_kmh for idx in positions]
+    if all(stopped):
+        # No moving at all: no wheel sensor connected (speed always 0), or a session at a
+        # standstill. There is no ride to trim the ends of; collapsing the "start" and the
+        # "end" run would remove every point. Leave it to the caller's own judgement
+        # (the exporter files it by real distance).
+        return records
     drop: set[int] = set()
 
     def collapse(lo: int, hi: int, keep: int) -> None:

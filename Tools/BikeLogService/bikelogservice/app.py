@@ -18,9 +18,10 @@ import io
 import re
 import threading
 from contextlib import asynccontextmanager
+from urllib.parse import urlencode
 
 from fastapi import Depends, FastAPI, HTTPException, Path, Query, Request, Response, status
-from fastapi.responses import HTMLResponse, PlainTextResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 
 from bikelog import csvexport
 from bikelog.record import ReadStats
@@ -82,12 +83,39 @@ def create_app(settings: Settings | None = None, puller: Puller | None = None) -
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
     def index(min_km: float | None = Query(default=None, ge=0),
              max_km: float | None = Query(default=None, ge=0),
+             msg: str | None = Query(default=None, max_length=300),
              principal: Principal = AuthDep, store: Storage = Depends(storage)):
         min_m = min_km * 1000 if min_km is not None else None
         max_m = max_km * 1000 if max_km is not None else None
         sessions = store.list(limit=500, min_distance_m=min_m, max_distance_m=max_m)
         return webui.index(sessions, puller.as_dict() if puller else None,
-                           min_km=min_km, max_km=max_km)
+                           min_km=min_km, max_km=max_km,
+                           prompts=komoot.pending_prompts(store), message=msg)
+
+    # The page's own buttons: same actions as the API routes below, but they answer with a
+    # redirect back to the page (a form post must not end on a bare JSON document).
+    def _back(session_id: int, text: str) -> RedirectResponse:
+        return RedirectResponse("/?" + urlencode({"msg": text}) + f"#s{session_id}",
+                                status_code=status.HTTP_303_SEE_OTHER)
+
+    @app.post("/ui/sessions/{session_id}/komoot", include_in_schema=False)
+    def ui_komoot(session_id: int, principal: Principal = AuthDep, store: Storage = Depends(storage)):
+        session = _require_log(store, session_id)
+        group = komoot.group_for(store, session)
+        if any(s.komoot_status == "uploaded" for s in group):
+            return _back(session_id, "Diese Fahrt ist schon bei Komoot.")
+        result = komoot.upload_group(store, group)
+        if result.status == "uploaded":
+            store.set_komoot_prompt([s.id for s in group], "ignored")
+            return _back(session_id, "Zu Komoot hochgeladen.")
+        return _back(session_id, "Komoot-Upload nicht erfolgt: %s" % (result.message or result.status))
+
+    @app.post("/ui/sessions/{session_id}/komoot-ignore", include_in_schema=False)
+    def ui_komoot_ignore(session_id: int, principal: Principal = AuthDep,
+                         store: Storage = Depends(storage)):
+        session = _require(store, session_id)
+        store.set_komoot_prompt([s.id for s in komoot.group_for(store, session)], "ignored")
+        return _back(session_id, "Gut, diese Fahrt wird nicht zu Komoot hochgeladen.")
 
     @app.get(API + "/health", tags=["service"])
     def health(principal: Principal = AuthDep, store: Storage = Depends(storage)):
@@ -227,6 +255,16 @@ def create_app(settings: Settings | None = None, puller: Puller | None = None) -
         if result.status == "error":
             raise HTTPException(status.HTTP_502_BAD_GATEWAY, result.message or "upload failed")
         return {"status": result.status, "session_ids": result.session_ids}
+
+    @app.post(API + "/sessions/{session_id}/komoot/ignore", tags=["export"])
+    def komoot_ignore(session_id: int, ask_again: bool = Query(default=False),
+                      principal: Principal = AuthDep, store: Storage = Depends(storage)):
+        """Answers the page's question "upload to Komoot?" with no (or, with ask_again,
+        puts the question back). Applies to the whole merged tour."""
+        session = _require_log(store, session_id)
+        group = komoot.group_for(store, session)
+        store.set_komoot_prompt([s.id for s in group], None if ask_again else "ignored")
+        return {"status": "asking" if ask_again else "ignored", "session_ids": [s.id for s in group]}
 
     # --- push ---
 

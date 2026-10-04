@@ -135,6 +135,9 @@ void BCLogger::setup() {
 	replayLog = console.addCmd("replay", cmdCB);
 	replayLog.addPositionalArgument("path");
 
+	rotateCmd = console.addCmd("rotate", cmdCB);
+	rotateCmd.setDescription("Finish the running log session now and start the next (no reboot needed)");
+
 	ClockSync::registerCli();
 
 	// FlusherTask and the SSE log stream don't touch the SD card at all (flushAllFiles() already
@@ -150,8 +153,10 @@ void BCLogger::setup() {
 	// logf()'s 256-byte stack buffer, this task also runs WebInstr::report()/drain(), and it now
 	// writes all binary and raw records to the card as well (5120 left 2448 byte free).
 	// Measured 2026-09-27 with 4608 after a clock step (checkClockStep() opens the time-hint
-	// file): 1376 byte free.
-	xTaskCreate(+[](void* thisInstance){((BCLogger*)thisInstance)->flushAllFiles();}, "FlusherTask", 4608, this, 5, &flushTaskHandle);
+	// file): 1376 byte free. 6144 since rotateSession() runs startSession() here (NVS counter,
+	// three file opens, logf()) -- not measured yet, check the FlusherTask line of the stack
+	// report after a ride session was ended.
+	xTaskCreate(+[](void* thisInstance){((BCLogger*)thisInstance)->flushAllFiles();}, "FlusherTask", 6144, this, 5, &flushTaskHandle);
 	webserver.getServer().addHandler(&logevents);
 
 	uint8_t cardType = SD_MMC.cardType();
@@ -169,6 +174,24 @@ void BCLogger::setup() {
 	if (!SD_MMC.exists(LogSessions::WORKDIR) && !SD_MMC.mkdir(LogSessions::WORKDIR))
 		log(Log_Error, TAG_SD, "Failed to create dir " + LogSessions::WORKDIR);
 
+	startSession();
+
+	// TODO: save_coredump_to_littlefs() is disabled on purpose, not just unfinished -- enabling it
+	// previously caused a boot-time crash loop: writing the coredump to LittleFS itself crashed
+	// (cause not yet diagnosed), which created a *new* coredump, which then got "saved" (and
+	// crashed again) on the next boot, forever. Before re-enabling: find and fix whatever in
+	// save_coredump_to_littlefs()/the coredump-partition read path crashes, and confirm a
+	// coredump partition already stuck in that state (from a past crash) can't retrigger the
+	// loop even after the code fix -- may need to explicitly erase/invalidate it once
+	// (esp_core_dump_image_check() / erasing the coredump partition) rather than just fixing
+	// the write path.
+	//save_coredump_to_littlefs(file_core);
+}
+
+// Opens the files of a new session in the working directory and starts the finalizer for
+// all earlier ones. At boot, and again for every rotateSession(). FlusherTask (or setup()
+// before it runs) only.
+void BCLogger::startSession() {
 	// Every session starts in the working directory under a running number -- the clock is
 	// rarely set this early (NTP needs WLAN, GPS the phone). It gets its date and time after
 	// the next boot, see LogSessions.h. The counter is the one the NO_TIME names always used.
@@ -207,19 +230,77 @@ void BCLogger::setup() {
 		appendHint(line);
 	}
 
+	sessionStartedMs = millis();
+	recordsAtSessionStart = recordsWritten;
 	logf(Log_Info, TAG_SD, "Session %s: %s%s", stem, file_data.c_str(), fdata ? "" : " - could not be opened, data is not logged!");
 	LogSessions::startFinalizer(sessionStem);
+}
 
-	// TODO: save_coredump_to_littlefs() is disabled on purpose, not just unfinished -- enabling it
-	// previously caused a boot-time crash loop: writing the coredump to LittleFS itself crashed
-	// (cause not yet diagnosed), which created a *new* coredump, which then got "saved" (and
-	// crashed again) on the next boot, forever. Before re-enabling: find and fix whatever in
-	// save_coredump_to_littlefs()/the coredump-partition read path crashes, and confirm a
-	// coredump partition already stuck in that state (from a past crash) can't retrigger the
-	// loop even after the code fix -- may need to explicitly erase/invalidate it once
-	// (esp_core_dump_image_check() / erasing the coredump partition) rather than just fixing
-	// the write path.
-	//save_coredump_to_littlefs(file_core);
+// Ends this boot's session and starts the next one without a reboot, so the finished one is
+// dated, summarised and moved out of CUR/ right away and a log service pulling from the
+// device finds it (before this, that took the next boot -- test ride 2026-10-04).
+// Only a request here; FlusherTask does the work, being the one that writes the files.
+// forced: the rider ended the ride session -- also stops a running raw capture.
+// Otherwise (WLAN came up): only a session with some data in it, and not too often.
+void BCLogger::rotateSession(bool forced) {
+	rotateRequest = forced ? ROTATE_FORCED : ROTATE_SOFT;
+	wakeFlusher();
+}
+
+// FlusherTask, once per flush cycle: carries out a rotateSession() request.
+void BCLogger::checkRotate() {
+	const uint8_t req = rotateRequest;
+	if (req == ROTATE_NONE || !fdata) {
+		rotateRequest = ROTATE_NONE;
+		return;
+	}
+	const bool capturing = static_cast<bool>(fraw[RAW_CAPTURE]);
+	if (req == ROTATE_SOFT) {
+		rotateRequest = ROTATE_NONE;
+		if (capturing) return;										// the rider's recording goes on
+		const uint32_t now = millis();
+		if (now - sessionStartedMs < ROTATE_MIN_AGE_MS) return;
+		if (recordsWritten - recordsAtSessionStart < ROTATE_MIN_RECORDS) return;
+		if (lastRotateMs && now - lastRotateMs < ROTATE_MIN_GAP_MS) return;
+	} else if (capturing) {
+		// The raw file belongs to this session: ask for the end of the capture, rotate at the
+		// next cycle once it is closed (the request stays).
+		sensors.stopRoadCapture();
+		return;
+	} else if (recordsWritten == recordsAtSessionStart) {
+		rotateRequest = ROTATE_NONE;								// nothing logged yet, nothing to finish
+		return;
+	}
+	rotateRequest = ROTATE_NONE;
+
+	// Everything produced so far belongs to the old session: queued records, a clock step.
+	uint8_t rec[LogRec::RECORD_SIZE];
+	while (recordQueue && xQueueReceive(recordQueue, rec, 0) == pdTRUE) writeRecord(rec);
+	rawDrain();
+	checkClockStep();
+	logf(Log_Info, TAG_SD, "Session %s ends here (%lu records) - finishing it now", sessionStem.c_str(),
+	     static_cast<unsigned long>(recordsWritten - recordsAtSessionStart));
+
+	if (xSemaphoreTake(xPrintMutex, static_cast<TickType_t>(1000 / portTICK_PERIOD_MS)) != pdTRUE) {
+		rotateRequest = req;										// try again next cycle
+		return;
+	}
+	for (File* f : {&fdebug, &fnmea, &fdata, &fraw[RAW_CAPTURE], &fraw[RAW_SNIPPETS]}) {
+		if (!*f) continue;
+		f->flush();
+		f->close();
+	}
+	// The raw streams belong to the old session: their producers start the new one's files
+	// with their next OPEN (a WRITE without one is dropped, see rawHandle()). The snippet
+	// producer notices the changed getRawSessionNo() and opens a new snippet file.
+	rawFilePath[RAW_CAPTURE] = String();
+	rawFilePath[RAW_SNIPPETS] = String();
+	rawCaptureCount = 0;
+	rawSessionNo++;
+	xSemaphoreGive(xPrintMutex);
+
+	startSession();
+	lastRotateMs = millis();
 }
 
 // Method to send log messages as events
@@ -311,6 +392,7 @@ void BCLogger::flushAllFiles() {
 		WebInstr::report(++cycle % 12 == 0);		// stack watermarks every 12th cycle = 60s
 		WebInstr::drain();
 		checkClockStep();
+		checkRotate();
 		flushLocked(fdebug);
 		yield();
 		flushLocked(fnmea);
@@ -390,6 +472,12 @@ void BCLogger::printLoglevels() {
 void BCLogger::handleCommand(const Command &cmd) {
 	if (cmd.equals(logShow)) {
 		printLoglevels();
+		return;
+	}
+
+	if (cmd.equals(rotateCmd)) {
+		log(Log_Info, TAG_CLI, "Session rotation requested");
+		rotateSession(true);
 		return;
 	}
 

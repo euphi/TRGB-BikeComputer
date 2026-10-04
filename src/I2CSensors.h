@@ -69,8 +69,11 @@ public:
 	bool setRoadLabel(uint8_t surface, uint8_t quality);
 	bool setRoadLabelSurface(uint8_t surface);		// keeps the quality
 	bool setRoadLabelQuality(uint8_t quality);		// keeps the surface
-	// Record button: open-ended raw capture (stops by itself after RAW_MAX_CAPTURE_S).
-	bool startRoadCapture() {return requestRawCapture(RAW_MAX_CAPTURE_S);}
+	// Record button: open-ended raw capture. It is written in files of RAW_MAX_CAPTURE_S
+	// each (R_*_01, _02, ...): a new one follows the moment a file is complete, until
+	// stopRoadCapture() -- or the end of the log session (BCLogger::rotateSession()).
+	// Test ride 2026-10-04: the capture ended on its own every 30 minutes.
+	bool startRoadCapture();
 	bool stopRoadCapture() {return requestRawCapture(0);}
 	struct RoadLabelState {
 		uint8_t surface = 0, quality = 0;		// as requested (shows the tap at once, before the ImuTask logged it)
@@ -326,6 +329,7 @@ private:
 	static constexpr uint16_t SNIP_POST = SNIP_POST_MS * IMU_ODR_HZ / 1000;		// 200 frames
 	static constexpr uint16_t SNIP_FRAMES = SNIP_PRE + SNIP_POST;
 	static constexpr uint16_t RAW_RING = 320;	// frames of history (0.8 s): a snippet is taken right at peak + SNIP_POST, so SNIP_FRAMES suffice
+	std::atomic<bool> rawChain{false};		// startRoadCapture(): follow a complete file with the next one
 	std::atomic<int32_t> rawRequest{-1};	// -1 = none, 0 = stop, n = start n seconds
 	struct RawSnapshot {
 		bool capturing = false;
@@ -337,6 +341,7 @@ private:
 	uint32_t rawCaptureLeft = 0, rawCaptureFrames = 0, rawCaptureTarget = 0, rawBlockNo = 0;
 	bool rawGap = false;					// samples lost since the last capture block
 	bool snipFileOpen = false;
+	uint16_t snipFileSession = 0;		// BCLogger::getRawSessionNo() when it was opened
 	bool snipPending = false;
 	uint32_t snipPeakIdx = 0, snipSeq = 0;
 	float snipSpeedKmh = NAN;

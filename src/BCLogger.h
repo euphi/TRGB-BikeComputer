@@ -68,6 +68,18 @@ private:
 	void checkClockStep();
 	bool isActiveSessionFile(const String& path) const;
 
+	// Session rotation, see rotateSession(): FlusherTask carries out the request.
+	enum RotateRequest : uint8_t {ROTATE_NONE = 0, ROTATE_SOFT, ROTATE_FORCED};
+	std::atomic<uint8_t> rotateRequest{ROTATE_NONE};
+	static constexpr uint32_t ROTATE_MIN_AGE_MS = 60UL * 1000UL;		// WLAN-triggered: session at least this old ...
+	static constexpr uint32_t ROTATE_MIN_RECORDS = 24;					// ... with this many records (~35 s of data) ...
+	static constexpr uint32_t ROTATE_MIN_GAP_MS = 5UL * 60UL * 1000UL;	// ... and the last rotation this long ago
+	uint32_t sessionStartedMs = 0;
+	uint32_t lastRotateMs = 0;
+	uint32_t recordsAtSessionStart = 0;
+	void startSession();
+	void checkRotate();
+
 	void storeLoglevels();
 	void printLoglevels();
 	void checkTagTablesComplete() const;
@@ -79,6 +91,7 @@ private:
 	Command logcmd;
 	Command logShow;
 	Command replayLog;
+	Command rotateCmd;
 
 	TaskHandle_t flushTaskHandle = nullptr;
 	SemaphoreHandle_t xPrintMutex = nullptr;
@@ -105,6 +118,7 @@ private:
 	std::atomic<uint32_t> rawBytes[2] = {};
 	std::atomic<uint32_t> rawDropped{0};
 	uint8_t rawCaptureCount = 0;
+	std::atomic<uint16_t> rawSessionNo{0};
 	uint8_t* rawRx = nullptr;								// receive buffer, RAW_MAX_MSG, allocated in setup()
 	bool rawSend(uint8_t* msg, size_t len, uint8_t cmd, uint8_t stream);
 	void rawDrain();
@@ -159,6 +173,9 @@ public:
 	bool rawClose(RawStream s) {uint8_t m[RAW_PREFIX]; return rawSend(m, RAW_PREFIX, RAW_CMD_CLOSE, s);}
 	uint32_t getRawBytes(RawStream s) const {return rawBytes[s];}
 	uint32_t getRawDropped() const {return rawDropped;}
+	// Counts up with every session rotation: a raw stream that was opened before it has lost
+	// its file and must send OPEN (with the file header) again.
+	uint16_t getRawSessionNo() const {return rawSessionNo;}
 	void getRawFileName(RawStream s, char* out, size_t len);
 
 	int16_t listDir(const String& dirname, uint8_t levels);
@@ -168,6 +185,11 @@ public:
 	// Flushes the open log files right now, from any task -- before a deliberate restart or
 	// deep sleep, which would otherwise lose up to 5 s of log (FlusherTask's period).
 	void flushFiles();
+	// Finishes this session now and starts the next one, so the log service finds the data
+	// without a reboot: forced = the ride session was ended (also stops a raw capture),
+	// else it is only done for a session with some data in it, at most every few minutes
+	// (WLAN just connected). Non-blocking, from any task.
+	void rotateSession(bool forced);
 
 	static const char* TAG_STRING[LogTagMax];
 	static const char* LEVEL_STRING[LogTypeMax];

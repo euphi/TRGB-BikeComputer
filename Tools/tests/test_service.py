@@ -453,6 +453,9 @@ def test_every_route_requires_a_token_once_auth_is_on(tmp_path, ride_bytes):
             ("PUT", f"{API}/devices/gravel/files/20260920/L_143012.bin"),
             ("DELETE", f"{API}/sessions/{sid}"),
             ("POST", f"{API}/sessions/{sid}/komoot"),
+            ("POST", f"{API}/sessions/{sid}/komoot/ignore"),
+            ("POST", f"/ui/sessions/{sid}/komoot"),
+            ("POST", f"/ui/sessions/{sid}/komoot-ignore"),
             ("GET", f"{API}/pull"),
             ("POST", f"{API}/pull"),
         ]

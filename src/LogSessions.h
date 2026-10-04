@@ -10,7 +10,9 @@
  *                 S_0042.bin     shock snippets, R_0042_NN.bin raw captures (RawCapture.h)
  *                 T_0042.txt     time hints: session start and clock steps (SessionStats.h)
  *
- * After the next boot, a background task finishes every session in CUR except the new one:
+ * After the next boot -- or right away when BCLogger::rotateSession() ends the running one
+ * (ride session stopped, WLAN connected, CLI "rotate") -- a background task finishes every
+ * session in CUR except the new one:
  *
  *   1. start time = the start line of T_*, corrected by the clock step that made the clock
  *      valid (NTP or GPS, see ClockSync.h) if the session started without a clock
