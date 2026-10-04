@@ -17,64 +17,23 @@ attempted, so the rest of the service works without it installed.
 
 from __future__ import annotations
 
-import dataclasses
 import logging
 from dataclasses import dataclass, field
 
 from bikelog import gpx, ridestats
-from bikelog.record import Record, labels_of, split
+from bikelog.record import labels_of, split
 
-from . import exporter
+from . import exporter, tours
 from .storage import Session, Storage
 
 log = logging.getLogger("bikelog.komoot")
 
 
-def group_into_tours(sessions: list[Session], merge_gap_s: float) -> list[list[Session]]:
-    """``sessions`` of one device, in ride order (Storage.sessions_for_device).
-    Consecutive sessions end up in the same group when the gap between one
-    ending and the next starting is at most merge_gap_s; a session with no
-    known start/end (unreadable log) never merges with its neighbours."""
-    groups: list[list[Session]] = []
-    for session in sessions:
-        prev = groups[-1][-1] if groups else None
-        gap = (session.first_time - prev.last_time
-               if prev and prev.last_time and session.first_time else None)
-        if (prev is not None and prev.device == session.device
-                and gap is not None and 0 <= gap <= merge_gap_s):
-            groups[-1].append(session)
-        else:
-            groups.append([session])
-    return groups
-
-
-def group_for(store: Storage, session: Session, merge_gap_s: float | None = None) -> list[Session]:
-    """The merge-group ``session`` currently belongs to."""
-    merge_gap_s = store.settings.komoot_merge_gap_s if merge_gap_s is None else merge_gap_s
-    for group in group_into_tours(store.sessions_for_device(session.device), merge_gap_s):
-        if any(s.id == session.id for s in group):
-            return group
-    return [session]                # unreachable in practice: session always lists itself
-
-
-def _rebased_records(store: Storage, sessions: list[Session]) -> list:
-    """Concatenated record streams of ``sessions`` in time order, with each
-    session's cumulative trip distance (Record.distance, the wheel sensor's
-    running total since ITS boot) continuing on from the previous session's
-    instead of restarting at zero -- otherwise a merged tour's distance and
-    per-point BC:dist extension would collapse to roughly the last
-    session's distance alone."""
-    combined = []
-    offset = 0.0
-    for session in sessions:
-        last_distance = 0.0
-        for rec in store.records(session, types=None):
-            if isinstance(rec, Record):
-                last_distance = rec.distance
-                rec = dataclasses.replace(rec, distance=rec.distance + offset)
-            combined.append(rec)
-        offset += last_distance
-    return combined
+# The grouping lives in tours.py (training and the pages use it too); these names stay
+# for the callers that know them from here.
+group_into_tours = tours.group_into_tours
+group_for = tours.group_for
+_rebased_records = tours.rebased_records
 
 
 @dataclass
@@ -99,7 +58,7 @@ def render_tour(store: Storage, sessions: list[Session]) -> TourRender:
     waypoints make Komoot reject the file. So this drops just those two --
     they are exactly the current, and only, source of <wpt> elements.
     """
-    everything = _rebased_records(store, sessions)
+    everything = tours.rebased_records(store, sessions)
     options = exporter.gpx_options(sessions[0], store.settings)
     options.shocks = False
     options.labels = False

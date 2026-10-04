@@ -92,6 +92,13 @@ CREATE TABLE IF NOT EXISTS reports (
     report          TEXT NOT NULL,
     computed_at     TEXT NOT NULL
 );
+-- Reports of tours made of several sessions (tours.py, analysis.py), keyed by what
+-- they were computed from (the sessions' cache keys); a stale one is simply not found.
+CREATE TABLE IF NOT EXISTS tour_reports (
+    cache_key       TEXT PRIMARY KEY,
+    report          TEXT NOT NULL,
+    computed_at     TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS files (
     session_id      INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
     name            TEXT NOT NULL,
@@ -628,6 +635,18 @@ class Storage:
             row = self._db.execute("SELECT cache_key, report FROM reports WHERE session_id = ?",
                                    (session_id,)).fetchone()
         return (row["cache_key"], json.loads(row["report"])) if row else None
+
+    def cached_tour_report(self, cache_key: str) -> dict | None:
+        with self._lock:
+            row = self._db.execute("SELECT report FROM tour_reports WHERE cache_key = ?",
+                                   (cache_key,)).fetchone()
+        return json.loads(row["report"]) if row else None
+
+    def store_tour_report(self, cache_key: str, report: dict) -> None:
+        with self._lock:
+            self._db.execute("INSERT OR REPLACE INTO tour_reports (cache_key, report, computed_at) "
+                             "VALUES (?, ?, ?)", (cache_key, json.dumps(report, ensure_ascii=False), _now()))
+            self._db.commit()
 
     def cache_keys(self) -> dict[int, str]:
         with self._lock:

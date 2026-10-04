@@ -270,7 +270,7 @@ Fahrtbericht gibt es:
 | Seite | Inhalt |
 |---|---|
 | **Training** (`/training`) | Fitness (CTL, 42-Tage-Mittel des TRIMP), Ermüdung (ATL, 7 Tage) und Form (TSB) im Verlauf; Kilometer und Stunden je Pulszone pro Woche; Wochentabelle. Braucht `hr_max`, Fahrten ohne Puls zählen als 0 |
-| **Ziele** (`/goals`) | Zielrennen mit Datum und Priorität (A/B/C), Countdown und Trainingsphase (Grundlage, Aufbau, Spitze, Tapering); die Strecke als GPX hochladen für Distanz, Höhenmeter und Anstiege. Verglichen mit den letzten 6 Wochen: längste Fahrt gegen die Renndistanz, meiste Wochenhöhenmeter gegen die des Rennens; für jeden Anstieg der Strecke eine geschätzte Zeit aus der besten VAM auf vergleichbaren Anstiegen der letzten 90 Tage |
+| **Ziele** (`/goals`) | Zielrennen mit Datum und Priorität (A/B/C), Countdown und Trainingsphase (Grundlage, Aufbau, Spitze, Tapering); die Strecke als GPX hochladen (Knopf im Ziel, oder gleich im Formular für ein neues) für Distanz, Höhenmeter und Anstiege. Verglichen mit den letzten 6 Wochen: längste Fahrt gegen die Renndistanz, meiste Wochenhöhenmeter gegen die des Rennens; für jeden Anstieg der Strecke eine geschätzte Zeit aus der besten VAM auf vergleichbaren Anstiegen der letzten 90 Tage |
 | **Anstiege** (`/climbs`) | mehrmals gefahrene Anstiege (Fuß und Gipfel höchstens 150 m auseinander, braucht GPS), jede Fahrt mit Zeit, Abstand zur besten, VAM, Puls, Leistung |
 | **Fahrer** (`/athlete`) | Fahrerdaten, siehe oben |
 
@@ -280,6 +280,21 @@ Code: [`bikelog/training.py`](https://github.com/euphi/TRGB-BikeComputer/blob/ma
 und [`charts.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/BikeLogService/bikelogservice/charts.py)
 (SVG auf dem Server, keine JS-Bibliothek), Tests `tests/test_pages.py`. Die Zielrennen liegen in
 `<data>/events.json`, ihre GPX-Dateien in `<data>/events/`.
+
+### Eine Fahrt, mehrere Sitzungen
+
+Startet der Fahrradcomputer unterwegs neu, wird aus einer Fahrt mehrere Sitzungen.
+Sitzungen desselben Geräts, deren Abstand (Ende der einen bis Start der nächsten) höchstens
+`BIKELOG_KOMOOT_MERGE_GAP_S` (30 min) beträgt, sind eine Fahrt -- dieselbe Gruppierung wie
+für den Komoot-Upload
+([`tours.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/BikeLogService/bikelogservice/tours.py)).
+Training, Ziele und Anstiege zählen die Fahrt, ihr Bericht läuft über die verbundenen Daten
+(die Strecke läuft weiter, der Neustart ist ein Stopp). Die Fahrtenliste markiert die Teile
+(„Teil 1/2"), die Sitzungsseite verlinkt den Bericht der ganzen Fahrt (`/tour/{id}`). Das
+hängt an den Uhrzeiten: Nach einem Reset ohne Uhr übernimmt die Firmware die GPS-Zeit von
+TrailBridge und korrigiert die vorher geschriebenen Zeitstempel; eine Sitzung, die nie eine
+Uhrzeit bekam (kein WLAN, kein TrailBridge), bleibt für sich. Test- und Leerlauf-Sitzungen
+gehören nie zu einer Fahrt.
 
 Die Seiten laden die Schriften von Google Fonts; ohne Internet nimmt der Browser
 Systemschriften.

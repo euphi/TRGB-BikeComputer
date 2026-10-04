@@ -263,7 +263,7 @@ report there are:
 | Page | Content |
 |---|---|
 | **Training** (`/training`) | fitness (CTL, 42-day mean of the TRIMP), fatigue (ATL, 7 days) and form (TSB) over time; kilometres and hours per heart-rate zone per week; weekly table. Needs `hr_max`, rides without heart rate count as 0 |
-| **Ziele** (`/goals`) | target events with date and priority (A/B/C), countdown and training phase (base, build, peak, taper); upload the course as GPX for distance, elevation and climbs. Compared with the last 6 weeks: longest ride against the race distance, biggest weekly elevation against the race's; for every climb of the course an estimated time from the best VAM on comparable climbs of the last 90 days |
+| **Ziele** (`/goals`) | target events with date and priority (A/B/C), countdown and training phase (base, build, peak, taper); upload the course as GPX (button in the goal, or right away in the form for a new one) for distance, elevation and climbs. Compared with the last 6 weeks: longest ride against the race distance, biggest weekly elevation against the race's; for every climb of the course an estimated time from the best VAM on comparable climbs of the last 90 days |
 | **Anstiege** (`/climbs`) | climbs ridden more than once (foot and summit at most 150 m apart, needs GPS), every effort with time, gap to the best, VAM, heart rate, power |
 | **Fahrer** (`/athlete`) | rider data, see above |
 
@@ -273,6 +273,20 @@ Code: [`bikelog/training.py`](https://github.com/euphi/TRGB-BikeComputer/blob/ma
 and [`charts.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/BikeLogService/bikelogservice/charts.py)
 (SVG on the server, no JS library), tests `tests/test_pages.py`. Target events live in
 `<data>/events.json`, their GPX files in `<data>/events/`.
+
+### One ride, several sessions
+
+When the bike computer reboots on the way, one ride becomes several sessions. Sessions of
+the same device whose gap (end of one to start of the next) is at most
+`BIKELOG_KOMOOT_MERGE_GAP_S` (30 min) are one ride -- the same grouping as for the Komoot
+upload
+([`tours.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/BikeLogService/bikelogservice/tours.py)).
+Training, goals and climbs count the ride, its report runs over the joined records (the
+distance continues, the reboot is a stop). The ride list marks the parts ("Teil 1/2"),
+the session page links to the report of the whole ride (`/tour/{id}`). This relies on the
+times: after a reset without clock the firmware takes the GPS time from TrailBridge and
+corrects the timestamps written before; a session that never got a time (no WLAN, no
+TrailBridge) stays on its own. Test and idle sessions never join a ride.
 
 The pages load the fonts from Google Fonts; without internet the browser falls back to
 system fonts.

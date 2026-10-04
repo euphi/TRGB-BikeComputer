@@ -154,6 +154,9 @@ Mobilfunk); danach das Netz mit `cmd wifi forget-network <id>` wieder vergessen.
   (`archive.py`). Der Grabstein im Index bleibt, bis die Dateien nicht mehr in der Liste der
   SD-Karte stehen (`Storage.purge_gone()` beim Abruf). Löschen auf dem BC nur sofort über
   `/del/` der Firmware (`Puller.delete_files()`), nie vorgemerkt.
+- Neustart unterwegs: Sitzungen mit Abstand <= `komoot_merge_gap_s` sind eine Fahrt
+  (`tours.py`, auch für Komoot). Training rechnet pro Fahrt, Bericht über die verbundenen
+  Sätze (`analysis.tour_report_for()`, Tabelle `tour_reports`), Seite `/tour/{id}`.
 
 ## Anstiege (Höhenprofil)
 

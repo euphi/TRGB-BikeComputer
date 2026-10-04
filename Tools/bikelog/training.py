@@ -60,6 +60,8 @@ class Ride:
     decoupling_pct: float | None
     efficiency: float | None
     climbs: list
+    #: all sessions of the ride (several when the bike computer rebooted on the way)
+    session_ids: list = field(default_factory=list)
 
     @classmethod
     def from_report(cls, rep: dict, session_id: int | None = None,

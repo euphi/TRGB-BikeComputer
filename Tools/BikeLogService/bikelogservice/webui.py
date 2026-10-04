@@ -74,7 +74,8 @@ tr.test td{opacity:.75}
 form.inline{display:inline;margin:0}
 button,.btn{font:600 13px var(--sans);background:var(--panel);color:var(--parch);border:1.5px solid var(--brass);
  border-radius:999px;padding:5px 16px;cursor:pointer}
-button.pri{background:var(--brass);color:var(--bg)}
+button.pri,.btn.pri{background:var(--brass);color:var(--bg)}
+label.btn{cursor:pointer}
 button:disabled{opacity:.4;cursor:not-allowed}
 button.link{background:none;border:none;color:var(--brass);padding:0;font:500 12px var(--mono);
  text-decoration:underline}
@@ -127,6 +128,16 @@ function on(e){const t=e.target.closest&&e.target.closest('[data-tip]');if(!t){o
   line.setAttribute('visibility','visible');xh=line}}
 addEventListener('pointermove',on);addEventListener('pointerdown',on);addEventListener('scroll',off,{passive:true});
 })();
+function newGoal(form){const inp=form.querySelector('input[type=file]');const f=inp&&inp.files[0];
+ if(!f)return true;
+ (async()=>{const r=await fetch('/goals',{method:'POST',headers:{'Accept':'application/json'},
+   body:new URLSearchParams(new FormData(form))});
+  if(!r.ok){alert('Ziel nicht gespeichert: '+r.status);return}
+  const id=(await r.json()).id;
+  const u=await fetch('/api/v1/events/'+id+'/gpx',{method:'PUT',body:f});
+  if(!u.ok){const j=await u.json().catch(()=>({detail:u.statusText}));alert(j.detail)}
+  location.href='/goals#e'+id;location.reload()})();
+ return false}
 async function uploadGpx(input,id){const f=input.files[0];if(!f)return;
  const r=await fetch('/api/v1/events/'+id+'/gpx',{method:'PUT',body:f});
  if(r.ok)location.reload();else{const j=await r.json().catch(()=>({detail:r.statusText}));alert(j.detail)}}
@@ -266,7 +277,7 @@ def test_chip(s: Session) -> str:
     return f'<span class="chip test" title="Testfahrt, zählt nicht im Training">{escape(label)}</span>'
 
 
-def _row(s: Session) -> str:
+def _row(s: Session, tour: tuple[int, int, int] | None = None) -> str:
     summ = s.summary or {}
     dist = summ.get("dist_m", s.distance_m)
     move = summ.get("move_s")
@@ -275,7 +286,10 @@ def _row(s: Session) -> str:
     title = f'<a href="/ride/{s.id}">{when}</a>' if s.file("L") else when
     return (
         f'<tr id="s{s.id}"{" class=test" if s.is_test else ""}>'
-        f'<td>{title} {test_chip(s)}<br><span class="mut">{escape(s.device)}</span></td>'
+        f'<td>{title} {test_chip(s)}'
+        + (f' <a class="chip tour" href="/tour/{tour[2]}" title="Neustart unterwegs: eine Fahrt aus '
+           f'{tour[1]} Sitzungen">Teil {tour[0]}/{tour[1]}</a>' if tour else "")
+        + f'<br><span class="mut">{escape(s.device)}</span></td>'
         f'<td class="num"><span class="big">{num((dist or 0) / 1000)}</span> km</td>'
         f'<td class="num hide-s">{hm(move)}</td>'
         f'<td class="num hide-s">{num(vavg) + " km/h" if vavg else ""}</td>'
@@ -387,8 +401,11 @@ def _filter_form(min_km: float | None, max_km: float | None, tests: bool = False
 def index(sessions: list[Session], pull: dict | None,
           min_km: float | None = None, max_km: float | None = None,
           prompts: list[list[Session]] | None = None, message: str | None = None,
-          tests: bool = False, hidden_tests: int = 0, idle: int = 0) -> str:
-    rows = "\n".join(_row(s) for s in sessions) or \
+          tests: bool = False, hidden_tests: int = 0, idle: int = 0,
+          tours: dict[int, tuple[int, int, int]] | None = None) -> str:
+    """``tours``: session id -> (part, of parts, first session id) for rides split by a reboot."""
+    tours = tours or {}
+    rows = "\n".join(_row(s, tours.get(s.id)) for s in sessions) or \
         '<tr><td colspan="5" class="mut">Keine Fahrten für diesen Filter.</td></tr>'
     working = "".join(_activity(t) for t in (pull or {}).get("targets", []))
     # While something is being fetched or processed the page reloads itself, so the progress
@@ -460,12 +477,29 @@ def _test_banner(s: Session, rep: dict) -> str:
             .replace("<button", '<button class="link"') + "</p>")
 
 
-def ride_page(s: Session, rep: dict) -> str:
-    base = f"{API}/sessions/{s.id}"
-    links = _links(s) + [f'<a href="{base}/report.md">Bericht (Markdown)</a>',
-                         f'<a href="{base}/report.json">JSON</a>']
-    head = (f'<h1>{escape(_when(s))} {test_chip(s)}</h1><div class="chips">{"".join(links)}</div>'
-            + _test_banner(s, rep))
+def _tour_banner(s: Session, group: list[Session]) -> str:
+    """On a session page: this is part n of a ride the bike computer rebooted in."""
+    n = next(i for i, x in enumerate(group) if x.id == s.id) + 1
+    return (f'<div class="banner"><h2>Teil {n} von {len(group)} einer Fahrt</h2>'
+            '<p>Der Fahrradcomputer ist unterwegs neu gestartet; die Sitzungen liegen nur kurz '
+            'auseinander und zählen im Training als eine Fahrt.</p>'
+            f'<div class="ask"><a class="btn" href="/tour/{group[0].id}">Bericht der ganzen Fahrt</a></div></div>')
+
+
+def ride_page(s: Session, rep: dict, group: list[Session] | None = None, tour: bool = False) -> str:
+    """One session's report -- or, with ``tour``, the report of the whole ride ``group``."""
+    group = group or [s]
+    if tour:
+        parts = "".join(f'<a href="/ride/{x.id}">Teil {i + 1}: {escape(_when(x))}</a>'
+                        for i, x in enumerate(group))
+        head = (f'<h1>Fahrt {escape(_when(s))}</h1><p class="mut">{len(group)} Sitzungen, '
+                'zusammengefasst (Neustart unterwegs)</p>' f'<div class="chips">{parts}</div>')
+    else:
+        base = f"{API}/sessions/{s.id}"
+        links = _links(s) + [f'<a href="{base}/report.md">Bericht (Markdown)</a>',
+                             f'<a href="{base}/report.json">JSON</a>']
+        head = (f'<h1>{escape(_when(s))} {test_chip(s)}</h1><div class="chips">{"".join(links)}</div>'
+                + _test_banner(s, rep) + (_tour_banner(s, group) if len(group) > 1 else ""))
     if rep.get("empty"):
         return page("Fahrt", "/", head + '<p class="mut">Leeres Log.</p>')
     ride, heart, power, road, health = (rep[k] for k in ("ride", "heart", "power", "road", "health"))
@@ -572,7 +606,7 @@ def ride_page(s: Session, rep: dict) -> str:
         b = health["baro_vs_gps"]
         out.append(f'<li class="i">Baro gegen GPS-Höhe: Versatz {b["offset_m"]:+d} m, Drift {b["drift_m"]:+d} m</li>')
     out.append("</ul></div>")
-    return page("Fahrt " + _when(s), "/", "\n".join(out))
+    return page(("Fahrt " if tour else "Sitzung ") + _when(s), "/", "\n".join(out))
 
 
 # --- training ----------------------------------------------------------------------------
@@ -658,11 +692,14 @@ def training_page(load: list, weeks: list, rides_total: int, has_hr_max: bool,
 # --- goals ------------------------------------------------------------------------------
 
 def _event_form(e=None) -> str:
+    """Create (e None) or edit an event. The new-event form takes the GPX too: the script
+    creates the event, then uploads the file to it."""
     v = (lambda attr, default="": escape(str(getattr(e, attr) if e and getattr(e, attr) is not None
                                              else default)))
     prio = e.priority if e else "A"
     opts = "".join(f'<option value="{p}"{" selected" if p == prio else ""}>{p}</option>' for p in "ABC")
-    return (f'<form method="post" action="/goals">'
+    submit = "" if e else ' onsubmit="return newGoal(this)"'
+    return (f'<form method="post" action="/goals"{submit}>'
             + (f'<input type="hidden" name="id" value="{v("id")}">' if e else "")
             + f'<label class="f"><span>Name</span><input name="name" required value="{v("name")}"></label>'
             f'<label class="f"><span>Datum</span><input type="date" name="date" required value="{v("date")}"></label>'
@@ -674,7 +711,16 @@ def _event_form(e=None) -> str:
             f'value="{v("ascent_m")}"></label>'
             f'<label class="f"><span>Notiz</span><input name="notes" style="width:min(30em,100%)" '
             f'value="{v("notes")}"></label>'
-            '<button class="pri" type="submit">Speichern</button></form>')
+            + ('' if e else '<label class="f"><span>Strecke als GPX</span><input type="file" '
+               'accept=".gpx,application/gpx+xml"> <span class="mut">optional, geht auch später</span></label>')
+            + '<button class="pri" type="submit">Speichern</button></form>')
+
+
+def _gpx_button(event_id: str, label: str, primary: bool = False) -> str:
+    """A button that opens the file dialog and uploads the GPX straight away."""
+    return (f'<label class="btn{" pri" if primary else ""}" style="display:inline-block">{escape(label)}'
+            f'<input type="file" accept=".gpx,application/gpx+xml" style="display:none" '
+            f'onchange="uploadGpx(this,\'{escape(event_id)}\')"></label>')
 
 
 def goals_page(items: list[tuple], today: datetime.date) -> str:
@@ -714,7 +760,13 @@ def goals_page(items: list[tuple], today: datetime.date) -> str:
         prof = e.profile or {}
         if prof.get("profile"):
             out.append("<h2>Strecke</h2>" + charts.profile(prof["profile"], "Höhenprofil " + e.name,
-                                                             prof.get("climbs")))
+                                                             prof.get("climbs"))
+                       + f'<p>{_gpx_button(e.id, "Andere Strecke (GPX) hochladen")}</p>')
+        else:
+            out.append('<div class="banner"><h2>Noch keine Strecke</h2><p>Mit der Strecke als GPX '
+                       '(mit Höhen) kommen Distanz, Höhenmeter, Höhenprofil und die Anstiege mit deiner '
+                       'geschätzten Zeit dazu.</p><div class="ask">'
+                       + _gpx_button(e.id, "Strecke (GPX) hochladen", primary=True) + "</div></div>")
         if r["climbs"]:
             out.append("<table><thead><tr><th>Kat.</th><th class=num>ab km</th><th class=num>Länge</th>"
                        "<th class=num>Höhe</th><th class=num>Ø %</th><th class=num>deine Zeit*</th></tr></thead><tbody>"
@@ -725,8 +777,6 @@ def goals_page(items: list[tuple], today: datetime.date) -> str:
                        + "</tbody></table><p class='mut'>* aus deiner besten VAM auf vergleichbaren Anstiegen "
                        "(mindestens halbe Höhe) der letzten 90 Tage — frisch gefahren, nicht nach 100 km.</p>")
         out.append(f'<details><summary>Bearbeiten</summary>{_event_form(e)}'
-                   f'<p><label class="f"><span>Strecke als GPX</span><input type="file" accept=".gpx" '
-                   f'onchange="uploadGpx(this,\'{escape(e.id)}\')"></label></p>'
                    f'<form method="post" action="/goals/{escape(e.id)}/delete" '
                    'onsubmit="return confirm(\'Ziel löschen?\')"><button type="submit">Löschen</button></form>'
                    "</details></div>")

@@ -469,6 +469,7 @@ def test_every_route_requires_a_token_once_auth_is_on(tmp_path, ride_bytes):
             ("GET", f"{API}/sessions/{sid}/report.json"),
             ("GET", f"{API}/sessions/{sid}/report.md"),
             ("GET", f"/ride/{sid}"),
+            ("GET", f"/tour/{sid}"),
             ("GET", "/training"),
             ("GET", "/goals"),
             ("POST", "/goals"),

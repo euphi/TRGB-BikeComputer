@@ -28,6 +28,7 @@ from dataclasses import asdict
 from bikelog import report, training
 from bikelog.record import ReadStats
 
+from . import tours
 from .storage import Session, Storage
 
 log = logging.getLogger("bikelog.analysis")
@@ -78,6 +79,36 @@ def report_for(store: Storage, session: Session) -> dict:
     return rep
 
 
+def tour_key(group: list[Session], athlete_key: str) -> str:
+    return "tour|" + "|".join(f"{s.id}={cache_key(s, athlete_key)}" for s in group)
+
+
+def tour_report_for(store: Storage, group: list[Session], rider: report.Athlete | None = None) -> dict:
+    """The report of a tour: one session's own report, or -- for several sessions (a
+    reboot on the way) -- one report over their concatenated records, so that stops,
+    decoupling, best efforts and climbs run across the joins."""
+    if len(group) == 1:
+        return report_for(store, group[0])
+    key = tour_key(group, _athlete_key(store))
+    cached = store.cached_tour_report(key)
+    if cached is not None:
+        return cached
+    rep = report.compute(tours.rebased_records(store, group), rider or athlete(store))
+    rep["meta"]["sessions"] = [s.id for s in group]
+    store.store_tour_report(key, rep)
+    return rep
+
+
+def tours_of(store: Storage) -> list[list[Session]]:
+    """All tours (groups of sessions a short pause apart) of all devices, oldest first;
+    test, idle and unreadable sessions are not part of any."""
+    out = []
+    for device in store.devices():
+        sessions = [s for s in store.sessions_for_device(device) if not s.log_error]
+        out.extend(tours.group_into_tours(sessions, store.settings.komoot_merge_gap_s))
+    return sorted(out, key=lambda g: g[0].first_time or 0)
+
+
 def _lower_priority() -> None:
     try:        # Linux: a thread is a task, its native id works with setpriority
         os.setpriority(os.PRIO_PROCESS, threading.get_native_id(), 19)
@@ -118,24 +149,35 @@ def _refresh(store: Storage, background: bool) -> int:
                 return done
             except Exception as exc:            # unreadable log: skip, the page says so
                 log.warning("report for session %d failed: %s", session.id, exc)
+        for group in tours_of(store):
+            if len(group) > 1:
+                try:
+                    if store.cached_tour_report(tour_key(group, akey)) is None:
+                        tour_report_for(store, group, rider)
+                        done += 1
+                except sqlite3.ProgrammingError:
+                    return done
+                except Exception as exc:
+                    log.warning("report for tour %s failed: %s", [s.id for s in group], exc)
         if done:
-            log.info("%d session report(s) computed", done)
+            log.info("%d session/tour report(s) computed", done)
         return done
 
 
 def rides(store: Storage) -> list[training.Ride]:
-    """Every session that counts as training, as training.Ride, oldest first. Test
-    sessions are left out; one the rider marked as real counts even if the log says test."""
+    """Every tour that counts as training, as training.Ride, oldest first: sessions a
+    short pause apart (a reboot on the way) are one ride. Test sessions are left out;
+    one the rider marked as real counts even if the log says test."""
     out = []
-    for session in store.sessions_with_log():
-        if session.is_test or session.log_error:
-            continue
+    for group in tours_of(store):
         try:
-            rep = report_for(store, session)
+            rep = tour_report_for(store, group)
         except Exception:
             continue
-        ride = training.Ride.from_report(rep, session.id, allow_test=session.test_override == "real")
+        ride = training.Ride.from_report(rep, group[0].id,
+                                         allow_test=any(s.test_override == "real" for s in group))
         if ride:
+            ride.session_ids = [s.id for s in group]
             out.append(ride)
     return sorted(out, key=lambda r: r.start)
 

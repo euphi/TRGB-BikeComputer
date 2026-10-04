@@ -27,7 +27,7 @@ from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from bikelog import csvexport, report, training
 from bikelog.record import ReadStats
 
-from . import analysis, archive, exporter, komoot, nextcloud, sdlayout, webui
+from . import analysis, archive, exporter, tours, komoot, nextcloud, sdlayout, webui
 from .auth import AuthDep, Principal
 from .config import Settings
 from .puller import DeviceUnavailable, Puller
@@ -103,7 +103,9 @@ def create_app(settings: Settings | None = None, puller: Puller | None = None) -
         return webui.index(sessions, puller.as_dict() if puller else None,
                            min_km=min_km_v, max_km=max_km_v,
                            prompts=komoot.pending_prompts(store), message=msg,
-                           tests=tests, hidden_tests=hidden, idle=len(store.idle_sessions()))
+                           tests=tests, hidden_tests=hidden, idle=len(store.idle_sessions()),
+                           tours={s.id: (i + 1, len(g), g[0].id) for g in analysis.tours_of(store)
+                                  if len(g) > 1 for i, s in enumerate(g)})
 
     def _opt_km(value: str | None) -> float | None:
         if value is None or not value.strip():
@@ -232,7 +234,19 @@ def create_app(settings: Settings | None = None, puller: Puller | None = None) -
     @app.get("/ride/{session_id}", response_class=HTMLResponse, include_in_schema=False)
     def ride_page(session_id: int, principal: Principal = AuthDep, store: Storage = Depends(storage)):
         session = _require_log(store, session_id)
-        return webui.ride_page(session, _report(store, session))
+        group = [session] if (session.is_test or session.idle) else tours.group_for(store, session)
+        return webui.ride_page(session, _report(store, session), group=group)
+
+    @app.get("/tour/{session_id}", response_class=HTMLResponse, include_in_schema=False)
+    def tour_page(session_id: int, principal: Principal = AuthDep, store: Storage = Depends(storage)):
+        """The whole ride a session belongs to (several sessions after a reboot on the way)."""
+        session = _require_log(store, session_id)
+        group = tours.group_for(store, session)
+        try:
+            rep = analysis.tour_report_for(store, group)
+        except (OSError, ValueError, TypeError) as exc:
+            raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, str(exc))
+        return webui.ride_page(group[0], rep, group=group, tour=len(group) > 1)
 
     @app.get("/training", response_class=HTMLResponse, include_in_schema=False)
     def training_page(days: int = Query(default=180, ge=28, le=1100),
@@ -281,6 +295,8 @@ def create_app(settings: Settings | None = None, puller: Puller | None = None) -
         event.priority = form.get("priority", "A") if form.get("priority") in ("A", "B", "C") else "A"
         event.distance_km, event.ascent_m, event.notes = distance, ascent, form.get("notes", "")
         analysis.save_event(store, event)
+        if "application/json" in request.headers.get("accept", ""):
+            return {"id": event.id}             # the page's script uploads the GPX next
         return RedirectResponse(f"/goals#e{event.id}", status_code=status.HTTP_303_SEE_OTHER)
 
     @app.post("/goals/{event_id}/delete", include_in_schema=False)
