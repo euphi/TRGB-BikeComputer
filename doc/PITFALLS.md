@@ -79,6 +79,19 @@ Rules:
   hardly any stack left"). Pattern: `Statistics::requestPersist()` only sets a flag, the
   write happens in the next `cycle()`.
 
+## Probably at most 3 BLE connections (suspected, not yet measured)
+
+The test ride of 2026-10-04: TrailBridge, heart-rate belt and speed sensor connected, the cadence
+sensor (`CYCPLUS C3`) was found 7 times in a row and every `connect()` failed at once ("Can't
+connect"); after a minute it was gone for good (asleep). On 2026-09-27 the 4th connection failed
+the same way, there it was the speed sensor. NimBLE's default is `CONFIG_BT_NIMBLE_MAX_CONNECTIONS
+= 3`; the bike computer wants four peers (nav+GPS+profile on one, HR, two CSC). Deleting the slot
+changes nothing, as the log shows. To check: look at what `BLEClient::connect()` returns / log the
+NimBLE error code and the number of connected clients when a connect fails. A fix needs a different
+sdkconfig (pioarduino `custom_sdkconfig`, which compiles the IDF libraries) or the NimBLE-Arduino
+library with `-DCONFIG_BT_NIMBLE_MAX_CONNECTIONS=4` -- every connection costs internal RAM.
+Until then the 4th device simply never connects.
+
 ## The BLE stack is NimBLE, not Bluedroid
 
 With the pioarduino platform (Arduino-ESP32 3.3.x) the BLE stack runs on NimBLE.
