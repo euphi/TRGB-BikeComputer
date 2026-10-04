@@ -8,7 +8,8 @@ the metadata). SUBDIR_TOURS is meant to be picked up by whatever comes next
 (Nextcloud sync, a Komoot/Strava uploader); SUBDIR_DEBUG holds everything
 that is not a real ride -- a session parked somewhere with the phone's GPS
 wandering a few metres, a five-minute test, a simulator or GPS-playback session
-(Session.is_test, status "test") -- kept for reference but out of the uploaders' way. File names sort chronologically and each file's mtime is
+(Session.is_test, status "test") -- kept for reference but out of the uploaders' way.
+Idle sessions (switched on, no ride) get no file at all (status "idle"). File names sort chronologically and each file's mtime is
 the ride's start.
 
 A file is (re)written -- and, if its distance moved it from one subdirectory
@@ -29,11 +30,12 @@ import threading
 
 from bikelog import gpx
 
+from . import archive
 from .storage import Session, Storage
 
 log = logging.getLogger("bikelog.export")
 
-EXPORT_VERSION = 4
+EXPORT_VERSION = 5
 
 #: Below this, a session goes to Debug_Archive instead of Tours -- see the
 #: module docstring. Raise/lower it here, not per-session; the automatic
@@ -70,6 +72,12 @@ def file_name(session: Session, first_fix: datetime.datetime | None) -> str:
 def export_session(store: Storage, session: Session) -> str:
     settings = store.settings
     root = settings.gpx_dir
+    if session.idle:
+        # Switched on, no ride: no GPX at all (archive.py takes the files later).
+        if session.gpx_file:
+            (root / session.gpx_file).unlink(missing_ok=True)
+        store.set_export(session.id, None, "idle", EXPORT_VERSION)
+        return "idle"
     try:
         xml, stats = render(store, session)
     except Exception as exc:                    # unreadable log: record it, keep going
@@ -102,6 +110,7 @@ def export_session(store: Storage, session: Session) -> str:
 
 
 def export_pending(store: Storage) -> dict[str, int]:
+    archive.archive_idle(store)         # housekeeping rides along with every export run
     if not store.settings.export_gpx:
         return {}
     counts: dict[str, int] = {}

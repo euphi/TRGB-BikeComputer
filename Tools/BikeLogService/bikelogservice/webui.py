@@ -75,6 +75,7 @@ form.inline{display:inline;margin:0}
 button,.btn{font:600 13px var(--sans);background:var(--panel);color:var(--parch);border:1.5px solid var(--brass);
  border-radius:999px;padding:5px 16px;cursor:pointer}
 button.pri{background:var(--brass);color:var(--bg)}
+button:disabled{opacity:.4;cursor:not-allowed}
 button.link{background:none;border:none;color:var(--brass);padding:0;font:500 12px var(--mono);
  text-decoration:underline}
 input,select,textarea{font:inherit;background:var(--bg);color:var(--parch);border:1.5px solid var(--rim);
@@ -132,7 +133,7 @@ async function uploadGpx(input,id){const f=input.files[0];if(!f)return;
 """
 
 NAV = (("/", "Fahrten"), ("/training", "Training"), ("/goals", "Ziele"),
-       ("/climbs", "Anstiege"), ("/athlete", "Fahrer"))
+       ("/climbs", "Anstiege"), ("/athlete", "Fahrer"), ("/archive", "Archiv"))
 
 
 def page(title: str, active: str, body: str, head: str = "") -> str:
@@ -364,13 +365,16 @@ def busy(pull: dict | None) -> bool:
 
 
 def _filter_form(min_km: float | None, max_km: float | None, tests: bool = False,
-                 hidden_tests: int = 0) -> str:
+                 hidden_tests: int = 0, idle: int = 0) -> str:
     min_v = f' value="{min_km:g}"' if min_km is not None else ""
     max_v = f' value="{max_km:g}"' if max_km is not None else ""
     reset = (' <a href="/">zurücksetzen</a>'
              if (min_km is not None or max_km is not None or tests) else "")
     hint = (f' <span class="mut">{hidden_tests} Testfahrt{"en" if hidden_tests != 1 else ""} '
             'ausgeblendet</span>' if hidden_tests else "")
+    if idle:
+        hint += (f' <a class="mut" href="/archive">{idle} Leerlauf-Sitzung{"en" if idle != 1 else ""} '
+                 '(nur Debug-Daten) im Archiv</a>')
     return (
         '<form class="filter" method="get">'
         f'Länge von <input type="number" name="min_km" min="0" step="0.1"{min_v}> '
@@ -383,7 +387,7 @@ def _filter_form(min_km: float | None, max_km: float | None, tests: bool = False
 def index(sessions: list[Session], pull: dict | None,
           min_km: float | None = None, max_km: float | None = None,
           prompts: list[list[Session]] | None = None, message: str | None = None,
-          tests: bool = False, hidden_tests: int = 0) -> str:
+          tests: bool = False, hidden_tests: int = 0, idle: int = 0) -> str:
     rows = "\n".join(_row(s) for s in sessions) or \
         '<tr><td colspan="5" class="mut">Keine Fahrten für diesen Filter.</td></tr>'
     working = "".join(_activity(t) for t in (pull or {}).get("targets", []))
@@ -396,7 +400,7 @@ def index(sessions: list[Session], pull: dict | None,
 {working}
 {_prompts(prompts or [])}
 {_pull_line(pull)}
-{_filter_form(min_km, max_km, tests, hidden_tests)}
+{_filter_form(min_km, max_km, tests, hidden_tests, idle)}
 <table style="margin-top:14px"><thead><tr><th>Sitzung</th><th class="num">Strecke</th>
 <th class="num hide-s">Fahrzeit</th><th class="num hide-s">Ø</th><th>Dateien</th></tr></thead>
 <tbody>
@@ -799,3 +803,60 @@ def athlete_page(athlete, saved: bool = False, error: str | None = None) -> str:
             "<p class='mut'>Gespeichert in athlete.json im Datenverzeichnis des Dienstes. Pulszonen, "
             "TRIMP und W/kg gibt es nur mit diesen Angaben.</p>")
     return page("Fahrer", "/athlete", body)
+
+
+# --- archive -----------------------------------------------------------------------------
+
+def _delete_button(session_id: int | None, label: str, online: bool, primary: bool = False) -> str:
+    hidden = f'<input type="hidden" name="id" value="{session_id}">' if session_id is not None else ""
+    ask = ("Alle diese Sitzungen auf dem Fahrradcomputer löschen?" if session_id is None
+           else "Diese Sitzung auf dem Fahrradcomputer löschen?")
+    return (f'<form class="inline" method="post" action="/ui/archive/device-delete" '
+            f'onsubmit="return confirm(\'{ask}\')">{hidden}'
+            f'<button{" class=pri" if primary else ""} type="submit"{"" if online else " disabled"}>'
+            f'{label}</button></form>')
+
+
+def archive_page(idle: list[Session], archived: list[Session], days: float,
+                 online: dict[str, bool], pull_enabled: bool, message: str | None = None) -> str:
+    out = ["<h1>Archiv</h1>"]
+    if message:
+        out.append(f'<div class="msg">{escape(message)}</div>')
+    out.append(f'<p class="mut">Leerlauf-Sitzungen: der Fahrradcomputer war an, ohne dass gefahren wurde '
+               f'(Rad und Position standen still) — nur Debug-Daten. Sie erscheinen nicht in der Fahrtenliste, '
+               f'bekommen kein GPX und wandern {num(days, 0)} Tage nach dem Abholen nach '
+               '<code>archive/</code> im Datenverzeichnis. Aus dem Index verschwinden sie erst, wenn sie '
+               'auch auf der SD-Karte nicht mehr liegen — sonst holt der nächste Abruf sie wieder.</p>')
+    any_online = any(online.values())
+    if not pull_enabled:
+        out.append('<p class="warn">Abholen ist aus (BIKELOG_PULL) — Löschen auf dem BC geht nur mit '
+                   'bekanntem Gerät.</p>')
+    elif not any_online:
+        out.append('<p class="mut">Der Fahrradcomputer ist gerade nicht erreichbar — Löschen auf dem BC '
+                   'geht nur, solange er im WLAN ist. Es wird nichts vorgemerkt.</p>')
+    if idle or archived:
+        out.append("<p>" + _delete_button(None, f"Alle {len(idle) + len(archived)} auf dem BC löschen",
+                                          any_online, primary=True) + "</p>")
+
+    def rows(sessions: list[Session], archived_view: bool) -> str:
+        body = []
+        for s in sessions:
+            base = f"{API}/sessions/{s.id}"
+            files = "".join(
+                (f'<span>{escape(f.name)} {_fmt_size(f.size)}</span>' if archived_view else
+                 f'<a href="{base}/files/{escape(f.name)}">{escape(f.name)} {_fmt_size(f.size)}</a>')
+                for f in s.files)
+            when = (f'archiviert {escape((s.archived_at or "")[:10])}' if archived_view
+                    else f'abgeholt {escape(s.created_at[:10])}')
+            body.append(f'<tr><td>{escape(_when(s))}<br><span class="mut">{escape(s.device)} · {when}</span></td>'
+                        f'<td class="chips">{files}</td>'
+                        f'<td class="num">{_delete_button(s.id, "Auf dem BC löschen", online.get(s.device, False))}'
+                        "</td></tr>")
+        return ("<table><thead><tr><th>Sitzung</th><th>Dateien</th><th></th></tr></thead><tbody>"
+                + "".join(body) + "</tbody></table>")
+
+    out.append(f"<h2>Leerlauf, noch nicht archiviert ({len(idle)})</h2>")
+    out.append(rows(idle, False) if idle else '<p class="mut">Keine.</p>')
+    out.append(f"<h2>Archiviert, noch auf der SD-Karte ({len(archived)})</h2>")
+    out.append(rows(archived, True) if archived else '<p class="mut">Keine.</p>')
+    return page("Archiv", "/archive", "\n".join(out))

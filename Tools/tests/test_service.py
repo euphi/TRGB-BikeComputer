@@ -76,7 +76,8 @@ def test_files_of_one_session_are_grouped(client, ride_bytes):
     _put(client, b"debug\n", "20260920/D_143012.log")
     _put(client, b"\x01" * 64, "20260920/R_143012_01.bin")
     _put(client, b"other\n", "20260920/D_150000.log")
-    listed = client.get(API + "/sessions").json()
+    assert client.get(API + "/sessions").json()["total"] == 1      # D_150000 alone: idle
+    listed = client.get(API + "/sessions", params={"idle": True}).json()
     assert listed["total"] == 2
     ours = next(s for s in listed["sessions"] if s["stem"] == "_143012")
     assert sorted(f["name"] for f in ours["files"]) == \
@@ -486,6 +487,9 @@ def test_every_route_requires_a_token_once_auth_is_on(tmp_path, ride_bytes):
             ("POST", f"/ui/sessions/{sid}/komoot-ignore"),
             ("POST", f"/ui/sessions/{sid}/test"),
             ("POST", f"{API}/sessions/{sid}/test?mark=test"),
+            ("GET", "/archive"),
+            ("POST", "/ui/archive/device-delete"),
+            ("POST", f"{API}/archive/device-delete"),
             ("GET", f"{API}/pull"),
             ("POST", f"{API}/pull"),
         ]

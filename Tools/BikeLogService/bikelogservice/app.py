@@ -27,10 +27,10 @@ from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from bikelog import csvexport, report, training
 from bikelog.record import ReadStats
 
-from . import analysis, exporter, komoot, nextcloud, sdlayout, webui
+from . import analysis, archive, exporter, komoot, nextcloud, sdlayout, webui
 from .auth import AuthDep, Principal
 from .config import Settings
-from .puller import Puller
+from .puller import DeviceUnavailable, Puller
 from .storage import Session, Storage
 
 API = "/api/v1"
@@ -87,19 +87,89 @@ def create_app(settings: Settings | None = None, puller: Puller | None = None) -
     # ------------------------------------------------------------------
 
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
-    def index(min_km: float | None = Query(default=None, ge=0),
-             max_km: float | None = Query(default=None, ge=0),
+    def index(min_km: str | None = Query(default=None, max_length=20),
+             max_km: str | None = Query(default=None, max_length=20),
              msg: str | None = Query(default=None, max_length=300),
              tests: bool = Query(default=False),
              principal: Principal = AuthDep, store: Storage = Depends(storage)):
-        min_m = min_km * 1000 if min_km is not None else None
-        max_m = max_km * 1000 if max_km is not None else None
-        sessions = store.list(limit=500, min_distance_m=min_m, max_distance_m=max_m, tests=tests)
-        hidden = 0 if tests else store.count(min_m, max_m) - store.count(min_m, max_m, tests=False)
+        # The filter form sends empty fields as "min_km=" -- that is "no bound", not an error.
+        min_km_v, max_km_v = _opt_km(min_km), _opt_km(max_km)
+        min_m = min_km_v * 1000 if min_km_v is not None else None
+        max_m = max_km_v * 1000 if max_km_v is not None else None
+        sessions = store.list(limit=500, min_distance_m=min_m, max_distance_m=max_m,
+                              tests=tests, idle=False)
+        hidden = 0 if tests else (store.count(min_m, max_m, idle=False)
+                                  - store.count(min_m, max_m, tests=False, idle=False))
         return webui.index(sessions, puller.as_dict() if puller else None,
-                           min_km=min_km, max_km=max_km,
+                           min_km=min_km_v, max_km=max_km_v,
                            prompts=komoot.pending_prompts(store), message=msg,
-                           tests=tests, hidden_tests=hidden)
+                           tests=tests, hidden_tests=hidden, idle=len(store.idle_sessions()))
+
+    def _opt_km(value: str | None) -> float | None:
+        if value is None or not value.strip():
+            return None
+        try:
+            km = float(value.replace(",", "."))
+        except ValueError:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"not a distance: {value!r}")
+        if km < 0:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "distance must not be negative")
+        return km
+
+    # --- archive: idle sessions, deleting on the device ---
+
+    def _device_online() -> dict[str, bool]:
+        return {t["device"]: bool(t["online"]) for t in (puller.as_dict()["targets"] if puller else [])}
+
+    @app.get("/archive", response_class=HTMLResponse, include_in_schema=False)
+    def archive_page(msg: str | None = Query(default=None, max_length=500),
+                     principal: Principal = AuthDep, store: Storage = Depends(storage)):
+        return webui.archive_page(store.idle_sessions(), store.archived_sessions(),
+                                  settings.idle_archive_days, _device_online(),
+                                  pull_enabled=puller is not None, message=msg)
+
+    def _delete_on_device(store: Storage, sessions: list[Session]) -> tuple[int, list[str]]:
+        if puller is None:
+            raise DeviceUnavailable("pulling is disabled (BIKELOG_PULL) -- the device is unknown")
+        return archive.delete_on_device(store, puller, sessions)
+
+    def _deletable(store: Storage, session_id: int | None) -> list[Session]:
+        """Idle or archived sessions (only those may be deleted on the device from here)."""
+        candidates = store.idle_sessions() + store.archived_sessions()
+        if session_id is None:
+            return candidates
+        chosen = [s for s in candidates if s.id == session_id]
+        if not chosen:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "no idle or archived session with this id")
+        return chosen
+
+    @app.post("/ui/archive/device-delete", include_in_schema=False)
+    async def ui_device_delete(request: Request, principal: Principal = AuthDep,
+                               store: Storage = Depends(storage)):
+        form = await _form(request)
+        sid = int(form["id"]) if form.get("id", "").isdigit() else None
+        try:
+            done, errors = _delete_on_device(store, _deletable(store, sid))
+            text = f"{done} Sitzung(en) auf dem BC gelöscht und archiviert."
+            if errors:
+                text += " Nicht gelöscht: " + "; ".join(errors[:3]) + (" …" if len(errors) > 3 else "")
+        except DeviceUnavailable as exc:
+            text = f"Nichts gelöscht: {exc}"
+        return RedirectResponse("/archive?" + urlencode({"msg": text}),
+                                status_code=status.HTTP_303_SEE_OTHER)
+
+    @app.post(API + "/archive/device-delete", tags=["sessions"])
+    def device_delete(session_id: int | None = Query(default=None,
+                                                     description="one idle/archived session; all if omitted"),
+                      principal: Principal = AuthDep, store: Storage = Depends(storage)):
+        """Delete idle and archived sessions on the bike computer now -- only while it is
+        reachable, nothing is queued. Sessions whose files are all gone from the card are
+        archived and dropped from the index."""
+        try:
+            done, errors = _delete_on_device(store, _deletable(store, session_id))
+        except DeviceUnavailable as exc:
+            raise HTTPException(status.HTTP_409_CONFLICT, str(exc))
+        return {"deleted_sessions": done, "errors": errors}
 
     # The page's own buttons: same actions as the API routes below, but they answer with a
     # redirect back to the page (a form post must not end on a bare JSON document).
@@ -316,12 +386,14 @@ def create_app(settings: Settings | None = None, puller: Puller | None = None) -
                                                     description="only sessions with at most this much distance"),
                       tests: bool = Query(default=False,
                                           description="include test sessions (simulator, GPS playback)"),
+                      idle: bool = Query(default=False,
+                                         description="include idle sessions (switched on, no ride)"),
                       principal: Principal = AuthDep,
                       store: Storage = Depends(storage)):
         min_m = min_km * 1000 if min_km is not None else None
         max_m = max_km * 1000 if max_km is not None else None
-        return {"total": store.count(min_m, max_m, tests),
-                "sessions": [s.as_dict() for s in store.list(limit, offset, min_m, max_m, tests)]}
+        return {"total": store.count(min_m, max_m, tests, idle),
+                "sessions": [s.as_dict() for s in store.list(limit, offset, min_m, max_m, tests, idle)]}
 
     def _require(store: Storage, session_id: int) -> Session:
         session = store.get(session_id)

@@ -200,6 +200,31 @@ offered for Komoot. The ride page says why a session counts as a test and has a 
 to overrule the detection in either direction ("Doch eine echte Fahrt", "Als Testfahrt
 markieren"; API: `POST /api/v1/sessions/{id}/test?mark=test|real|auto`).
 
+## Idle sessions and archive
+
+Every boot of the bike computer is a session, also when it was only switched on at home.
+A session in which the wheel stood and the position got nowhere (wheel < 50 m, all GPS
+fixes within 300 m), or which has no binary log at all, is **idle**
+([`bikelog/testride.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/bikelog/testride.py)).
+Idle sessions never appear in the ride list (it links to them: "N Leerlauf-Sitzungen im
+Archiv") or in `GET /api/v1/sessions` (`idle=true` includes them), get no GPX and count
+nowhere.
+
+`BIKELOG_IDLE_ARCHIVE_DAYS` (default 7) days after they were fetched, their files move
+from `<data>/sessions/` to `<data>/archive/` (same tree) -- debug logs stay available
+with a shell
+([`archive.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/BikeLogService/bikelogservice/archive.py)).
+The index keeps a tombstone of them for as long as the files are still on the SD card,
+otherwise the next pull would fetch them again; the pull drops it once they are gone
+from the card's listing (this applies to deleted sessions as well).
+
+The page **Archiv** (`/archive`) lists idle sessions not yet archived and archived ones
+still on the card. "Auf dem BC löschen" (one session, or all) deletes their files on the
+bike computer right away through the firmware's `/del/` endpoint -- only while it is
+reachable; nothing is queued. A session whose files are all gone from the card is moved
+to the archive and dropped from the index. API: `POST /api/v1/archive/device-delete`
+(`session_id`, all if omitted; 409 when the device is not reachable).
+
 ## Session report
 
 `/ride/{id}` (click on a ride in the list) shows the report of a session: key figures,
@@ -320,6 +345,7 @@ Environment variables (in the service: `~/bikelog/bikelog.env`):
 | `BIKELOG_NEXTCLOUD_URL` / `_USER` / `_PASSWORD` | -- | Nextcloud login (app password); without all three the sync is off |
 | `BIKELOG_NEXTCLOUD_DIR` | `BikeLog` | target directory (WebDAV path, created if needed) |
 | `BIKELOG_ATHLETE_FILE` | `<data>/athlete.json` | rider data for the session report |
+| `BIKELOG_IDLE_ARCHIVE_DAYS` | `7` | idle sessions to `archive/` after this many days, 0 = never |
 
 Both variants of the bike computer (gravel and Forumslader) announce themselves as
 `TRGB-BC` today -- the service cannot tell them apart and stores everything under one
@@ -332,7 +358,7 @@ variant or a `device` field in `/logfiles.json`.
 |---|---|---|
 | `GET` | `/` | list of rides (HTML) |
 | `GET` | `/api/v1/health` | reachability + number of sessions |
-| `GET` | `/api/v1/sessions` | list (`limit`, `offset`, `tests`: include test sessions), newest first |
+| `GET` | `/api/v1/sessions` | list (`limit`, `offset`, `tests`: include test sessions, `idle`: include idle sessions), newest first |
 | `GET` | `/api/v1/sessions/{id}` | session with files, key figures, `I_` statistics |
 | `GET` | `/api/v1/sessions/{id}.gpx` | GPX as in the export (`max_fix_age_ms`, `segment_gap_s`, `ele`, `max_accuracy_m`, `shocks`, `labels`, `rich`) |
 | `GET` | `/api/v1/sessions/{id}.csv` | CSV (`with_gps`) |
@@ -340,6 +366,7 @@ variant or a `device` field in `/logfiles.json`.
 | `GET` | `/api/v1/sessions/{id}/report.json` | key figures of the session, see [session report](#session-report) |
 | `GET` | `/api/v1/sessions/{id}/report.md` | the same as a German Markdown report |
 | `POST` | `/api/v1/sessions/{id}/test` | overrule the test detection (`mark=test|real|auto`) |
+| `POST` | `/api/v1/archive/device-delete` | delete idle/archived sessions on the bike computer now (`session_id`) |
 | `GET` | `/api/v1/training` | daily load (TRIMP, CTL, ATL, TSB), weeks, recurring climbs (`days`, `weeks`) |
 | `GET` | `/api/v1/events` | target events with readiness |
 | `PUT` | `/api/v1/events/{id}/gpx` | course GPX of a target event (body = file) |

@@ -42,6 +42,7 @@ import socket
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import asdict, dataclass, field
 from typing import Callable
@@ -172,10 +173,13 @@ class SyncResult:
     #: Sessions (stems) seen in CUR/: the running one plus any that LogSessions
     #: has not moved yet. More than one = pull again shortly.
     workdir_sessions: int = 0
+    #: index rows of deleted/archived sessions dropped: their files left the card
+    purged: int = 0
 
     def summary(self) -> str:
         return (f"{self.listed} listed, {self.fetched} fetched ({self.bytes} byte), "
-                f"{self.replaced} replaced, {self.failed} failed")
+                f"{self.replaced} replaced, {self.failed} failed"
+                + (f", {self.purged} tombstone(s) dropped (gone from the card)" if self.purged else ""))
 
 
 Progress = Callable[..., None]
@@ -203,6 +207,10 @@ def sync(storage, device: str, base_url: str, http: Http | None = None,
     result = SyncResult()
     note(phase="listing")
     listing = fetch_listing(http, base_url)
+    if listing:
+        # Tombstones of sessions that are gone from the card are not needed any more.
+        # (An empty listing is more likely a card problem than an empty card.)
+        result.purged = storage.purge_gone(device, {e.file.path for e in listing})
     known = storage.known_files(device)
     result.workdir_sessions = len({e.file.stem for e in listing
                                    if e.file.day == sdlayout.WORKDIR})
@@ -385,6 +393,10 @@ def _now_iso() -> str:
 Resolver = Callable[[str], "str | None"]
 
 
+class DeviceUnavailable(Exception):
+    """The device cannot be asked right now (unknown, offline, or busy with a pull)."""
+
+
 class Puller:
     """Background worker: one thread doing the pulls, zeroconf threads feeding it."""
 
@@ -542,6 +554,34 @@ class Puller:
         else:
             self._retries[target.device] = 0
         return result
+
+    def delete_files(self, device: str, paths: list[str]) -> list[tuple[str, bool, str]]:
+        """Delete files on the device now (firmware: GET /del/<path below /BIKECOMP/>).
+        Raises DeviceUnavailable unless the device answers at this moment -- nothing is
+        queued. Returns (path, ok, message) per file; the firmware refuses (403) the
+        running session's files and files that do not exist."""
+        target = next((t for t in self.targets if t.device == device), None)
+        if target is None:
+            raise DeviceUnavailable(f"{device}: no pull target for this device")
+        st = self.status[device]
+        if st.syncing:
+            raise DeviceUnavailable(f"{device}: a pull is running, try again in a moment")
+        address = self.resolve(target.host)
+        if address is None:
+            raise DeviceUnavailable(f"{device} ({target.host}.local) is not reachable")
+        base = f"http://{address}"
+        out = []
+        for path in paths:
+            try:
+                self.http.get(f"{base}/del/{urllib.parse.quote(path)}")
+                out.append((path, True, "deleted"))
+            except HttpError as exc:
+                if exc.status is None:          # connection lost: the rest will fail too
+                    raise DeviceUnavailable(str(exc)) from exc
+                out.append((path, False, str(exc)))
+        log.info("%s: deleted %d of %d file(s) on the device", device,
+                 sum(1 for _, ok, _ in out if ok), len(out))
+        return out
 
     def _pull(self, target: Target, address: str) -> SyncResult | None:
         st = self.status[target.device]

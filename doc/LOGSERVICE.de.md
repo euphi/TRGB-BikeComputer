@@ -206,6 +206,32 @@ synchronisiert oder für Komoot angeboten. Die Fahrtseite sagt, warum eine Sitzu
 gilt, und hat einen Knopf, um die Erkennung in beide Richtungen zu überstimmen („Doch eine
 echte Fahrt", „Als Testfahrt markieren"; API: `POST /api/v1/sessions/{id}/test?mark=test|real|auto`).
 
+## Leerlauf-Sitzungen und Archiv
+
+Jeder Start des Fahrradcomputers ist eine Sitzung, auch wenn er nur zu Hause an war. Eine
+Sitzung, in der das Rad stand und die Position nirgendwohin kam (Rad < 50 m, alle GPS-Fixe
+innerhalb von 300 m), oder die gar kein Binärlog hat, ist **Leerlauf**
+([`bikelog/testride.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/bikelog/testride.py)).
+Leerlauf-Sitzungen erscheinen nie in der Fahrtenliste (sie verweist darauf: „N
+Leerlauf-Sitzungen im Archiv") oder in `GET /api/v1/sessions` (`idle=true` schließt sie ein),
+bekommen kein GPX und zählen nirgends.
+
+`BIKELOG_IDLE_ARCHIVE_DAYS` (Standard 7) Tage nach dem Abholen wandern ihre Dateien von
+`<data>/sessions/` nach `<data>/archive/` (gleicher Baum) -- Debug-Logs bleiben mit der Shell
+erreichbar
+([`archive.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/BikeLogService/bikelogservice/archive.py)).
+Der Index behält einen Grabstein, solange die Dateien noch auf der SD-Karte liegen, sonst
+holt der nächste Abruf sie wieder; der Abruf entfernt ihn, sobald sie aus der Dateiliste der
+Karte verschwunden sind (das gilt auch für gelöschte Sitzungen).
+
+Die Seite **Archiv** (`/archive`) zeigt die noch nicht archivierten Leerlauf-Sitzungen und
+die archivierten, die noch auf der Karte liegen. „Auf dem BC löschen" (eine Sitzung oder alle)
+löscht ihre Dateien sofort auf dem Fahrradcomputer über den `/del/`-Endpunkt der Firmware --
+nur solange er erreichbar ist, es wird nichts vorgemerkt. Eine Sitzung, deren Dateien alle von
+der Karte sind, wandert ins Archiv und verschwindet aus dem Index. API:
+`POST /api/v1/archive/device-delete` (`session_id`, ohne = alle; 409, wenn das Gerät nicht
+erreichbar ist).
+
 ## Sitzungsbericht
 
 `/ride/{id}` (Klick auf eine Fahrt in der Liste) zeigt den Bericht einer Sitzung: Kennzahlen,
@@ -326,6 +352,7 @@ Umgebungsvariablen (im Dienst: `~/bikelog/bikelog.env`):
 | `BIKELOG_NEXTCLOUD_URL` / `_USER` / `_PASSWORD` | -- | Nextcloud-Login (App-Passwort); ohne alle drei ist der Sync aus |
 | `BIKELOG_NEXTCLOUD_DIR` | `BikeLog` | Zielverzeichnis (WebDAV-Pfad, wird bei Bedarf angelegt) |
 | `BIKELOG_ATHLETE_FILE` | `<data>/athlete.json` | Fahrerdaten für den Sitzungsbericht |
+| `BIKELOG_IDLE_ARCHIVE_DAYS` | `7` | Leerlauf-Sitzungen nach so vielen Tagen nach `archive/`, 0 = nie |
 
 Beide BC-Varianten (Gravel und FL) melden sich heute als `TRGB-BC` -- der
 Dienst kann sie nicht auseinanderhalten und legt alles unter einem Gerät ab.
@@ -338,7 +365,7 @@ ein `device`-Feld in `/logfiles.json`.
 |---|---|---|
 | `GET` | `/` | Fahrtenliste (HTML) |
 | `GET` | `/api/v1/health` | Erreichbarkeit + Anzahl Sitzungen |
-| `GET` | `/api/v1/sessions` | Liste (`limit`, `offset`, `tests`: Testfahrten einschließen), neueste zuerst |
+| `GET` | `/api/v1/sessions` | Liste (`limit`, `offset`, `tests`: Testfahrten, `idle`: Leerlauf-Sitzungen einschließen), neueste zuerst |
 | `GET` | `/api/v1/sessions/{id}` | Sitzung mit Dateien, Kennzahlen, `I_`-Statistik |
 | `GET` | `/api/v1/sessions/{id}.gpx` | GPX wie im Export (`max_fix_age_ms`, `segment_gap_s`, `ele`, `max_accuracy_m`, `shocks`, `labels`, `rich`) |
 | `GET` | `/api/v1/sessions/{id}.csv` | CSV (`with_gps`) |
@@ -346,6 +373,7 @@ ein `device`-Feld in `/logfiles.json`.
 | `GET` | `/api/v1/sessions/{id}/report.json` | Kennzahlen der Sitzung, siehe [Sitzungsbericht](#sitzungsbericht) |
 | `GET` | `/api/v1/sessions/{id}/report.md` | dasselbe als Markdown-Bericht |
 | `POST` | `/api/v1/sessions/{id}/test` | Test-Erkennung überstimmen (`mark=test|real|auto`) |
+| `POST` | `/api/v1/archive/device-delete` | Leerlauf-/archivierte Sitzungen sofort auf dem BC löschen (`session_id`) |
 | `GET` | `/api/v1/training` | Tageslast (TRIMP, CTL, ATL, TSB), Wochen, wiederkehrende Anstiege (`days`, `weeks`) |
 | `GET` | `/api/v1/events` | Zielrennen mit Stand der Vorbereitung |
 | `PUT` | `/api/v1/events/{id}/gpx` | Strecken-GPX eines Zielrennens (Body = Datei) |

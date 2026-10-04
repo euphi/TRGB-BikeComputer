@@ -82,7 +82,8 @@ Steigung aus dem Beschleunigungssensor als Alternative zum Barometer.
   Verlauf, Wochen nach Pulszonen, Zielrennen mit Countdown, Trainingsphase und den
   Anstiegen der Strecke, Bestzeiten auf wiederkehrenden Anstiegen
 - Testfahrten (Sensor-Simulator, GPX-Testfahrt von TrailBridge) werden erkannt, markiert und
-  aus Fahrtenliste, Training, Nextcloud und Komoot herausgehalten
+  aus Fahrtenliste, Training, Nextcloud und Komoot herausgehalten; Leerlauf-Sitzungen (an, aber
+  nicht gefahren) werden archiviert und lassen sich vom Dienst aus auf dem BC löschen
 
 **Web-Oberfläche** (im WLAN)
 

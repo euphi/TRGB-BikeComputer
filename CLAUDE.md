@@ -149,6 +149,11 @@ Mobilfunk); danach das Netz mit `cmd wifi forget-network <id>` wieder vergessen.
   Radsensor), im Index `sessions.test_kind` + `test_override` (Nutzer-Urteil), SQL `TEST_SQL`.
   Testfahrten sind in Liste und API ausgeblendet, zählen nicht im Training, gehen nach
   `Debug_Archive` (Status `test`), also nie nach Nextcloud/Komoot.
+- Leerlauf-Sitzungen (`testride.idle()`, Spalte `sessions.idle`, auch Sitzungen ohne `L_`):
+  nie gelistet, kein GPX, nach `BIKELOG_IDLE_ARCHIVE_DAYS` nach `<data>/archive/`
+  (`archive.py`). Der Grabstein im Index bleibt, bis die Dateien nicht mehr in der Liste der
+  SD-Karte stehen (`Storage.purge_gone()` beim Abruf). Löschen auf dem BC nur sofort über
+  `/del/` der Firmware (`Puller.delete_files()`), nie vorgemerkt.
 
 ## Anstiege (Höhenprofil)
 

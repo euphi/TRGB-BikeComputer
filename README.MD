@@ -84,7 +84,8 @@ asphalt, and gradient from the accelerometer as an alternative to the barometer.
   form over time, weeks by heart-rate zone, target events with countdown, training phase
   and the course's climbs, best times on recurring climbs
 - Test sessions (sensor simulator, TrailBridge GPX test ride) are recognised, marked and
-  kept out of the ride list, training, Nextcloud and Komoot
+  kept out of the ride list, training, Nextcloud and Komoot; idle sessions (switched on,
+  no ride) are archived and can be deleted on the bike computer from the service
 
 **Web interface** (when on WiFi)
 - Download, replay and delete log files; live log with adjustable log levels

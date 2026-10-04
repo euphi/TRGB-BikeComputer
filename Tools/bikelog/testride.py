@@ -14,8 +14,12 @@ Two kinds of test sessions end up on the SD card next to the real rides:
                   same -- which is why this kind is only "suspected" and the log
                   service lets the rider overrule it.
 
-Pure function over the records; used by the report (meta.test) and by the log
-service's index (sessions.test_kind), so both agree.
+And a third case that is neither ride nor test: ``idle()`` -- the bike computer was
+switched on and nothing happened (wheel and GPS stand still, only debug output). The
+log service archives those.
+
+Pure functions over the records; used by the report (meta.test) and by the log
+service's index (sessions.test_kind, sessions.idle), so all agree.
 """
 
 from __future__ import annotations
@@ -29,6 +33,11 @@ from .record import Record, RideStateRecord
 PLAYBACK_MIN_GPS_M = 500.0
 #: ... while the wheel sensor counted less than this share of it.
 PLAYBACK_MAX_WHEEL_SHARE = 0.15
+#: Idle: the wheel counted less than this, and all fixes lie within IDLE_MAX_EXTENT_M
+#: (a phone lying next to the bike computer adds up kilometres of GPS jitter as a
+#: path, but not as an extent -- hence the extent, not the path).
+IDLE_MAX_WHEEL_M = 50.0
+IDLE_MAX_EXTENT_M = 300.0
 #: Only fresh, plausible fixes count (stale heartbeat repeats and jumps do not).
 FRESH_FIX_MS = 5000
 MAX_STEP_M = 500.0
@@ -49,24 +58,39 @@ class TestInfo:
     simulated_share: float = 0.0        # share of data records with LOG_SIMULATED
     gps_m: float = 0.0
     wheel_m: float = 0.0
+    extent_m: float = 0.0               # diagonal of the fixes' bounding box
 
     def as_dict(self) -> dict:
         return {"kind": self.kind, "reason": self.reason,
                 "simulated_share": round(self.simulated_share, 3),
-                "gps_km": round(self.gps_m / 1000, 2), "wheel_km": round(self.wheel_m / 1000, 2)}
+                "gps_km": round(self.gps_m / 1000, 2), "wheel_km": round(self.wheel_m / 1000, 2),
+                "gps_extent_km": round(self.extent_m / 1000, 2)}
 
 
 def _km(m: float) -> str:
     return f"{m / 1000:.1f}".replace(".", ",")
 
 
+def _fresh(records: list[Record]):
+    return [r for r in records
+            if r.gps_valid and r.gps_fix_age_ms <= FRESH_FIX_MS and (r.gps_lat_e7 or r.gps_lon_e7)]
+
+
+def gps_extent_m(records: list[Record]) -> float:
+    """Diagonal of the bounding box of the fresh fixes: how far the position really got."""
+    fixes = _fresh(records)
+    if len(fixes) < 2:
+        return 0.0
+    lats = [r.latitude for r in fixes]
+    lons = [r.longitude for r in fixes]
+    return haversine_m(min(lats), min(lons), max(lats), max(lons))
+
+
 def gps_distance_m(records: list[Record]) -> float:
     """Path length of the fresh fixes, ignoring jumps (> MAX_STEP_M between two)."""
     dist = 0.0
     prev = None
-    for rec in records:
-        if not (rec.gps_valid and rec.gps_fix_age_ms <= FRESH_FIX_MS and (rec.gps_lat_e7 or rec.gps_lon_e7)):
-            continue
+    for rec in _fresh(records):
         if prev is not None:
             step = haversine_m(prev.latitude, prev.longitude, rec.latitude, rec.longitude)
             if step <= MAX_STEP_M:
@@ -86,14 +110,26 @@ def classify(everything) -> TestInfo:
     info.simulated_share = sim / len(data)
     info.wheel_m = max(0.0, data[-1].distance - data[0].distance)
     info.gps_m = gps_distance_m(data)
+    info.extent_m = gps_extent_m(data)
     if sim or any(s.simulated for s in states):
         info.kind = KIND_SIM
         info.reason = ("Simulierte Daten laut Log (sim auf dem Fahrradcomputer oder "
                        "TrailBridge-Testfahrt)"
                        + (f", {info.simulated_share:.0%} der Datensätze" if sim and sim < len(data) else ""))
-    elif info.gps_m >= PLAYBACK_MIN_GPS_M and info.wheel_m < PLAYBACK_MAX_WHEEL_SHARE * info.gps_m:
+    elif (info.gps_m >= PLAYBACK_MIN_GPS_M and info.extent_m >= PLAYBACK_MIN_GPS_M
+          and info.wheel_m < PLAYBACK_MAX_WHEEL_SHARE * info.gps_m):
         info.kind = KIND_GPS_PLAYBACK
         info.reason = (f"GPS legt {_km(info.gps_m)} km zurück, der Radsensor nur "
                        f"{_km(info.wheel_m)} km -- vermutlich eine TrailBridge-Testfahrt "
                        "(oder der Radsensor ist ausgefallen)")
     return info
+
+
+def idle(records) -> bool:
+    """Switched on, nothing happened: no data at all, or the wheel stood (< IDLE_MAX_WHEEL_M)
+    and the position did not get anywhere (< IDLE_MAX_EXTENT_M) -- simulator or not."""
+    data = [r for r in records if isinstance(r, Record)]
+    if not data:
+        return True
+    wheel = max(0.0, data[-1].distance - data[0].distance)
+    return wheel < IDLE_MAX_WHEEL_M and gps_extent_m(data) < IDLE_MAX_EXTENT_M

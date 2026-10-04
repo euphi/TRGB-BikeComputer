@@ -82,6 +82,10 @@ class Settings:
     #: a missing file just means a report without zones/TRIMP/W/kg.
     athlete_file: Path | None = None
 
+    #: Idle sessions (switched on, no ride -- only debug data) move to archive_dir
+    #: this many days after they were stored; 0 = never (archive.py).
+    idle_archive_days: float = 7.0
+
     @property
     def athlete_path(self) -> Path:
         return self.athlete_file or self.data_dir / "athlete.json"
@@ -135,6 +139,7 @@ class Settings:
             nextcloud_password=env.get("BIKELOG_NEXTCLOUD_PASSWORD") or None,
             nextcloud_dir=env.get("BIKELOG_NEXTCLOUD_DIR", "BikeLog"),
             athlete_file=Path(env["BIKELOG_ATHLETE_FILE"]) if env.get("BIKELOG_ATHLETE_FILE") else None,
+            idle_archive_days=float(env.get("BIKELOG_IDLE_ARCHIVE_DAYS", 7)),
         )
 
     @property
@@ -144,6 +149,10 @@ class Settings:
     @property
     def gpx_dir(self) -> Path:
         return self.export_dir or self.data_dir / "export" / "gpx"
+
+    @property
+    def archive_dir(self) -> Path:
+        return self.data_dir / "archive"
 
     @property
     def db_path(self) -> Path:
