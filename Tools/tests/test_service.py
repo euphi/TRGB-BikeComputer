@@ -484,6 +484,8 @@ def test_every_route_requires_a_token_once_auth_is_on(tmp_path, ride_bytes):
             ("POST", f"{API}/sessions/{sid}/komoot/ignore"),
             ("POST", f"/ui/sessions/{sid}/komoot"),
             ("POST", f"/ui/sessions/{sid}/komoot-ignore"),
+            ("POST", f"/ui/sessions/{sid}/test"),
+            ("POST", f"{API}/sessions/{sid}/test?mark=test"),
             ("GET", f"{API}/pull"),
             ("POST", f"{API}/pull"),
         ]

@@ -82,7 +82,9 @@ Fahrt) -- als Übergabestelle für Nextcloud-Sync, Komoot/Strava usw.
   siehe `bikelog.gpx.GpxStats.real_distance_m`).
 - `Debug_Archive/` -- alles andere mit verwertbarem GPS-Fix: kurze
   Testfahrten, ein am Rollentrainer stehendes Rad mit jitterndem
-  Telefon-GPS. Nichts geht verloren, es landet nur nicht in Nextcloud/Strava.
+  Telefon-GPS, und jede [Testfahrt](#testfahrten) unabhängig von der Länge
+  (`gpx_status` `test`). Nichts geht verloren, es landet nur nicht in
+  Nextcloud/Strava/Komoot.
 
 Sitzungen ganz ohne verwertbaren GPS-Fix bekommen gar keine Datei
 (`gpx_status` `no-gps`), unlesbare Logs `error: …`.
@@ -186,6 +188,23 @@ Ohne URL/Nutzer/Passwort bleibt der Sync einfach aus, sonst wie gehabt.
 Bekannte Lücke: Wird eine Sitzung gelöscht (`DELETE /api/v1/sessions/{id}`),
 verschwindet nur die lokale Kopie -- die Nextcloud-Kopie bleibt liegen und
 muss von Hand entfernt werden.
+
+## Testfahrten
+
+Sitzungen mit emulierten Daten werden erkannt und von den Fahrten getrennt
+([`bikelog/testride.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/bikelog/testride.py)):
+
+| Markierung | Erkannt an |
+|---|---|
+| **Simuliert** | `LOG_SIMULATED` im Log: der Sensor-Simulator (`sim` auf der seriellen Konsole, Simulator-Build) oder eine TrailBridge-Testfahrt (`SIM_FLAGS`, Firmware seit 2.10.2026) |
+| **GPS-Wiedergabe?** | ältere TrailBridge-Testfahrten ohne Flag: GPS legt mindestens 500 m zurück, der Radsensor weniger als 15 % davon. Eine echte Fahrt mit ausgefallenem Radsensor sieht genauso aus, daher das Fragezeichen |
+
+Testfahrten sind in der Fahrtenliste (und in `GET /api/v1/sessions`) **ausgeblendet**, der
+Filter sagt, wie viele; „Testfahrten zeigen" blendet sie mit ihrer Markierung ein. Sie zählen
+nicht im Training, bei den Anstiegen und Zielen, landen in `Debug_Archive/` und werden nie
+synchronisiert oder für Komoot angeboten. Die Fahrtseite sagt, warum eine Sitzung als Test
+gilt, und hat einen Knopf, um die Erkennung in beide Richtungen zu überstimmen („Doch eine
+echte Fahrt", „Als Testfahrt markieren"; API: `POST /api/v1/sessions/{id}/test?mark=test|real|auto`).
 
 ## Sitzungsbericht
 
@@ -319,13 +338,14 @@ ein `device`-Feld in `/logfiles.json`.
 |---|---|---|
 | `GET` | `/` | Fahrtenliste (HTML) |
 | `GET` | `/api/v1/health` | Erreichbarkeit + Anzahl Sitzungen |
-| `GET` | `/api/v1/sessions` | Liste (`limit`, `offset`), neueste zuerst |
+| `GET` | `/api/v1/sessions` | Liste (`limit`, `offset`, `tests`: Testfahrten einschließen), neueste zuerst |
 | `GET` | `/api/v1/sessions/{id}` | Sitzung mit Dateien, Kennzahlen, `I_`-Statistik |
 | `GET` | `/api/v1/sessions/{id}.gpx` | GPX wie im Export (`max_fix_age_ms`, `segment_gap_s`, `ele`, `max_accuracy_m`, `shocks`, `labels`, `rich`) |
 | `GET` | `/api/v1/sessions/{id}.csv` | CSV (`with_gps`) |
 | `GET` | `/api/v1/sessions/{id}/files/{name}` | eine Datei unverändert |
 | `GET` | `/api/v1/sessions/{id}/report.json` | Kennzahlen der Sitzung, siehe [Sitzungsbericht](#sitzungsbericht) |
 | `GET` | `/api/v1/sessions/{id}/report.md` | dasselbe als Markdown-Bericht |
+| `POST` | `/api/v1/sessions/{id}/test` | Test-Erkennung überstimmen (`mark=test|real|auto`) |
 | `GET` | `/api/v1/training` | Tageslast (TRIMP, CTL, ATL, TSB), Wochen, wiederkehrende Anstiege (`days`, `weeks`) |
 | `GET` | `/api/v1/events` | Zielrennen mit Stand der Vorbereitung |
 | `PUT` | `/api/v1/events/{id}/gpx` | Strecken-GPX eines Zielrennens (Body = Datei) |

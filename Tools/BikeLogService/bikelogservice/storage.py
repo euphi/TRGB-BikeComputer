@@ -27,12 +27,13 @@ import threading
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
+from bikelog import testride
 from bikelog.record import ReadStats, UnknownLogFormat, read_stream
 
 from . import sdlayout
 from .sdlayout import SdFile
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions (
@@ -67,6 +68,10 @@ CREATE TABLE IF NOT EXISTS sessions (
     -- The question "upload this ride to Komoot?" (webui.py): NULL = still to be asked,
     -- 'ignored' = the rider said no. Uploading is komoot_status, not this.
     komoot_prompt   TEXT,
+    -- test session (bikelog.testride: "sim" | "gps_playback", NULL = ride) as the
+    -- log says, and the rider's verdict over it ("test" | "real", NULL = as detected)
+    test_kind       TEXT,
+    test_override   TEXT,
     -- Nextcloud sync (nextcloud.py): the Tours file, kept up to date the
     -- same way the local export is -- see nextcloud_gpx_version below.
     nextcloud_status    TEXT,
@@ -145,6 +150,8 @@ class Session:
     komoot_tour_id: str | None = None
     komoot_uploaded_at: str | None = None
     komoot_prompt: str | None = None
+    test_kind: str | None = None
+    test_override: str | None = None
     nextcloud_status: str | None = None
     nextcloud_file: str | None = None
     nextcloud_synced_at: str | None = None
@@ -162,19 +169,34 @@ class Session:
     def file(self, kind: str) -> StoredFile | None:
         return next((f for f in self.files if f.kind == kind), None)
 
+    @property
+    def is_test(self) -> bool:
+        """Simulator or GPS playback, not a ride -- unless the rider said otherwise."""
+        if self.test_override:
+            return self.test_override == "test"
+        return bool(self.test_kind)
+
     def as_dict(self) -> dict:
         data = asdict(self)
         data["clock_unset"] = bool(self.clock_unset)
         data["gpx_dirty"] = bool(self.gpx_dirty)
         data["start_time"] = self.start_time
+        data["is_test"] = self.is_test
         data["duration_s"] = (self.last_time - self.first_time
                               if self.first_time and self.last_time else None)
         data["files"] = [asdict(f) for f in self.files]
         return data
 
 
-def _distance_clause(min_distance_m: float | None, max_distance_m: float | None) -> tuple[str, tuple]:
-    clause, params = "", []
+#: SQL for Session.is_test
+#: (COALESCE: never NULL, so NOT TEST_SQL keeps the rides -- NULL = 'test' would drop them)
+TEST_SQL = ("(COALESCE(test_override, CASE WHEN test_kind IS NULL THEN 'real' ELSE 'test' END)"
+            " = 'test')")
+
+
+def _distance_clause(min_distance_m: float | None, max_distance_m: float | None,
+                     tests: bool = True) -> tuple[str, tuple]:
+    clause, params = ("" if tests else f"AND NOT {TEST_SQL} "), []
     if min_distance_m is not None:
         clause += "AND distance_m >= ? "
         params.append(min_distance_m)
@@ -226,9 +248,15 @@ class Storage:
                 # (Their "Komoot" button in the table stays.)
                 self._db.execute("UPDATE sessions SET komoot_prompt = 'ignored'")
                 self._db.commit()
-        if 0 < version < 6:
-            # 6: clock steps inside a session are repaired (bikelog.timefix) -- every
-            # stored session gets its times, summary and GPX derived again.
+        if 0 < version < 8:
+            columns = {r[1] for r in self._db.execute("PRAGMA table_info(sessions)")}
+            for column in ("test_kind", "test_override"):
+                if column not in columns:
+                    self._db.execute(f"ALTER TABLE sessions ADD COLUMN {column} TEXT")
+            self._db.commit()
+            # 6: clock steps inside a session are repaired (bikelog.timefix); 8: test
+            # sessions are recognised (bikelog.testride) -- every stored session gets
+            # its index columns derived again.
             self.rederive_all()
 
     def close(self) -> None:
@@ -271,12 +299,13 @@ class Storage:
 
     def list(self, limit: int = 100, offset: int = 0,
              min_distance_m: float | None = None,
-             max_distance_m: float | None = None) -> list[Session]:
+             max_distance_m: float | None = None, tests: bool = True) -> list[Session]:
         """Sessions newest first, optionally restricted to a distance range
         (the wheel-sensor trip distance, same figure the session list shows).
         A session whose log could not be parsed (distance_m is NULL) matches
-        neither bound, same as SQL's usual NULL handling."""
-        clause, params = _distance_clause(min_distance_m, max_distance_m)
+        neither bound, same as SQL's usual NULL handling. ``tests=False`` leaves
+        out test sessions (simulator, GPS playback)."""
+        clause, params = _distance_clause(min_distance_m, max_distance_m, tests)
         with self._lock:
             # Day directories sort chronologically, NO_TIME/legacy after them;
             # within a day the HHMMSS stem does the rest.
@@ -287,8 +316,8 @@ class Storage:
             return [self._session(row) for row in rows]
 
     def count(self, min_distance_m: float | None = None,
-              max_distance_m: float | None = None) -> int:
-        clause, params = _distance_clause(min_distance_m, max_distance_m)
+              max_distance_m: float | None = None, tests: bool = True) -> int:
+        clause, params = _distance_clause(min_distance_m, max_distance_m, tests)
         with self._lock:
             return self._db.execute(
                 "SELECT COUNT(*) FROM sessions WHERE deleted_at IS NULL " + clause,
@@ -296,10 +325,12 @@ class Storage:
 
     def sessions_for_device(self, device: str) -> list[Session]:
         """Every non-deleted session of one device that has a binary log, in
-        ride order -- the input to komoot.py's short-pause grouping."""
+        ride order -- the input to komoot.py's short-pause grouping. Test sessions
+        are left out: a desk test between two rides must not join them."""
         with self._lock:
             rows = self._db.execute(
                 "SELECT s.* FROM sessions s WHERE s.deleted_at IS NULL AND s.device = ? "
+                f"AND NOT {TEST_SQL} "
                 "AND EXISTS (SELECT 1 FROM files f WHERE f.session_id = s.id "
                 "            AND substr(f.name, 1, 1) = 'L') "
                 "ORDER BY s.day, s.stem", (device,)).fetchall()
@@ -475,6 +506,16 @@ class Storage:
                                  [(value, sid) for sid in session_ids])
             self._db.commit()
 
+    def set_test_override(self, session_id: int, value: str | None) -> None:
+        """The rider's verdict: "test", "real", or None (back to what the log says).
+        The GPX is exported again -- a test belongs in Debug_Archive, not in Tours."""
+        if value not in ("test", "real", None):
+            raise ValueError(value)
+        with self._lock:
+            self._db.execute("UPDATE sessions SET test_override = ?, gpx_dirty = 1 WHERE id = ?",
+                             (value, session_id))
+            self._db.commit()
+
     def devices(self) -> list[str]:
         with self._lock:
             return [r[0] for r in self._db.execute(
@@ -556,7 +597,7 @@ def _summarise_log(payload: bytes, hints: bytes | None = None) -> dict:
     the reason recorded."""
     blank = dict(format_version=None, record_count=None, trailing_bytes=None,
                  first_time=None, last_time=None, distance_m=None, gps_points=None,
-                 clock_unset=0, time_steps=0)
+                 clock_unset=0, time_steps=0, test_kind=None)
     stats = ReadStats()
     try:
         records = list(read_stream(io.BytesIO(payload), stats, repair_time=True, time_hints=hints))
@@ -577,4 +618,5 @@ def _summarise_log(payload: bytes, hints: bytes | None = None) -> dict:
         "clock_unset": int(first.timestamp < MIN_PLAUSIBLE_TIMESTAMP),
         "log_error": None,
         "time_steps": stats.time_steps,
+        "test_kind": testride.classify(records).kind,
     }

@@ -7,8 +7,8 @@ quality and labels, shocks and label changes as waypoints, ride summary in
 the metadata). SUBDIR_TOURS is meant to be picked up by whatever comes next
 (Nextcloud sync, a Komoot/Strava uploader); SUBDIR_DEBUG holds everything
 that is not a real ride -- a session parked somewhere with the phone's GPS
-wandering a few metres, a five-minute test -- kept for reference but out of
-the uploaders' way. File names sort chronologically and each file's mtime is
+wandering a few metres, a five-minute test, a simulator or GPS-playback session
+(Session.is_test, status "test") -- kept for reference but out of the uploaders' way. File names sort chronologically and each file's mtime is
 the ride's start.
 
 A file is (re)written -- and, if its distance moved it from one subdirectory
@@ -33,7 +33,7 @@ from .storage import Session, Storage
 
 log = logging.getLogger("bikelog.export")
 
-EXPORT_VERSION = 3
+EXPORT_VERSION = 4
 
 #: Below this, a session goes to Debug_Archive instead of Tours -- see the
 #: module docstring. Raise/lower it here, not per-session; the automatic
@@ -79,9 +79,11 @@ def export_session(store: Storage, session: Session) -> str:
     if stats.written == 0:
         rel, status = None, "no-gps"
     else:
-        real_ride = stats.real_distance_m >= MIN_EXPORT_DISTANCE_M
+        # A test session (simulator, GPS playback) is no ride however long it is: it goes
+        # to Debug_Archive with status "test", which keeps it out of Nextcloud and Komoot.
+        real_ride = stats.real_distance_m >= MIN_EXPORT_DISTANCE_M and not session.is_test
         subdir = SUBDIR_TOURS if real_ride else SUBDIR_DEBUG
-        status = "ok" if real_ride else "debug"
+        status = "ok" if real_ride else ("test" if session.is_test else "debug")
         rel = f"{subdir}/{file_name(session, stats.first_time)}"
         path = root / rel
         path.parent.mkdir(parents=True, exist_ok=True)

@@ -115,14 +115,17 @@ def refresh(store: Storage, background: bool = True) -> int:
 
 
 def rides(store: Storage) -> list[training.Ride]:
-    """Every session that counts as training, as training.Ride, oldest first."""
+    """Every session that counts as training, as training.Ride, oldest first. Test
+    sessions are left out; one the rider marked as real counts even if the log says test."""
     out = []
     for session in store.sessions_with_log():
+        if session.is_test:
+            continue
         try:
             rep = report_for(store, session)
         except Exception:
             continue
-        ride = training.Ride.from_report(rep, session.id)
+        ride = training.Ride.from_report(rep, session.id, allow_test=session.test_override == "real")
         if ride:
             out.append(ride)
     return sorted(out, key=lambda r: r.start)

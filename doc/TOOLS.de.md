@@ -125,6 +125,7 @@ Tests: `tests/test_report.py`.
 
 | Abschnitt | Inhalt |
 |---|---|
+| `meta` | Zeitraum, Format, Satzzahlen, Uhr; `test`: Testfahrt (Sim-Flag oder GPS-Wiedergabe vermutet, siehe [Log-Dienst](LOGSERVICE.md#testfahrten)) |
 | `ride` | Strecke, Fahrzeit, Geschwindigkeiten, Höhenmeter, Stopps (eine Aufzeichnungslücke zählt als Stopp: das Gerät schläft), Temperatur, Trittfrequenz und Anteil getreten |
 | `climbs` | Anstiege im Baro-Profil mit den Kriterien und Kategorien der Firmware ([Anstiege](CLIMB.md)): Länge, Höhe, mittlere/max. Steigung, Zeit, VAM, Puls, Leistung, Position von Fuß und Gipfel; `--hills` listet auch Hügel unterhalb Kategorie 6 |
 | `profile` | Baro-Höhenprofil (`[km, m]`, höchstens 300 Punkte) für Diagramme |

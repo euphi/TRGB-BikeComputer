@@ -120,6 +120,7 @@ tests: `tests/test_report.py`.
 
 | Section | Content |
 |---|---|
+| `meta` | time span, format, record counts, clock; `test`: test session (simulator flag or GPS playback suspected, see the [log service](LOGSERVICE.md#test-sessions)) |
 | `ride` | distance, moving time, speeds, elevation, stops (a logging gap counts as a stop: the device sleeps), temperature, cadence and share of pedalling |
 | `climbs` | climbs in the barometric profile with the firmware's criteria and categories ([climbs](CLIMB.md)): length, height, mean/max. gradient, time, VAM, heart rate, power, position of foot and summit; `--hills` also lists hills below category 6 |
 | `profile` | barometric elevation profile (`[km, m]`, at most 300 points) for charts |

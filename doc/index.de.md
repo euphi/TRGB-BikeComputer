@@ -81,6 +81,8 @@ Steigung aus dem Beschleunigungssensor als Alternative zum Barometer.
 - Trainingsauswertung im Log-Dienst, im Rim-&-Ridge-Design: Fitness, Ermüdung und Form im
   Verlauf, Wochen nach Pulszonen, Zielrennen mit Countdown, Trainingsphase und den
   Anstiegen der Strecke, Bestzeiten auf wiederkehrenden Anstiegen
+- Testfahrten (Sensor-Simulator, GPX-Testfahrt von TrailBridge) werden erkannt, markiert und
+  aus Fahrtenliste, Training, Nextcloud und Komoot herausgehalten
 
 **Web-Oberfläche** (im WLAN)
 

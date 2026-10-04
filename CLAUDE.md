@@ -145,6 +145,10 @@ Mobilfunk); danach das Netz mit `cmd wifi forget-network <id>` wieder vergessen.
   Hintergrundberechnung `analysis.py`, Seiten im Rim-&-Ridge-Design `webui.py` + `charts.py`
   (SVG auf dem Server). Ändert sich ein Feld des Bericht-JSON, `REPORT_VERSION` erhöhen --
   das berechnet alle gespeicherten Berichte neu.
+- Testfahrten: `bikelog/testride.py` (Sim-Flag `LOG_SIMULATED` oder GPS bewegt sich ohne
+  Radsensor), im Index `sessions.test_kind` + `test_override` (Nutzer-Urteil), SQL `TEST_SQL`.
+  Testfahrten sind in Liste und API ausgeblendet, zählen nicht im Training, gehen nach
+  `Debug_Archive` (Status `test`), also nie nach Nextcloud/Komoot.
 
 ## Anstiege (Höhenprofil)
 

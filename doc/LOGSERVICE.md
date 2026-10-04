@@ -79,8 +79,9 @@ hand-over point for Nextcloud sync, Komoot/Strava etc.
   jumps around a standing position don't count, see
   `bikelog.gpx.GpxStats.real_distance_m`).
 - `Debug_Archive/` -- everything else with a usable GPS fix: short test rides, a bike
-  standing on the trainer with jittering phone GPS. Nothing is lost, it just does not end
-  up in Nextcloud/Strava.
+  standing on the trainer with jittering phone GPS, and every [test session](#test-sessions)
+  however long (`gpx_status` `test`). Nothing is lost, it just does not end up in
+  Nextcloud/Strava/Komoot.
 
 Sessions without any usable GPS fix get no file at all (`gpx_status` `no-gps`),
 unreadable logs `error: …`.
@@ -181,6 +182,23 @@ off.
 
 Known gap: if a session is deleted (`DELETE /api/v1/sessions/{id}`), only the local copy
 disappears -- the Nextcloud copy stays and has to be removed by hand.
+
+## Test sessions
+
+Sessions with emulated data are recognised and kept apart from the rides
+([`bikelog/testride.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/bikelog/testride.py)):
+
+| Marker | Recognised by |
+|---|---|
+| **Simuliert** | `LOG_SIMULATED` in the log: the sensor simulator (`sim` on the serial console, simulator build) or a TrailBridge test ride (`SIM_FLAGS`, firmware since 2026-10-02) |
+| **GPS-Wiedergabe?** | older TrailBridge test rides without the flag: GPS travels at least 500 m, the wheel sensor less than 15 % of that. A real ride with a dead wheel sensor looks the same, hence the question mark |
+
+Test sessions are **hidden** in the ride list (and in `GET /api/v1/sessions`), the filter
+says how many; "Testfahrten zeigen" shows them with their marker. They do not count in
+training, recurring climbs or goals, go to `Debug_Archive/` and are never synchronised or
+offered for Komoot. The ride page says why a session counts as a test and has a button
+to overrule the detection in either direction ("Doch eine echte Fahrt", "Als Testfahrt
+markieren"; API: `POST /api/v1/sessions/{id}/test?mark=test|real|auto`).
 
 ## Session report
 
@@ -314,13 +332,14 @@ variant or a `device` field in `/logfiles.json`.
 |---|---|---|
 | `GET` | `/` | list of rides (HTML) |
 | `GET` | `/api/v1/health` | reachability + number of sessions |
-| `GET` | `/api/v1/sessions` | list (`limit`, `offset`), newest first |
+| `GET` | `/api/v1/sessions` | list (`limit`, `offset`, `tests`: include test sessions), newest first |
 | `GET` | `/api/v1/sessions/{id}` | session with files, key figures, `I_` statistics |
 | `GET` | `/api/v1/sessions/{id}.gpx` | GPX as in the export (`max_fix_age_ms`, `segment_gap_s`, `ele`, `max_accuracy_m`, `shocks`, `labels`, `rich`) |
 | `GET` | `/api/v1/sessions/{id}.csv` | CSV (`with_gps`) |
 | `GET` | `/api/v1/sessions/{id}/files/{name}` | one file unchanged |
 | `GET` | `/api/v1/sessions/{id}/report.json` | key figures of the session, see [session report](#session-report) |
 | `GET` | `/api/v1/sessions/{id}/report.md` | the same as a German Markdown report |
+| `POST` | `/api/v1/sessions/{id}/test` | overrule the test detection (`mark=test|real|auto`) |
 | `GET` | `/api/v1/training` | daily load (TRIMP, CTL, ATL, TSB), weeks, recurring climbs (`days`, `weeks`) |
 | `GET` | `/api/v1/events` | target events with readiness |
 | `PUT` | `/api/v1/events/{id}/gpx` | course GPX of a target event (body = file) |

@@ -90,13 +90,16 @@ def create_app(settings: Settings | None = None, puller: Puller | None = None) -
     def index(min_km: float | None = Query(default=None, ge=0),
              max_km: float | None = Query(default=None, ge=0),
              msg: str | None = Query(default=None, max_length=300),
+             tests: bool = Query(default=False),
              principal: Principal = AuthDep, store: Storage = Depends(storage)):
         min_m = min_km * 1000 if min_km is not None else None
         max_m = max_km * 1000 if max_km is not None else None
-        sessions = store.list(limit=500, min_distance_m=min_m, max_distance_m=max_m)
+        sessions = store.list(limit=500, min_distance_m=min_m, max_distance_m=max_m, tests=tests)
+        hidden = 0 if tests else store.count(min_m, max_m) - store.count(min_m, max_m, tests=False)
         return webui.index(sessions, puller.as_dict() if puller else None,
                            min_km=min_km, max_km=max_km,
-                           prompts=komoot.pending_prompts(store), message=msg)
+                           prompts=komoot.pending_prompts(store), message=msg,
+                           tests=tests, hidden_tests=hidden)
 
     # The page's own buttons: same actions as the API routes below, but they answer with a
     # redirect back to the page (a form post must not end on a bare JSON document).
@@ -115,6 +118,31 @@ def create_app(settings: Settings | None = None, puller: Puller | None = None) -
             store.set_komoot_prompt([s.id for s in group], "ignored")
             return _back(session_id, "Zu Komoot hochgeladen.")
         return _back(session_id, "Komoot-Upload nicht erfolgt: %s" % (result.message or result.status))
+
+    @app.post("/ui/sessions/{session_id}/test", include_in_schema=False)
+    async def ui_test(session_id: int, request: Request, principal: Principal = AuthDep,
+                      store: Storage = Depends(storage)):
+        _require(store, session_id)
+        mark = (await _form(request)).get("mark", "")
+        _set_test(store, session_id, mark)
+        return RedirectResponse(f"/ride/{session_id}", status_code=status.HTTP_303_SEE_OTHER)
+
+    def _set_test(store: Storage, session_id: int, mark: str) -> None:
+        if mark not in ("test", "real", "auto"):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "mark must be test, real or auto")
+        store.set_test_override(session_id, None if mark == "auto" else mark)
+        exporter.export_pending(store)       # into Tours or Debug_Archive
+        threading.Thread(target=nextcloud.sync_pending, args=(store,),
+                         name="bikelog-nextcloud", daemon=True).start()
+
+    @app.post(API + "/sessions/{session_id}/test", tags=["sessions"])
+    def mark_test(session_id: int, mark: str = Query(pattern="^(test|real|auto)$",
+                                                     description="test, real, or auto (as the log says)"),
+                  principal: Principal = AuthDep, store: Storage = Depends(storage)):
+        """Overrule the automatic test detection (simulator flag, GPS playback) of a session."""
+        _require(store, session_id)
+        _set_test(store, session_id, mark)
+        return store.get(session_id).as_dict()
 
     @app.post("/ui/sessions/{session_id}/komoot-ignore", include_in_schema=False)
     def ui_komoot_ignore(session_id: int, principal: Principal = AuthDep,
@@ -286,12 +314,14 @@ def create_app(settings: Settings | None = None, puller: Puller | None = None) -
                                                     description="only sessions with at least this much distance"),
                       max_km: float | None = Query(default=None, ge=0,
                                                     description="only sessions with at most this much distance"),
+                      tests: bool = Query(default=False,
+                                          description="include test sessions (simulator, GPS playback)"),
                       principal: Principal = AuthDep,
                       store: Storage = Depends(storage)):
         min_m = min_km * 1000 if min_km is not None else None
         max_m = max_km * 1000 if max_km is not None else None
-        return {"total": store.count(min_m, max_m),
-                "sessions": [s.as_dict() for s in store.list(limit, offset, min_m, max_m)]}
+        return {"total": store.count(min_m, max_m, tests),
+                "sessions": [s.as_dict() for s in store.list(limit, offset, min_m, max_m, tests)]}
 
     def _require(store: Storage, session_id: int) -> Session:
         session = store.get(session_id)

@@ -10,7 +10,8 @@ records) and is told to quote nothing that is not in it.
 
 Sections of the dict:
 
-  meta     time span, format, record counts, simulator, clock
+  meta     time span, format, record counts, simulator, clock; ``test``: is it a
+           test session (bikelog.testride: simulator flag, or GPS playback suspected)
   ride     the figures of ridestats.RideStats plus stops and logging gaps
   climbs   climbs found in the barometric profile, with the firmware's criteria
            and categories (src/ClimbProfile.h, doc/CLIMB.md), foot/summit position
@@ -37,14 +38,14 @@ import math
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-from . import ridestats
+from . import ridestats, testride
 from .record import (IF_CLIPPED, IF_DATA_GAP, IF_NO_SPEED, IF_TOO_SLOW, IF_UNCALIBRATED,
                      ROAD_CLASS_NAMES, SURFACE_NAMES, LabelRecord, ReadStats, Record,
                      RideStateRecord, RoadQualityRecord, ShockEvent, label_at)
 
 #: Bump when a field changes its meaning or moves -- consumers (the service's
 #: cache, a prompt) key on it.
-REPORT_VERSION = 2
+REPORT_VERSION = 3
 
 #: Records before this are from an unset ESP32 clock (see gpx.MIN_PLAUSIBLE_YEAR).
 MIN_PLAUSIBLE_TIMESTAMP = int(datetime.datetime(2020, 1, 1, tzinfo=datetime.timezone.utc).timestamp())
@@ -226,7 +227,8 @@ def _best_mean(steps: list[_Step], window_s: float, attr: str) -> float | None:
 
 # --- sections ------------------------------------------------------------------
 
-def _meta(records: list[Record], stats: ReadStats | None, dropped_clock: int) -> dict:
+def _meta(records: list[Record], stats: ReadStats | None, dropped_clock: int,
+          everything: list) -> dict:
     first, last = records[0], records[-1]
     return {
         "start_utc": first.utc().isoformat(timespec="seconds"),
@@ -237,6 +239,7 @@ def _meta(records: list[Record], stats: ReadStats | None, dropped_clock: int) ->
                                              if stats else {})},
         "simulated": any(r.simulated for r in records),
         "unset_clock_records": dropped_clock,
+        "test": testride.classify(everything).as_dict(),
     }
 
 
@@ -654,8 +657,9 @@ def _health(records: list[Record], road: list[RoadQualityRecord], shocks: list[S
     if dropped_clock:
         find("info", "clock_unset", "%d Datensätze mit ungesetzter Uhr (vor NTP/GPS-Zeit) ausgelassen"
              % dropped_clock)
-    if any(r.simulated for r in records):
-        find("info", "simulated", "Sensorwerte vom Simulator, keine echte Fahrt")
+    test = testride.classify(records)
+    if test.kind:
+        find("warn", "test_" + test.kind, "Testfahrt: " + test.reason)
 
     rq = {
         "uncalibrated_share": _r(sum(1 for r in road if r.flags & IF_UNCALIBRATED) / len(road), 2) if road else None,
@@ -729,7 +733,7 @@ def compute(everything: list, athlete: Athlete | None = None, stats: ReadStats |
                                   for k, v in power["best_w"].items()}
     return {
         "report_version": REPORT_VERSION,
-        "meta": _meta(records, stats, dropped),
+        "meta": _meta(records, stats, dropped, everything),
         "athlete": asdict(athlete),
         "ride": _ride(rs, records, steps),
         "climbs": _climbs(records, steps, with_hills),
@@ -765,8 +769,9 @@ def to_markdown(rep: dict, title: str | None = None) -> str:
     meta, ride, heart, power, road, health = (rep[k] for k in ("meta", "ride", "heart", "power", "road", "health"))
     start = datetime.datetime.fromisoformat(meta["start_utc"]).astimezone()
     out = [f"# {title or 'Sitzungsbericht ' + start.strftime('%d.%m.%Y %H:%M')}", ""]
-    if meta["simulated"]:
-        out += ["> **Simulierte Sensorwerte** -- keine echte Fahrt.", ""]
+    test = meta.get("test") or {}
+    if test.get("kind"):
+        out += [f"> **Testfahrt** -- {test['reason']}.", ""]
 
     out += ["## Fahrt", "",
             "| | |", "|---|---|",

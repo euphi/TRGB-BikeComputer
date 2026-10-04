@@ -83,6 +83,8 @@ asphalt, and gradient from the accelerometer as an alternative to the barometer.
 - Training analysis in the log service, in the Rim & Ridge design: fitness, fatigue and
   form over time, weeks by heart-rate zone, target events with countdown, training phase
   and the course's climbs, best times on recurring climbs
+- Test sessions (sensor simulator, TrailBridge GPX test ride) are recognised, marked and
+  kept out of the ride list, training, Nextcloud and Komoot
 
 **Web interface** (when on WiFi)
 - Download, replay and delete log files; live log with adjustable log levels

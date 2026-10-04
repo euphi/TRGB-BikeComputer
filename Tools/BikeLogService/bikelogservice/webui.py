@@ -14,6 +14,8 @@ from __future__ import annotations
 import datetime
 from html import escape
 
+from bikelog import testride
+
 from . import charts
 from .storage import Session
 
@@ -66,6 +68,9 @@ td .big{font:600 19px var(--num);color:var(--parch-b)}
  padding:2px 10px;border-radius:999px;border:1px solid rgba(203,163,107,.35);color:var(--parch)}
 .chip.a{background:var(--brass);color:var(--bg);border-color:var(--brass)}
 .chip.tour{background:var(--tour)}
+.chip.test{background:var(--z4);color:var(--bg);border-color:var(--z4)}
+tr.test td{opacity:.75}
+.banner.test{border-color:var(--z4)}
 form.inline{display:inline;margin:0}
 button,.btn{font:600 13px var(--sans);background:var(--panel);color:var(--parch);border:1.5px solid var(--brass);
  border-radius:999px;padding:5px 16px;cursor:pointer}
@@ -75,6 +80,7 @@ button.link{background:none;border:none;color:var(--brass);padding:0;font:500 12
 input,select,textarea{font:inherit;background:var(--bg);color:var(--parch);border:1.5px solid var(--rim);
  border-radius:8px;padding:5px 8px}
 input[type=number]{width:7em}
+input[type=checkbox]{width:auto;padding:0;accent-color:var(--brass);vertical-align:-2px}
 label.f{display:block;margin:8px 0}
 label.f span{display:inline-block;min-width:13em;color:var(--muted);font-size:.9rem}
 form.filter{margin:6px 0 0;font-size:.9rem}
@@ -251,6 +257,14 @@ def _notes(s: Session) -> list[str]:
     return notes
 
 
+def test_chip(s: Session) -> str:
+    """The marker of a test session: what the log says, or the rider's verdict."""
+    if not s.is_test:
+        return ""
+    label = "Test" if s.test_override == "test" else testride.LABELS.get(s.test_kind, "Test")
+    return f'<span class="chip test" title="Testfahrt, zählt nicht im Training">{escape(label)}</span>'
+
+
 def _row(s: Session) -> str:
     summ = s.summary or {}
     dist = summ.get("dist_m", s.distance_m)
@@ -259,8 +273,8 @@ def _row(s: Session) -> str:
     when = escape(_when(s))
     title = f'<a href="/ride/{s.id}">{when}</a>' if s.file("L") else when
     return (
-        f'<tr id="s{s.id}">'
-        f'<td>{title}<br><span class="mut">{escape(s.device)}</span></td>'
+        f'<tr id="s{s.id}"{" class=test" if s.is_test else ""}>'
+        f'<td>{title} {test_chip(s)}<br><span class="mut">{escape(s.device)}</span></td>'
         f'<td class="num"><span class="big">{num((dist or 0) / 1000)}</span> km</td>'
         f'<td class="num hide-s">{hm(move)}</td>'
         f'<td class="num hide-s">{num(vavg) + " km/h" if vavg else ""}</td>'
@@ -349,20 +363,27 @@ def busy(pull: dict | None) -> bool:
     return bool(pull and any(t.get("syncing") or t.get("activity") for t in pull["targets"]))
 
 
-def _filter_form(min_km: float | None, max_km: float | None) -> str:
+def _filter_form(min_km: float | None, max_km: float | None, tests: bool = False,
+                 hidden_tests: int = 0) -> str:
     min_v = f' value="{min_km:g}"' if min_km is not None else ""
     max_v = f' value="{max_km:g}"' if max_km is not None else ""
-    reset = ' <a href="/">zurücksetzen</a>' if (min_km is not None or max_km is not None) else ""
+    reset = (' <a href="/">zurücksetzen</a>'
+             if (min_km is not None or max_km is not None or tests) else "")
+    hint = (f' <span class="mut">{hidden_tests} Testfahrt{"en" if hidden_tests != 1 else ""} '
+            'ausgeblendet</span>' if hidden_tests else "")
     return (
         '<form class="filter" method="get">'
         f'Länge von <input type="number" name="min_km" min="0" step="0.1"{min_v}> '
         f'bis <input type="number" name="max_km" min="0" step="0.1"{max_v}> km '
-        '<button type="submit">Filtern</button>' + reset + '</form>')
+        f'<label><input type="checkbox" name="tests" value="true"{" checked" if tests else ""} '
+        'onchange="this.form.submit()"> Testfahrten zeigen</label> '
+        '<button type="submit">Filtern</button>' + reset + hint + '</form>')
 
 
 def index(sessions: list[Session], pull: dict | None,
           min_km: float | None = None, max_km: float | None = None,
-          prompts: list[list[Session]] | None = None, message: str | None = None) -> str:
+          prompts: list[list[Session]] | None = None, message: str | None = None,
+          tests: bool = False, hidden_tests: int = 0) -> str:
     rows = "\n".join(_row(s) for s in sessions) or \
         '<tr><td colspan="5" class="mut">Keine Fahrten für diesen Filter.</td></tr>'
     working = "".join(_activity(t) for t in (pull or {}).get("targets", []))
@@ -375,7 +396,7 @@ def index(sessions: list[Session], pull: dict | None,
 {working}
 {_prompts(prompts or [])}
 {_pull_line(pull)}
-{_filter_form(min_km, max_km)}
+{_filter_form(min_km, max_km, tests, hidden_tests)}
 <table style="margin-top:14px"><thead><tr><th>Sitzung</th><th class="num">Strecke</th>
 <th class="num hide-s">Fahrzeit</th><th class="num hide-s">Ø</th><th>Dateien</th></tr></thead>
 <tbody>
@@ -408,17 +429,43 @@ def _climb_rows(climbs: list[dict]) -> str:
             "<th class='num hide-s'>Leistung*</th></tr></thead><tbody>" + "".join(rows) + "</tbody></table>")
 
 
+def _test_button(s: Session, mark: str, label: str, primary: bool = False) -> str:
+    return (f'<form method="post" action="/ui/sessions/{s.id}/test"><input type="hidden" name="mark" '
+            f'value="{mark}"><button{" class=pri" if primary else ""} type="submit">{label}</button></form>')
+
+
+def _test_banner(s: Session, rep: dict) -> str:
+    """Why this session counts as a test (or not), with the buttons to overrule it."""
+    detected = (rep.get("meta") or {}).get("test") or {}
+    reason = escape(detected.get("reason") or "")
+    if s.test_override == "test":
+        return ('<div class="banner test"><h2>Als Testfahrt markiert</h2>'
+                '<p>Von dir markiert — zählt nicht im Training, kein Upload.</p>'
+                '<div class="ask">' + _test_button(s, "auto", "Markierung aufheben") + "</div></div>")
+    if s.test_override == "real":
+        return ('<p class="mut">Von dir als echte Fahrt bestätigt'
+                + (f" (erkannt war: {reason})" if reason else "") + ". "
+                + _test_button(s, "auto", "Bestätigung aufheben").replace("<button", '<button class="link"')
+                + "</p>")
+    if s.is_test:
+        return ('<div class="banner test"><h2>Testfahrt</h2>'
+                f'<p>{reason or "Laut Log keine echte Fahrt"}. Zählt nicht im Training, landet in '
+                'Debug_Archive und wird nicht hochgeladen.</p>'
+                '<div class="ask">' + _test_button(s, "real", "Doch eine echte Fahrt") + "</div></div>")
+    return ('<p class="mut">' + _test_button(s, "test", "Als Testfahrt markieren")
+            .replace("<button", '<button class="link"') + "</p>")
+
+
 def ride_page(s: Session, rep: dict) -> str:
     base = f"{API}/sessions/{s.id}"
     links = _links(s) + [f'<a href="{base}/report.md">Bericht (Markdown)</a>',
                          f'<a href="{base}/report.json">JSON</a>']
-    head = f'<h1>{escape(_when(s))}</h1><div class="chips">{"".join(links)}</div>'
+    head = (f'<h1>{escape(_when(s))} {test_chip(s)}</h1><div class="chips">{"".join(links)}</div>'
+            + _test_banner(s, rep))
     if rep.get("empty"):
         return page("Fahrt", "/", head + '<p class="mut">Leeres Log.</p>')
     ride, heart, power, road, health = (rep[k] for k in ("ride", "heart", "power", "road", "health"))
     out = [head]
-    if rep["meta"]["simulated"]:
-        out.append('<p class="warn">Simulierte Sensorwerte — keine echte Fahrt.</p>')
     tiles = [tile("Strecke", num(ride["distance_km"]), "km", hero=True),
              tile("Fahrzeit", hm(ride["moving_s"]), "h", f'gesamt {hm(ride["duration_s"])}'),
              tile("Ø", num(ride["avg_moving_kmh"]), "km/h", f'max. {num(ride["max_kmh"])}'),

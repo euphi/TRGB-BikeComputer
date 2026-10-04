@@ -62,8 +62,13 @@ class Ride:
     climbs: list
 
     @classmethod
-    def from_report(cls, rep: dict, session_id: int | None = None) -> "Ride | None":
-        if rep.get("empty") or rep["meta"]["simulated"]:
+    def from_report(cls, rep: dict, session_id: int | None = None,
+                    allow_test: bool = False) -> "Ride | None":
+        """None for what is not training: empty, too short, or a test session
+        (simulator, GPS playback) -- unless ``allow_test`` (the rider said it was real)."""
+        if rep.get("empty"):
+            return None
+        if not allow_test and ((rep["meta"].get("test") or {}).get("kind") or rep["meta"]["simulated"]):
             return None
         ride = rep["ride"]
         if (ride["distance_km"] or 0) < MIN_RIDE_KM:
