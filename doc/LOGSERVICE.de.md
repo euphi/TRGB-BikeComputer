@@ -167,15 +167,22 @@ muss von Hand entfernt werden.
 
 ## Sitzungsbericht
 
-`GET /api/v1/sessions/{id}/report.md` (Link „Bericht" auf der Webseite) ist ein Bericht der
-Sitzung auf Deutsch, `…/report.json` die Zahlen dahinter. Beides kommt aus
+`/ride/{id}` (Klick auf eine Fahrt in der Liste) zeigt den Bericht einer Sitzung: Kennzahlen,
+Höhenprofil mit den Anstiegen, Pulszonen, geschätzte Leistung, Wegequalität und Stöße,
+technische Auffälligkeiten. `GET /api/v1/sessions/{id}/report.md` ist dasselbe als Markdown,
+`…/report.json` die Zahlen dahinter. Alles kommt aus
 [`bikelog/report.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/bikelog/report.py)
-(Details: [Werkzeuge](TOOLS.md#sitzungsbericht)) und wird bei jedem Abruf neu berechnet; ein
-besserer Bericht verbessert also auch alle alten Fahrten.
+(Details: [Werkzeuge](TOOLS.md#sitzungsbericht)).
 
-Fahrerdaten für Pulszonen, TRIMP und W/kg stehen in `<data>/athlete.json` (anderer Pfad:
-`BIKELOG_ATHLETE_FILE`). Jeder Schlüssel ist optional; ohne die Datei hat der Bericht
-einfach keine Zonen:
+Die Berichte liegen in der Tabelle `reports` des Index, unter einem Schlüssel aus
+Berichtsversion, Hash der `L_`-Datei und Fahrerdaten. Nach dem Abholen (und beim Start)
+berechnet der Dienst, was fehlt oder veraltet ist, mit niedrigster CPU-Priorität
+([`analysis.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/BikeLogService/bikelogservice/analysis.py)).
+Eine neue Berichtsversion oder geänderte Fahrerdaten erreichen so von selbst alle alten Fahrten.
+
+Fahrerdaten für Pulszonen, TRIMP und W/kg werden auf der Seite **Fahrer** (`/athlete`)
+eingetragen und landen in `<data>/athlete.json` (anderer Pfad: `BIKELOG_ATHLETE_FILE`).
+Jeder Schlüssel ist optional; ohne die Datei hat der Bericht einfach keine Zonen:
 
 ```json
 {"hr_max": 186, "hr_rest": 48, "mass_kg": 88, "rider_kg": 76, "cda": 0.38, "crr": 0.006}
@@ -183,6 +190,29 @@ einfach keine Zonen:
 
 Das JSON ist als Eingabe für einen Textgenerator gedacht (Vorlage oder lokales LLM): Alle
 Zahlen werden dort berechnet, ein Modell muss sie nur noch in Worte fassen.
+
+## Training, Ziele, Anstiege
+
+Die Webseiten sind im Rim-&-Ridge-Design des Fahrradcomputers gestaltet
+([Design-System](design/rim-ridge-design-system.md)). Neben der Fahrtenliste und dem
+Fahrtbericht gibt es:
+
+| Seite | Inhalt |
+|---|---|
+| **Training** (`/training`) | Fitness (CTL, 42-Tage-Mittel des TRIMP), Ermüdung (ATL, 7 Tage) und Form (TSB) im Verlauf; Kilometer und Stunden je Pulszone pro Woche; Wochentabelle. Braucht `hr_max`, Fahrten ohne Puls zählen als 0 |
+| **Ziele** (`/goals`) | Zielrennen mit Datum und Priorität (A/B/C), Countdown und Trainingsphase (Grundlage, Aufbau, Spitze, Tapering); die Strecke als GPX hochladen für Distanz, Höhenmeter und Anstiege. Verglichen mit den letzten 6 Wochen: längste Fahrt gegen die Renndistanz, meiste Wochenhöhenmeter gegen die des Rennens; für jeden Anstieg der Strecke eine geschätzte Zeit aus der besten VAM auf vergleichbaren Anstiegen der letzten 90 Tage |
+| **Anstiege** (`/climbs`) | mehrmals gefahrene Anstiege (Fuß und Gipfel höchstens 150 m auseinander, braucht GPS), jede Fahrt mit Zeit, Abstand zur besten, VAM, Puls, Leistung |
+| **Fahrer** (`/athlete`) | Fahrerdaten, siehe oben |
+
+Code: [`bikelog/training.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/bikelog/training.py)
+(rein, arbeitet nur auf dem Bericht-JSON, Tests `tests/test_training.py`), Seiten in
+[`webui.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/BikeLogService/bikelogservice/webui.py)
+und [`charts.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/BikeLogService/bikelogservice/charts.py)
+(SVG auf dem Server, keine JS-Bibliothek), Tests `tests/test_pages.py`. Die Zielrennen liegen in
+`<data>/events.json`, ihre GPX-Dateien in `<data>/events/`.
+
+Die Seiten laden die Schriften von Google Fonts; ohne Internet nimmt der Browser
+Systemschriften.
 
 ## Installation (Heimserver: `~/bikelog`)
 
@@ -274,6 +304,9 @@ ein `device`-Feld in `/logfiles.json`.
 | `GET` | `/api/v1/sessions/{id}/files/{name}` | eine Datei unverändert |
 | `GET` | `/api/v1/sessions/{id}/report.json` | Kennzahlen der Sitzung, siehe [Sitzungsbericht](#sitzungsbericht) |
 | `GET` | `/api/v1/sessions/{id}/report.md` | dasselbe als Markdown-Bericht |
+| `GET` | `/api/v1/training` | Tageslast (TRIMP, CTL, ATL, TSB), Wochen, wiederkehrende Anstiege (`days`, `weeks`) |
+| `GET` | `/api/v1/events` | Zielrennen mit Stand der Vorbereitung |
+| `PUT` | `/api/v1/events/{id}/gpx` | Strecken-GPX eines Zielrennens (Body = Datei) |
 | `DELETE` | `/api/v1/sessions/{id}` | Dateien löschen, Grabstein behalten |
 | `POST` | `/api/v1/sessions/{id}/komoot` | zur zusammengehörigen Tour hochladen (`force`), siehe unten |
 | `PUT` | `/api/v1/devices/{gerät}/files/{tag}/{name}` | eine Datei einliefern (Body = Datei) |

@@ -284,14 +284,14 @@ def test_index_page(client, ride_bytes):
     _put(client, SUMMARY, "20260920/I_143012.txt")
     page = client.get("/")
     assert page.status_code == 200
-    assert "23.5 km" in page.text
+    assert "23,5</span> km" in page.text
     assert f"{API}/sessions/1.gpx" in page.text
 
 
 def test_index_page_distance_filter(client, ride_bytes):
     _put(client, ride_bytes)
-    assert "No sessions match" not in client.get("/").text
-    assert "No sessions match" in client.get("/", params={"min_km": 100}).text
+    assert "Keine Fahrten" not in client.get("/").text
+    assert "Keine Fahrten" in client.get("/", params={"min_km": 100}).text
     filtered = client.get("/", params={"min_km": 1, "max_km": 5})
     assert 'value="1"' in filtered.text and 'value="5"' in filtered.text
 
@@ -467,6 +467,17 @@ def test_every_route_requires_a_token_once_auth_is_on(tmp_path, ride_bytes):
             ("GET", f"{API}/sessions/{sid}/files/L_143012.bin"),
             ("GET", f"{API}/sessions/{sid}/report.json"),
             ("GET", f"{API}/sessions/{sid}/report.md"),
+            ("GET", f"/ride/{sid}"),
+            ("GET", "/training"),
+            ("GET", "/goals"),
+            ("POST", "/goals"),
+            ("POST", "/goals/x/delete"),
+            ("GET", "/climbs"),
+            ("GET", "/athlete"),
+            ("POST", "/athlete"),
+            ("GET", f"{API}/training"),
+            ("GET", f"{API}/events"),
+            ("PUT", f"{API}/events/x/gpx"),
             ("PUT", f"{API}/devices/gravel/files/20260920/L_143012.bin"),
             ("DELETE", f"{API}/sessions/{sid}"),
             ("POST", f"{API}/sessions/{sid}/komoot"),

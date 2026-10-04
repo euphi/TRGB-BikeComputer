@@ -77,7 +77,10 @@ Steigung aus dem Beschleunigungssensor als Alternative zum Barometer.
   auftaucht, sie archiviert, GPX exportiert, mit Nextcloud abgleicht und zu Komoot hochlädt
 - Sitzungsbericht: alle Kennzahlen einer Fahrt (Anstiege, Pulszonen, TRIMP, geschätzte
   Leistung, Wegequalität, Sensor-Aussetzer und andere technische Auffälligkeiten) als
-  Markdown oder JSON
+  Webseite, Markdown oder JSON
+- Trainingsauswertung im Log-Dienst, im Rim-&-Ridge-Design: Fitness, Ermüdung und Form im
+  Verlauf, Wochen nach Pulszonen, Zielrennen mit Countdown, Trainingsphase und den
+  Anstiegen der Strecke, Bestzeiten auf wiederkehrenden Anstiegen
 
 **Web-Oberfläche** (im WLAN)
 

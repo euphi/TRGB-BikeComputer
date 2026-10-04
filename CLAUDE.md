@@ -139,6 +139,12 @@ Mobilfunk); danach das Netz mit `cmd wifi forget-network <id>` wieder vergessen.
   aus dem Repo): holt Sitzungen per mDNS-Trigger vom BC ab (`/logfiles/` bzw.
   `/logfiles.json` + `/log/...`). Ändert sich das Namensschema auf der SD
   oder die HTML-Liste, `bikelogservice/sdlayout.py`/`puller.py` mitziehen.
+- Auswertung: `bikelog/report.py` (Kennzahlen einer Sitzung als JSON, `bikelog report`),
+  `bikelog/training.py` (Trainingslast, Wochen, Zielrennen, wiederkehrende Anstiege; arbeitet
+  nur auf dem Bericht-JSON, nie auf dem Binärformat). Im Dienst: Bericht-Cache und
+  Hintergrundberechnung `analysis.py`, Seiten im Rim-&-Ridge-Design `webui.py` + `charts.py`
+  (SVG auf dem Server). Ändert sich ein Feld des Bericht-JSON, `REPORT_VERSION` erhöhen --
+  das berechnet alle gespeicherten Berichte neu.
 
 ## Anstiege (Höhenprofil)
 

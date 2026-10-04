@@ -32,7 +32,7 @@ from bikelog.record import ReadStats, UnknownLogFormat, read_stream
 from . import sdlayout
 from .sdlayout import SdFile
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions (
@@ -71,6 +71,14 @@ CREATE TABLE IF NOT EXISTS sessions (
     nextcloud_synced_at TEXT,
     nextcloud_gpx_version INTEGER,
     UNIQUE (device, day, stem)
+);
+-- Session reports (bikelog.report) as computed, see analysis.py. cache_key says
+-- what they were computed from; a different key means compute again.
+CREATE TABLE IF NOT EXISTS reports (
+    session_id      INTEGER PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+    cache_key       TEXT NOT NULL,
+    report          TEXT NOT NULL,
+    computed_at     TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS files (
     session_id      INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
@@ -411,6 +419,36 @@ class Storage:
                 (status, file, _now(), gpx_version, session_id))
             self._db.commit()
 
+    def sessions_with_log(self) -> list[Session]:
+        """All live sessions that have a binary log, oldest first."""
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT s.* FROM sessions s WHERE s.deleted_at IS NULL "
+                "AND EXISTS (SELECT 1 FROM files f WHERE f.session_id = s.id "
+                "            AND substr(f.name, 1, 1) = 'L') "
+                "ORDER BY s.first_time, s.id").fetchall()
+            return [self._session(row) for row in rows]
+
+    def cached_report(self, session_id: int) -> tuple[str, dict] | None:
+        with self._lock:
+            row = self._db.execute("SELECT cache_key, report FROM reports WHERE session_id = ?",
+                                   (session_id,)).fetchone()
+        return (row["cache_key"], json.loads(row["report"])) if row else None
+
+    def cache_keys(self) -> dict[int, str]:
+        with self._lock:
+            return {r["session_id"]: r["cache_key"] for r in
+                    self._db.execute("SELECT session_id, cache_key FROM reports").fetchall()}
+
+    def store_report(self, session_id: int, cache_key: str, report: dict) -> None:
+        with self._lock:
+            self._db.execute(
+                "INSERT INTO reports (session_id, cache_key, report, computed_at) VALUES (?, ?, ?, ?) "
+                "ON CONFLICT (session_id) DO UPDATE SET cache_key = excluded.cache_key, "
+                "report = excluded.report, computed_at = excluded.computed_at",
+                (session_id, cache_key, json.dumps(report, ensure_ascii=False), _now()))
+            self._db.commit()
+
     def delete(self, session_id: int) -> bool:
         with self._lock:
             session = self.get(session_id)
@@ -422,6 +460,7 @@ class Storage:
                 (self.settings.gpx_dir / session.gpx_file).unlink(missing_ok=True)
             self._db.execute("UPDATE sessions SET deleted_at = ?, gpx_file = NULL WHERE id = ?",
                              (_now(), session_id))
+            self._db.execute("DELETE FROM reports WHERE session_id = ?", (session_id,))
             self._db.commit()
             return True
 

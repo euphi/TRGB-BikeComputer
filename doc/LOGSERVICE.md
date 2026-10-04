@@ -162,15 +162,22 @@ disappears -- the Nextcloud copy stays and has to be removed by hand.
 
 ## Session report
 
-`GET /api/v1/sessions/{id}/report.md` (link "Bericht" on the web page) is a German report
-of the session, `…/report.json` the figures behind it. Both come from
+`/ride/{id}` (click on a ride in the list) shows the report of a session: key figures,
+elevation profile with the climbs, heart-rate zones, estimated power, road quality and
+shocks, technical findings. `GET /api/v1/sessions/{id}/report.md` is the same as German
+Markdown, `…/report.json` the figures behind it. All of it comes from
 [`bikelog/report.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/bikelog/report.py)
-(details: [tools](TOOLS.md#session-report)) and are computed on every request, so a better
-report also improves every past ride.
+(details: [tools](TOOLS.md#session-report)).
 
-Rider data for heart-rate zones, TRIMP and W/kg go into `<data>/athlete.json` (other path:
-`BIKELOG_ATHLETE_FILE`). Every key is optional; without the file the report simply has no
-zones:
+Reports are kept in the `reports` table of the index, under a key made of the report
+version, the hash of the `L_` file and the rider data. After a pull (and at start) the
+service computes whatever is missing or stale, at the lowest CPU priority
+([`analysis.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/BikeLogService/bikelogservice/analysis.py)).
+A new report version or changed rider data therefore reach every past ride by themselves.
+
+Rider data for heart-rate zones, TRIMP and W/kg are entered on the page **Fahrer**
+(`/athlete`) and end up in `<data>/athlete.json` (other path: `BIKELOG_ATHLETE_FILE`).
+Every key is optional; without the file the report simply has no zones:
 
 ```json
 {"hr_max": 186, "hr_rest": 48, "mass_kg": 88, "rider_kg": 76, "cda": 0.38, "crr": 0.006}
@@ -178,6 +185,29 @@ zones:
 
 The JSON is meant as the input for a text generator (template or local LLM): every
 number is computed there, a model only has to put it into words.
+
+## Training, goals, climbs
+
+The web pages are in the bike computer's Rim & Ridge design
+([design system](design/rim-ridge-design-system.md)). Besides the ride list and the ride
+report there are:
+
+| Page | Content |
+|---|---|
+| **Training** (`/training`) | fitness (CTL, 42-day mean of the TRIMP), fatigue (ATL, 7 days) and form (TSB) over time; kilometres and hours per heart-rate zone per week; weekly table. Needs `hr_max`, rides without heart rate count as 0 |
+| **Ziele** (`/goals`) | target events with date and priority (A/B/C), countdown and training phase (base, build, peak, taper); upload the course as GPX for distance, elevation and climbs. Compared with the last 6 weeks: longest ride against the race distance, biggest weekly elevation against the race's; for every climb of the course an estimated time from the best VAM on comparable climbs of the last 90 days |
+| **Anstiege** (`/climbs`) | climbs ridden more than once (foot and summit at most 150 m apart, needs GPS), every effort with time, gap to the best, VAM, heart rate, power |
+| **Fahrer** (`/athlete`) | rider data, see above |
+
+Code: [`bikelog/training.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/bikelog/training.py)
+(pure, works on the report JSON only, tests `tests/test_training.py`), pages in
+[`webui.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/BikeLogService/bikelogservice/webui.py)
+and [`charts.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/BikeLogService/bikelogservice/charts.py)
+(SVG on the server, no JS library), tests `tests/test_pages.py`. Target events live in
+`<data>/events.json`, their GPX files in `<data>/events/`.
+
+The pages load the fonts from Google Fonts; without internet the browser falls back to
+system fonts.
 
 ## Installation (home server: `~/bikelog`)
 
@@ -269,6 +299,9 @@ variant or a `device` field in `/logfiles.json`.
 | `GET` | `/api/v1/sessions/{id}/files/{name}` | one file unchanged |
 | `GET` | `/api/v1/sessions/{id}/report.json` | key figures of the session, see [session report](#session-report) |
 | `GET` | `/api/v1/sessions/{id}/report.md` | the same as a German Markdown report |
+| `GET` | `/api/v1/training` | daily load (TRIMP, CTL, ATL, TSB), weeks, recurring climbs (`days`, `weeks`) |
+| `GET` | `/api/v1/events` | target events with readiness |
+| `PUT` | `/api/v1/events/{id}/gpx` | course GPX of a target event (body = file) |
 | `DELETE` | `/api/v1/sessions/{id}` | delete the files, keep the tombstone |
 | `POST` | `/api/v1/sessions/{id}/komoot` | upload as part of its tour (`force`), see above |
 | `PUT` | `/api/v1/devices/{device}/files/{day}/{name}` | deliver one file (body = file) |

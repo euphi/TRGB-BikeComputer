@@ -121,7 +121,8 @@ tests: `tests/test_report.py`.
 | Section | Content |
 |---|---|
 | `ride` | distance, moving time, speeds, elevation, stops (a logging gap counts as a stop: the device sleeps), temperature, cadence and share of pedalling |
-| `climbs` | climbs in the barometric profile with the firmware's criteria and categories ([climbs](CLIMB.md)): length, height, mean/max. gradient, time, VAM, heart rate, power; `--hills` also lists hills below category 6 |
+| `climbs` | climbs in the barometric profile with the firmware's criteria and categories ([climbs](CLIMB.md)): length, height, mean/max. gradient, time, VAM, heart rate, power, position of foot and summit; `--hills` also lists hills below category 6 |
+| `profile` | barometric elevation profile (`[km, m]`, at most 300 points) for charts |
 | `heart` | mean/max., coverage, time in zones, TRIMP (Banister with `hr_rest`, else Edwards), aerobic decoupling (power/heart rate, first against second half, from 40 min), efficiency W/bpm |
 | `power` | **estimated** from speed, gradient, mass, CdA and Crr, without wind: mean, normalised power, work, best 1/5/20/60 min, W/kg with `rider_kg` -- for comparing rides, not a measurement |
 | `road` | road classes, manual labels against the automatic class, shocks by severity, the five hardest with position |

@@ -126,7 +126,8 @@ Tests: `tests/test_report.py`.
 | Abschnitt | Inhalt |
 |---|---|
 | `ride` | Strecke, Fahrzeit, Geschwindigkeiten, Höhenmeter, Stopps (eine Aufzeichnungslücke zählt als Stopp: das Gerät schläft), Temperatur, Trittfrequenz und Anteil getreten |
-| `climbs` | Anstiege im Baro-Profil mit den Kriterien und Kategorien der Firmware ([Anstiege](CLIMB.md)): Länge, Höhe, mittlere/max. Steigung, Zeit, VAM, Puls, Leistung; `--hills` listet auch Hügel unterhalb Kategorie 6 |
+| `climbs` | Anstiege im Baro-Profil mit den Kriterien und Kategorien der Firmware ([Anstiege](CLIMB.md)): Länge, Höhe, mittlere/max. Steigung, Zeit, VAM, Puls, Leistung, Position von Fuß und Gipfel; `--hills` listet auch Hügel unterhalb Kategorie 6 |
+| `profile` | Baro-Höhenprofil (`[km, m]`, höchstens 300 Punkte) für Diagramme |
 | `heart` | Ø/max., Abdeckung, Zeit in den Zonen, TRIMP (Banister mit `hr_rest`, sonst Edwards), aerobe Entkopplung (Leistung/Puls, erste gegen zweite Hälfte, ab 40 min), Effizienz W/bpm |
 | `power` | **geschätzt** aus Tempo, Steigung, Masse, CdA und Crr, ohne Wind: Ø, normalisierte Leistung, Arbeit, beste 1/5/20/60 min, W/kg mit `rider_kg` -- für Vergleiche zwischen Fahrten, kein Messwert |
 | `road` | Wegeklassen, manuelle Labels gegen die automatische Klasse, Stöße nach Schwere, die fünf stärksten mit Position |

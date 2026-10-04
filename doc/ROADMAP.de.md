@@ -73,12 +73,11 @@ Noch nicht entworfen.
   gelöscht wird.
 - **Touch-Sperre** gegen Geistertipps durch Regentropfen.
 - **FIT-Export** im Log-Dienst, neben GPX.
-- **Logs weiter auswerten** (baut auf dem Sitzungsbericht auf, `bikelog report`):
-  Trainingsbelastung über Wochen (TRIMP, Fitness/Ermüdung/Form), Bestzeiten auf
-  wiederkehrenden Anstiegen, Vergleich mit dem Profil eines Zielrennens; ein Bericht in
-  Textform von einem lokalen LLM auf dem Heimserver, das nur das JSON des Berichts bekommt;
-  Wegequalität auf OSM-Wege abgebildet (Map-Matching) und eine JOSM-Datei mit
-  `smoothness`/`surface`-Vorschlägen zum Prüfen von Hand.
+- **Logs weiter auswerten** im Log-Dienst (baut auf Sitzungsbericht und Trainingsseiten
+  auf): ein Bericht in Textform und Trainingsvorschläge für die Zielrennen von einem lokalen
+  LLM auf dem Heimserver, das nur das JSON von Bericht und Training bekommt; Wegequalität auf
+  OSM-Wege abgebildet (Map-Matching) und eine JOSM-Datei mit `smoothness`/`surface`-Vorschlägen
+  zum Prüfen von Hand.
 
 ## TrailBridge-App
 

@@ -13,7 +13,8 @@ Sections of the dict:
   meta     time span, format, record counts, simulator, clock
   ride     the figures of ridestats.RideStats plus stops and logging gaps
   climbs   climbs found in the barometric profile, with the firmware's criteria
-           and categories (src/ClimbProfile.h, doc/CLIMB.md)
+           and categories (src/ClimbProfile.h, doc/CLIMB.md), foot/summit position
+  profile  [km, height] of the barometric profile, thinned out for charts
   heart    zones, TRIMP, aerobic decoupling -- zones/TRIMP need Athlete.hr_max
   power    *estimated* from speed, gradient and mass (no power meter): mean,
            normalised power, best 5/20 min; good for trends, not absolute values
@@ -43,7 +44,7 @@ from .record import (IF_CLIPPED, IF_DATA_GAP, IF_NO_SPEED, IF_TOO_SLOW, IF_UNCAL
 
 #: Bump when a field changes its meaning or moves -- consumers (the service's
 #: cache, a prompt) key on it.
-REPORT_VERSION = 1
+REPORT_VERSION = 2
 
 #: Records before this are from an unset ESP32 clock (see gpx.MIN_PLAUSIBLE_YEAR).
 MIN_PLAUSIBLE_TIMESTAMP = int(datetime.datetime(2020, 1, 1, tzinfo=datetime.timezone.utc).timestamp())
@@ -308,6 +309,18 @@ def _profile_grid(records: list[Record]) -> list[tuple[float, float, float]]:
     return grid
 
 
+def _profile(records: list[Record], points: int = 300) -> list[list[float]]:
+    """[km, height] of the barometric profile, at most ``points`` of them -- for charts."""
+    grid = _profile_grid(records)
+    if not grid:
+        return []
+    step = max(1, len(grid) // points)
+    picked = grid[::step]
+    if picked[-1] is not grid[-1]:
+        picked.append(grid[-1])
+    return [[round(d / 1000, 3), round(h, 1)] for d, h, _ in picked]
+
+
 def find_climbs(grid: list[tuple[float, float, float]]) -> list[tuple[int, int]]:
     """(foot, summit) grid indices, with the criteria of ClimbProfile.cpp: foot =
     first point from which the next 100 m rise by 3 % on average; the climb goes
@@ -349,6 +362,20 @@ def climb_category(length_m: float, gain_m: float) -> str | None:
     return cat
 
 
+def _position_at(records: list[Record], t: float) -> tuple[float, float] | None:
+    """Fresh GPS position of the data record nearest to t seconds after the start."""
+    t0 = records[0].time
+    best = None
+    for rec in records:
+        if rec.gps_valid and rec.gps_fix_age_ms <= FRESH_FIX_MS and (rec.gps_lat_e7 or rec.gps_lon_e7):
+            dt = abs(rec.time - t0 - t)
+            if best is None or dt < best[0]:
+                best = (dt, rec)
+    if best is None or best[0] > 30:
+        return None
+    return round(best[1].latitude, 5), round(best[1].longitude, 5)
+
+
 def _climbs(records: list[Record], steps: list[_Step], with_hills: bool) -> list[dict]:
     grid = _profile_grid(records)
     out = []
@@ -379,6 +406,8 @@ def _climbs(records: list[Record], steps: list[_Step], with_hills: bool) -> list
             "avg_hr": _r(sum(h * d for h, d in hrs) / sum(d for _, d in hrs), 0) if hrs else None,
             "max_hr": max((h for h, _ in hrs), default=None),
             "est_avg_power_w": _r(sum(p * d for p, d in pw) / sum(d for _, d in pw), 0) if pw else None,
+            "foot": _position_at(records, t1),
+            "summit": _position_at(records, t2),
         })
     return out
 
@@ -704,6 +733,7 @@ def compute(everything: list, athlete: Athlete | None = None, stats: ReadStats |
         "athlete": asdict(athlete),
         "ride": _ride(rs, records, steps),
         "climbs": _climbs(records, steps, with_hills),
+        "profile": _profile(records),
         "heart": _heart(steps, athlete),
         "power": power,
         "road": _road(road, shocks, labels, t0, d_at),
