@@ -94,6 +94,8 @@ def export_session(store: Storage, session: Session) -> str:
     if old and old != rel:
         (root / old).unlink(missing_ok=True)     # renamed, moved between Tours/Debug_Archive, or no longer valid
     store.set_export(session.id, rel, status, EXPORT_VERSION)
+    log.info("session %d (%s%s): GPX %s%s", session.id, session.day, session.stem, status,
+             f" -> {rel} ({stats.written} points)" if rel else "")
     return status
 
 

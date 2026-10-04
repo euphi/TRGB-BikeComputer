@@ -68,6 +68,12 @@ private:
 	void checkClockStep();
 	bool isActiveSessionFile(const String& path) const;
 
+	// Session rotation, see rotateSession(): FlusherTask carries out the request.
+	std::atomic<bool> rotateRequested{false};
+	uint32_t recordsAtSessionStart = 0;
+	void startSession();
+	void checkRotate();
+
 	void storeLoglevels();
 	void printLoglevels();
 	void checkTagTablesComplete() const;
@@ -79,6 +85,7 @@ private:
 	Command logcmd;
 	Command logShow;
 	Command replayLog;
+	Command rotateCmd;
 
 	TaskHandle_t flushTaskHandle = nullptr;
 	SemaphoreHandle_t xPrintMutex = nullptr;
@@ -105,6 +112,7 @@ private:
 	std::atomic<uint32_t> rawBytes[2] = {};
 	std::atomic<uint32_t> rawDropped{0};
 	uint8_t rawCaptureCount = 0;
+	std::atomic<uint16_t> rawSessionNo{0};
 	uint8_t* rawRx = nullptr;								// receive buffer, RAW_MAX_MSG, allocated in setup()
 	bool rawSend(uint8_t* msg, size_t len, uint8_t cmd, uint8_t stream);
 	void rawDrain();
@@ -159,6 +167,9 @@ public:
 	bool rawClose(RawStream s) {uint8_t m[RAW_PREFIX]; return rawSend(m, RAW_PREFIX, RAW_CMD_CLOSE, s);}
 	uint32_t getRawBytes(RawStream s) const {return rawBytes[s];}
 	uint32_t getRawDropped() const {return rawDropped;}
+	// Counts up with every session rotation: a raw stream that was opened before it has lost
+	// its file and must send OPEN (with the file header) again.
+	uint16_t getRawSessionNo() const {return rawSessionNo;}
 	void getRawFileName(RawStream s, char* out, size_t len);
 
 	int16_t listDir(const String& dirname, uint8_t levels);
@@ -168,6 +179,12 @@ public:
 	// Flushes the open log files right now, from any task -- before a deliberate restart or
 	// deep sleep, which would otherwise lose up to 5 s of log (FlusherTask's period).
 	void flushFiles();
+	// Finishes this session now and starts the next one, so the log service finds the data
+	// without a reboot. Only on purpose: the rider ended the ride session (Statistics::stopRide())
+	// or typed "rotate" -- not when WLAN connects, which also happens on a phone hotspot during
+	// a tour. Stops a running raw capture first. Non-blocking, from any task; nothing happens
+	// if nothing was logged in this session yet.
+	void rotateSession();
 
 	static const char* TAG_STRING[LogTagMax];
 	static const char* LEVEL_STRING[LogTypeMax];

@@ -1,8 +1,8 @@
 # Anstiege: Höhenprofil und Kletter-Anzeige
 
-TrailBridge schickt beim Abfahren einer GPX-Route das Höhenprofil des
-nächsten Anstiegs ([Protokoll](trailbridge/PROTOCOL.md), „Höhenprofil-Service").
-Der BikeComputer findet darin Fuß und Gipfel, bewertet den Anstieg und zeigt ihn auf dem Screen
+TrailBridge schickt beim Abfahren einer GPX-Route immer das Höhenprofil der Strecke voraus und sagt
+die Anstiege darin an ([Protokoll](trailbridge/PROTOCOL.md), „Höhenprofil-Service").
+Der BikeComputer bewertet den Anstieg und zeigt ihn auf dem Screen
 `RimRidgeClimb` ([Design](design/rim-ridge-design-system.md), §6).
 
 ![Anstiegs-Screen](screenshots/climb.png){ width="260" }
@@ -16,13 +16,26 @@ Der BikeComputer findet darin Fuß und Gipfel, bewertet den Anstieg und zeigt ih
 
 ## Was vom Handy kommt, und was die Firmware daraus macht
 
-TrailBridge schickt den Anstieg voraus: die Höhen **von der aktuellen Position
-bis zum Gipfel**, sobald der Fuß höchstens 500 m entfernt ist – in einem Frame.
-Bis 5 km im 25-m-Raster, für längere Anstiege gröber (bis 250 m; der 36 km
-lange Galibier von Süden kommt mit 200 m). `PROFILE_NONE` kommt am Gipfel.
-Auch kleine Hügel (ab 10 m Höhenunterschied) werden geschickt.
+**Rollendes Handy (TrailBridge seit 2026-10-04, Frame-Flag `ROLLING`).** Das Profil kommt immer –
+auch auf flacher Strecke und bergab – als Fenster der Strecke voraus (5 km im 25-m-Raster; ein
+weiter entfernter Anstieg wird bis zu seinem Fuß abgeschnitten). Ein Anstieg darin wird vom Handy
+**mit seiner ganzen Ausdehnung angesagt** (Fuß und Gipfel, Restdistanz und Höhe, auch wo sie
+hinter oder jenseits des Frames liegen): Sobald der Fuß höchstens 500 m voraus liegt, reicht das
+Fenster bis zum Gipfel, bis 5 km im 25-m-Raster, für längere Anstiege gröber (bis 250 m; der 36 km
+lange Galibier von Süden kommt mit 200 m). Damit
 
-Die Firmware
+- **endet der Anstieg nicht vor dem Gipfel**, und Kategorie und Länge sind bis ganz oben die
+  des **ganzen** Anstiegs (Testfahrt 2026-10-04: die Kategorie sank unterwegs, weil die Firmware
+  nur noch den Rest des Anstiegs im Frame sah),
+- öffnet sich der Anstiegs-Screen nur bei Anstiegen von selbst (Rang mindestens `autorank`, Fuß
+  näher als `showahead`) und geht **erst nach dem Gipfel** zurück (`summitpass` dahinter, dann
+  `hidedelay`) – nicht, wenn die Daten einen Moment ausbleiben (abseits der Route, Frame
+  unterwegs); erst nach 2 Minuten ohne jeden Anstieg (Route zu Ende, Handy weg) geht er auch,
+- heißt `PROFILE_NONE` nur noch „Route zu Ende / abseits der Route"; der Anstieg, auf dem der
+  Fahrer ist, überlebt es.
+
+**Älteres Handy** (ohne Flag): TrailBridge schickt nur den Anstieg voraus, von der aktuellen
+Position bis zum Gipfel in einem Frame, und `PROFILE_NONE` am Gipfel. Die Firmware
 
 - **findet den Anstieg**: Fuß = erster Punkt, ab dem die nächsten 100 m im
   Mittel 3 % steigen. Gipfel = der letzte Punkt vor einem Gefälle von mehr als
@@ -36,8 +49,14 @@ Die Firmware
   selbst im 250-m-Raster nicht in einen Frame passt.
 - **führt einen Anstieg fort**, wenn das Handy `PROFILE_NONE` und kurz danach
   ein neues Profil schickt.
+
+Beide: Die Firmware
+
 - **kennt die Position** aus der Restdistanz der Nav-Frames, zwischen zwei
   Frames fortgeschrieben mit der Strecke des Speed-Sensors.
+
+Lesbarkeit: Die erwartete Steigung („NÄCHSTE 25 m") und die gemessene stehen in der großen
+48-px-Schrift; das steilste Band ist ein sattes Rot (`0xE8392A`) im Profil und im Wert.
 
 Höhenangaben sind netto: Gipfel minus Fuß, Gipfel minus Fahrer.
 

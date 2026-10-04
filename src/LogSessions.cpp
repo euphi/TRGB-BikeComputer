@@ -24,7 +24,11 @@ const String WORKDIR = "/BIKECOMP/CUR";
 namespace {
 
 std::atomic<bool> running{false};
-String activeStem;					// set before the task starts, read-only afterwards
+String activeStem;					// set before the task starts, read by the task only
+// A session was ended (BCLogger::rotateSession()) while the task was still busy: scan again
+// when done. pendingStem is written before rescan is set.
+std::atomic<bool> rescan{false};
+char pendingStem[16] = "";
 
 constexpr size_t CHUNK_RECORDS = 32;			// 2 KB internal RAM while the task runs
 constexpr size_t MAX_STEMS = 32;				// sessions per boot; the rest waits for the next one
@@ -340,7 +344,7 @@ bool backfill(uint8_t* buf) {
 	return written > 0;
 }
 
-void finalizerTask(void*) {
+void finalizePass() {
 	std::vector<String> stems;
 	File dir = SD_MMC.open(WORKDIR);
 	if (dir && dir.isDirectory()) {
@@ -371,7 +375,19 @@ void finalizerTask(void*) {
 	free(buf);
 	// The stack size above is a guess plus margin; this shows what is left of it.
 	if (worked) logInfo("📦 Finalizer done (stack: %u byte unused)", static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr)));
-	running = false;
+}
+
+void finalizerTask(void*) {
+	for (;;) {
+		finalizePass();
+		running = false;
+		if (!rescan.exchange(false)) break;
+		// Asked again while busy: carry on as the new task, unless startFinalizer() has
+		// started one in the meantime (then it is its job).
+		bool idle = false;
+		if (!running.compare_exchange_strong(idle, true)) break;
+		activeStem = pendingStem;
+	}
 	vTaskDelete(nullptr);
 }
 
@@ -392,7 +408,11 @@ String stemOf(const char* name) {
 bool busy() {return running;}
 
 void startFinalizer(const String& stem) {
-	if (running) return;
+	if (running) {
+		strlcpy(pendingStem, stem.c_str(), sizeof(pendingStem));
+		rescan = true;
+		return;
+	}
 	activeStem = stem;
 	running = true;
 	// Priority 1: below everything that matters while riding; SD waits block it anyway.

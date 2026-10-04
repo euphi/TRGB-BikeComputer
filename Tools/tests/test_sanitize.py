@@ -76,3 +76,10 @@ def test_disabled_via_gpx_options():
     assert stats.written == len(records)
     _, sanitized = gpx.to_string(records, gpx.GpxOptions(sanitize=True, max_fix_age_ms=0))
     assert sanitized.written == 1 + 10
+
+
+def test_a_session_without_any_movement_is_not_trimmed_away():
+    # No wheel sensor (speed always 0) or parked: "start" and "end" are the same run, and
+    # collapsing both used to remove every point -- the GPX of such a session vanished.
+    records = _stopped(0, 30)
+    assert trim_jitter(records) == records

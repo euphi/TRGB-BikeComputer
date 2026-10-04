@@ -14,6 +14,13 @@ data/sessions/<gerät>/20260920/L_143012.bin     (Dateien direkt in /BIKECOMP: O
 data/index.sqlite3                              Index (Sitzungen, Dateien, Hashes, Kennzahlen)
 ```
 
+Uhr-Sprünge innerhalb einer Sitzung (die GPS-Zeit des Handys war beim Start des BC falsch,
+2026-10-04: aus 2 h Fahrt wurden 17 h mit einer Stunde vom Vorabend) werden beim Lesen
+rückgängig gemacht: die `T_`-Datei nennt die Sprünge, die Sprünge der Zeitstempel zeigen, wo
+sie waren, die letzte Uhr gilt
+([`bikelog.timefix`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/bikelog/timefix.py)).
+Die Kurzstatistik zeigt dann `time=repaired`.
+
 GPX, CSV usw. werden bei Bedarf aus den Rohdaten erzeugt -- eine bessere
 Exportlogik verbessert damit rückwirkend alle alten Fahrten.
 
@@ -40,7 +47,8 @@ der mit BLE und Display um internen Heap konkurriert.
   gescheitert.
 - **Polling** als Netz: alle `BIKELOG_PULL_INTERVAL_S` (120 s) eine
   mDNS-Adressanfrage -- ist der BC weg, kostet das nichts, taucht er (wieder)
-  auf, wird abgeholt. Zusätzlich spätestens alle 30 min, solange er online ist.
+  auf, wird abgeholt. Zusätzlich spätestens alle 10 min, solange er online ist (der BC
+  beendet eine Sitzung, wenn die Fahrt-Session beendet wird, s. u.).
 - **Nachfassen**: Direkt nach dem Boot verschiebt `LogSessions` die beendete
   Sitzung erst im Hintergrund aus `CUR/`. Liegt dort beim Abruf mehr als die
   laufende Sitzung (oder schlägt der Abruf fehl), wird nach 60 s erneut
@@ -49,8 +57,9 @@ der mit BLE und Display um internen Heap konkurriert.
 
 **Was**: jede Datei der Liste, die noch fehlt oder deren Größe sich geändert
 hat -- außer `CUR/` (laufende Sitzung) und gelöschten Sitzungen. Neue
-Sitzungen entstehen auf dem BC nur beim Booten, ein Abruf ohne Neues ist eine
-einzige Anfrage. Die Liste kommt aus `/logfiles.json`, falls die Firmware den
+Sitzungen entstehen auf dem BC beim Booten, beim bewussten Beenden der Fahrt (langer Druck)
+oder mit `rotate` auf der seriellen Konsole -- nicht beim WLAN-Connect, der auch per
+Handy-Hotspot mitten in einer Tour vorkommt. Ein Abruf ohne Neues ist eine einzige Anfrage. Die Liste kommt aus `/logfiles.json`, falls die Firmware den
 Endpunkt hat, sonst aus der HTML-Seite `/logfiles/` (dort ohne Größen: eine
 bekannte Datei wird dann nicht neu geholt).
 
@@ -109,8 +118,21 @@ Von Hand: `bikelogservice export` (fehlende/veraltete), `export --all` (alle).
 
 ## Komoot-Upload
 
-Ausschließlich manuell -- kein automatischer Trigger, anders als der
-Nextcloud-Sync unten. `POST /api/v1/sessions/{id}/komoot` lädt die Fahrt über
+Nie automatisch -- aber die Webseite **fragt**: Jede fertige, echte Fahrt, die weder
+hochgeladen noch abgelehnt ist, erscheint oben in einem Kasten „Neue Fahrt bereit -- zu
+Komoot hochladen?“ mit den Knöpfen *Zu Komoot hochladen* und *Nicht hochladen*. Die Frage
+kommt bei jedem Aufruf wieder, bis einer der beiden gedrückt wird (Seite schließen
+beantwortet nichts); die Ablehnung wird gespeichert (`komoot_prompt = ignored`, je
+zusammengefasster Tour) und lässt sich mit
+`POST /api/v1/sessions/{id}/komoot/ignore?ask_again=true` zurücknehmen. Ein fehlgeschlagener
+Upload fragt weiter. Sitzungen, die bei der Einführung (Schema 7) schon da waren, werden
+nicht gefragt; ihr „Komoot“-Knopf in der Tabelle bleibt.
+
+Solange Dateien geholt werden, zeigt die Seite einen Fortschrittskasten (Datei n von m,
+MB bisher, danach „Verarbeite“: GPX-Export, Nextcloud) und lädt sich alle 3 s neu; das
+Journal nennt jede Datei, die Zahl der zu holenden Sitzungen und jeden GPX-Export.
+
+`POST /api/v1/sessions/{id}/komoot` lädt die Fahrt über
 [kompy](https://github.com/Tsadoq/kompy) zu Komoot hoch (oder, in der
 Web-Oberfläche, der „Komoot“-Knopf neben jeder echten Fahrt). Ein Reboot
 mitten in einer Fahrt (kurzer BLE-Aussetzer, Pause mit ausgeschaltetem BC)
@@ -309,6 +331,7 @@ ein `device`-Feld in `/logfiles.json`.
 | `PUT` | `/api/v1/events/{id}/gpx` | Strecken-GPX eines Zielrennens (Body = Datei) |
 | `DELETE` | `/api/v1/sessions/{id}` | Dateien löschen, Grabstein behalten |
 | `POST` | `/api/v1/sessions/{id}/komoot` | zur zusammengehörigen Tour hochladen (`force`), siehe unten |
+| `POST` | `/api/v1/sessions/{id}/komoot/ignore` | die Frage der Seite mit „nein“ beantworten (`ask_again=true`: wieder fragen) |
 | `PUT` | `/api/v1/devices/{gerät}/files/{tag}/{name}` | eine Datei einliefern (Body = Datei) |
 | `GET`/`POST` | `/api/v1/pull` | Status des Abholens / jetzt abholen (`device`) |
 

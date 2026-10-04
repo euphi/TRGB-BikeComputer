@@ -7,6 +7,7 @@
 #include "NvsUtil.h"
 #include "I2CBus.h"
 
+#include <WiFi.h>
 #include <Battery.h>
 Battery batt = Battery(3000, 4200, BAT_VOLT_PIN);
 
@@ -30,9 +31,36 @@ Command cmdMem;
 
 int8_t batLevel = -1;
 
+// Once a minute at Info under TAG_STAT (the file level of TAG_OP is Error), so the discharge
+// curve ends up in the debug log together with what drained it: WiFi and connected sensors.
+static void logBatteryState(uint16_t mv, uint8_t perc, bool charging) {
+	const char* wifi = WiFi.getMode() == WIFI_OFF ? "off" : WiFi.getMode() == WIFI_AP ? "ap"
+	                 : WiFi.status() == WL_CONNECTED ? "sta" : "search";
+	char ble[BLEDevices::DEV_COUNT + 1];
+	uint8_t connected = 0;
+	for (int d = 0; d < BLEDevices::DEV_COUNT; d++) {
+		const bool c = bleDevs.getDevStatus(BLEDevices::EDevType(d)).state == BLEDevices::CONN_CONNECTED;
+		ble[d] = c ? "HcCFN"[d] : '-';		// HRM, CSC 1, CSC 2, FL, Nav
+		connected += c;
+	}
+	ble[BLEDevices::DEV_COUNT] = 0;
+	bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "🔋 Battery %u mV (avg 60 s) %u%% %s | wifi %s | BLE %u [%s] | heap %u",
+	           mv, perc, charging ? "charging" : "discharging", wifi, connected, ble, (unsigned) ESP.getFreeHeap());
+}
+
 void batCheck() {
-	bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_OP, "Battery:  %d%% [%d mV]- charging [%c]", batt.level(), batt.voltage(), batt.voltage() > 4150 ? 'x' : ' ');
-	ui.updateBatInt(batt.voltage() / 1000.0, batt.level(uint16_t (ui.getBatIntVoltageAvg()*1000)), batt.voltage() > 4150);
+	const uint16_t mv = batt.voltage();
+	const bool charging = mv > 4150;
+	bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_OP, "Battery:  %d%% [%d mV]- charging [%c]", batt.level(), mv, charging ? 'x' : ' ');
+	ui.updateBatInt(mv / 1000.0, batt.level(uint16_t (ui.getBatIntVoltageAvg()*1000)), charging);
+
+	static uint8_t seconds = 0;
+	if (++seconds >= 60) {
+		seconds = 0;
+		const float avg = ui.getBatIntVoltageAvg();		// NAN until the first minute is full
+		const uint16_t avgMv = isnan(avg) ? mv : uint16_t(avg * 1000);
+		logBatteryState(avgMv, batt.level(avgMv), charging);
+	}
 }
 
 void setup() {

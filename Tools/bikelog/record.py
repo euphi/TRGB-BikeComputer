@@ -29,9 +29,13 @@ from __future__ import annotations
 
 import bisect
 import datetime
+import io
 import struct
+from pathlib import Path
 from dataclasses import dataclass, field, fields
 from typing import BinaryIO, Iterable, Iterator
+
+from . import timefix
 
 # Bits of Record.gps_flags, mirroring LogRec::GpsFlags.
 # LOG_GPS_VALID means "a POSITION_UPDATE was received at all" -- NOT that the
@@ -667,10 +671,12 @@ class ReadStats:
     trailing_bytes: int = 0
     by_type: dict[int, int] = field(default_factory=dict)   # all complete records read, per type
     unknown_type: int = 0               # skipped: type this reader does not know
+    time_steps: int = 0                 # clock steps repaired (read with repair_time)
 
 
 def read_stream(stream: BinaryIO, stats: ReadStats | None = None,
-                types: Iterable[int] | None = (TYPE_DATA,)) -> Iterator[AnyRecord]:
+                types: Iterable[int] | None = (TYPE_DATA,),
+                repair_time: bool = False, time_hints: str | bytes | None = None) -> Iterator[AnyRecord]:
     """Yield the complete records of an open binary log.
 
     ``types`` selects the record types to yield; the default is the ride data
@@ -680,6 +686,11 @@ def read_stream(stream: BinaryIO, stats: ReadStats | None = None,
     A short final read is reported through ``stats.trailing_bytes`` instead of
     raising: an aborted ride (SD card pulled, battery empty) leaves exactly
     that, and the records before it are perfectly good.
+
+    ``repair_time`` undoes clock steps inside the session (bikelog.timefix),
+    ``time_hints`` is the text of the session's T_*.txt that names them. The
+    count of steps found goes to ``stats.time_steps``. Reads the whole file
+    first in that case.
     """
     stats = stats if stats is not None else ReadStats()
     wanted = None if types is None else set(types)
@@ -690,11 +701,21 @@ def read_stream(stream: BinaryIO, stats: ReadStats | None = None,
     stats.version = fmt.version
     stats.record_size = fmt.size
     stream.seek(0)
+    shift: list[int] = []
+    if repair_time:
+        raw_all = stream.read()
+        count = len(raw_all) // fmt.size
+        times = [_raw_time_ms(raw_all[i * fmt.size:(i + 1) * fmt.size], fmt) for i in range(count)]
+        shift = timefix.shifts(times, timefix.parse_hints(time_hints))
+        stats.time_steps = len(timefix.find_steps(times, timefix.parse_hints(time_hints)))
+        stream = io.BytesIO(raw_all)
+    index = -1
     while True:
         raw = stream.read(fmt.size)
         if len(raw) < fmt.size:
             stats.trailing_bytes = len(raw)
             return
+        index += 1
         rtype = raw[fmt.type_offset] if fmt.type_offset is not None else TYPE_DATA
         stats.by_type[rtype] = stats.by_type.get(rtype, 0) + 1
         layout = fmt.layouts.get(rtype)
@@ -703,15 +724,52 @@ def read_stream(stream: BinaryIO, stats: ReadStats | None = None,
             continue
         if wanted is not None and rtype not in wanted:
             continue
-        yield layout.build(raw)
+        rec = layout.build(raw)
+        if shift and shift[index]:
+            _shift_record(rec, shift[index])
+        yield rec
         stats.records += 1
 
 
+def _raw_time_ms(raw: bytes, fmt: "Format") -> int:
+    """Timestamp of an undecoded record, ms. The seconds are the first 8 bytes of
+    every type; unknown types get just those."""
+    seconds = struct.unpack_from("<q", raw, 0)[0]
+    rtype = raw[fmt.type_offset] if fmt.type_offset is not None else TYPE_DATA
+    layout = fmt.layouts.get(rtype)
+    if layout is None or "timestamp_ms" not in layout.names:
+        return seconds * 1000
+    rec = layout.build(raw)
+    return seconds * 1000 + (rec.timestamp_ms if rec.timestamp_ms < 1000 else 0)
+
+
+def _shift_record(rec, delta_ms: int) -> None:
+    total = rec.timestamp * 1000 + (rec.timestamp_ms if hasattr(rec, "timestamp_ms") else 0) + delta_ms
+    rec.timestamp = total // 1000
+    if hasattr(rec, "timestamp_ms"):
+        rec.timestamp_ms = total % 1000
+
+
 def read_file(path, stats: ReadStats | None = None,
-              types: Iterable[int] | None = (TYPE_DATA,)) -> Iterator[AnyRecord]:
-    """Yield the complete records of a log file given by path (see read_stream)."""
+              types: Iterable[int] | None = (TYPE_DATA,),
+              repair_time: bool = False, time_hints: str | bytes | None = None) -> Iterator[AnyRecord]:
+    """Yield the complete records of a log file given by path (see read_stream).
+    With repair_time and no time_hints, the T_*.txt next to the file is used."""
+    if repair_time and time_hints is None:
+        sibling = _hint_file_of(path)
+        if sibling is not None:
+            time_hints = sibling.read_bytes()
     with open(path, "rb") as fh:
-        yield from read_stream(fh, stats, types)
+        yield from read_stream(fh, stats, types, repair_time, time_hints)
+
+
+def _hint_file_of(path) -> "Path | None":
+    """T_<stem>.txt next to L_<stem>.bin, if there."""
+    p = Path(path)
+    if not p.name.startswith("L"):
+        return None
+    hint = p.with_name("T" + p.name[1:].rsplit(".", 1)[0] + ".txt")
+    return hint if hint.is_file() else None
 
 
 def split(records: Iterable[AnyRecord]) -> tuple[list[Record], list[RoadQualityRecord], list[ShockEvent]]:

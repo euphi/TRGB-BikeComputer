@@ -32,7 +32,7 @@ from bikelog.record import ReadStats, UnknownLogFormat, read_stream
 from . import sdlayout
 from .sdlayout import SdFile
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions (
@@ -64,6 +64,9 @@ CREATE TABLE IF NOT EXISTS sessions (
     komoot_status   TEXT,
     komoot_tour_id  TEXT,
     komoot_uploaded_at TEXT,
+    -- The question "upload this ride to Komoot?" (webui.py): NULL = still to be asked,
+    -- 'ignored' = the rider said no. Uploading is komoot_status, not this.
+    komoot_prompt   TEXT,
     -- Nextcloud sync (nextcloud.py): the Tours file, kept up to date the
     -- same way the local export is -- see nextcloud_gpx_version below.
     nextcloud_status    TEXT,
@@ -141,6 +144,7 @@ class Session:
     komoot_status: str | None = None
     komoot_tour_id: str | None = None
     komoot_uploaded_at: str | None = None
+    komoot_prompt: str | None = None
     nextcloud_status: str | None = None
     nextcloud_file: str | None = None
     nextcloud_synced_at: str | None = None
@@ -214,6 +218,18 @@ class Storage:
                 self._db.execute(f"ALTER TABLE sessions ADD COLUMN {column}")
         self._db.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
         self._db.commit()
+        if 0 < version < 7:
+            columns = {r[1] for r in self._db.execute("PRAGMA table_info(sessions)")}
+            if "komoot_prompt" not in columns:
+                self._db.execute("ALTER TABLE sessions ADD COLUMN komoot_prompt TEXT")
+                # 7: sessions that exist now are not asked about; the page asks for the new ones.
+                # (Their "Komoot" button in the table stays.)
+                self._db.execute("UPDATE sessions SET komoot_prompt = 'ignored'")
+                self._db.commit()
+        if 0 < version < 6:
+            # 6: clock steps inside a session are repaired (bikelog.timefix) -- every
+            # stored session gets its times, summary and GPX derived again.
+            self.rederive_all()
 
     def close(self) -> None:
         with self._lock:
@@ -308,8 +324,21 @@ class Storage:
         log = session.file("L")
         if log is None:
             return
+        # Clock steps inside the session (a wrong GPS time, see bikelog.timefix) are undone,
+        # so every export sees one continuous ride.
         with open(self.path_for(session, log.name), "rb") as fh:
-            yield from read_stream(fh, stats, types)
+            yield from read_stream(fh, stats, types, repair_time=True,
+                                   time_hints=self._hints(session))
+
+    def _hints(self, session: Session) -> bytes | None:
+        """The session's T_*.txt (clock steps), if it was fetched."""
+        hint = session.file("T")
+        if hint is None:
+            return None
+        try:
+            return self.path_for(session, hint.name).read_bytes()
+        except OSError:
+            return None
 
     # --- mutations -----------------------------------------------------
 
@@ -354,18 +383,62 @@ class Storage:
                 "VALUES (?, ?, ?, ?, ?, ?)",
                 (session.id, sdfile.name, len(payload), digest, now, source))
             updates = {"updated_at": now}
-            if sdfile.kind in ("L", "I"):
-                updates["gpx_dirty"] = 1        # both feed the GPX (track, summary)
-            if sdfile.kind == "L":
-                updates.update(_summarise_log(payload))
-            elif sdfile.kind == "I":
+            if sdfile.kind in ("L", "I", "T"):
+                updates["gpx_dirty"] = 1        # all three feed the GPX (track, time repair, summary)
+            if sdfile.kind == "I":
                 updates["summary"] = json.dumps(
                     sdlayout.parse_summary(payload.decode("utf-8", "replace")))
             self._db.execute(
                 "UPDATE sessions SET %s WHERE id = ?" % ", ".join(f"{k} = ?" for k in updates),
                 (*updates.values(), session.id))
             self._db.commit()
+            if sdfile.kind in ("L", "I", "T"):
+                self._rederive(session.id)
             return PutResult(self.get(session.id), "replaced" if old else "new")
+
+    def _rederive(self, session_id: int) -> int:
+        """Index columns (and the device summary's times) from the stored L_/T_/I_
+        files. Run whenever one of them changed: the repair of clock steps needs both
+        the log and the hints, in whichever order they arrived."""
+        session = self.get(session_id, include_deleted=True)
+        log = session.file("L") if session else None
+        if log is None:
+            return 0
+        try:
+            payload = self.path_for(session, log.name).read_bytes()
+        except OSError:
+            return 0
+        info = _summarise_log(payload, self._hints(session))
+        steps = info.pop("time_steps")
+        summary = session.summary
+        if summary is not None:
+            # The device wrote start/end/duration before the repair; show the repaired ones.
+            summary = {k: v for k, v in summary.items() if k not in ("time_steps", "time_repaired")}
+            if steps and info["first_time"]:
+                summary.update(start=info["first_time"], end=info["last_time"],
+                               dur_s=info["last_time"] - info["first_time"],
+                               time="repaired", time_steps=steps)
+            info["summary"] = json.dumps(summary)
+        if steps:
+            # The times in the GPX change: export again, and let Nextcloud take the new file.
+            info["gpx_dirty"] = 1
+            info["nextcloud_gpx_version"] = None
+        self._db.execute(
+            "UPDATE sessions SET %s WHERE id = ?" % ", ".join(f"{k} = ?" for k in info),
+            (*info.values(), session_id))
+        self._db.commit()
+        return steps
+
+    def rederive_all(self) -> int:
+        """Run _rederive() over every session with a log (after an upgrade of the repair).
+        Returns how many had clock steps repaired -- only those are exported again; the
+        others' GPX stays as it is (re-exporting everything would also re-judge old
+        sessions by today's sanitizing, which not every one survives)."""
+        with self._lock:
+            ids = [r[0] for r in self._db.execute(
+                "SELECT s.id FROM sessions s WHERE EXISTS (SELECT 1 FROM files f "
+                "WHERE f.session_id = s.id AND substr(f.name, 1, 1) = 'L')").fetchall()]
+            return sum(1 for sid in ids if self._rederive(sid))
 
     def pending_exports(self, version: int) -> list[Session]:
         """Sessions whose GPX is missing, outdated (L_/I_ changed) or was made
@@ -394,6 +467,18 @@ class Storage:
                 "UPDATE sessions SET komoot_status = ?, komoot_tour_id = ?, komoot_uploaded_at = ? "
                 "WHERE id = ?", [(status, tour_id, _now(), sid) for sid in session_ids])
             self._db.commit()
+
+    def set_komoot_prompt(self, session_ids: list[int], value: str | None) -> None:
+        """'ignored' = never ask again for these sessions; None = ask again."""
+        with self._lock:
+            self._db.executemany("UPDATE sessions SET komoot_prompt = ? WHERE id = ?",
+                                 [(value, sid) for sid in session_ids])
+            self._db.commit()
+
+    def devices(self) -> list[str]:
+        with self._lock:
+            return [r[0] for r in self._db.execute(
+                "SELECT DISTINCT device FROM sessions WHERE deleted_at IS NULL ORDER BY device")]
 
     def pending_nextcloud(self) -> list[Session]:
         """Tours-status sessions whose Nextcloud copy is missing or stale
@@ -465,16 +550,16 @@ class Storage:
             return True
 
 
-def _summarise_log(payload: bytes) -> dict:
+def _summarise_log(payload: bytes, hints: bytes | None = None) -> dict:
     """Parse an L_ file once, when it is stored, to fill the index. A file that
     does not parse is kept anyway (it is the device's data, not ours to drop) and
     the reason recorded."""
     blank = dict(format_version=None, record_count=None, trailing_bytes=None,
                  first_time=None, last_time=None, distance_m=None, gps_points=None,
-                 clock_unset=0)
+                 clock_unset=0, time_steps=0)
     stats = ReadStats()
     try:
-        records = list(read_stream(io.BytesIO(payload), stats))
+        records = list(read_stream(io.BytesIO(payload), stats, repair_time=True, time_hints=hints))
     except UnknownLogFormat as exc:
         return {**blank, "log_error": str(exc)}
     if not records:
@@ -491,4 +576,5 @@ def _summarise_log(payload: bytes) -> dict:
         "gps_points": sum(1 for rec in records if rec.gps_valid),
         "clock_unset": int(first.timestamp < MIN_PLAUSIBLE_TIMESTAMP),
         "log_error": None,
+        "time_steps": stats.time_steps,
     }

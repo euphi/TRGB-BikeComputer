@@ -210,7 +210,11 @@ private:
 
 	// use int instead of uint, so -1 can be used as "invalid".
 	int16_t hr = -1;
-	int16_t cadence = 0, cadence_tot = -1;
+	// -1 = no cadence sensor connected (the default until one sends something)
+	int16_t cadence = -1, cadence_tot = -1;
+	// Coasting only if a cadence sensor says so: without one (test ride 2026-10-04, the
+	// sensor never connected) every ride counted as Coast, 97 of 100 minutes.
+	bool cadenceLow() const {return cadence >= 0 && cadence < 40;}
 	float speed=0.0;
 	uint32_t speedUpdateMs = 0;			// millis() of the last addSpeed() -- the ImuTask derives dv/dt from these updates
 

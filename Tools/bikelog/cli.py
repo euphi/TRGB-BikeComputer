@@ -23,7 +23,11 @@ __version__ = "0.4"
 def _read(path: str, stats: ReadStats):
     """All record types, in file order."""
     try:
-        return list(read_file(path, stats, types=None))
+        records = list(read_file(path, stats, types=None, repair_time=True))
+        if stats.time_steps:
+            print("Hinweis: %d Uhr-Sprung/-Sprünge in %s ausgeglichen (T_*.txt, bikelog.timefix)"
+                  % (stats.time_steps, path), file=sys.stderr)
+        return records
     except UnknownLogFormat as exc:
         raise SystemExit("Unbekanntes Logformat in %s: %s" % (path, exc))
     except FileNotFoundError:

@@ -16,6 +16,7 @@
 #endif
 #include <Stats/Statistics.h>		//TODO: Move statistics data types to separate class
 #include "BikeNavProtocol.h"
+#include "ClimbProfile.h"
 #include <lvgl.h>
 
 class UIFacade {
@@ -191,6 +192,8 @@ private:
 	uint16_t climbCurrentId = 0;		// Climb::Status::climbId of the climb ahead, 0 = none
 	uint16_t climbDismissedId = 0;		// the climb the rider swiped away
 	uint32_t climbHideAtMs = 0;			// 0 = no delayed switch back pending
+	uint32_t climbLostSinceMs = 0;		// since when there is no climb to show (0 = there is one, or none was shown)
+	bool climbOverForScreen(const Climb::Status& st, bool onClimb);
 
 
 #ifdef BC_FL_SUPPORT

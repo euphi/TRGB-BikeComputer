@@ -6,8 +6,15 @@
  * FreeRTOS or I/O -- ClimbMonitor feeds it frames and positions and hands the result to the
  * climb screen. That keeps it testable on the host (test/native_climb/).
  *
- * What the phone sends is the climb ahead: the altitudes from the rider -- at most 500 m
- * before the foot -- to the summit, in one frame. The raster is 25 m for up to 5 km and
+ * Two kinds of phone:
+ *   - Rolling (frame flag PROFILE_FLAG_ROLLING, TrailBridge since 2026-10-04): the profile is
+ *     always sent, climb or not, as a window of the road ahead. A climb is announced by the
+ *     phone with its whole extent (foot and summit, also outside the frame), so it never ends
+ *     early and its category and length stay what they were at the foot. It is over when the
+ *     rider has passed its summit (Status::climbOver); the phone stopping to announce it near
+ *     the summit counts the same. Everything below about finding the climb is not used then.
+ *   - Older: what the phone sends is the climb ahead: the altitudes from the rider -- at most
+ *     500 m before the foot -- to the summit, in one frame. The raster is 25 m for up to 5 km and
  * coarser for longer climbs (up to 250 m). PROFILE_NONE comes at the summit. TrailBridge
  * finds foot and summit with the criteria below (ElevationProfile.java there: keep the
  * defaults of the two in sync), so the profile ends at the summit. This module
@@ -88,6 +95,8 @@ bool paramSet(Config& cfg, uint8_t index, float value);	// false if out of range
 uint8_t gradeBand(const Config& cfg, float gradePct);
 
 struct Status {
+	bool rolling = false;				// the phone announces climbs itself (see above); valid also without a profile
+	bool climbOver = false;				// rolling: the announced climb was ridden past its summit (until the next one is announced)
 	bool hasProfile = false;			// a profile to show (not after PROFILE_NONE)
 	bool positionValid = false;			// the rider is inside it; nothing below is valid otherwise
 	bool active = false;				// a climb is ahead or under the wheels (may be unrated: rank 0)
@@ -109,6 +118,14 @@ struct Status {
 	float doneFraction = 0;				// 0..1 of the height gain behind the rider
 };
 
+// What a rolling phone says about the climb (tags 0x06..0x0A of a PROFILE_UPDATE)
+struct Announce {
+	bool rolling = false;				// PROFILE_FLAG_ROLLING
+	bool hasClimb = false;				// all four climb tags present
+	uint32_t footRem = 0, summitRem = 0;
+	int16_t footAltDm = 0, summitAltDm = 0;
+};
+
 class Tracker {
 public:
 	Config cfg;
@@ -121,8 +138,10 @@ public:
 
 	// PROFILE_UPDATE: n deltas = n + 1 points. Joined to the points already known if it is
 	// on the same raster and overlaps them, else it replaces them.
-	// The deltas are in units of deltaScaleDm decimetres.
-	void setProfile(uint32_t startRemainingM, uint8_t stepM, int16_t baseAltDm, const int8_t* deltasDm, uint16_t n, uint8_t deltaScaleDm = 1);
+	// The deltas are in units of deltaScaleDm decimetres. announce: from the frame's tags, null
+	// for a phone that knows none (the climb is then found in the profile).
+	void setProfile(uint32_t startRemainingM, uint8_t stepM, int16_t baseAltDm, const int8_t* deltasDm, uint16_t n, uint8_t deltaScaleDm = 1,
+	                const Announce* announce = nullptr);
 	// PROFILE_NONE: nothing to show any more. The points and the climb the rider was on are
 	// remembered, so a profile following shortly (flat step in a climb) continues it.
 	void clearProfile();
@@ -151,6 +170,7 @@ private:
 		int16_t footAltDm = 0;
 		int16_t summitAltDm = 0;
 		uint16_t id = 0;
+		bool fromPhone = false;			// announced by a rolling phone, not found by findClimb()
 	};
 
 	int16_t alt[MAX_POINTS] = {};		// decimetres
@@ -163,11 +183,14 @@ private:
 	uint32_t pointsVersion = 0;
 	uint16_t lastId = 0;
 	Segment cur, prev;					// the climb ahead/under the rider, and the one before (for continuing it)
+	bool rolling = false;				// the last frame came from a rolling phone
+	bool over = false;					// rolling: the climb in cur is behind the rider
 	Status st;
 
 	int32_t remOfIndex(int32_t i) const {return static_cast<int32_t>(startRem) - i * step;}
 	int32_t indexOfRem(int32_t rem) const {return (static_cast<int32_t>(startRem) - rem) / step;}
 	void update();
+	void applyAnnouncement(const Announce* a);
 	void findClimb(float posM);
 	void scanSummit(Segment& seg, int32_t fromIndex);
 	uint8_t rate(const Segment& seg) const;

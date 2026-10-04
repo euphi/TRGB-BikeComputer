@@ -1,8 +1,8 @@
 # Climbs: elevation profile and climb screen
 
-When TrailBridge plays a GPX route, it sends the elevation profile of the next climb
-([protocol](trailbridge/PROTOCOL.md), "elevation
-profile service"). The bike computer finds foot and summit in it, rates the climb and
+When TrailBridge plays a GPX route, it sends the elevation profile of the road ahead all the time
+and announces the climbs in it ([protocol](trailbridge/PROTOCOL.md), "elevation
+profile service"). The bike computer rates the climb and
 shows it on the screen `RimRidgeClimb` ([design](design/rim-ridge-design-system.md), §6).
 
 ![Climb screen](screenshots/climb.png){ width="260" }
@@ -16,13 +16,26 @@ shows it on the screen `RimRidgeClimb` ([design](design/rim-ridge-design-system.
 
 ## What the phone sends, and what the firmware does with it
 
-TrailBridge sends the climb ahead: the altitudes **from the current position to the
-summit**, as soon as the foot is at most 500 m away -- in one frame. Up to 5 km on a 25 m
-raster, coarser for longer climbs (up to 250 m; the 36 km Galibier from the south comes
-with 200 m). `PROFILE_NONE` follows at the summit. Small hills (from 10 m of altitude
-gain) are sent as well.
+**Rolling phone (TrailBridge since 2026-10-04, frame flag `ROLLING`).** The profile is always
+sent -- on flat ground and downhill, too -- as a window of the road ahead (5 km on a 25 m
+raster; a climb that is further than that is cut at its foot). A climb in it is
+**announced** by the phone with its whole extent (foot and summit, remaining distance and
+altitude, also where they lie behind or beyond the frame): as soon as the foot is at most
+500 m ahead the window runs to the summit, up to 5 km on a 25 m raster, coarser for longer
+climbs (up to 250 m; the 36 km Galibier from the south comes with 200 m). So
 
-The firmware
+- the climb **does not end before its summit** and category and length are those of the
+  **whole** climb all the way up (test ride 2026-10-04: the category used to fall on the way,
+  because the firmware only saw what was left of the climb in the frame),
+- the climb screen opens automatically only for climbs (rank at least `autorank`, foot
+  closer than `showahead`), and goes back **only after the summit was reached** (`summitpass`
+  behind it, then `hidedelay`) -- not when data runs out for a moment (off the route, a frame
+  in flight); only after 2 minutes without any climb to show (route over, phone gone) it goes
+  as well,
+- `PROFILE_NONE` only means "route over / off the route"; the climb the rider is on survives it.
+
+**Older phone** (no flag): TrailBridge sends only the climb ahead, from the current position
+to the summit, in one frame, and `PROFILE_NONE` at the summit. The firmware then
 
 - **finds the climb**: the foot is the first point from which the next 100 m rise by 3 %
   on average. The summit is the last point before a descent of more than 30 m or before
@@ -35,8 +48,15 @@ The firmware
   250 m raster.
 - **continues a climb** when the phone sends `PROFILE_NONE` and a new profile shortly
   after.
+
+Both: the firmware
+
 - **knows the position** from the remaining distance in the navigation frames, advanced
   between two frames by the distance from the speed sensor.
+
+Climb screen readability: the expected gradient ("NÄCHSTE 25 m") and the measured one are
+set in the large 48 px font; the steepest band is a full red (`0xE8392A`) in the profile and
+in the value.
 
 Altitude figures are net: summit minus foot, summit minus rider.
 

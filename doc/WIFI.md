@@ -30,15 +30,15 @@ The line above the buttons shows the IP address, or why WiFi is off ("kein WLAN 
 
 ![Password screen](screenshots/wifi-password.png){ width="260" }
 
-The order of the saved networks (their priority) and deleting one are only possible on the web
-page.
+The order of the saved networks and deleting one are only possible on the web page. The order
+only matters between networks of equal signal strength (see Autoconnect).
 
 ## Web page `/wifi`
 
 Linked from the start page ("WiFi Settings"). It shows
 
 - the state (connected to ..., hotspot, ...),
-- the saved networks with ▲ ▼ (priority), **Edit** (password) and **Delete**,
+- the saved networks with ▲ ▼ (order, the tie-breaker), **Edit** (password) and **Delete**,
 - a scan with a list to pick from, or a manual SSID (also for hidden networks and open
   ones),
 - the hotspot's name and a new password.
@@ -49,8 +49,8 @@ they are in the NVS as plain text, like in any ESP32 firmware without flash encr
 ## Autoconnect and the 5 minutes
 
 After boot, and whenever WiFi is switched on, the device scans and tries the saved networks
-that are in range **in the order of the list**, 15 s each (hidden ones are tried without being
-seen). If none works it scans again every 15 s. If there is no connection for **5 minutes**
+that are in range, **the strongest signal first** (the list order decides between equal ones),
+15 s each; hidden networks that were not seen come last and are tried without being seen. If none works it scans again every 15 s. If there is no connection for **5 minutes**
 (never connected, or connection lost), WiFi switches itself off to save power. A scan takes
 about 10 s while BLE is running.
 

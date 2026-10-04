@@ -1215,7 +1215,14 @@ bool I2CSensors::requestRawCapture(uint16_t seconds) {
 	bool running = imuSnap.running;
 	portEXIT_CRITICAL(&imuMux);
 	if (!running) return false;
+	rawChain = false;							// an explicit request is a single capture; startRoadCapture() sets it again
 	rawRequest = seconds > RAW_MAX_CAPTURE_S ? RAW_MAX_CAPTURE_S : seconds;
+	return true;
+}
+
+bool I2CSensors::startRoadCapture() {
+	if (!requestRawCapture(RAW_MAX_CAPTURE_S)) return false;
+	rawChain = true;
 	return true;
 }
 
@@ -1403,6 +1410,8 @@ void I2CSensors::rawCaptureChunk(const uint8_t* frames, uint16_t n, int64_t firs
 		rawCapturing = false;
 		labelWrite(LogRec::LABEL_CAPTURE_STOP, labelActive, millis());
 		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_OP, "Raw capture complete: %.1f s", rawCaptureFrames / (float)IMU_ODR_HZ);
+		// Record button: the next file starts with the next burst (rawBeforeBurst())
+		if (rawChain) rawRequest = RAW_MAX_CAPTURE_S;
 	}
 }
 
@@ -1419,6 +1428,8 @@ void I2CSensors::rawAfterSample(const int16_t raw[3], int64_t sampleEpochMs) {
 }
 
 void I2CSensors::rawWriteSnippet(int64_t lastEpochMs) {
+	// A session rotation closed the file under us: start the new session's file (with header)
+	if (snipFileOpen && snipFileSession != bclog.getRawSessionNo()) snipFileOpen = false;
 	if (!snipFileOpen) {
 		uint8_t msg[BCLogger::RAW_PREFIX + sizeof(RawCap::FileHeader)];
 		rawFileHeader(RawCap::KIND_SNIPPETS, msg + BCLogger::RAW_PREFIX);
@@ -1427,6 +1438,7 @@ void I2CSensors::rawWriteSnippet(int64_t lastEpochMs) {
 			return;
 		}
 		snipFileOpen = true;
+		snipFileSession = bclog.getRawSessionNo();
 	}
 	// Sent in pieces of <= RAW_MAX_MSG, the header first. Only if all of it fits right now:
 	// a half-written block would cost the reader a resync. Single producer, so the space

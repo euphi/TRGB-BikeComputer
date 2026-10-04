@@ -14,6 +14,13 @@ data/sessions/<device>/20260920/L_143012.bin    (files directly in /BIKECOMP: fo
 data/index.sqlite3                              index (sessions, files, hashes, key figures)
 ```
 
+Clock steps inside a session (the phone's GPS time was wrong when the bike computer
+started, 2026-10-04: a 2 h ride became 17 h with an hour of the evening before) are undone
+when reading: the `T_` file lists the steps, the jumps of the record times show where they
+happened, the last clock counts
+([`bikelog.timefix`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/bikelog/timefix.py)).
+The summary of such a session shows `time=repaired`.
+
 GPX, CSV etc. are generated from the raw data on demand -- a better export logic thus
 improves all old rides retroactively.
 
@@ -38,7 +45,8 @@ there, no retry logic in a task that competes with BLE and display for internal 
   That is how the first attempt on 2026-09-27 failed.
 - **Polling** as a safety net: an mDNS address query every `BIKELOG_PULL_INTERVAL_S`
   (120 s) -- if the bike computer is gone this costs nothing, if it (re)appears the fetch
-  runs. Additionally every 30 min at the latest while it is online.
+  runs. Additionally every 10 min at the latest while it is online (the bike computer finishes a
+  session when the ride session is ended, see below).
 - **Follow-up**: right after boot `LogSessions` only moves the finished session out of
   `CUR/` in the background. If there is more than the running session there at the time
   of the fetch (or the fetch fails), it is fetched again after 60 s, at most 10 times in
@@ -47,7 +55,9 @@ there, no retry logic in a task that competes with BLE and display for internal 
 
 **What**: every file of the list that is still missing or whose size has changed --
 except `CUR/` (running session) and deleted sessions. New sessions only come into being
-on the bike computer at boot, a fetch without anything new is a single request. The list
+on the bike computer when the ride session is ended on purpose (long press), at boot, or when
+`rotate` is typed on the serial console -- not when WiFi connects, which also happens on a phone
+hotspot in the middle of a tour, a fetch without anything new is a single request. The list
 comes from `/logfiles.json` if the firmware has the endpoint, otherwise from the HTML
 page `/logfiles/` (there without sizes: a known file is then not fetched again).
 
@@ -108,7 +118,19 @@ By hand: `bikelogservice export` (missing/outdated), `export --all` (all).
 
 ## Komoot upload
 
-Manual only -- no automatic trigger, unlike the Nextcloud sync below.
+Never automatic -- but the web page **asks**: every finished real ride that is neither
+uploaded nor declined shows up in a box at the top, "New ride ready -- upload to Komoot?",
+with the buttons *Zu Komoot hochladen* and *Nicht hochladen*. The question comes back on
+every page view until one of the two is pressed (closing the page answers nothing);
+declining is stored (`komoot_prompt = ignored`, per merged tour) and can be undone with
+`POST /api/v1/sessions/{id}/komoot/ignore?ask_again=true`. A failed upload keeps asking.
+Sessions that existed when this was introduced (schema 7) are not asked about; their
+"Komoot" button in the table is still there.
+
+While files are being fetched the page shows a progress box (file n of m, MB so far,
+then "processing": GPX export, Nextcloud) and reloads itself every 3 s until done; the
+journal logs every file, the number of sessions to fetch and each GPX export.
+
 `POST /api/v1/sessions/{id}/komoot` uploads the ride to Komoot via
 [kompy](https://github.com/Tsadoq/kompy) (or, in the web interface, the "Komoot" button
 next to every real ride). A reboot in the middle of a ride (short BLE dropout, break with
@@ -304,6 +326,7 @@ variant or a `device` field in `/logfiles.json`.
 | `PUT` | `/api/v1/events/{id}/gpx` | course GPX of a target event (body = file) |
 | `DELETE` | `/api/v1/sessions/{id}` | delete the files, keep the tombstone |
 | `POST` | `/api/v1/sessions/{id}/komoot` | upload as part of its tour (`force`), see above |
+| `POST` | `/api/v1/sessions/{id}/komoot/ignore` | answer the page's question with "no" (`ask_again=true`: ask again) |
 | `PUT` | `/api/v1/devices/{device}/files/{day}/{name}` | deliver one file (body = file) |
 | `GET`/`POST` | `/api/v1/pull` | status of fetching / fetch now (`device`) |
 
