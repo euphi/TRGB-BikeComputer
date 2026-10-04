@@ -29,12 +29,27 @@ void setup();
 void baseline();
 
 // GPS time from a POSITION_UPDATE: utcMs = UTC_TIME_MS + FIX_AGE_MS, i.e. "now" at the
-// phone. Sets the clock the first time and then at most once an hour, and only if it is
-// off by more than GPS_MIN_CORRECTION_MS (BLE latency makes the GPS time worse than NTP).
-// Called from the BLE task; cheap if nothing is due.
+// phone. Called from the BLE task; cheap if nothing is due.
+//
+// The phone's GPS time is not reliable right after its GNSS chip was switched on: on the
+// test ride of 2026-10-04 it was 14.8 h behind (the chip's own clock, stuck at the last
+// time it ran) for an hour, earlier rides showed 18..80 min that NTP then took back. So:
+//   - no clock yet (1970): take the GPS time, but as provisional -- rechecked every
+//     GPS_RECHECK_PROVISIONAL_MS for GPS_PROVISIONAL_MS, and then any size of correction
+//     is accepted (the clock being replaced is the guess of a guess);
+//   - a clock that is valid (kept by the RTC over deep sleep, set by NTP, or set by GPS more
+//     than GPS_PROVISIONAL_MS ago): corrected by
+//     at most GPS_MAX_CORRECTION_MS, a larger difference is ignored (and logged). The RTC
+//     of the ESP32 drifts by seconds to minutes over a night, never by hours;
+//   - both: only if off by more than GPS_MIN_CORRECTION_MS (BLE latency makes the GPS
+//     time worse than NTP), otherwise at most once an hour.
+// NTP always wins and ends the provisional state.
 void offerGpsTime(int64_t utcMs);
 static constexpr int64_t GPS_MIN_CORRECTION_MS = 2000;
+static constexpr int64_t GPS_MAX_CORRECTION_MS = 10LL * 60 * 1000;
 static constexpr uint32_t GPS_RECHECK_MS = 3600UL * 1000UL;
+static constexpr uint32_t GPS_RECHECK_PROVISIONAL_MS = 5UL * 60UL * 1000UL;
+static constexpr uint32_t GPS_PROVISIONAL_MS = 30UL * 60UL * 1000UL;
 
 struct Step {
 	int64_t offsetMs;		// clock moved by this

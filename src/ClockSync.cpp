@@ -28,6 +28,9 @@ int64_t bootOffsetUs = 0;
 // BLE task only
 bool gpsChecked = false;
 uint32_t gpsCheckedAt = 0;
+bool clockFromGps = false;			// the clock was set by GPS (and not replaced by NTP since)
+uint32_t gpsSetAt = 0;				// millis() of that
+std::atomic<bool> ntpSet{false};	// the NTP callback (lwIP task) tells the BLE task
 
 int64_t nowUs() {
 	struct timeval tv;
@@ -51,7 +54,7 @@ const char* sourceName(Source s) {
 
 void setup() {
 	// Runs in the lwIP task after SNTP has set the clock -- only a flag here.
-	sntp_set_time_sync_notification_cb([](struct timeval*) {pendingSource = SRC_NTP;});
+	sntp_set_time_sync_notification_cb([](struct timeval*) {pendingSource = SRC_NTP; ntpSet = true;});
 }
 
 void baseline() {
@@ -65,8 +68,12 @@ bool isValidNow() {
 
 void offerGpsTime(int64_t utcMs) {
 	const uint32_t now = millis();
+	if (ntpSet.exchange(false)) clockFromGps = false;
 	const bool valid = isValidNow();
-	if (gpsChecked && valid && now - gpsCheckedAt < GPS_RECHECK_MS) return;
+	if (!valid) clockFromGps = false;				// "clock unset" (CLI) or a power loss
+	const bool provisional = clockFromGps && now - gpsSetAt < GPS_PROVISIONAL_MS;
+	const uint32_t recheck = provisional ? GPS_RECHECK_PROVISIONAL_MS : GPS_RECHECK_MS;
+	if (gpsChecked && valid && now - gpsCheckedAt < recheck) return;
 	if (!SessStats::isValidMs(utcMs)) return;		// phone without a real time yet
 	gpsChecked = true;
 	gpsCheckedAt = now;
@@ -77,6 +84,10 @@ void offerGpsTime(int64_t utcMs) {
 		bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_OP, "🕒 GPS time check: clock off by %lld ms - kept", (long long)diff);
 		return;
 	}
+	if (valid && !provisional && llabs(diff) > GPS_MAX_CORRECTION_MS) {
+		bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_OP, "🕒 GPS time is %lld s off the clock - ignored, the phone's GNSS time can be wrong after switching on", (long long)(diff / 1000));
+		return;
+	}
 	struct timeval tv;
 	tv.tv_sec = static_cast<time_t>(utcMs / 1000);
 	tv.tv_usec = static_cast<suseconds_t>((utcMs % 1000) * 1000);
@@ -85,6 +96,9 @@ void offerGpsTime(int64_t utcMs) {
 		bclog.log(BCLogger::Log_Warn, BCLogger::TAG_OP, "🕒 Setting the clock from GPS failed");
 		return;
 	}
+	// Only a clock GPS made valid is provisional; one the RTC or NTP had right stays trusted.
+	if (!valid) clockFromGps = true;
+	if (clockFromGps) gpsSetAt = now;
 	bclog.logf(BCLogger::Log_Info, BCLogger::TAG_OP, "🕒 Clock %s from GPS (was off by %lld ms)", valid ? "corrected" : "set", (long long)diff);
 }
 

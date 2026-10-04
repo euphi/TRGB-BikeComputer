@@ -87,7 +87,10 @@ def _row(s: Session) -> str:
     notes = []
     if s.log_error:
         notes.append(f'<span class="warn" title="{escape(s.log_error)}">log unreadable</span>')
-    if summ.get("time") == "corrected":
+    if summ.get("time") == "repaired":
+        notes.append('<span class="mut" title="Die Uhr wurde während der Fahrt per GPS/NTP umgestellt; '
+                     'die Zeitstempel wurden angeglichen">Uhr-Sprung repariert</span>')
+    elif summ.get("time") == "corrected":
         notes.append(f'<span class="mut">time corrected ({escape(str(summ.get("src", "?")))})</span>')
     if s.gpx_status and s.gpx_status.startswith("error"):
         notes.append(f'<span class="warn" title="{escape(s.gpx_status)}">GPX export failed</span>')

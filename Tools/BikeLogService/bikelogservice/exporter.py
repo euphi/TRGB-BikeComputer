@@ -33,7 +33,7 @@ from .storage import Session, Storage
 
 log = logging.getLogger("bikelog.export")
 
-EXPORT_VERSION = 3
+EXPORT_VERSION = 4
 
 #: Below this, a session goes to Debug_Archive instead of Tours -- see the
 #: module docstring. Raise/lower it here, not per-session; the automatic
