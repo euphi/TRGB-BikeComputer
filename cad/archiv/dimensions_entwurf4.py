@@ -44,12 +44,12 @@ CAVITY_HEIGHT = 35.0
 # CLAMP_TRAVEL verschieben; zwischen Wange und Deckel bleibt ein Spalt, ueber
 # den die Stapelschrauben den Vorbau klemmen. CAVITY_HEIGHT ist die gezeichnete
 # Stellung, CAVITY_HEIGHT_MIN die mit Deckel auf Anschlag.
-CAVITY_HEIGHT_MIN = 31.0
+CAVITY_HEIGHT_MIN = 30.0
 CLAMP_TRAVEL = 10.0
 # Fuehrung fuer den Klemmweg: je Seite eine Zunge auf dem Akkudeckel, die in
 # einem Schlitz in der Unterseite der Wange laeuft.
 GUIDE_THICKNESS = 3.0
-GUIDE_LENGTH = 10.0
+GUIDE_LENGTH = 24.0
 GUIDE_ENGAGE_MIN = 2.0          # so tief steckt die Zunge noch bei groesstem Spalt
 GUIDE_GAP = 0.2                 # Luft je Seite im Schlitz
 # Oben, zwischen Teller und Wangen, folgt der Ausschnitt dem Vorbau mit einem
@@ -112,7 +112,7 @@ DISPLAY_BODY_DIAMETER = 56.4
 DISPLAY_BODY_R_MAX = 28.75
 DISPLAY_BODY_DEPTH = 16.4             # unter dem Glas
 DISPLAY_HEIGHT = DISPLAY_GLASS_THICKNESS + DISPLAY_BODY_DEPTH
-DISPLAY_FIT_CLEARANCE = 0.4     # radial; mit 0,2 presste das Glas sehr knapp [VORGABE: +0,4 im Durchmesser]
+DISPLAY_FIT_CLEARANCE = 0.2          # Spiel um das Glas -> Stufe D 75,2 wie im Modell
 
 # Tasche fuer den Koerper, wie im FreeCAD-Modell: rundum Luft fuer Kabel
 DISPLAY_POCKET_DIAMETER = 70.0
@@ -196,15 +196,14 @@ DRAIN_HOLE_D = 3.0
 # innen geneigte Wand vorne, an den Seiten nach hinten gezogen, hinten zum
 # Fahrer offen. Dort: 11 mm hoch, Wand 2,0 -> 0,8 mm, Neigung 5,3 mm auf 11 mm,
 # seitlich bis ca. 35 mm hinter die Displaymitte.
-HOOD_HEIGHT_MAX = 11.0      # beim alten Deggl
-HOOD_HEIGHT = 15.0          # jetzt hoeher: der Oberlenker ist nicht mehr im Weg [VORGABE]
+HOOD_HEIGHT_MAX = 11.0
 HOOD_WALL_BASE = 2.0
 HOOD_WALL_TOP = 0.8
 HOOD_LEAN = 5.3 / 11.0        # Einwaertsneigung je mm Hoehe
 HOOD_HALF_ANGLE = 130.0       # Grad ab der Fahrtrichtung, je Seite
 
 # --- Rundungen (Aerodynamik) [VORGABE] ----------------------------------------
-FRONT_CORNER_R = 5.0          # senkrechte Vorderkanten von Traeger und Akkukasten
+FRONT_CORNER_R = 12.0         # senkrechte Vorderkanten von Traeger und Akkukasten
 EDGE_FILLET = 2.5             # Oberkante Deckel
 AKKU_EDGE_FILLET = 2.0        # Unterkante Akkuwanne
 
@@ -259,12 +258,12 @@ AKKU_FLOOR = 3.0            # 1 mm mehr, seit der Deckel unten eben ist: Schraub
 #
 # Linsenkopf ISO 7380 [VORGABE]: Laenge ohne Kopf, Kopf D 5,7 x 1,65. Der
 # Kopf sitzt in einer zylindrischen Senkung und steht nicht ueber.
-SCREW_CLEARANCE_D = 3.8      # Durchgang M3 -- 3,4 war im Druck zu stramm [VORGABE]
+SCREW_CLEARANCE_D = 3.4      # Durchgang M3
 SCREW_HEAD_D = 6.2           # Senkung fuer den Kopf
 SCREW_HEAD_DEPTH = 2.0       # Mindesttiefe der Senkung
 SCREW_SEAT_MIN = 2.0         # Material, das unter dem Kopf mindestens bleibt
-UPPER_SCREW_LENGTH = 30.0    # Traeger -> Becher -> Buchse im Deckel
-STACK_SCREW_LENGTH = 16.0    # Unterseite -> Buchse in der Wange
+UPPER_SCREW_LENGTH = 25.0    # Teller -> Becher -> Buchse im Deckel
+STACK_SCREW_LENGTH = 25.0    # Akkuwanne -> Akkudeckel -> Buchse in der Wange; lang wegen des Klemmwegs
 MIN_THREAD_ENGAGEMENT = 4.0
 
 INSERT_HOLE_D = 4.2          # Bohrung fuer M3-Heatset (Buchse ca. D4,0 x 5,7)
@@ -295,86 +294,3 @@ I2C_SOCKET_Y = (14.4, 27.0)
 I2C_SOCKET_EXTRA_HEIGHT = 1.0   # so viel baut die Buchse hoeher als im STEP
 I2C_RECESS_MARGIN = 1.5
 I2C_RECESS_DEPTH = 2.0
-
-# =============================================================================
-# Fuenfter Entwurf: Akku oben, Display geneigt, unten nur eine Klemmplatte
-# =============================================================================
-# Einbauraum [VORGABE], nach Anprobe am Rad:
-# - Unter dem Vorbau liegt hinten der Uebergang zum Steuerrohr (gehoert zum
-#   Vorbau, dreht mit), vorne ein Lampenhalter. Dazwischen sind 50 mm frei.
-# - Unter dem Vorbau duerfen 18 mm genutzt werden; tiefer steht das Steuerrohr
-#   (fest am Rahmen, laeuft schraeg nach vorne unten).
-# - Auch oben hoechstens 50 mm vor das Steuerrohr: weiter vorne verdecken
-#   Oberlenker und Leitungen die Sicht.
-# Als "Steuerrohr" gilt hier die Stelle, an der bisher die Wangen begannen
-# (TRAEGER_X_MIN) -- ANNAHME, am Rad zu pruefen.
-CLAMP_ZONE_LENGTH = 45.0        # Laenge des Traegers am Vorbau [VORGABE: 40 .. 45]
-FREE_ZONE_LENGTH = 50.0         # so viel ist am Rad frei
-FRONT_LIMIT_X = TRAEGER_X_MIN + CLAMP_ZONE_LENGTH
-BOTTOM_DEPTH_MAX = 18.0
-
-# Display vorne hoeher als hinten [VORGABE: "leicht angewinkelt"]. Der Winkel
-# ist frei gewaehlt.
-
-# Der Akku liegt im Displaygehaeuse unter dem Modul, auf der ebenen Oberseite
-# des Traegers [VORGABE: Traeger und Displaygehaeuse getrennt, beide mit
-# ebener Auflageflaeche druckbar].
-PLATE_MIN_THICKNESS = 6.0   # Keilplatte des Traegers hinten [VORGABE]
-PLATE_FRONT_THICKNESS = 10.0  # ... und vorne [VORGABE]; daraus ergibt sich die Neigung
-TRAY_FLOOR = 1.4            # Boden unter dem Akku [VORGABE]; der Akku liegt waagerecht in der Keilplatte
-POD_OPENING_WALL = 1.0      # Wand des Displaygehaeuses ueber den Taschen [VORGABE]
-DISPLAY_UNDER_GAP = 2.0     # Luft zwischen Akku und Modul: Stecker unter der Platine
-
-# Displaygehaeuse so klein wie moeglich [VORGABE]; links und rechts abgeflacht.
-CUP_WALL_AT_GLASS = 1.6     # Wand neben der Glasstufe vorne und hinten
-CUP_WALL_AT_FLAT = 0.8      # ... und an den abgeflachten Seiten
-
-# Verschraubung oben: M2 Innensechskant, M2x8 und M2x10 [VORGABE], Heatset
-# M2 x 3 mit D 3,6 aussen, Bohrung 1 mm tiefer als die Buchse.
-M2_CLEARANCE_D = 2.6
-M2_HEAD_D = 4.4             # Senkung fuer den Zylinderkopf (D 3,8)
-M2_HEAD_HEIGHT = 2.0
-M2_INSERT_HOLE_D = 3.2
-M2_INSERT_DEPTH = 4.0
-M2_ENGAGEMENT = 3.8
-M2_WALL = 1.0               # Material um Buchse bzw. Senkung
-LID_SCREW_LENGTH = 10.0
-BASE_SCREW_LENGTH_FRONT = 10.0
-BASE_SCREW_LENGTH_REAR = 8.0
-DECKEL_SKIN_M2 = 0.8        # Deckschicht ueber den Buchsen: Deckel 4,8 mm [VORGABE]
-
-# Sensorfach vor dem Display [VORGABE]: Platine 13 x 18 mm, 8 hoch, davor
-# 10 mm fuer Stifte und Kabel. Die 10 mm liegen zum Display hin (dort ist
-# ohnehin Luft vor dem Modul), das Fach selbst steht vor dem Gehaeuse.
-SENSOR_SIZE_X = 13.0
-SENSOR_SIZE_Y = 18.0
-SENSOR_HEIGHT = 8.0
-SENSOR_PIN_SPACE = 10.0     # ueber der Platine, an ihrer Vorderkante: zusammen 18 mm in Z [VORGABE]
-SENSOR_CLEARANCE = 1.0
-SENSOR_BAY_WALL = 2.0
-SENSOR_SLOT_WIDTH = 1.5
-SENSOR_SLOT_HEIGHT = 8.0
-
-# Taschen fuer Buchse und Schalter [VORGABE]: nur die Stirnwand traegt die
-# Bohrung, dahinter ein Quader, in dem sich die Mutter drehen laesst (D 16),
-# nach oben ins Displaygehaeuse offen.
-POD_NUT_SPACE = 16.0
-POD_SIDE_WALL = 1.6
-
-UNTERSEITE_THICKNESS = 5.0  # Klemmplatte unter dem Vorbau
-
-# --- Cockpit als Bezugskoerper -------------------------------------------------
-# Nur fuer Pruefung und Darstellung. Alles GESCHAETZT, soweit nicht vermerkt.
-STEM_HEIGHT_FRONT = 31.0        # gemessen, vorne
-STEM_TO_BAR_X = 88.0            # Schaftachse -> Hinterkante Lenker (Zollstock: ca. 90)
-BAR_FLARE_R = 30.0              # Uebergang Vorbau -> Lenker in der Draufsicht
-BAR_DEPTH = 32.0
-TOPS_GAP = 33.56                # gemessen, vorne: Lenker-Oberkante -> Unterkante Oberlenker
-TOPS_GAP_REAR = 57.0             # gemessen, hinten: Vorbau-Oberkante -> Unterkante Oberlenker
-TOPS_HEIGHT = 16.0              # gemessen
-TOPS_DEPTH = 33.0
-REF_BAR_HALF_WIDTH = 70.0       # so breit werden die Lenker nur gezeichnet
-STEERER_TILT_DEG = 6.0          # Schaftachse gegen die Senkrechte auf den Vorbau
-HEADTUBE_R = 28.0
-LAMP_HOLDER_LENGTH = 30.0
-LAMP_HOLDER_WIDTH = 30.0
