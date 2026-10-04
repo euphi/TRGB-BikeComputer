@@ -45,8 +45,8 @@ there, no retry logic in a task that competes with BLE and display for internal 
   That is how the first attempt on 2026-09-27 failed.
 - **Polling** as a safety net: an mDNS address query every `BIKELOG_PULL_INTERVAL_S`
   (120 s) -- if the bike computer is gone this costs nothing, if it (re)appears the fetch
-  runs. Additionally every 10 min at the latest while it is online (the bike computer also
-  finishes a session when the ride session is ended or WiFi connects, see below).
+  runs. Additionally every 10 min at the latest while it is online (the bike computer finishes a
+  session when the ride session is ended, see below).
 - **Follow-up**: right after boot `LogSessions` only moves the finished session out of
   `CUR/` in the background. If there is more than the running session there at the time
   of the fetch (or the fetch fails), it is fetched again after 60 s, at most 10 times in
@@ -55,8 +55,9 @@ there, no retry logic in a task that competes with BLE and display for internal 
 
 **What**: every file of the list that is still missing or whose size has changed --
 except `CUR/` (running session) and deleted sessions. New sessions only come into being
-on the bike computer when the ride session is ended, when WiFi connects, or at boot
-(`rotate` on the serial console does it by hand), a fetch without anything new is a single request. The list
+on the bike computer when the ride session is ended on purpose (long press), at boot, or when
+`rotate` is typed on the serial console -- not when WiFi connects, which also happens on a phone
+hotspot in the middle of a tour, a fetch without anything new is a single request. The list
 comes from `/logfiles.json` if the firmware has the endpoint, otherwise from the HTML
 page `/logfiles/` (there without sizes: a known file is then not fetched again).
 

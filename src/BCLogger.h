@@ -69,13 +69,7 @@ private:
 	bool isActiveSessionFile(const String& path) const;
 
 	// Session rotation, see rotateSession(): FlusherTask carries out the request.
-	enum RotateRequest : uint8_t {ROTATE_NONE = 0, ROTATE_SOFT, ROTATE_FORCED};
-	std::atomic<uint8_t> rotateRequest{ROTATE_NONE};
-	static constexpr uint32_t ROTATE_MIN_AGE_MS = 60UL * 1000UL;		// WLAN-triggered: session at least this old ...
-	static constexpr uint32_t ROTATE_MIN_RECORDS = 24;					// ... with this many records (~35 s of data) ...
-	static constexpr uint32_t ROTATE_MIN_GAP_MS = 5UL * 60UL * 1000UL;	// ... and the last rotation this long ago
-	uint32_t sessionStartedMs = 0;
-	uint32_t lastRotateMs = 0;
+	std::atomic<bool> rotateRequested{false};
 	uint32_t recordsAtSessionStart = 0;
 	void startSession();
 	void checkRotate();
@@ -186,10 +180,11 @@ public:
 	// deep sleep, which would otherwise lose up to 5 s of log (FlusherTask's period).
 	void flushFiles();
 	// Finishes this session now and starts the next one, so the log service finds the data
-	// without a reboot: forced = the ride session was ended (also stops a raw capture),
-	// else it is only done for a session with some data in it, at most every few minutes
-	// (WLAN just connected). Non-blocking, from any task.
-	void rotateSession(bool forced);
+	// without a reboot. Only on purpose: the rider ended the ride session (Statistics::stopRide())
+	// or typed "rotate" -- not when WLAN connects, which also happens on a phone hotspot during
+	// a tour. Stops a running raw capture first. Non-blocking, from any task; nothing happens
+	// if nothing was logged in this session yet.
+	void rotateSession();
 
 	static const char* TAG_STRING[LogTagMax];
 	static const char* LEVEL_STRING[LogTypeMax];

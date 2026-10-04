@@ -11,7 +11,7 @@
  *                 T_0042.txt     time hints: session start and clock steps (SessionStats.h)
  *
  * After the next boot -- or right away when BCLogger::rotateSession() ends the running one
- * (ride session stopped, WLAN connected, CLI "rotate") -- a background task finishes every
+ * (ride session stopped, CLI "rotate") -- a background task finishes every
  * session in CUR except the new one:
  *
  *   1. start time = the start line of T_*, corrected by the clock step that made the clock

@@ -230,7 +230,6 @@ void BCLogger::startSession() {
 		appendHint(line);
 	}
 
-	sessionStartedMs = millis();
 	recordsAtSessionStart = recordsWritten;
 	logf(Log_Info, TAG_SD, "Session %s: %s%s", stem, file_data.c_str(), fdata ? "" : " - could not be opened, data is not logged!");
 	LogSessions::startFinalizer(sessionStem);
@@ -240,38 +239,26 @@ void BCLogger::startSession() {
 // dated, summarised and moved out of CUR/ right away and a log service pulling from the
 // device finds it (before this, that took the next boot -- test ride 2026-10-04).
 // Only a request here; FlusherTask does the work, being the one that writes the files.
-// forced: the rider ended the ride session -- also stops a running raw capture.
-// Otherwise (WLAN came up): only a session with some data in it, and not too often.
-void BCLogger::rotateSession(bool forced) {
-	rotateRequest = forced ? ROTATE_FORCED : ROTATE_SOFT;
+// Only on purpose (see the header): the rider ended the ride session, or typed "rotate".
+void BCLogger::rotateSession() {
+	rotateRequested = true;
 	wakeFlusher();
 }
 
 // FlusherTask, once per flush cycle: carries out a rotateSession() request.
 void BCLogger::checkRotate() {
-	const uint8_t req = rotateRequest;
-	if (req == ROTATE_NONE || !fdata) {
-		rotateRequest = ROTATE_NONE;
+	if (!rotateRequested) return;
+	if (!fdata || recordsWritten == recordsAtSessionStart) {		// no SD card, or nothing logged yet: nothing to finish
+		rotateRequested = false;
 		return;
 	}
-	const bool capturing = static_cast<bool>(fraw[RAW_CAPTURE]);
-	if (req == ROTATE_SOFT) {
-		rotateRequest = ROTATE_NONE;
-		if (capturing) return;										// the rider's recording goes on
-		const uint32_t now = millis();
-		if (now - sessionStartedMs < ROTATE_MIN_AGE_MS) return;
-		if (recordsWritten - recordsAtSessionStart < ROTATE_MIN_RECORDS) return;
-		if (lastRotateMs && now - lastRotateMs < ROTATE_MIN_GAP_MS) return;
-	} else if (capturing) {
+	if (fraw[RAW_CAPTURE]) {
 		// The raw file belongs to this session: ask for the end of the capture, rotate at the
 		// next cycle once it is closed (the request stays).
 		sensors.stopRoadCapture();
 		return;
-	} else if (recordsWritten == recordsAtSessionStart) {
-		rotateRequest = ROTATE_NONE;								// nothing logged yet, nothing to finish
-		return;
 	}
-	rotateRequest = ROTATE_NONE;
+	rotateRequested = false;
 
 	// Everything produced so far belongs to the old session: queued records, a clock step.
 	uint8_t rec[LogRec::RECORD_SIZE];
@@ -282,7 +269,7 @@ void BCLogger::checkRotate() {
 	     static_cast<unsigned long>(recordsWritten - recordsAtSessionStart));
 
 	if (xSemaphoreTake(xPrintMutex, static_cast<TickType_t>(1000 / portTICK_PERIOD_MS)) != pdTRUE) {
-		rotateRequest = req;										// try again next cycle
+		rotateRequested = true;										// try again next cycle
 		return;
 	}
 	for (File* f : {&fdebug, &fnmea, &fdata, &fraw[RAW_CAPTURE], &fraw[RAW_SNIPPETS]}) {
@@ -300,7 +287,6 @@ void BCLogger::checkRotate() {
 	xSemaphoreGive(xPrintMutex);
 
 	startSession();
-	lastRotateMs = millis();
 }
 
 // Method to send log messages as events
@@ -477,7 +463,7 @@ void BCLogger::handleCommand(const Command &cmd) {
 
 	if (cmd.equals(rotateCmd)) {
 		log(Log_Info, TAG_CLI, "Session rotation requested");
-		rotateSession(true);
+		rotateSession();
 		return;
 	}
 

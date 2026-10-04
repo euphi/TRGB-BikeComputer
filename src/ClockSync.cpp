@@ -11,6 +11,7 @@
 #include <atomic>
 #include <cstdlib>
 #include <esp_sntp.h>
+#include <cstring>
 #include <esp_timer.h>
 #include <sys/time.h>
 
@@ -31,6 +32,35 @@ uint32_t gpsCheckedAt = 0;
 bool clockFromGps = false;			// the clock was set by GPS (and not replaced by NTP since)
 uint32_t gpsSetAt = 0;				// millis() of that
 std::atomic<bool> ntpSet{false};	// the NTP callback (lwIP task) tells the BLE task
+bool gpsPending = false;			// a time that would move the clock was offered once, waiting for the second
+int64_t gpsPendingOffsetMs = 0;		// utc - uptime of that offer: the same for a clock that runs on
+uint32_t gpsPendingAt = 0;
+
+// The day this firmware was built (UTC midnight from __DATE__, "Oct  4 2026"): the clock of a
+// device that runs this code can't be before it.
+int64_t buildEpochMs() {
+	static const char* const MONTHS = "JanFebMarAprMayJunJulAugSepOctNovDec";
+	const char name[4] = {__DATE__[0], __DATE__[1], __DATE__[2], 0};
+	const char* at = strstr(MONTHS, name);
+	const int month = at ? static_cast<int>(at - MONTHS) / 3 + 1 : 1;
+	const int day = atoi(__DATE__ + 4);
+	const int year = atoi(__DATE__ + 7);
+	// days since 1970-01-01 (civil-from-days algorithm, H. Hinnant)
+	const int y = year - (month <= 2 ? 1 : 0);
+	const int era = (y >= 0 ? y : y - 399) / 400;
+	const unsigned yoe = static_cast<unsigned>(y - era * 400);
+	const unsigned doy = static_cast<unsigned>((153 * (month + (month > 2 ? -3 : 9)) + 2) / 5 + day - 1);
+	const unsigned doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+	const int64_t days = static_cast<int64_t>(era) * 146097 + static_cast<int64_t>(doe) - 719468;
+	return days * 86400000LL;
+}
+
+// A time this firmware could be running at: after its build (a day of slack for time zones),
+// and not more than GPS_MAX_AHEAD_YEARS beyond it.
+bool plausibleDate(int64_t utcMs) {
+	static const int64_t built = buildEpochMs();
+	return SessStats::isValidMs(utcMs) && utcMs >= built - 86400000LL && utcMs <= built + GPS_MAX_AHEAD_YEARS * 366LL * 86400000LL;
+}
 
 int64_t nowUs() {
 	struct timeval tv;
@@ -73,21 +103,45 @@ void offerGpsTime(int64_t utcMs) {
 	if (!valid) clockFromGps = false;				// "clock unset" (CLI) or a power loss
 	const bool provisional = clockFromGps && now - gpsSetAt < GPS_PROVISIONAL_MS;
 	const uint32_t recheck = provisional ? GPS_RECHECK_PROVISIONAL_MS : GPS_RECHECK_MS;
-	if (gpsChecked && valid && now - gpsCheckedAt < recheck) return;
-	if (!SessStats::isValidMs(utcMs)) return;		// phone without a real time yet
-	gpsChecked = true;
-	gpsCheckedAt = now;
+	if (!gpsPending && gpsChecked && valid && now - gpsCheckedAt < recheck) return;
+	if (!plausibleDate(utcMs)) {					// phone without a real time yet, or nonsense
+		if (SessStats::isValidMs(utcMs)) bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_OP, "🕒 GPS time %lld is not a date this firmware can run at - ignored", (long long)(utcMs / 1000));
+		gpsPending = false;
+		return;
+	}
 
 	const int64_t sysMs = nowUs() / 1000;
 	const int64_t diff = utcMs - sysMs;
 	if (valid && llabs(diff) < GPS_MIN_CORRECTION_MS) {
+		gpsChecked = true;
+		gpsCheckedAt = now;
+		gpsPending = false;
 		bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_OP, "🕒 GPS time check: clock off by %lld ms - kept", (long long)diff);
 		return;
 	}
 	if (valid && !provisional && llabs(diff) > GPS_MAX_CORRECTION_MS) {
-		bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_OP, "🕒 GPS time is %lld s off the clock - ignored, the phone's GNSS time can be wrong after switching on", (long long)(diff / 1000));
+		gpsChecked = true;
+		gpsCheckedAt = now;
+		gpsPending = false;
+		bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_OP, "🕒 GPS time is %lld s off the clock - ignored, the phone's time can be wrong after switching on", (long long)(diff / 1000));
 		return;
 	}
+	// A time that would move the clock has to be said twice, GPS_CONFIRM_MIN_MS apart, and must
+	// run on like a clock does (same utc - uptime within GPS_CONFIRM_TOLERANCE_MS): a time that
+	// jumps between frames (the 47 / 18 min flips of 2026-10-02) never gets there.
+	const int64_t offsetMs = utcMs - static_cast<int64_t>(esp_timer_get_time() / 1000);
+	if (!gpsPending || llabs(offsetMs - gpsPendingOffsetMs) > GPS_CONFIRM_TOLERANCE_MS) {
+		if (gpsPending) bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_OP, "🕒 GPS time does not run on like a clock (%lld ms off the last offer) - waiting for a stable one", (long long)(offsetMs - gpsPendingOffsetMs));
+		gpsPending = true;
+		gpsPendingOffsetMs = offsetMs;
+		gpsPendingAt = now;
+		return;
+	}
+	if (now - gpsPendingAt < GPS_CONFIRM_MIN_MS) return;		// the same moment, not a second opinion
+	gpsPending = false;
+	gpsChecked = true;
+	gpsCheckedAt = now;
+
 	struct timeval tv;
 	tv.tv_sec = static_cast<time_t>(utcMs / 1000);
 	tv.tv_usec = static_cast<suseconds_t>((utcMs % 1000) * 1000);

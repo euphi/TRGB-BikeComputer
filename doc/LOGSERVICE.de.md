@@ -48,7 +48,7 @@ der mit BLE und Display um internen Heap konkurriert.
 - **Polling** als Netz: alle `BIKELOG_PULL_INTERVAL_S` (120 s) eine
   mDNS-Adressanfrage -- ist der BC weg, kostet das nichts, taucht er (wieder)
   auf, wird abgeholt. Zusätzlich spätestens alle 10 min, solange er online ist (der BC
-  beendet eine Sitzung auch, wenn die Fahrt-Session beendet wird oder WLAN verbindet, s. u.).
+  beendet eine Sitzung, wenn die Fahrt-Session beendet wird, s. u.).
 - **Nachfassen**: Direkt nach dem Boot verschiebt `LogSessions` die beendete
   Sitzung erst im Hintergrund aus `CUR/`. Liegt dort beim Abruf mehr als die
   laufende Sitzung (oder schlägt der Abruf fehl), wird nach 60 s erneut
@@ -57,8 +57,9 @@ der mit BLE und Display um internen Heap konkurriert.
 
 **Was**: jede Datei der Liste, die noch fehlt oder deren Größe sich geändert
 hat -- außer `CUR/` (laufende Sitzung) und gelöschten Sitzungen. Neue
-Sitzungen entstehen auf dem BC nur beim Booten, ein Abruf ohne Neues ist eine
-einzige Anfrage. Die Liste kommt aus `/logfiles.json`, falls die Firmware den
+Sitzungen entstehen auf dem BC beim Booten, beim bewussten Beenden der Fahrt (langer Druck)
+oder mit `rotate` auf der seriellen Konsole -- nicht beim WLAN-Connect, der auch per
+Handy-Hotspot mitten in einer Tour vorkommt. Ein Abruf ohne Neues ist eine einzige Anfrage. Die Liste kommt aus `/logfiles.json`, falls die Firmware den
 Endpunkt hat, sonst aus der HTML-Seite `/logfiles/` (dort ohne Größen: eine
 bekannte Datei wird dann nicht neu geholt).
 

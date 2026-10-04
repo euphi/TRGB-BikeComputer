@@ -50,6 +50,13 @@ static constexpr int64_t GPS_MAX_CORRECTION_MS = 10LL * 60 * 1000;
 static constexpr uint32_t GPS_RECHECK_MS = 3600UL * 1000UL;
 static constexpr uint32_t GPS_RECHECK_PROVISIONAL_MS = 5UL * 60UL * 1000UL;
 static constexpr uint32_t GPS_PROVISIONAL_MS = 30UL * 60UL * 1000UL;
+// Whatever would move the clock must be offered twice at least GPS_CONFIRM_MIN_MS apart, with
+// the same utc - uptime (within GPS_CONFIRM_TOLERANCE_MS), and be a date between the firmware's
+// build day and GPS_MAX_AHEAD_YEARS after it. TrailBridge checks the GNSS time against the
+// phone's clock as well and sends the phone's time if it is nonsense; this is the second line.
+static constexpr uint32_t GPS_CONFIRM_MIN_MS = 2000;
+static constexpr int64_t GPS_CONFIRM_TOLERANCE_MS = 2000;
+static constexpr int GPS_MAX_AHEAD_YEARS = 20;
 
 struct Step {
 	int64_t offsetMs;		// clock moved by this

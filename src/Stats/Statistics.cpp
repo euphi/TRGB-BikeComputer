@@ -418,7 +418,7 @@ void Statistics::stopRide() {
 	applyRideModeToCurrentMovement();
 	logRideState();		// if applyRideModeToCurrentMovement() didn't already (stopped, or cruising)
 	bclog.log(BCLogger::Log_Info, BCLogger::TAG_STAT, "Ride session stopped (long-press)");
-	bclog.rotateSession(true);		// the finished ride is a log session of its own, ready to be pulled
+	bclog.rotateSession();		// the finished ride is a log session of its own, ready to be pulled
 	updateStateIcon();	// Immediate update (user feedback)
 }
 
