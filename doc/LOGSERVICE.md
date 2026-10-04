@@ -160,6 +160,25 @@ off.
 Known gap: if a session is deleted (`DELETE /api/v1/sessions/{id}`), only the local copy
 disappears -- the Nextcloud copy stays and has to be removed by hand.
 
+## Session report
+
+`GET /api/v1/sessions/{id}/report.md` (link "Bericht" on the web page) is a German report
+of the session, `…/report.json` the figures behind it. Both come from
+[`bikelog/report.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/bikelog/report.py)
+(details: [tools](TOOLS.md#session-report)) and are computed on every request, so a better
+report also improves every past ride.
+
+Rider data for heart-rate zones, TRIMP and W/kg go into `<data>/athlete.json` (other path:
+`BIKELOG_ATHLETE_FILE`). Every key is optional; without the file the report simply has no
+zones:
+
+```json
+{"hr_max": 186, "hr_rest": 48, "mass_kg": 88, "rider_kg": 76, "cda": 0.38, "crr": 0.006}
+```
+
+The JSON is meant as the input for a text generator (template or local LLM): every
+number is computed there, a model only has to put it into words.
+
 ## Installation (home server: `~/bikelog`)
 
 ```bash
@@ -230,6 +249,7 @@ Environment variables (in the service: `~/bikelog/bikelog.env`):
 | `BIKELOG_KOMOOT_MERGE_GAP_S` | `1800` | sessions of the same device with at most this much pause between them count as one interrupted ride |
 | `BIKELOG_NEXTCLOUD_URL` / `_USER` / `_PASSWORD` | -- | Nextcloud login (app password); without all three the sync is off |
 | `BIKELOG_NEXTCLOUD_DIR` | `BikeLog` | target directory (WebDAV path, created if needed) |
+| `BIKELOG_ATHLETE_FILE` | `<data>/athlete.json` | rider data for the session report |
 
 Both variants of the bike computer (gravel and Forumslader) announce themselves as
 `TRGB-BC` today -- the service cannot tell them apart and stores everything under one
@@ -247,6 +267,8 @@ variant or a `device` field in `/logfiles.json`.
 | `GET` | `/api/v1/sessions/{id}.gpx` | GPX as in the export (`max_fix_age_ms`, `segment_gap_s`, `ele`, `max_accuracy_m`, `shocks`, `labels`, `rich`) |
 | `GET` | `/api/v1/sessions/{id}.csv` | CSV (`with_gps`) |
 | `GET` | `/api/v1/sessions/{id}/files/{name}` | one file unchanged |
+| `GET` | `/api/v1/sessions/{id}/report.json` | key figures of the session, see [session report](#session-report) |
+| `GET` | `/api/v1/sessions/{id}/report.md` | the same as a German Markdown report |
 | `DELETE` | `/api/v1/sessions/{id}` | delete the files, keep the tombstone |
 | `POST` | `/api/v1/sessions/{id}/komoot` | upload as part of its tour (`force`), see above |
 | `PUT` | `/api/v1/devices/{device}/files/{day}/{name}` | deliver one file (body = file) |

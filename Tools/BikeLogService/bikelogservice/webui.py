@@ -77,6 +77,7 @@ def _row(s: Session) -> str:
         if s.gps_points and s.gpx_status != "no-gps":
             links.append(f'<a href="{base}.gpx">GPX</a>')
         links.append(f'<a href="{base}.csv?with_gps=true">CSV</a>')
+        links.append(f'<a href="{base}/report.md">Bericht</a>')
     for f in s.files:
         links.append(f'<a href="{base}/files/{escape(f.name)}" title="{escape(f.name)}">'
                      f'{escape(f.name[0])} {_fmt_size(f.size)}</a>')

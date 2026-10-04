@@ -1,4 +1,4 @@
-"""Command line front end: bikelog csv|gpx|info|raw|fixture|sim.
+"""Command line front end: bikelog csv|gpx|info|report|raw|fixture|sim.
 
 Run as ``python3 -m bikelog ...`` from Tools/, or through the thin
 ReadTachoBin.py wrapper for the CSV export.
@@ -8,10 +8,11 @@ from __future__ import annotations
 
 import argparse
 import datetime
+import json
 import sys
 import time
 
-from . import csvexport, fixtures, gpx, raw, replay, ridestats, sim
+from . import csvexport, fixtures, gpx, raw, replay, report, ridestats, sim
 from .record import (CURRENT_VERSION, IF_NO_SPEED, IF_TOO_SLOW, IF_UNCALIBRATED,
                      ROAD_CLASS_NAMES, SURFACE_NAMES, ReadStats, UnknownLogFormat, label_at,
                      labels_of, read_file, split)
@@ -164,6 +165,25 @@ def cmd_info(opts) -> int:
             print("              %s  %.1f g  Schwere %d  %s%s" % (
                 x.utc().isoformat(sep=" ", timespec="seconds"), x.peak_g, x.severity, where,
                 "  (Vorder- + Hinterrad)" if x.wheelbase_match else ""))
+    return 0
+
+
+def cmd_report(opts) -> int:
+    stats = ReadStats()
+    everything = _read(opts.infile, stats)
+    try:
+        athlete = report.Athlete.load(opts.athlete) if opts.athlete else report.Athlete()
+    except (OSError, ValueError, TypeError) as exc:
+        raise SystemExit("Athletendatei %s: %s" % (opts.athlete, exc))
+    rep = report.compute(everything, athlete, stats, with_hills=opts.hills)
+    text = (json.dumps(rep, ensure_ascii=False, indent=2) if opts.json
+            else report.to_markdown(rep))
+    if opts.outfile:
+        with open(opts.outfile, "w", encoding="utf-8") as fh:
+            fh.write(text + "\n")
+        print("-> %s" % opts.outfile, file=sys.stderr)
+    else:
+        print(text)
     return 0
 
 
@@ -449,6 +469,21 @@ def build_parser() -> argparse.ArgumentParser:
     p_info = sub.add_parser("info", help="Binärlog zusammenfassen")
     p_info.add_argument("-i", "--in", dest="infile", required=True, metavar="FILE")
     p_info.set_defaults(func=cmd_info)
+
+    p_rep = sub.add_parser(
+        "report", help="Technischer Bericht einer Sitzung (Markdown oder JSON)",
+        description="Alle Kennzahlen einer Sitzung: Fahrt, Anstiege, Puls/Zonen/TRIMP, "
+                    "geschätzte Leistung, Wege und Stöße, Gerätezustand. Das JSON ist die "
+                    "Eingabe für einen Berichtsgenerator (Vorlage oder LLM).")
+    p_rep.add_argument("-i", "--in", dest="infile", required=True, metavar="FILE")
+    p_rep.add_argument("-o", "--out", dest="outfile", metavar="FILE",
+                       help="in diese Datei schreiben [Standard: Ausgabe auf stdout]")
+    p_rep.add_argument("--json", action="store_true", help="JSON statt Markdown")
+    p_rep.add_argument("--athlete", metavar="FILE",
+                       help="JSON mit hr_max, hr_rest, mass_kg, cda, crr, zones_pct (alles optional)")
+    p_rep.add_argument("--hills", action="store_true",
+                       help="auch Hügel unterhalb Kategorie 6 auflisten")
+    p_rep.set_defaults(func=cmd_report)
 
     p_raw = sub.add_parser("raw", help="Rohdaten des Beschleunigungssensors (R_*.bin, S_*.bin)")
     raw_sub = p_raw.add_subparsers(dest="raw_command", required=True)

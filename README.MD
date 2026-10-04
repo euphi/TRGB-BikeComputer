@@ -77,6 +77,8 @@ asphalt, and gradient from the accelerometer as an alternative to the barometer.
   [service](doc/LOGSERVICE.md) that fetches the sessions when the bike
   computer shows up in the WiFi, archives them, exports GPX, syncs to Nextcloud and
   uploads to Komoot
+- Session report: all key figures of a ride (climbs, heart-rate zones, TRIMP, estimated
+  power, road quality, sensor dropouts and other technical findings) as Markdown or JSON
 
 **Web interface** (when on WiFi)
 - Download, replay and delete log files; live log with adjustable log levels

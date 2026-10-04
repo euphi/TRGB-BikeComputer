@@ -22,7 +22,7 @@ from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI, HTTPException, Path, Query, Request, Response, status
 from fastapi.responses import HTMLResponse, PlainTextResponse
 
-from bikelog import csvexport
+from bikelog import csvexport, report
 from bikelog.record import ReadStats
 
 from . import exporter, komoot, nextcloud, sdlayout, webui
@@ -172,6 +172,30 @@ def create_app(settings: Settings | None = None, puller: Puller | None = None) -
         csvexport.write_stream(buffer, store.records(session, ReadStats()), with_gps=with_gps)
         return PlainTextResponse(buffer.getvalue(), media_type="text/csv", headers={
             "Content-Disposition": 'attachment; filename="%s.csv"' % _export_name(session)})
+
+    def _report(store: Storage, session: Session) -> dict:
+        path = settings.athlete_path
+        try:
+            athlete = report.Athlete.load(path) if path.exists() else report.Athlete()
+        except (OSError, ValueError, TypeError) as exc:
+            raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"{path}: {exc}")
+        stats = ReadStats()
+        return report.compute(list(store.records(session, stats, types=None)), athlete, stats)
+
+    @app.get(API + "/sessions/{session_id}/report.json", tags=["export"])
+    def get_report(session_id: int, principal: Principal = AuthDep,
+                   store: Storage = Depends(storage)):
+        """All key figures of the session (bikelog.report) -- the input for a
+        report generator."""
+        return _report(store, _require_log(store, session_id))
+
+    @app.get(API + "/sessions/{session_id}/report.md", tags=["export"])
+    def get_report_md(session_id: int, principal: Principal = AuthDep,
+                      store: Storage = Depends(storage)):
+        """The same figures as a German Markdown report, without an LLM."""
+        session = _require_log(store, session_id)
+        return PlainTextResponse(report.to_markdown(_report(store, session)),
+                                 media_type="text/markdown; charset=utf-8")
 
     @app.get(API + "/sessions/{session_id}/files/{name}", tags=["export"])
     def download_file(session_id: int, name: str, principal: Principal = AuthDep,

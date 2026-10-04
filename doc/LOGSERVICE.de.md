@@ -165,6 +165,25 @@ Bekannte Lücke: Wird eine Sitzung gelöscht (`DELETE /api/v1/sessions/{id}`),
 verschwindet nur die lokale Kopie -- die Nextcloud-Kopie bleibt liegen und
 muss von Hand entfernt werden.
 
+## Sitzungsbericht
+
+`GET /api/v1/sessions/{id}/report.md` (Link „Bericht" auf der Webseite) ist ein Bericht der
+Sitzung auf Deutsch, `…/report.json` die Zahlen dahinter. Beides kommt aus
+[`bikelog/report.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/bikelog/report.py)
+(Details: [Werkzeuge](TOOLS.md#sitzungsbericht)) und wird bei jedem Abruf neu berechnet; ein
+besserer Bericht verbessert also auch alle alten Fahrten.
+
+Fahrerdaten für Pulszonen, TRIMP und W/kg stehen in `<data>/athlete.json` (anderer Pfad:
+`BIKELOG_ATHLETE_FILE`). Jeder Schlüssel ist optional; ohne die Datei hat der Bericht
+einfach keine Zonen:
+
+```json
+{"hr_max": 186, "hr_rest": 48, "mass_kg": 88, "rider_kg": 76, "cda": 0.38, "crr": 0.006}
+```
+
+Das JSON ist als Eingabe für einen Textgenerator gedacht (Vorlage oder lokales LLM): Alle
+Zahlen werden dort berechnet, ein Modell muss sie nur noch in Worte fassen.
+
 ## Installation (Heimserver: `~/bikelog`)
 
 ```bash
@@ -235,6 +254,7 @@ Umgebungsvariablen (im Dienst: `~/bikelog/bikelog.env`):
 | `BIKELOG_KOMOOT_MERGE_GAP_S` | `1800` | Sitzungen desselben Geräts mit höchstens so viel Pause dazwischen gelten als eine unterbrochene Fahrt |
 | `BIKELOG_NEXTCLOUD_URL` / `_USER` / `_PASSWORD` | -- | Nextcloud-Login (App-Passwort); ohne alle drei ist der Sync aus |
 | `BIKELOG_NEXTCLOUD_DIR` | `BikeLog` | Zielverzeichnis (WebDAV-Pfad, wird bei Bedarf angelegt) |
+| `BIKELOG_ATHLETE_FILE` | `<data>/athlete.json` | Fahrerdaten für den Sitzungsbericht |
 
 Beide BC-Varianten (Gravel und FL) melden sich heute als `TRGB-BC` -- der
 Dienst kann sie nicht auseinanderhalten und legt alles unter einem Gerät ab.
@@ -252,6 +272,8 @@ ein `device`-Feld in `/logfiles.json`.
 | `GET` | `/api/v1/sessions/{id}.gpx` | GPX wie im Export (`max_fix_age_ms`, `segment_gap_s`, `ele`, `max_accuracy_m`, `shocks`, `labels`, `rich`) |
 | `GET` | `/api/v1/sessions/{id}.csv` | CSV (`with_gps`) |
 | `GET` | `/api/v1/sessions/{id}/files/{name}` | eine Datei unverändert |
+| `GET` | `/api/v1/sessions/{id}/report.json` | Kennzahlen der Sitzung, siehe [Sitzungsbericht](#sitzungsbericht) |
+| `GET` | `/api/v1/sessions/{id}/report.md` | dasselbe als Markdown-Bericht |
 | `DELETE` | `/api/v1/sessions/{id}` | Dateien löschen, Grabstein behalten |
 | `POST` | `/api/v1/sessions/{id}/komoot` | zur zusammengehörigen Tour hochladen (`force`), siehe unten |
 | `PUT` | `/api/v1/devices/{gerät}/files/{tag}/{name}` | eine Datei einliefern (Body = Datei) |

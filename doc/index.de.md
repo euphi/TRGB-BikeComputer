@@ -75,6 +75,9 @@ Steigung aus dem Beschleunigungssensor als Alternative zum Barometer.
 - Python-[Werkzeuge](TOOLS.md), die Logs in CSV und GPX umwandeln, und ein
   [Dienst](LOGSERVICE.md), der die Sitzungen abholt, sobald der Fahrradcomputer im WLAN
   auftaucht, sie archiviert, GPX exportiert, mit Nextcloud abgleicht und zu Komoot hochlädt
+- Sitzungsbericht: alle Kennzahlen einer Fahrt (Anstiege, Pulszonen, TRIMP, geschätzte
+  Leistung, Wegequalität, Sensor-Aussetzer und andere technische Auffälligkeiten) als
+  Markdown oder JSON
 
 **Web-Oberfläche** (im WLAN)
 

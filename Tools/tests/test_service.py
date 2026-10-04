@@ -233,6 +233,21 @@ def test_csv_export(client, ride_bytes):
     assert "GPS_Lat" in with_gps.splitlines()[0]
 
 
+def test_report(client, settings, ride_bytes):
+    sid = _session_id(client, ride_bytes)
+    body = client.get(f"{API}/sessions/{sid}/report.json").json()
+    assert body["ride"]["distance_km"] > 0
+    assert body["heart"]["zones_s"] is None                 # no athlete.json yet
+    settings.athlete_path.write_text('{"hr_max": 190, "hr_rest": 50}')
+    body = client.get(f"{API}/sessions/{sid}/report.json").json()
+    assert body["heart"]["trimp_method"] == "banister"
+    md = client.get(f"{API}/sessions/{sid}/report.md")
+    assert md.headers["content-type"].startswith("text/markdown")
+    assert md.text.startswith("# Sitzungsbericht")
+    settings.athlete_path.write_text('{"hr_maximum": 190}')
+    assert client.get(f"{API}/sessions/{sid}/report.json").status_code == 500
+
+
 def test_raw_download_returns_the_exact_bytes(client, ride_bytes):
     sid = _session_id(client, ride_bytes)
     assert client.get(f"{API}/sessions/{sid}/files/L_143012.bin").content == ride_bytes
@@ -450,6 +465,8 @@ def test_every_route_requires_a_token_once_auth_is_on(tmp_path, ride_bytes):
             ("GET", f"{API}/sessions/{sid}.gpx"),
             ("GET", f"{API}/sessions/{sid}.csv"),
             ("GET", f"{API}/sessions/{sid}/files/L_143012.bin"),
+            ("GET", f"{API}/sessions/{sid}/report.json"),
+            ("GET", f"{API}/sessions/{sid}/report.md"),
             ("PUT", f"{API}/devices/gravel/files/20260920/L_143012.bin"),
             ("DELETE", f"{API}/sessions/{sid}"),
             ("POST", f"{API}/sessions/{sid}/komoot"),

@@ -77,6 +77,15 @@ class Settings:
     #: not two separate ones -- merged into a single upload.
     komoot_merge_gap_s: float = 1800.0
 
+    #: Rider data for the session report (bikelog.report.Athlete as JSON:
+    #: hr_max, hr_rest, mass_kg, rider_kg, ...). Default: <data_dir>/athlete.json;
+    #: a missing file just means a report without zones/TRIMP/W/kg.
+    athlete_file: Path | None = None
+
+    @property
+    def athlete_path(self) -> Path:
+        return self.athlete_file or self.data_dir / "athlete.json"
+
     @property
     def komoot_enabled(self) -> bool:
         return bool(self.komoot_email and self.komoot_password)
@@ -125,6 +134,7 @@ class Settings:
             nextcloud_user=env.get("BIKELOG_NEXTCLOUD_USER") or None,
             nextcloud_password=env.get("BIKELOG_NEXTCLOUD_PASSWORD") or None,
             nextcloud_dir=env.get("BIKELOG_NEXTCLOUD_DIR", "BikeLog"),
+            athlete_file=Path(env["BIKELOG_ATHLETE_FILE"]) if env.get("BIKELOG_ATHLETE_FILE") else None,
         )
 
     @property

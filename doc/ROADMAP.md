@@ -71,6 +71,11 @@ Not designed yet.
   They live only in the device's flash and are lost when it is erased.
 - **Touch lock** against ghost touches from rain drops.
 - **FIT export** in the log service, next to GPX.
+- **Evaluating the logs further** (builds on the session report, `bikelog report`):
+  training load over weeks (TRIMP, fitness/fatigue/form), best times on recurring climbs,
+  comparison with the profile of a target event; a written report from a local LLM on the
+  home server, fed only with the report's JSON; road quality matched onto OSM ways
+  (map matching) and a JOSM file with `smoothness`/`surface` suggestions to check by hand.
 
 ## TrailBridge app
 
