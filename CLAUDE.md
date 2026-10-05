@@ -157,8 +157,9 @@ Mobilfunk); danach das Netz mit `cmd wifi forget-network <id>` wieder vergessen.
 - Neustart unterwegs: Sitzungen mit Abstand <= `komoot_merge_gap_s` sind eine Fahrt
   (`tours.py`, auch für Komoot). Training rechnet pro Fahrt, Bericht über die verbundenen
   Sätze (`analysis.tour_report_for()`, Tabelle `tour_reports`), Seite `/tour/{id}`.
-- Gerät = Abhol-Ziel des Dienstes; Netzwerkname je Build-Variante (`BC_HOSTNAME`: `TRGB-BC`,
-  FL `TRGB-FL`, `src/WifiConfig.h`). Räder und Zuordnung Gerät → Rad ab Datum:
+- Gerät = Abhol-Ziel des Dienstes; Netzwerkname: Standard je Build-Variante (`BC_HOSTNAME`:
+  `TRGB-BC`, FL `TRGB-FL`, `src/WifiConfig.h`), änderbar auf `/wifi` (NVS `WifiSettings/host`,
+  `WifiWebserver::setHostname()`, mDNS neu aus `checkLoop()`). Räder und Zuordnung Gerät → Rad ab Datum:
   `bikelog/bikes.py`, `<data>/bikes.json`, Seite `/bikes`; Sitzungs-Override `sessions.bike_id`.
   Der Bericht rechnet mit Fahrer + Rad (`bikes.effective_athlete()`, im Cache-Schlüssel).
 - GPX-Import (`bikelog/gpximport.py`, `importer.py`): Sitzungen des Geräts `import`, nie

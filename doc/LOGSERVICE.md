@@ -390,7 +390,8 @@ Environment variables (in the service: `~/bikelog/bikelog.env`):
 
 Several bike computers: each build variant has a network name of its own (mDNS host and
 default hotspot SSID, `BC_HOSTNAME` in `platformio.ini`): the gravel build `TRGB-BC`, the
-Forumslader build `TRGB-FL`. One pull target per bike computer, e.g.
+Forumslader build `TRGB-FL`; changeable on the bike computer's page `/wifi`
+([WiFi](WIFI.md#device-name)). One pull target per bike computer, e.g.
 `BIKELOG_PULL_TARGETS=trgb=TRGB-BC,pendler=TRGB-FL`; the part before `=` is the device name
 the sessions are filed under and that bikes are assigned to (see [bikes](#bikes)). Keep the
 name of an existing target, the stored sessions are filed under it.

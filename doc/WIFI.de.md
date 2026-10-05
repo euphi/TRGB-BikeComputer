@@ -62,6 +62,17 @@ nach dem Start, wenn keiner kam).
 
 Ist kein Netz gespeichert, bleibt das WLAN nach dem Booten aus.
 
+## Gerätename
+
+Name des Fahrradcomputers im Netz: `<name>.local` (mDNS), der DHCP-Hostname, den der Router zeigt,
+und die Standard-SSID des Hotspots. Standard je Build-Variante -- `TRGB-BC`, Forumslader-Build
+`TRGB-FL` (`BC_HOSTNAME` in `platformio.ini`) --, änderbar auf der Seite `/wifi` („Device name"):
+1..31 Buchstaben, Ziffern und Bindestriche. Gespeichert im NVS (Namespace `WifiSettings`,
+Schlüssel `host`), mDNS meldet den neuen Namen sofort an, der DHCP-Name folgt mit dem nächsten
+Verbinden. Eine bestehende Hotspot-SSID bleibt, wie sie ist (sie hat ein eigenes Feld). Der
+Log-Dienst findet den Fahrradcomputer über diesen Namen: `BIKELOG_PULL_TARGETS` mitziehen (den
+Gerätenamen vor dem `=` behalten), ebenso den OTA-Upload-Port (`--upload-port <name>.local`).
+
 ## Hotspot
 
 SSID `TRGB-BC`, wenn nicht geändert, WPA2. Das Passwort wird beim ersten Start erzeugt (10

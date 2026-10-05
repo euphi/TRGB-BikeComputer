@@ -11,6 +11,7 @@
  *   POST /wifi/remove     ssid
  *   POST /wifi/move       ssid, dir=-1|1 (towards the front = higher priority)
  *   POST /wifi/ap         ssid, password (8..63 characters)
+ *   POST /wifi/name       name: network name (mDNS <name>.local, DHCP), see WifiCfg::validHostname()
  *   POST /wifi/reconnect  drop the current connection and run the autoconnect again
  *
  * Passwords only ever come IN, through POST bodies: a GET parameter would end up in the request
@@ -68,6 +69,9 @@ static void sendResult(AsyncWebServerRequest* request, WifiCfg::Result r) {
 	case WifiCfg::Result::BAD_INDEX:
 		request->send(404, "text/plain", "No such network");
 		break;
+	case WifiCfg::Result::BAD_HOSTNAME:
+		request->send(400, "text/plain", "The name must be 1 to 31 letters, digits or hyphens (not at the start or end)");
+		break;
 	}
 }
 
@@ -105,6 +109,15 @@ static const char PAGE_BODY[] = R"HTML(
   <label><input type="checkbox" id="hidden"> hidden network (not found by a scan)</label>
   <label><input type="checkbox" id="open"> open network (remove the password)</label>
   <div class="row"><input type="submit" value="Save"></div>
+</form>
+
+<h3>Device name</h3>
+<p class="eyebrow">Name of this bike computer in the network: reachable as <b id="hostlink">&nbsp;</b>,
+and the name the log service pulls from (BIKELOG_PULL_TARGETS). Change it there too.</p>
+<form onsubmit="saveName();return false;" autocomplete="off">
+  <label for="hostname">Name</label>
+  <input type="text" id="hostname" maxlength="31" pattern="[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?">
+  <div class="row"><input type="submit" value="Save name"></div>
 </form>
 
 <h3>Hotspot</h3>
@@ -156,6 +169,8 @@ async function load(){
     });
     if(!s.networks.length){const tr=document.createElement('tr');cell(tr,'No network saved yet.','muted');body.appendChild(tr);}
     if(document.activeElement!==$('apssid')&&!$('apssid').value)$('apssid').value=s.apSsid;
+    if(document.activeElement!==$('hostname')&&!$('hostname').value)$('hostname').value=s.hostname;
+    $('hostlink').textContent=s.hostname+'.local';
   }catch(e){$('status').textContent='No answer from the device';}
 }
 function edit(n){$('ssid').value=n.ssid;$('hidden').checked=n.hidden;$('open').checked=false;$('pw').value='';$('pw').focus();}
@@ -168,6 +183,8 @@ async function save(){
     $('pw').value='';$('open').checked=false;load();
   }
 }
+async function saveName(){const n=$('hostname').value;
+  if(await post('/wifi/name',{name:n}))$('hostlink').textContent=n+'.local';}
 async function saveAp(){if(await post('/wifi/ap',{ssid:$('apssid').value,password:$('appw').value}))$('appw').value='';}
 async function reconnect(){
   if(!confirm('Drop the current connection and look for a saved network again? This page may stop answering.'))return;
@@ -218,6 +235,9 @@ void WifiWebserver::setupWifiRoutes() {
 			doc["apSsid"] = cfg.accessPoint().ssid;
 			xSemaphoreGive(cfgMutex);
 		}
+		char name[WifiCfg::HOSTNAME_MAX + 1];
+		getHostname(name, sizeof(name));
+		doc["hostname"] = name;
 		sendJson(request, doc);
 	});
 
@@ -269,6 +289,10 @@ void WifiWebserver::setupWifiRoutes() {
 
 	server.on("/wifi/ap", HTTP_POST, [this](AsyncWebServerRequest* request) {
 		sendResult(request, setAccessPoint(param(request, "ssid").c_str(), param(request, "password").c_str()));
+	});
+
+	server.on("/wifi/name", HTTP_POST, [this](AsyncWebServerRequest* request) {
+		sendResult(request, setHostname(param(request, "name").c_str()));
 	});
 
 	server.on("/wifi/reconnect", HTTP_POST, [this](AsyncWebServerRequest* request) {

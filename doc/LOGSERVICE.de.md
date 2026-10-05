@@ -398,7 +398,8 @@ Umgebungsvariablen (im Dienst: `~/bikelog/bikelog.env`):
 
 Mehrere Fahrradcomputer: Jede Build-Variante hat einen eigenen Netzwerknamen (mDNS-Host und
 Standard-Hotspot-SSID, `BC_HOSTNAME` in `platformio.ini`): der Gravel-Build `TRGB-BC`, der
-Forumslader-Build `TRGB-FL`. Ein Abhol-Ziel je Fahrradcomputer, z. B.
+Forumslader-Build `TRGB-FL`; änderbar auf der Seite `/wifi` des Fahrradcomputers
+([WLAN](WIFI.md#geratename)). Ein Abhol-Ziel je Fahrradcomputer, z. B.
 `BIKELOG_PULL_TARGETS=trgb=TRGB-BC,pendler=TRGB-FL`; der Teil vor `=` ist der Gerätename, unter
 dem die Sitzungen abgelegt und dem Räder zugeordnet werden (siehe [Räder](#rader)). Den Namen
 eines bestehenden Ziels beibehalten, die gespeicherten Sitzungen liegen darunter.

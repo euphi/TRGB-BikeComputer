@@ -166,7 +166,19 @@ static void blob() {
 	CHECK(f.fromBlob(bad) && f.count() == 1 && strlen(f.ssid(0)) == SSID_MAX, "implausible entries dropped, ssid terminated (count=%zu)", f.count());
 }
 
+static void hostname() {
+	CHECK(validHostname("TRGB-BC") && validHostname("TRGB-FL") && validHostname("pendler2"), "plain names");
+	CHECK(validHostname(DEFAULT_HOSTNAME), "the build's default is valid");
+	CHECK(!validHostname("") && !validHostname(nullptr), "empty");
+	CHECK(!validHostname("-bc") && !validHostname("bc-"), "hyphen at the ends");
+	CHECK(!validHostname("my bc") && !validHostname("bc.local") && !validHostname("bc_1") && !validHostname("Räder"),
+	      "only letters, digits and hyphens");
+	CHECK(validHostname("a234567890123456789012345678901") && !validHostname("a2345678901234567890123456789012"),
+	      "at most HOSTNAME_MAX characters");
+}
+
 int main() {
+	hostname();
 	order();
 	addRules();
 	removeWipesSlot();

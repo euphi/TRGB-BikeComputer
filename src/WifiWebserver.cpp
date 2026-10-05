@@ -89,6 +89,7 @@ struct Lock {
 
 const char* const NVS_NAMESPACE = "WifiSettings";
 const char* const NVS_KEY_CFG = "cfg";
+const char* const NVS_KEY_HOST = "host";		// network name, a string; absent = the build's default
 }
 
 // ---------------------------------------------------------------------------
@@ -111,13 +112,18 @@ void WifiWebserver::loadConfig() {
 			for (const char* key : LEGACY) {
 				if (p.isKey(key)) p.remove(key);
 			}
+			if (p.isKey(NVS_KEY_HOST)) {
+				const String name = p.getString(NVS_KEY_HOST);
+				if (WifiCfg::validHostname(name.c_str())) strlcpy(host, name.c_str(), sizeof(host));
+			}
 			p.end();
 		}
 	}
+	if (!host[0]) strlcpy(host, WifiCfg::DEFAULT_HOSTNAME, sizeof(host));
 	if (cfg.ensureAp(esp_random)) save = true;		// first boot: default SSID and a random password
 	if (save) saveConfigLocked();
-	bclog.logf(BCLogger::Log_Info, TAG, "%u WiFi network(s) stored, access point \"%s\"",
-	           (unsigned) cfg.count(), cfg.accessPoint().ssid);
+	bclog.logf(BCLogger::Log_Info, TAG, "%u WiFi network(s) stored, access point \"%s\", network name \"%s\"",
+	           (unsigned) cfg.count(), cfg.accessPoint().ssid, host);
 }
 
 void WifiWebserver::saveConfigLocked() {
@@ -184,6 +190,28 @@ WifiCfg::Result WifiWebserver::setAccessPoint(const char* ssid, const char* pass
 	return r;
 }
 
+void WifiWebserver::getHostname(char* out, size_t len) {
+	Lock lock(cfgMutex);
+	strlcpy(out, host, len);
+}
+
+WifiCfg::Result WifiWebserver::setHostname(const char* name) {
+	if (!WifiCfg::validHostname(name)) return WifiCfg::Result::BAD_HOSTNAME;
+	{
+		Lock lock(cfgMutex);
+		if (!strcmp(host, name)) return WifiCfg::Result::OK;
+		strlcpy(host, name, sizeof(host));
+		Preferences p;
+		if (!p.begin(NVS_NAMESPACE, false) || !p.putString(NVS_KEY_HOST, host)) {
+			bclog.log(BCLogger::Log_Error, TAG, "Saving the network name to NVS failed");
+		}
+		p.end();
+	}
+	bclog.logf(BCLogger::Log_Info, TAG, "Network name changed to \"%s\"", name);
+	hostChanged = true;			// mDNS is (re)started by checkLoop(), the task that owns it
+	return WifiCfg::Result::OK;
+}
+
 bool WifiWebserver::addNetworkAsync(const char* ssid, const char* password) {
 	struct Job {char ssid[WifiCfg::SSID_MAX + 1]; char pw[WifiCfg::PW_MAX + 1];};
 	Job* job = new (std::nothrow) Job;
@@ -235,6 +263,7 @@ static const char* resultText(WifiCfg::Result r) {
 	case WifiCfg::Result::BAD_PASSWORD: return "password must be 8..63 characters (empty = open network)";
 	case WifiCfg::Result::FULL: return "list is full";
 	case WifiCfg::Result::BAD_INDEX: return "unknown network";
+	case WifiCfg::Result::BAD_HOSTNAME: return "name must be 1..31 letters, digits or hyphens";
 	}
 	return "?";
 }
@@ -354,7 +383,9 @@ void WifiWebserver::publishUi(const char* offText) {
 
 void WifiWebserver::startMdns() {
 	if (mdnsStarted) return;
-	mdnsStarted = MDNS.begin(WifiCfg::HOSTNAME);
+	char name[WifiCfg::HOSTNAME_MAX + 1];
+	getHostname(name, sizeof(name));
+	mdnsStarted = MDNS.begin(name);
 	if (mdnsStarted) MDNS.addService("http", "tcp", 80);
 }
 
@@ -426,6 +457,11 @@ void WifiWebserver::startAutoconnect(bool force) {
 		stopCaptiveDns();
 		stopMdns();
 		WiFi.softAPdisconnect(true);
+	}
+	{
+		char name[WifiCfg::HOSTNAME_MAX + 1];
+		getHostname(name, sizeof(name));
+		WiFi.setHostname(name);		// DHCP host name; must be set before the station starts
 	}
 	WiFi.mode(WIFI_STA);
 	WiFi.setSleep(true);
@@ -584,6 +620,12 @@ void WifiWebserver::connectNext() {
 
 void WifiWebserver::checkLoop() {
 	pollScan();
+
+	// A new network name: announce it right away (the log service finds the device by it).
+	if (hostChanged.exchange(false) && mdnsStarted) {
+		stopMdns();
+		startMdns();
+	}
 
 	switch (switchRequest.exchange(REQ_NONE)) {
 	case REQ_ON:
