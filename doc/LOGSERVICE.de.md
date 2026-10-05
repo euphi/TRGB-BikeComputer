@@ -283,7 +283,49 @@ Jeder Schlüssel ist optional; ohne die Datei hat der Bericht einfach keine Zone
 ```
 
 Das JSON ist als Eingabe für einen Textgenerator gedacht (Vorlage oder lokales LLM): Alle
-Zahlen werden dort berechnet, ein Modell muss sie nur noch in Worte fassen.
+Zahlen werden dort berechnet, ein Modell muss sie nur noch in Worte fassen -- siehe
+[die Fahrt in Worten](#die-fahrt-in-worten-lokales-llm).
+
+## Die Fahrt in Worten (lokales LLM)
+
+Mit `BIKELOG_LLM_URL` (ein [Ollama](https://ollama.com)-Server, z. B.
+`http://localhost:11434`) bekommt die Fahrtseite einen Abschnitt **In Worten**: zwei, drei
+Absätze dazu, was für eine Fahrt das war, wie Belastung und Puls zu den letzten Fahrten
+stehen, ob das zur Trainingsphase des nächsten Ziels passt, und technische Warnungen. Alles
+bleibt auf dem Heimserver.
+
+- Das Modell fasst nur Zahlen in Worte. Der Prompt
+  ([`bikelog/narrate.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/bikelog/narrate.py)) gibt ihm beschriftete Zeilen mit
+  ausgeschriebenen Einheiten und ihrer Bedeutung („Höhenmeter bergauf: 480 m“, „Form (TSB):
+  -12 (negativ = ermüdet)“), dazu den Vergleich mit den Fahrten der 42 Tage davor, die
+  Belastung am Morgen der Fahrt und das nächste Ziel mit seiner Phase -- keine Abkürzungen,
+  nichts zu rechnen. (Im ersten Test las qwen3:8b „480 hm“ als Hektometer und zählte sie zur
+  Strecke.)
+- Jede Zahl der Antwort, die nicht im Prompt steht (Rundung erlaubt), steht unter dem Text:
+  kein Beweis für einen Fehler, ein Grund hinzusehen.
+- Das Denken ist abgeschaltet (`"think": false`): qwen3 überlegt sonst erst mehrere hundert
+  Tokens lang -- auf der CPU Minuten.
+- Die Texte entstehen im Hintergrund nach den Berichten, neueste Fahrt zuerst, einer nach dem
+  anderen ([`llm.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/BikeLogService/bikelogservice/llm.py)), und liegen in der Tabelle
+  `narratives`. Eine Fahrt ohne Text bekommt immer einen; ändern sich ihre Fakten (neues Ziel,
+  anderes Rad, neuer Prompt), wird er nur für Fahrten der letzten `BIKELOG_LLM_REFRESH_DAYS`
+  neu geschrieben. **Neu schreiben** auf der Seite schreibt ihn neu, vor allen anderen.
+  Testfahrten und Fahrten unter 1 km bekommen keinen.
+
+Auf dem Orange Pi 5 (16 GB, nur CPU) schreibt `qwen3:8b` etwa 2,7 Tokens/s, ein Text dauert
+2--4 Minuten. Ein 14B-Modell braucht beim Laden etwa 9 GB (Ollama packt die Gewichte für die
+ARM-CPU um) -- mit anderen Diensten auf der Maschine endet das beim OOM-Killer. Empfohlene
+Ollama-Einstellungen (`sudo systemctl edit ollama`):
+
+```ini
+[Service]
+Nice=10
+OOMScoreAdjust=500
+Environment=OLLAMA_NUM_PARALLEL=1
+Environment=OLLAMA_CONTEXT_LENGTH=4096
+Environment=OLLAMA_FLASH_ATTENTION=1
+Environment=OLLAMA_KV_CACHE_TYPE=q8_0
+```
 
 ## Training, Ziele, Anstiege
 
@@ -395,6 +437,10 @@ Umgebungsvariablen (im Dienst: `~/bikelog/bikelog.env`):
 | `BIKELOG_NEXTCLOUD_DIR` | `BikeLog` | Zielverzeichnis (WebDAV-Pfad, wird bei Bedarf angelegt) |
 | `BIKELOG_ATHLETE_FILE` | `<data>/athlete.json` | Fahrerdaten für den Sitzungsbericht |
 | `BIKELOG_IDLE_ARCHIVE_DAYS` | `7` | Leerlauf-Sitzungen nach so vielen Tagen nach `archive/`, 0 = nie |
+| `BIKELOG_LLM_URL` | -- | Ollama-Server für die Fahrt in Worten; leer = aus |
+| `BIKELOG_LLM_MODEL` | `qwen3:8b` | Ollama-Modell |
+| `BIKELOG_LLM_TIMEOUT_S` | `1800` | längste Wartezeit auf eine Antwort |
+| `BIKELOG_LLM_REFRESH_DAYS` | `14` | Texte mit geänderten Fakten werden nur für Fahrten so vieler Tage neu geschrieben |
 
 Mehrere Fahrradcomputer: Jede Build-Variante hat einen eigenen Netzwerknamen (mDNS-Host und
 Standard-Hotspot-SSID, `BC_HOSTNAME` in `platformio.ini`): der Gravel-Build `TRGB-BC`, der

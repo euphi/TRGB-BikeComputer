@@ -77,8 +77,9 @@ Noch nicht entworfen.
 - **Touch-Sperre** gegen Geistertipps durch Regentropfen.
 - **FIT-Export** im Log-Dienst, neben GPX.
 - **Logs weiter auswerten** im Log-Dienst (baut auf Sitzungsbericht und Trainingsseiten
-  auf): ein Bericht in Textform und Trainingsvorschläge für die Zielrennen von einem lokalen
-  LLM auf dem Heimserver, das nur das JSON von Bericht und Training bekommt; Wegequalität auf
+  und die Fahrt in Worten vom lokalen LLM auf): Trainingsvorschläge für die Zielrennen und
+  ein Wochenrückblick vom lokalen LLM, das nur das JSON von Bericht und Training bekommt;
+  Wegequalität auf
   OSM-Wege abgebildet (Map-Matching) und eine JOSM-Datei mit `smoothness`/`surface`-Vorschlägen
   zum Prüfen von Hand.
 

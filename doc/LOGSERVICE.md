@@ -276,7 +276,49 @@ Every key is optional; without the file the report simply has no zones:
 ```
 
 The JSON is meant as the input for a text generator (template or local LLM): every
-number is computed there, a model only has to put it into words.
+number is computed there, a model only has to put it into words -- see
+[the ride in words](#the-ride-in-words-local-llm).
+
+## The ride in words (local LLM)
+
+With `BIKELOG_LLM_URL` set (an [Ollama](https://ollama.com) server, e.g.
+`http://localhost:11434`) the ride page gets a section **In Worten**: two or three
+paragraphs on what kind of ride it was, how load and heart rate compare with the recent
+rides, whether that fits the training phase of the next goal, and technical warnings.
+Everything stays on the home server.
+
+- The model only puts figures into words. The prompt
+  ([`bikelog/narrate.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/bikelog/narrate.py)) gives it labelled lines with spelled-out
+  units and their meaning ("Höhenmeter bergauf: 480 m", "Form (TSB): -12 (negativ =
+  ermüdet)"), plus the comparison with the rides of the 42 days before, the load on the
+  morning of the ride and the next goal with its phase -- no abbreviations, nothing to
+  compute. (In the first test qwen3:8b read "480 hm" as hectometres and added them to the
+  distance.)
+- Every number in the answer that is not in the prompt (allowing for rounding) is listed
+  under the text: not proof of a mistake, a reason to look.
+- Thinking is switched off (`"think": false`): qwen3 otherwise reasons for several hundred
+  tokens first -- minutes on a CPU.
+- Texts are written in the background after the reports, newest ride first, one at a time
+  ([`llm.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/BikeLogService/bikelogservice/llm.py)), and kept in the table
+  `narratives`. A ride without a text always gets one; if its facts change (new goal,
+  another bike, new prompt) it is rewritten only for rides of the last
+  `BIKELOG_LLM_REFRESH_DAYS`. **Neu schreiben** on the page writes it again, before any other.
+  Test sessions and rides under 1 km get none.
+
+On the Orange Pi 5 (16 GB, CPU only) `qwen3:8b` writes about 2.7 tokens/s, a text takes
+2--4 minutes. A 14B model needs about 9 GB while loading (Ollama repacks the weights for
+the ARM CPU) -- with other services on the machine that ends in the OOM killer. Recommended
+Ollama settings (`sudo systemctl edit ollama`):
+
+```ini
+[Service]
+Nice=10
+OOMScoreAdjust=500
+Environment=OLLAMA_NUM_PARALLEL=1
+Environment=OLLAMA_CONTEXT_LENGTH=4096
+Environment=OLLAMA_FLASH_ATTENTION=1
+Environment=OLLAMA_KV_CACHE_TYPE=q8_0
+```
 
 ## Training, goals, climbs
 
@@ -387,6 +429,10 @@ Environment variables (in the service: `~/bikelog/bikelog.env`):
 | `BIKELOG_NEXTCLOUD_DIR` | `BikeLog` | target directory (WebDAV path, created if needed) |
 | `BIKELOG_ATHLETE_FILE` | `<data>/athlete.json` | rider data for the session report |
 | `BIKELOG_IDLE_ARCHIVE_DAYS` | `7` | idle sessions to `archive/` after this many days, 0 = never |
+| `BIKELOG_LLM_URL` | -- | Ollama server for the ride in words; unset = off |
+| `BIKELOG_LLM_MODEL` | `qwen3:8b` | Ollama model |
+| `BIKELOG_LLM_TIMEOUT_S` | `1800` | longest wait for one answer |
+| `BIKELOG_LLM_REFRESH_DAYS` | `14` | texts whose facts changed are rewritten for rides of this many days only |
 
 Several bike computers: each build variant has a network name of its own (mDNS host and
 default hotspot SSID, `BC_HOSTNAME` in `platformio.ini`): the gravel build `TRGB-BC`, the

@@ -75,8 +75,9 @@ Not designed yet.
 - **Touch lock** against ghost touches from rain drops.
 - **FIT export** in the log service, next to GPX.
 - **Evaluating the logs further** in the log service (builds on the session report and
-  the training pages): a written report and training suggestions for the target events
-  from a local LLM on the home server, fed only with the JSON of report and training; road
+  the training pages and the ride in words from the local LLM): training suggestions for
+  the target events and a weekly review from the local LLM, fed only with the JSON of report
+  and training; road
   quality matched onto OSM ways (map matching) and a JOSM file with `smoothness`/`surface`
   suggestions to check by hand.
 

@@ -102,6 +102,17 @@ CREATE TABLE IF NOT EXISTS tour_reports (
     report          TEXT NOT NULL,
     computed_at     TEXT NOT NULL
 );
+-- Ride reports as prose from a local LLM (llm.py, bikelog.narrate). subject names the ride
+-- ("tour:<first session id>"), prompt_key what the text was written from.
+CREATE TABLE IF NOT EXISTS narratives (
+    subject         TEXT PRIMARY KEY,
+    prompt_key      TEXT NOT NULL,
+    model           TEXT NOT NULL,
+    text            TEXT NOT NULL,
+    unverified      TEXT NOT NULL,
+    seconds         REAL,
+    created_at      TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS files (
     session_id      INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
     name            TEXT NOT NULL,
@@ -660,6 +671,30 @@ class Storage:
         with self._lock:
             self._db.execute("INSERT OR REPLACE INTO tour_reports (cache_key, report, computed_at) "
                              "VALUES (?, ?, ?)", (cache_key, json.dumps(report, ensure_ascii=False), _now()))
+            self._db.commit()
+
+    def narrative(self, subject: str) -> dict | None:
+        with self._lock:
+            row = self._db.execute("SELECT * FROM narratives WHERE subject = ?", (subject,)).fetchone()
+        if row is None:
+            return None
+        data = dict(row)
+        data["unverified"] = json.loads(data["unverified"])
+        return data
+
+    def store_narrative(self, subject: str, prompt_key: str, model: str, text: str,
+                        unverified: list[str], seconds: float | None) -> None:
+        with self._lock:
+            self._db.execute(
+                "INSERT OR REPLACE INTO narratives (subject, prompt_key, model, text, unverified, "
+                "seconds, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (subject, prompt_key, model, text, json.dumps(unverified, ensure_ascii=False),
+                 seconds, _now()))
+            self._db.commit()
+
+    def delete_narrative(self, subject: str) -> None:
+        with self._lock:
+            self._db.execute("DELETE FROM narratives WHERE subject = ?", (subject,))
             self._db.commit()
 
     def cache_keys(self) -> dict[int, str]:

@@ -86,6 +86,20 @@ class Settings:
     #: this many days after they were stored; 0 = never (archive.py).
     idle_archive_days: float = 7.0
 
+    #: Ride reports as prose from a local LLM (llm.py): the Ollama server, e.g.
+    #: http://localhost:11434. Unset = no texts, nothing else changes.
+    llm_url: str | None = None
+    llm_model: str = "qwen3:8b"
+    #: one answer may take this long (CPU only: a few minutes)
+    llm_timeout_s: float = 1800.0
+    #: A text whose facts changed (new goal, new bike, ...) is rewritten only for rides
+    #: of the last this many days -- older ones keep their text; a ride without one always gets one.
+    llm_refresh_days: float = 14.0
+
+    @property
+    def llm_enabled(self) -> bool:
+        return bool(self.llm_url)
+
     @property
     def athlete_path(self) -> Path:
         return self.athlete_file or self.data_dir / "athlete.json"
@@ -140,6 +154,10 @@ class Settings:
             nextcloud_dir=env.get("BIKELOG_NEXTCLOUD_DIR", "BikeLog"),
             athlete_file=Path(env["BIKELOG_ATHLETE_FILE"]) if env.get("BIKELOG_ATHLETE_FILE") else None,
             idle_archive_days=float(env.get("BIKELOG_IDLE_ARCHIVE_DAYS", 7)),
+            llm_url=(env.get("BIKELOG_LLM_URL") or "").rstrip("/") or None,
+            llm_model=env.get("BIKELOG_LLM_MODEL") or "qwen3:8b",
+            llm_timeout_s=float(env.get("BIKELOG_LLM_TIMEOUT_S", 1800)),
+            llm_refresh_days=float(env.get("BIKELOG_LLM_REFRESH_DAYS", 14)),
         )
 
     @property

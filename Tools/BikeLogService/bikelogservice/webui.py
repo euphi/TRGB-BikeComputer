@@ -96,6 +96,8 @@ form.filter input{width:5em}
 .meter{height:8px;border-radius:4px;background:var(--track);overflow:hidden;margin:4px 0}
 .meter i{display:block;height:100%;background:var(--brass);border-radius:4px}
 .find li{margin:4px 0}
+.prose p{margin:0 0 10px;line-height:1.55;max-width:46em}
+.prose p.mut{margin:6px 0 0}
 .find .w::marker{content:"⚠  ";color:var(--z4)}
 .find .i::marker{content:"ℹ  ";color:var(--muted)}
 .tip{position:fixed;z-index:9;pointer-events:none;display:none;background:var(--panel);color:var(--parch-b);
@@ -535,8 +537,36 @@ def _bike_form(s: Session, registry, bike) -> str:
             f'{_bike_options(registry, s.bike_id, "wie das Gerät")}</select></form>')
 
 
+def _narrative(s: Session, n: dict | None) -> str:
+    """The ride in words from the local LLM (llm.py) -- or why there is none yet."""
+    if n is None:
+        return ""
+    again = (f'<form class="inline" method="post" action="/ui/narrative/{s.id}">'
+             '<button class="link">{}</button></form>')
+    stored = n["text"]
+    if stored is None:
+        if n["busy"]:
+            note = f'{escape(n["model"])} schreibt gerade den Text zu dieser Fahrt (dauert einige Minuten).'
+        elif n["error"]:
+            note = f'Noch kein Text: {escape(n["error"])}. ' + again.format("Nochmal versuchen")
+        elif n["working"]:
+            note = f'Text kommt — {escape(n["model"])} schreibt gerade einen anderen. ' + again.format("Diesen zuerst")
+        else:
+            note = "Noch kein Text. " + again.format("Jetzt schreiben")
+        return f'<h2>In Worten</h2><div class="panel"><p class="mut">{note}</p></div>'
+    paras = "".join(f"<p>{escape(p.strip())}</p>" for p in stored["text"].split("\n\n") if p.strip())
+    when = stored["created_at"][:16].replace("T", " ")
+    meta = (f'Geschrieben von {escape(stored["model"])} aus den Zahlen dieser Seite ({escape(when)}, '
+            f'{round(stored["seconds"] or 0)} s). ')
+    if stored["unverified"]:
+        meta += ('<span class="warn">Zahlen, die nicht in den Daten stehen: '
+                 + ", ".join(escape(x) for x in stored["unverified"]) + "</span>. ")
+    meta += ("Wird neu geschrieben…" if n["busy"] else again.format("Neu schreiben"))
+    return f'<h2>In Worten</h2><div class="panel prose">{paras}<p class="mut">{meta}</p></div>'
+
+
 def ride_page(s: Session, rep: dict, group: list[Session] | None = None, tour: bool = False,
-              registry=None, bike=None) -> str:
+              registry=None, bike=None, narrative: dict | None = None) -> str:
     """One session's report -- or, with ``tour``, the report of the whole ride ``group``."""
     group = group or [s]
     if tour:
@@ -568,6 +598,7 @@ def ride_page(s: Session, rep: dict, group: list[Session] | None = None, tour: b
     if ride["stops"]["count"]:
         tiles.append(tile("Stopps", str(ride["stops"]["count"]), "", hm(ride["stops"]["total_s"]) + " h"))
     out.append('<div class="tiles">' + "".join(tiles) + "</div>")
+    out.append(_narrative(s, narrative))
 
     if rep.get("profile"):
         out.append("<h2>Höhenprofil</h2>")

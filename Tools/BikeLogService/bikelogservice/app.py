@@ -27,7 +27,7 @@ from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from bikelog import bikes, csvexport, gpximport, report, training
 from bikelog.record import ReadStats
 
-from . import analysis, archive, exporter, importer, tours, komoot, nextcloud, sdlayout, webui
+from . import analysis, archive, exporter, importer, llm, tours, komoot, nextcloud, sdlayout, webui
 from .auth import AuthDep, Principal
 from .config import Settings
 from .puller import DeviceUnavailable, Puller
@@ -43,14 +43,19 @@ def create_app(settings: Settings | None = None, puller: Puller | None = None) -
     if puller is None and settings.pull:
         puller = Puller(store, settings)
 
+    def _analyse(store: Storage) -> None:
+        # reports first (the pages need them), then the texts (minutes each)
+        analysis.refresh(store)
+        llm.refresh(store)
+
     def _export_and_sync(store: Storage) -> None:
         exporter.export_pending(store)
         nextcloud.sync_pending(store)
-        analysis.refresh(store)
+        _analyse(store)
 
     def _sync_and_analyse(store: Storage) -> None:
         nextcloud.sync_pending(store)
-        analysis.refresh(store)
+        _analyse(store)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -247,8 +252,10 @@ def create_app(settings: Settings | None = None, puller: Puller | None = None) -
         session = _require_log(store, session_id)
         group = [session] if (session.is_test or session.idle) else tours.group_for(store, session)
         reg = analysis.registry(store)
-        return webui.ride_page(session, _report(store, session), group=group, registry=reg,
-                               bike=analysis.bike_for(store, session, reg))
+        rep = _report(store, session)
+        return webui.ride_page(session, rep, group=group, registry=reg,
+                               bike=analysis.bike_for(store, session, reg),
+                               narrative=llm.for_page(store, group, rep) if len(group) == 1 else None)
 
     @app.get("/tour/{session_id}", response_class=HTMLResponse, include_in_schema=False)
     def tour_page(session_id: int, principal: Principal = AuthDep, store: Storage = Depends(storage)):
@@ -259,7 +266,18 @@ def create_app(settings: Settings | None = None, puller: Puller | None = None) -
             rep = analysis.tour_report_for(store, group)
         except (OSError, ValueError, TypeError) as exc:
             raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, str(exc))
-        return webui.ride_page(group[0], rep, group=group, tour=len(group) > 1)
+        return webui.ride_page(group[0], rep, group=group, tour=len(group) > 1,
+                               narrative=llm.for_page(store, group, rep))
+
+    @app.post("/ui/narrative/{session_id}", include_in_schema=False)
+    def narrative_again(session_id: int, principal: Principal = AuthDep,
+                        store: Storage = Depends(storage)):
+        """Write the ride's text again (prompt or model changed, or it was just bad)."""
+        session = _require_log(store, session_id)
+        group = tours.group_for(store, session)
+        llm.regenerate(store, group)
+        target = f"/tour/{group[0].id}" if len(group) > 1 else f"/ride/{session.id}"
+        return RedirectResponse(target, status_code=status.HTTP_303_SEE_OTHER)
 
     @app.get("/training", response_class=HTMLResponse, include_in_schema=False)
     def training_page(days: int = Query(default=180, ge=28, le=1100),
@@ -360,14 +378,14 @@ def create_app(settings: Settings | None = None, puller: Puller | None = None) -
         except ValueError as exc:
             return HTMLResponse(webui.athlete_page(rider, error=str(exc)), status_code=400)
         analysis.save_athlete(store, rider)
-        threading.Thread(target=analysis.refresh, args=(store,), name="bikelog-analysis",
+        threading.Thread(target=_analyse, args=(store,), name="bikelog-analysis",
                          daemon=True).start()
         return RedirectResponse("/athlete?saved=1", status_code=status.HTTP_303_SEE_OTHER)
 
     # --- bikes ---
 
     def _reanalyse() -> None:
-        threading.Thread(target=analysis.refresh, args=(app.state.storage,), name="bikelog-analysis",
+        threading.Thread(target=_analyse, args=(app.state.storage,), name="bikelog-analysis",
                          daemon=True).start()
 
     def _devices(store: Storage) -> list[str]:
