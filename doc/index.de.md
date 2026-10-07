@@ -2,40 +2,58 @@
 
 Ein Fahrradcomputer auf dem [LilyGO T-RGB](https://www.lilygo.cc/products/t-rgb): rundes
 Touch-Display mit 480×480 Pixeln, ESP32-S3 mit BLE und WLAN, SD-Karte und LiPo-Lader auf
-der Platine. Er liest übliche BLE-Fahrradsensoren, zeigt Abbiegehinweise und den nächsten
-Anstieg vom Handy, zeichnet jede Fahrt auf SD-Karte auf und bewertet den Untergrund mit
-einem eigenen Beschleunigungssensor.
+der Platine. Seine Hauptaufgabe ist die **Navigation am Lenker**: Abbiegehinweise aus
+[OsmAnd](https://osmand.net/) oder entlang einer eigenen GPX-Route, gesendet von der
+Android-App [TrailBridge](trailbridge/index.md) per BLE. Auf einer GPX-Route zeigt er
+außerdem den Anstieg voraus. Daneben liest er übliche BLE-Fahrradsensoren und zeichnet
+jede Fahrt auf SD-Karte auf.
 
 <div class="shots" markdown>
-<figure markdown>![Hauptscreen](screenshots/main.png)<figcaption>Hauptscreen</figcaption></figure>
-<figure markdown>![Navigation](screenshots/nav.png)<figcaption>Navigation</figcaption></figure>
-<figure markdown>![Anstieg](screenshots/climb.png)<figcaption>Anstieg</figcaption></figure>
-<figure markdown>![Wege-Labels](screenshots/roadlabels.png)<figcaption>Wege-Labels</figcaption></figure>
-<figure markdown>![Einstellungen](screenshots/settings.png)<figcaption>Einstellungen</figcaption></figure>
+<figure markdown>![Navigation](screenshots/nav.png)<figcaption>Navigation: die nächste Abbiegung</figcaption></figure>
+<figure markdown>![Hauptscreen](screenshots/main.png)<figcaption>Hauptscreen, oben das nächste Manöver</figcaption></figure>
+<figure markdown>![Anstieg](screenshots/climb.png)<figcaption>Anstieg auf einer GPX-Route</figcaption></figure>
 </div>
 
 Screenshots vom Gerät, aufgenommen während einer simulierten Fahrt von Villach nach Bovec.
 
+## Navigation auf zwei Wegen
+
+| | OsmAnd | Eigene GPX-Route |
+|---|---|---|
+| Wer die Route berechnet | OsmAnd auf dem Handy | du, vorab (z. B. mit BRouter, Komoot oder einem aufgezeichneten Track) |
+| Abbiegehinweise | aus OsmAnd, mit Straßennamen und Fahrspuren | aus der GPX-Datei oder aus der Geometrie des Tracks abgeleitet |
+| Höhenprofil und Anstiege | nein | ja, wenn die Datei Höhendaten hat |
+| Braucht | OsmAnd und TrailBridge | nur TrailBridge |
+
+In beiden Fällen bleibt das Handy in der Tasche: TrailBridge schickt das nächste Manöver
+an den Fahrradcomputer. Der zeigt es in einer Pille auf dem Hauptscreen und wechselt kurz
+vor der Abbiegung auf den großen Navigations-Screen. Einrichten:
+[TrailBridge](trailbridge/index.md).
+
 ## Funktionen
 
-**Anzeige** -- Oberfläche „Rim & Ridge" (LVGL 8, entworfen in EEZ Studio) mit fünf Screens:
+**Navigation** vom Handy, über die Android-App [TrailBridge](trailbridge/index.md) per BLE
+([Protokoll](trailbridge/PROTOCOL.md)). Zwei Quellen:
 
-- **Hauptscreen**: Geschwindigkeit (Zahl und äußerer Ring), Trittfrequenz, Puls mit
-  Zonenband, Temperatur, Höhe, Steigung, Strecke (Fahrt / Trip / Tour / gesamt), Fahrzeit
-  oder Uhrzeit, Fahrzustand, Linie für die Wegequalität, Symbole für WLAN, GPS-Fix und Akku
-- **Navigation**: öffnet sich vor einem Manöver von selbst und schließt danach wieder.
-  Großer Abbiegepfeil, Distanzring, Straßenname, übernächstes Manöver, Fahrspuren,
-  Kreisverkehr-Ausfahrten
-- **Anstieg**: Höhenprofil des Anstiegs voraus, gefärbt nach Steigung, mit Kategorie;
-  öffnet sich von selbst am Fuß eines bewerteten Anstiegs ([Anstiege](CLIMB.md))
-- **Wege-Labels**: Untergrund und Qualität während der Fahrt von Hand markieren, als
-  Vergleichswert für die automatische Wegequalität
-- **Einstellungen**: eine Übersicht mit je einer Seite pro Gruppe -- WLAN (IP-Adresse, an/aus,
-  Hotspot, Netz einrichten mit der Display-Tastatur), IMU (Kalibrierung und Referenzfahrt), Höhe
-  (drei Presets, GPS, Höhe oder NN-Druck manuell, [Höhenkalibrierung](HEIGHT.md)), BLE-Geräte
-  (Speed, Kadenz, Puls, TrailBridge, im FL-Build der Forumslader: Farbe = Verbindung,
-  Batteriestand; lang drücken vergisst einen Sensor, damit ein anderer koppeln kann) -- dazu
-  Neustart, Ausschalten und eine Markierung für Simulator-Builds
+- **OsmAnd**: TrailBridge reicht OsmAnds Turn-by-Turn-Navigation weiter -- Manöver,
+  Entfernung, Straßenname, übernächstes Manöver, Fahrspuren, Kreisverkehr-Ausfahrten
+- **Eigene GPX-Route**: TrailBridge navigiert selbst entlang einer GPX-Datei, ohne
+  OsmAnd. Abbiegehinweise kommen aus der Datei oder aus der Geometrie des Tracks. Hat die
+  Datei Höhendaten, bekommt der Fahrradcomputer auch das Profil der Strecke voraus
+- Der Navigations-Screen öffnet sich vor einem Manöver von selbst und schließt danach
+  wieder: großer Abbiegepfeil, Distanzring, Straßenname, übernächstes Manöver, Fahrspuren.
+  Dazwischen zeigt der Hauptscreen das nächste Manöver und seine Entfernung in einer
+  kleinen Pille
+- [`Tools/gpxenrich`](https://github.com/euphi/TRGB-BikeComputer/tree/main/Tools/gpxenrich)
+  macht aus einem einfachen GPX-Track eine Route mit Abbiegehinweisen (von BRouter)
+
+**Anstiege** auf einer GPX-Route: Der Anstiegs-Screen zeigt das Höhenprofil voraus,
+gefärbt nach Steigung, mit Kategorie, Höhenmetern und Strecke bis zum Gipfel. Er öffnet
+sich von selbst am Fuß eines bewerteten Anstiegs ([Anstiege](CLIMB.md)).
+
+**Hauptscreen**: Geschwindigkeit (Zahl und äußerer Ring), Trittfrequenz, Puls mit
+Zonenband, Temperatur, Höhe, Steigung, Strecke (Fahrt / Trip / Tour / gesamt), Fahrzeit
+oder Uhrzeit, Fahrzustand, Symbole für WLAN, GPS-Fix und Akku.
 
 **Fahrten und Statistik**
 
@@ -49,28 +67,22 @@ Screenshots vom Gerät, aufgenommen während einer simulierten Fahrt von Villach
 
 - BLE: Geschwindigkeit und Trittfrequenz (CSC), Puls, Batteriestand jedes Sensors;
   Sensoren werden einmal gekoppelt und an ihre Adresse gebunden
-- I²C: BME280 (barometrische Höhe und Steigung, Temperatur), Beschleunigungssensor BMI160
+- Die GPS-Position des Handys (über TrailBridge) für das Fahrtenlog und seine Zeit für
+  die Uhr, wenn kein WLAN da ist
+- BME280: barometrische Höhe und Steigung, Temperatur
+  ([Höhenkalibrierung](HEIGHT.md))
+- IMU-Sensor BMI160 zur Erfassung der [Straßenqualität](ROADQUALITY.md)
 - [Forumslader](https://www.forumslader.de/) (Lader am Nabendynamo) über mein
   [BLE-Gateway](https://github.com/euphi/ESP32_FLClassic2BLE) (Build-Variante `-FL`)
 
-**Navigation und GPS** von der Android-App [TrailBridge](trailbridge/index.md) über BLE
-([Protokoll](trailbridge/PROTOCOL.md)):
-
-- Abbiegehinweise von OsmAnd oder von einer GPX-Route, die TrailBridge selbst abspielt --
-  dann mit dem Höhenprofil für den Anstiegs-Screen
-- Die GPS-Position des Handys für das Log und seine Zeit für die Uhr, wenn kein WLAN da ist
-- [`Tools/gpxenrich`](https://github.com/euphi/TRGB-BikeComputer/tree/main/Tools/gpxenrich)
-  macht aus einem einfachen GPX-Track eine solche Route (Abbiegehinweise von BRouter)
-
-**Wegequalität** aus dem BMI160 mit 400 Hz: Rauheitsklasse je Intervall, Stoßerkennung
-(mit dem zweiten Peak vom Hinterrad), eine Referenzfahrt auf glattem Asphalt und die
-Steigung aus dem Beschleunigungssensor als Alternative zum Barometer.
+**Einstellungen am Gerät**: WLAN (an/aus, Hotspot, Netze einrichten mit der
+Display-Tastatur, [WLAN](WIFI.md)), BLE-Geräte (Verbindung, Batteriestand, Sensor
+vergessen), Höhenkalibrierung, IMU-Kalibrierung, Neustart und Ausschalten.
 
 **Aufzeichnung**
 
-- Binärlog auf SD-Karte, eine Sitzung je Boot in datierten Ordnern: Fahrdaten alle 5 s
-  mit GPS, Wegequalität je Intervall, jeder Stoß, manuelle Wege-Labels, Fahrzustände;
-  Rohdaten des Beschleunigungssensors auf Anforderung
+- Binärlog auf SD-Karte in datierten Ordnern: Fahrdaten alle 5 s mit GPS-Position und
+  Fahrzuständen
 - Debug-Log und rohes Forumslader-Log (auf dem Gerät wieder abspielbar)
 - Python-[Werkzeuge](TOOLS.md), die Logs in CSV und GPX umwandeln, und ein
   [Dienst](LOGSERVICE.md), der die Sitzungen abholt, sobald der Fahrradcomputer im WLAN
@@ -126,13 +138,15 @@ das Programm `patch` gebraucht.
 
 - [Roadmap](ROADMAP.md): wie gut jede Funktion getestet ist, bekannte Fehler, geplante
   Funktionen
+- [TrailBridge](trailbridge/index.md): die Android-App, die die Navigation auf den
+  Fahrradcomputer bringt, und ihr BLE-Protokoll
 - [Anstiege](CLIMB.md) und [Fahrten und Statistik](design/ride-state-machine.md): wie sich
   das Gerät unterwegs verhält
+- [Wegequalität](ROADQUALITY.md): die Spezialfunktion rund um den IMU-Sensor
 - [Logformat und Werkzeuge](TOOLS.md), [Log-Dienst](LOGSERVICE.md): was mit den
   aufgezeichneten Fahrten passiert
 - [Debugging](DEBUG.md), [Simulator](SIMULATOR.md), [Fallstricke](PITFALLS.md),
   [Design-System](design/rim-ridge-design-system.md): für die Arbeit an der Firmware
-- [TrailBridge](trailbridge/index.md): die Android-App und ihr BLE-Protokoll
 
 Quellcode: [github.com/euphi/TRGB-BikeComputer](https://github.com/euphi/TRGB-BikeComputer).
 Mitarbeit ist willkommen; die Roadmap zeigt, wo Hilfe gesucht wird.

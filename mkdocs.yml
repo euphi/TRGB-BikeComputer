@@ -67,7 +67,9 @@ plugins:
             Roadmap: Roadmap
             Using it: Benutzung
             Climbs: Anstiege
+            Road quality: Wegequalität
             WiFi: WLAN
+            Height calibration: Höhenkalibrierung
             Rides and statistics: Fahrten und Statistik
             Usability backlog: Bedienung unterwegs (offen)
             Ride test cheat sheet: Testfahrt-Cheatsheet
@@ -88,6 +90,7 @@ nav:
   - Roadmap: ROADMAP.md
   - Using it:
       - Climbs: CLIMB.md
+      - Road quality: ROADQUALITY.md
       - WiFi: WIFI.md
       - Height calibration: HEIGHT.md
       - Rides and statistics: design/ride-state-machine.md

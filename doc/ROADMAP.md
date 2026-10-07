@@ -10,16 +10,23 @@ Help is welcome, especially where marked.
 |---|---|
 | Sensors, main screen, logging, web interface | in regular use |
 | Navigation from OsmAnd | ridden |
-| Road quality and manual road labels | one test ride; the thresholds are still the first guesses |
-| Ride states and statistics | tested with the simulator build; a real ride is pending ([cheat sheet](RIDE-TEST-CHEATSHEET.md)) |
-| GPX route navigation and climb screen | tested with TrailBridge's simulated ride and the demo profile; no real climb ridden yet |
-| Settings screen, log sessions, log service | working; setting the clock from GPS has not been checked on its own |
+| GPX route navigation and climb screen | ridden once (2026-10-04). After that ride the elevation profile was changed to a rolling window and the climb screen reworked; that version is only tested with the host test, not on the device |
+| Ride states and statistics | ridden once (2026-10-04, [cheat sheet](RIDE-TEST-CHEATSHEET.md)). Fixed since: without a cadence sensor the whole ride counted as coasting |
+| Log sessions, clock from GPS | ridden once. Fixed since: a wrong GPS time moved the clock by hours; a session now also ends when the ride is ended. Both fixes are untested on the device |
+| [Road quality](ROADQUALITY.md) and manual road labels | two rides; the thresholds are still the first guesses |
+| WiFi setup on the device, hotspot ([doc](WIFI.md)) | tested on the device; choosing the network by signal strength is new and untested |
+| Settings pages, BLE device page, log service | working |
 | Height calibration ([doc](HEIGHT.md)) | presets, manual entry and web page tested on the device; the GPS button needs a TrailBridge build with `MSL_ALTITUDE_DM` (0x0E) and a real fix and is untested |
 | Forumslader variant | builds, rarely tested; its screen is the last one from the old SquareLine UI |
 
 ## Known bugs
 
 Open, to be fixed.
+
+- **A fourth BLE device does not connect**: with speed sensor, heart-rate strap and
+  TrailBridge connected, the cadence sensor stayed out on the test ride. The suspected
+  cause is the BLE stack's limit of three connections ([pitfalls](PITFALLS.md)). A build
+  with four (`trgb-esp32-s3-ble4`) exists but is untested.
 
 - **Gaps in the accelerometer FIFO**: on the first test ride about a third of the
   road-quality intervals had gaps, also at standstill. Possibly the same cause as the
@@ -51,15 +58,12 @@ Not designed yet.
 - **Service intervals**: a page that remembers when chain oil, chain, sprockets,
   derailleur and tyres were last serviced, and shows the distance ridden since.
   Builds on the per-bike odometer.
-- **Waypoints in navigation**: show the waypoints of a route (summit, feed zone,
-  gravel sector) with name, distance and arrival time. TrailBridge does not read the
-  waypoints (`wpt`) of a GPX file yet, and the
-  [TrailBridge protocol](trailbridge/PROTOCOL.md) has no tag for them; today
-  `Tools/gpxenrich` can only pass them on as a named "straight on".
-- **Climb overview for the whole route**: the next climb before it starts (distance to
-  its foot, altitude gain), which climb of how many, and the altitude still to gain.
-  Today the profile arrives only 500 m before the foot. TrailBridge knows all climbs
-  as soon as the route is loaded; needs a protocol extension as well.
+- **Route overview: destination, waypoints and climbs**: show the waypoints of a route
+  (summit, feed zone, gravel sector) with name, distance and arrival time, and the
+  climbs of the whole route (which climb of how many, distance to its foot, altitude
+  gain). TrailBridge already sends this as a fourth BLE service
+  ([protocol](trailbridge/PROTOCOL.md)); the bike computer does not read it yet and has
+  no display for it.
 - **Direction back to the route**: off the route TrailBridge sends only the distance
   to it. Wanted: the bearing as well, shown as an arrow. Needs a protocol extension.
 - **Pairing with the phone**: TrailBridge's BLE services can be read without pairing
@@ -128,5 +132,6 @@ On the back burner:
 - The bike computer connects to the first TrailBridge instance it finds. Android
   rotates its BLE address, so the phone cannot be locked like the sensors. Pairing
   would solve this, see the planned features.
-- A log session is one boot, not one ride. Ride start and stop are marked inside it.
+- A log session ends with a restart or when the ride is ended on the device. A break
+  with the device switched off therefore splits a ride into two sessions.
 - Climbs longer than 5 km come in a coarser raster, see [climbs](CLIMB.md).

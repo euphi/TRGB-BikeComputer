@@ -2,44 +2,47 @@
 
 A bike computer built on the [LilyGO T-RGB](https://www.lilygo.cc/products/t-rgb): a round
 480×480 touch display, ESP32-S3 with BLE and WiFi, SD card, and a LiPo charger on board.
-It reads standard BLE bike sensors, shows turn-by-turn navigation and the climb ahead
-from your phone, logs every ride to SD card and rates the road surface with its own
-accelerometer.
+Its main job is **navigation on the handlebar**: turn-by-turn instructions from
+[OsmAnd](https://osmand.net/), or along your own GPX route, sent by the Android app
+[TrailBridge](https://github.com/euphi/TrailBridge) over BLE. On a GPX route it also
+shows the climb ahead. Besides that it reads standard BLE bike sensors and logs every
+ride to SD card.
 
 <p>
-  <img src="doc/screenshots/main.png" width="240" alt="Main screen">
   <img src="doc/screenshots/nav.png" width="240" alt="Navigation screen">
+  <img src="doc/screenshots/main.png" width="240" alt="Main screen">
   <img src="doc/screenshots/climb.png" width="240" alt="Climb screen">
 </p>
-<p>
-  <img src="doc/screenshots/roadlabels.png" width="240" alt="Road label screen">
-  <img src="doc/screenshots/settings.png" width="240" alt="Settings screen">
-</p>
 
-Screenshots from the device, taken during a simulated ride: main screen, navigation,
-climb, road labels, settings.
+Screenshots from the device, taken during a simulated ride: navigation, main screen,
+climb.
 
 **Documentation in English and German: <https://euphi.github.io/TRGB-BikeComputer/>**
 
 <!-- features-start -->
 ## Features
 
-**Display** -- "Rim & Ridge" UI (LVGL 8, designed in EEZ Studio) with five screens:
-- **Main**: speed (number and outer ring), cadence, heart rate with zone band,
-  temperature, altitude, gradient, distance (ride / trip / tour / total), ride time or
-  clock, driving state, road-quality line, status icons for WiFi, GPS fix and battery
-- **Navigation**: opens by itself before a maneuver and closes after it. Large turn
-  arrow, distance ring, street name, next maneuver, lane guidance, roundabout exits
-- **Climb**: elevation profile of the climb ahead, coloured by gradient, with its
-  category; opens by itself at the foot of a rated climb ([doc/CLIMB.md](doc/CLIMB.md))
-- **Road labels**: mark surface and quality by hand while riding, as ground truth for
-  the automatic road-quality class
-- **Settings**: a hub with one page per group -- WiFi (IP address, on/off, hotspot, network
-  setup with the display keyboard), IMU (calibration and reference ride), height (three
-  presets, GPS, manual height or sea-level pressure, [doc/HEIGHT.md](doc/HEIGHT.md)), BLE devices
-  (speed, cadence, heart rate, TrailBridge, Forumslader in the FL build: colour = connection,
-  battery level; long press forgets a sensor so another one can pair) -- plus
-  restart, power off, and a mark for simulator builds
+**Navigation** from the phone, through the Android app
+[TrailBridge](https://github.com/euphi/TrailBridge) over BLE
+([protocol](https://github.com/euphi/TrailBridge/blob/main/PROTOCOL.md)). Two sources:
+- **OsmAnd**: TrailBridge passes on OsmAnd's turn-by-turn navigation -- maneuver,
+  distance, street name, the maneuver after next, lane guidance, roundabout exits
+- **Your own GPX route**: TrailBridge navigates along a GPX file itself, without OsmAnd.
+  Turn hints come from the file or from the geometry of the track. With elevation data
+  in the file the bike computer also gets the profile of the road ahead
+- The navigation screen opens by itself before a maneuver and closes after it: large
+  turn arrow, distance ring, street name, next maneuver, lanes. In between, the main
+  screen shows the next maneuver and its distance in a small pill
+- [`Tools/gpxenrich`](https://github.com/euphi/TRGB-BikeComputer/tree/main/Tools/gpxenrich)
+  turns a plain GPX track into a route with turn hints (from BRouter)
+
+**Climbs** on a GPX route: the climb screen shows the elevation profile ahead, coloured
+by gradient, with category, altitude and distance to the summit. It opens by itself at
+the foot of a rated climb ([doc/CLIMB.md](doc/CLIMB.md)).
+
+**Main screen**: speed (number and outer ring), cadence, heart rate with zone band,
+temperature, altitude, gradient, distance (ride / trip / tour / total), ride time or
+clock, driving state, status icons for WiFi, GPS fix and battery.
 
 **Rides and statistics**
 - One button starts a ride, pauses it ("cruise") and ends it; stops and breaks are
@@ -51,27 +54,21 @@ climb, road labels, settings.
 **Sensors**
 - BLE: cycling speed & cadence (CSC), heart rate, battery level of each sensor;
   sensors are paired once and locked to their address
-- I²C: BME280 (barometric altitude and gradient, temperature), BMI160 accelerometer
+- The phone's GPS position (through TrailBridge) for the ride log, and its time for the
+  clock when there is no WiFi
+- BME280: barometric altitude and gradient, temperature
+  ([height calibration](doc/HEIGHT.md))
+- BMI160 IMU sensor to record the [road quality](doc/ROADQUALITY.md)
 - [Forumslader](https://www.forumslader.de/) hub-dynamo charger via my
   [BLE gateway](https://github.com/euphi/ESP32_FLClassic2BLE) (build variant `-FL`)
 
-**Navigation and GPS** from the Android companion app
-[TrailBridge](https://github.com/euphi/TrailBridge) over BLE
-([protocol](https://github.com/euphi/TrailBridge/blob/main/PROTOCOL.md)):
-- Turn-by-turn instructions from OsmAnd, or from a GPX route that TrailBridge plays
-  itself -- then with the elevation profile for the climb screen
-- The phone's GPS position for the log, and its time for the clock when there is no WiFi
-- [`Tools/gpxenrich`](https://github.com/euphi/TRGB-BikeComputer/tree/main/Tools/gpxenrich) turns a plain GPX track into such a route
-  (turn hints from BRouter)
-
-**Road quality** from the BMI160 at 400 Hz: roughness class per interval, shock
-detection (with second peak from the rear wheel), a calibration ride on smooth
-asphalt, and gradient from the accelerometer as an alternative to the barometer.
+**Settings on the device**: WiFi (on/off, hotspot, network setup with the display
+keyboard, [doc/WIFI.md](doc/WIFI.md)), BLE devices (connection, battery level, forget a
+sensor), height calibration, IMU calibration, restart and power off.
 
 **Logging**
-- Binary ride log on SD card, one session per boot in dated folders: ride data every
-  5 s incl. GPS, road quality per interval, every shock, manual road labels, ride
-  states; raw accelerometer captures on demand
+- Binary ride log on SD card in dated folders: ride data every 5 s incl. GPS position
+  and ride states
 - Debug log and raw Forumslader log (replayable on the device)
 - Python [tools](doc/TOOLS.md) to convert logs to CSV and GPX, and a
   [service](doc/LOGSERVICE.md) that fetches the sessions when the bike
@@ -133,6 +130,9 @@ sources are in [`doc/`](doc/): `X.md` is English, `X.de.md` German.
 | [ROADMAP](doc/ROADMAP.md) | state of the features, known bugs, planned features |
 | [USABILITY-TODO](doc/USABILITY-TODO.md) | what is still missing on the device for use on the road |
 | [CLIMB](doc/CLIMB.md) | climbs: categories, settings, demo |
+| [ROADQUALITY](doc/ROADQUALITY.md) | road quality from the IMU sensor, road labels |
+| [WIFI](doc/WIFI.md) | WiFi: networks, hotspot, web page |
+| [HEIGHT](doc/HEIGHT.md) | height calibration |
 | [Ride states](doc/design/ride-state-machine.md) | ride states and how the statistics count |
 | [Ride test cheat sheet](doc/RIDE-TEST-CHEATSHEET.md) | what to check on a test ride |
 | [Design system](doc/design/rim-ridge-design-system.md) | UI design system and screens |

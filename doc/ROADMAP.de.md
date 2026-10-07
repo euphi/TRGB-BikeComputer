@@ -10,16 +10,24 @@ kommt. Hilfe ist willkommen, besonders an den markierten Stellen.
 |---|---|
 | Sensoren, Hauptscreen, Aufzeichnung, Web-Oberfläche | im Alltag genutzt |
 | Navigation aus OsmAnd | gefahren |
-| Wegequalität und manuelle Wege-Labels | eine Testfahrt; die Schwellen sind noch die ersten Schätzwerte |
-| Fahrzustände und Statistik | mit dem Simulator-Build getestet; eine echte Fahrt steht aus ([Cheatsheet](RIDE-TEST-CHEATSHEET.md)) |
-| Navigation mit GPX-Route und Anstiegs-Screen | mit der simulierten Fahrt von TrailBridge und dem Demo-Profil getestet; noch kein echter Anstieg gefahren |
-| Einstellungen, Log-Sitzungen, Log-Dienst | funktioniert; das Stellen der Uhr per GPS wurde nicht einzeln geprüft |
+| Navigation mit GPX-Route und Anstiegs-Screen | einmal gefahren (2026-10-04). Danach wurde das Höhenprofil auf ein rollendes Fenster umgestellt und der Anstiegs-Screen überarbeitet; dieser Stand ist nur mit dem Host-Test geprüft, nicht am Gerät |
+| Fahrzustände und Statistik | einmal gefahren (2026-10-04, [Cheatsheet](RIDE-TEST-CHEATSHEET.md)). Seitdem behoben: Ohne Trittfrequenz-Sensor zählte die ganze Fahrt als Rollen |
+| Log-Sitzungen, Uhr per GPS | einmal gefahren. Seitdem behoben: Eine falsche GPS-Zeit verstellte die Uhr um Stunden; eine Sitzung endet jetzt auch, wenn die Fahrt beendet wird. Beide Korrekturen sind am Gerät ungetestet |
+| [Wegequalität](ROADQUALITY.md) und manuelle Wege-Labels | zwei Fahrten; die Schwellen sind noch die ersten Schätzwerte |
+| WLAN-Einrichtung am Gerät, Hotspot ([Doku](WIFI.md)) | am Gerät getestet; die Wahl des Netzes nach Empfangsstärke ist neu und ungetestet |
+| Einstellungs-Seiten, BLE-Geräteseite, Log-Dienst | funktioniert |
 | Höhenkalibrierung ([Doku](HEIGHT.md)) | Presets, manuelle Eingabe und Webseite am Gerät getestet; die GPS-Taste braucht einen TrailBridge-Build mit `MSL_ALTITUDE_DM` (0x0E) und einen echten Fix und ist ungetestet |
 | Forumslader-Variante | baut, selten getestet; ihr Screen ist der letzte aus der alten SquareLine-Oberfläche |
 
 ## Bekannte Fehler
 
 Offen, zu beheben.
+
+- **Ein viertes BLE-Gerät verbindet sich nicht**: Mit Speed-Sensor, Pulsgurt und
+  TrailBridge blieb auf der Testfahrt der Trittfrequenz-Sensor außen vor. Vermutete
+  Ursache ist die Grenze des BLE-Stacks von drei Verbindungen
+  ([Fallstricke](PITFALLS.md)). Ein Build mit vier (`trgb-esp32-s3-ble4`) existiert, ist
+  aber ungetestet.
 
 - **Lücken im FIFO des Beschleunigungssensors**: Auf der ersten Testfahrt hatte etwa ein
   Drittel der Wegequalitäts-Intervalle Lücken, auch im Stand. Möglicherweise dieselbe
@@ -50,16 +58,12 @@ Noch nicht entworfen.
 - **Service-Intervalle**: eine Seite, die sich merkt, wann Kettenöl, Kette, Ritzel,
   Umwerfer und Reifen zuletzt gewartet wurden, und die seither gefahrene Strecke zeigt.
   Baut auf dem Kilometerstand je Rad auf.
-- **Wegpunkte in der Navigation**: die Wegpunkte einer Route (Gipfel, Verpflegung,
-  Schotter-Sektor) mit Name, Entfernung und Ankunftszeit anzeigen. TrailBridge liest die
-  Wegpunkte (`wpt`) einer GPX-Datei noch nicht, und das
-  [TrailBridge-Protokoll](trailbridge/PROTOCOL.md) hat keinen Tag dafür; heute kann
-  `Tools/gpxenrich` sie nur als benanntes „geradeaus" weiterreichen.
-- **Anstiegsübersicht für die ganze Route**: der nächste Anstieg, bevor er beginnt
-  (Entfernung bis zum Fuß, Höhenmeter), der wievielte Anstieg von wie vielen, und die
-  noch zu fahrenden Höhenmeter. Heute kommt das Profil erst 500 m vor dem Fuß.
-  TrailBridge kennt alle Anstiege, sobald die Route geladen ist; braucht ebenfalls eine
-  Protokollerweiterung.
+- **Streckenübersicht: Ziel, Wegpunkte und Anstiege**: die Wegpunkte einer Route
+  (Gipfel, Verpflegung, Schotter-Sektor) mit Name, Entfernung und Ankunftszeit anzeigen,
+  dazu die Anstiege der ganzen Route (der wievielte von wie vielen, Entfernung bis zum
+  Fuß, Höhenmeter). TrailBridge sendet das schon als vierten BLE-Service
+  ([Protokoll](trailbridge/PROTOCOL.md)); der Fahrradcomputer liest ihn noch nicht und
+  hat keine Anzeige dafür.
 - **Richtung zurück zur Route**: Abseits der Route sendet TrailBridge nur die Entfernung
   zu ihr. Gewünscht: auch die Peilung, als Pfeil angezeigt. Braucht eine
   Protokollerweiterung.
@@ -133,6 +137,6 @@ Auf der langen Bank:
 - Der Fahrradcomputer verbindet sich mit der ersten TrailBridge-Instanz, die er findet.
   Android wechselt seine BLE-Adresse, das Handy lässt sich deshalb nicht wie die Sensoren
   fest zuordnen. Eine Kopplung würde das lösen, siehe die geplanten Funktionen.
-- Eine Log-Sitzung ist ein Boot, nicht eine Fahrt. Start und Ende der Fahrt sind darin
-  markiert.
+- Eine Log-Sitzung endet mit einem Neustart oder wenn die Fahrt am Gerät beendet wird.
+  Eine Pause mit ausgeschaltetem Gerät teilt eine Fahrt deshalb in zwei Sitzungen.
 - Anstiege über 5 km kommen in gröberem Raster, siehe [Anstiege](CLIMB.md).
