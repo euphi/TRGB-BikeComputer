@@ -9,7 +9,7 @@ now and then at a place whose height you know. Settings → **Höhe**:
 | Button | Does |
 |---|---|
 | **Three presets** (default 359 m, 320 m, 0 m) | Tap: calibrate to the preset height. **Long press**: change the preset (number entry). |
-| **GPS** | Calibrates to the height above sea level of TrailBridge's GPS fix. Greyed out without a current fix. A phone GPS is only good to about 10 m vertically -- a rough start, not a replacement for a known place. |
+| **GPS** | Calibrates to the height above sea level of TrailBridge's GPS fix. The button shows that height ("GPS 512 m"). Greyed out without a current fix. A phone GPS is only good to about 10 m vertically -- a rough start, not a replacement for a known place. |
 | **Manuell** | Number entry: the **known height** (m), or switch to the **reference pressure at sea level** (hPa, 850 to 1090), e.g. from a weather report. |
 
 The page shows the height, the measured pressure and the reference pressure. The result of the

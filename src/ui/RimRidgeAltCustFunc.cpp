@@ -273,8 +273,13 @@ void ui_RimRidgeAltUpdate() {
 		setText(presetLabels[i], buf);
 		setPillEnabled(presetPills[i], presetLabels[i], haveP);
 	}
+	// The GPS pill shows the height it would calibrate to, as the presets do.
 	float gpsM;
-	setPillEnabled(objects.rrsa_btn_gps, objects.rrsa_btn_gps_lbl, haveP && sensors.getGpsHeight(gpsM));
+	const bool haveGps = sensors.getGpsHeight(gpsM);
+	if (haveGps) snprintf(buf, sizeof(buf), "GPS %ld m", lroundf(gpsM));
+	else strcpy(buf, "GPS");
+	setText(objects.rrsa_btn_gps_lbl, buf);
+	setPillEnabled(objects.rrsa_btn_gps, objects.rrsa_btn_gps_lbl, haveP && haveGps);
 
 	if (statusAt && lv_tick_elaps(statusAt) < STATUS_SHOWN_MS) {
 		setText(objects.rrsa_status, statusText);

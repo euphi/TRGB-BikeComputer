@@ -16,7 +16,7 @@ kommt. Hilfe ist willkommen, besonders an den markierten Stellen.
 | [Wegequalität](ROADQUALITY.md) und manuelle Wege-Labels | zwei Fahrten; die Schwellen sind noch die ersten Schätzwerte |
 | WLAN-Einrichtung am Gerät, Hotspot ([Doku](WIFI.md)) | am Gerät getestet; die Wahl des Netzes nach Empfangsstärke ist neu und ungetestet |
 | Einstellungs-Seiten, BLE-Geräteseite, Log-Dienst | funktioniert |
-| Höhenkalibrierung ([Doku](HEIGHT.md)) | Presets, manuelle Eingabe und Webseite am Gerät getestet; die GPS-Taste braucht einen TrailBridge-Build mit `MSL_ALTITUDE_DM` (0x0E) und einen echten Fix und ist ungetestet |
+| Höhenkalibrierung ([Doku](HEIGHT.md)) | Presets, manuelle Eingabe und Webseite am Gerät getestet; die GPS-Taste zeigt die GPS-Höhe des Handys an; das Kalibrieren damit wurde noch nicht ausprobiert |
 | Forumslader-Variante | baut, selten getestet; ihr Screen ist der letzte aus der alten SquareLine-Oberfläche |
 
 ## Bekannte Fehler
@@ -28,11 +28,6 @@ Offen, zu beheben.
   Ursache ist die Grenze des BLE-Stacks von drei Verbindungen
   ([Fallstricke](PITFALLS.md)). Ein Build mit vier (`trgb-esp32-s3-ble4`) existiert, ist
   aber ungetestet.
-
-- **Lücken im FIFO des Beschleunigungssensors**: Auf der ersten Testfahrt hatte etwa ein
-  Drittel der Wegequalitäts-Intervalle Lücken, auch im Stand. Möglicherweise dieselbe
-  Ursache wie der Watchdog-Reset durch den I²C-Bus, der behoben ist (siehe
-  [Fallstricke](PITFALLS.md)): auf der nächsten Fahrt prüfen.
 
 ## Als Nächstes: unterwegs bedienbar
 

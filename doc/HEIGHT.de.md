@@ -9,7 +9,7 @@ zu an einem Ort mit bekannter Höhe neu gesetzt werden. Einstellungen → **Höh
 | Taste | Wirkung |
 |---|---|
 | **Drei Presets** (Standard 359 m, 320 m, 0 m) | Tippen: auf die Preset-Höhe kalibrieren. **Lang drücken**: Preset ändern (Zahleneingabe). |
-| **GPS** | Kalibriert auf die Höhe über NN des GPS-Fixes von TrailBridge. Ausgegraut ohne aktuellen Fix. Ein Handy-GPS ist vertikal nur auf etwa 10 m genau -- ein grober Anfang, kein Ersatz für einen bekannten Ort. |
+| **GPS** | Kalibriert auf die Höhe über NN des GPS-Fixes von TrailBridge. Die Taste zeigt diese Höhe an („GPS 512 m"). Ausgegraut ohne aktuellen Fix. Ein Handy-GPS ist vertikal nur auf etwa 10 m genau -- ein grober Anfang, kein Ersatz für einen bekannten Ort. |
 | **Manuell** | Zahleneingabe: die **bekannte Höhe** (m), oder umschalten auf den **Referenzdruck auf NN** (hPa, 850 bis 1090), z. B. aus dem Wetterbericht. |
 
 Die Seite zeigt Höhe, gemessenen Druck und Referenzdruck. Das Ergebnis der letzten Aktion steht

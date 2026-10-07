@@ -16,7 +16,7 @@ Help is welcome, especially where marked.
 | [Road quality](ROADQUALITY.md) and manual road labels | two rides; the thresholds are still the first guesses |
 | WiFi setup on the device, hotspot ([doc](WIFI.md)) | tested on the device; choosing the network by signal strength is new and untested |
 | Settings pages, BLE device page, log service | working |
-| Height calibration ([doc](HEIGHT.md)) | presets, manual entry and web page tested on the device; the GPS button needs a TrailBridge build with `MSL_ALTITUDE_DM` (0x0E) and a real fix and is untested |
+| Height calibration ([doc](HEIGHT.md)) | presets, manual entry and web page tested on the device; the GPS button shows the phone's GPS height; calibrating with it has not been tried yet |
 | Forumslader variant | builds, rarely tested; its screen is the last one from the old SquareLine UI |
 
 ## Known bugs
@@ -27,11 +27,6 @@ Open, to be fixed.
   TrailBridge connected, the cadence sensor stayed out on the test ride. The suspected
   cause is the BLE stack's limit of three connections ([pitfalls](PITFALLS.md)). A build
   with four (`trgb-esp32-s3-ble4`) exists but is untested.
-
-- **Gaps in the accelerometer FIFO**: on the first test ride about a third of the
-  road-quality intervals had gaps, also at standstill. Possibly the same cause as the
-  watchdog reset from the I²C bus, which is fixed (see
-  [Pitfalls](PITFALLS.md)): to be checked on the next ride.
 
 ## Next: usable on the road
 
