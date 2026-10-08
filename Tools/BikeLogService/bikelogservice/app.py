@@ -23,6 +23,7 @@ from urllib.parse import parse_qs, urlencode
 
 from fastapi import Depends, FastAPI, HTTPException, Path, Query, Request, Response, status
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
+from fastapi.concurrency import run_in_threadpool
 
 from bikelog import bikes, csvexport, gpximport, report, training
 from bikelog.record import ReadStats
@@ -167,7 +168,9 @@ def create_app(settings: Settings | None = None, puller: Puller | None = None) -
         form = await _form(request)
         sid = int(form["id"]) if form.get("id", "").isdigit() else None
         try:
-            done, errors = _delete_on_device(store, _deletable(store, sid))
+            # blocking mDNS lookup + HTTP to the device: not on the event loop
+            done, errors = await run_in_threadpool(
+                lambda: _delete_on_device(store, _deletable(store, sid)))
             text = f"{done} Sitzung(en) auf dem BC gelöscht und archiviert."
             if errors:
                 text += " Nicht gelöscht: " + "; ".join(errors[:3]) + (" …" if len(errors) > 3 else "")
