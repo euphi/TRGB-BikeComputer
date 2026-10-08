@@ -51,6 +51,11 @@ vor der Abbiegung auf den großen Navigations-Screen. Einrichten:
 gefärbt nach Steigung, mit Kategorie, Höhenmetern und Strecke bis zum Gipfel. Er öffnet
 sich von selbst am Fuß eines bewerteten Anstiegs ([Anstiege](CLIMB.md)).
 
+**Streckenübersicht** auf einer GPX-Route: Einmal nach links wischen auf dem Navigations-Screen
+öffnet die Liste dessen, was noch voraus liegt -- das Ziel mit Ankunftszeit, die Wegpunkte
+der Datei mit Name, Entfernung und Ankunftszeit und die Anstiege (der wievielte von wie
+vielen, Entfernung bis zum Fuß, Höhenmeter, Länge, Steigung) ([Streckenübersicht](ROUTE.md)).
+
 **Hauptscreen**: Geschwindigkeit (Zahl und äußerer Ring), Trittfrequenz, Puls mit
 Zonenband, Temperatur, Höhe, Steigung, Strecke (Fahrt / Trip / Tour / gesamt), Fahrzeit
 oder Uhrzeit, Fahrzustand, Symbole für WLAN, GPS-Fix und Akku.

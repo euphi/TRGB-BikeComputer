@@ -16,6 +16,7 @@ kommt. Hilfe ist willkommen, besonders an den markierten Stellen.
 | [Wegequalität](ROADQUALITY.md) und manuelle Wege-Labels | zwei Fahrten; die Schwellen sind noch die ersten Schätzwerte |
 | WLAN-Einrichtung am Gerät, Hotspot ([Doku](WIFI.md)) | am Gerät getestet; die Wahl des Netzes nach Empfangsstärke ist neu und ungetestet |
 | Einstellungs-Seiten, BLE-Geräteseite, Log-Dienst | funktioniert |
+| [Streckenübersicht](ROUTE.md) (Ziel, Wegpunkte, Anstiege der GPX-Route) | neu, am Gerät nicht gelaufen: Host-Test, Simulator-Build und ein Rendering des Screens auf dem Rechner gibt es; der Long Read des 512-Byte-Frames über eine echte BLE-Verbindung ist unerprobt |
 | Höhenkalibrierung ([Doku](HEIGHT.md)) | Presets, manuelle Eingabe und Webseite am Gerät getestet; die GPS-Taste zeigt die GPS-Höhe des Handys an; das Kalibrieren damit wurde noch nicht ausprobiert |
 | Forumslader-Variante | baut, selten getestet; ihr Screen ist der letzte aus der alten SquareLine-Oberfläche |
 
@@ -38,8 +39,8 @@ einer Fahrt braucht, muss am Display gehen. Details: [Bedienung unterwegs](USABI
 - „Rad senkrecht" (Fahrstuhl) und „Rad auf dem Auto" erkennen und aus der Fahrt herauslassen.
 - Durchschnittsgeschwindigkeit und die übrige Statistik auf dem Display. Sie wird
   berechnet und in der Web-Oberfläche gezeigt; der Hauptscreen hat kein Widget dafür.
-- Restdistanz und Restzeit bis zum Ziel auf dem Navigations-Screen (werden empfangen,
-  nicht angezeigt).
+- Restdistanz und Restzeit bis zum Ziel auf dem Navigations-Screen selbst (auf dem
+  [Streckenscreen](ROUTE.md) stehen sie jetzt, einmal nach links wischen).
 - Konfiguration am Gerät (Radumfang, Sensoren koppeln) -- heute nur in der Web-Oberfläche.
 - Batteriestand der BLE-Sensoren auf dem Display (wird schon gelesen).
 - Fortschrittsanzeige beim Firmware-Update.
@@ -56,12 +57,11 @@ Noch nicht entworfen.
 - **Service-Intervalle**: eine Seite, die sich merkt, wann Kettenöl, Kette, Ritzel,
   Umwerfer und Reifen zuletzt gewartet wurden, und die seither gefahrene Strecke zeigt.
   Baut auf dem Kilometerstand je Rad auf.
-- **Streckenübersicht: Ziel, Wegpunkte und Anstiege**: die Wegpunkte einer Route
-  (Gipfel, Verpflegung, Schotter-Sektor) mit Name, Entfernung und Ankunftszeit anzeigen,
-  dazu die Anstiege der ganzen Route (der wievielte von wie vielen, Entfernung bis zum
-  Fuß, Höhenmeter). TrailBridge sendet das schon als vierten BLE-Service
-  ([Protokoll](trailbridge/PROTOCOL.md)); der Fahrradcomputer liest ihn noch nicht und
-  hat keine Anzeige dafür.
+- **Streckenübersicht, der Rest** ([bisher fertig](ROUTE.md)): die noch zu steigenden
+  Höhenmeter in einem begonnenen Anstieg (braucht eine Protokollerweiterung, siehe
+  TrailBridge-Roadmap); ein Weg zum Screen vom Hauptscreen aus (heute nur Wischen nach
+  links auf dem Navigations-Screen); und ein Pop-up kurz vor einem Wegpunkt, wie ihn der
+  Navigations-Screen vor einer Abbiegung hat.
 - **Richtung zurück zur Route**: Abseits der Route sendet TrailBridge nur die Entfernung
   zu ihr. Gewünscht: auch die Peilung, als Pfeil angezeigt. Braucht eine
   Protokollerweiterung.

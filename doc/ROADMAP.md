@@ -16,6 +16,7 @@ Help is welcome, especially where marked.
 | [Road quality](ROADQUALITY.md) and manual road labels | two rides; the thresholds are still the first guesses |
 | WiFi setup on the device, hotspot ([doc](WIFI.md)) | tested on the device; choosing the network by signal strength is new and untested |
 | Settings pages, BLE device page, log service | working |
+| [Route overview](ROUTE.md) (destination, waypoints, climbs of the GPX route) | new, not run on the device: host test, simulator build and a host rendering of the screen exist; the long read of the 512-byte frame over a real BLE link is untried |
 | Height calibration ([doc](HEIGHT.md)) | presets, manual entry and web page tested on the device; the GPS button shows the phone's GPS height; calibrating with it has not been tried yet |
 | Forumslader variant | builds, rarely tested; its screen is the last one from the old SquareLine UI |
 
@@ -37,8 +38,8 @@ ride needs must work on the display. Details: [usability backlog](USABILITY-TODO
 - Detect "bike upright" (lift) and "bike on the car" and leave them out of the ride.
 - Average speed and the other statistics on the display. They are computed and shown
   in the web interface; the main screen has no widget for them.
-- Remaining distance and time to the destination on the navigation screen (received,
-  not shown).
+- Remaining distance and time to the destination on the navigation screen itself (they are
+  on the [route overview](ROUTE.md) screen now, one swipe to the left).
 - Configuration on the device (wheel circumference, sensor pairing) -- today only in
   the web interface.
 - BLE sensor battery levels on the display (they are read already).
@@ -56,12 +57,10 @@ Not designed yet.
 - **Service intervals**: a page that remembers when chain oil, chain, sprockets,
   derailleur and tyres were last serviced, and shows the distance ridden since.
   Builds on the per-bike odometer.
-- **Route overview: destination, waypoints and climbs**: show the waypoints of a route
-  (summit, feed zone, gravel sector) with name, distance and arrival time, and the
-  climbs of the whole route (which climb of how many, distance to its foot, altitude
-  gain). TrailBridge already sends this as a fourth BLE service
-  ([protocol](trailbridge/PROTOCOL.md)); the bike computer does not read it yet and has
-  no display for it.
+- **Route overview, the rest** ([done so far](ROUTE.md)): the height still to climb in a
+  climb that has begun (needs a protocol extension, see the TrailBridge roadmap); a way to
+  the screen from the main screen (today only a swipe to the left on the navigation screen);
+  and a pop-up shortly before a waypoint, as the navigation screen does before a turn.
 - **Direction back to the route**: off the route TrailBridge sends only the distance
   to it. Wanted: the bearing as well, shown as an arrow. Needs a protocol extension.
 - **Pairing with the phone**: TrailBridge's BLE services can be read without pairing

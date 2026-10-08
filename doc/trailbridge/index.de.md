@@ -26,6 +26,10 @@ BLE-Navigationsdienst.
 - **Anstiege**: Hat die Route Höhendaten, geht kurz vor jedem Anstieg (500 m vor dem Fuß)
   sein Höhenprofil bis zum Gipfel raus -- auch bei langen Pässen in einem Stück. Der
   Fahrradcomputer zeigt es auf seinem [Anstiegs-Screen](../CLIMB.md).
+- **Streckenübersicht**: Ein vierter BLE-Service sagt, was auf der GPX-Route noch voraus
+  liegt -- das Ziel, die Wegpunkte der Datei (`wpt`, mit Namen) und die Anstiege der ganzen
+  Route --, als Anker, aus denen der Fahrradcomputer Entfernung und Ankunftszeit rechnet.
+  Er zeigt sie auf seinem [Streckenscreen](../ROUTE.md).
 - **Testfahrt**: Die geladene GPX-Route lässt sich zum Testen „abspielen". TrailBridge
   schickt dann statt der echten eine erfundene Position entlang der Strecke -- mit
   passender Geschwindigkeit (aus den GPX-Zeitstempeln, sonst berechnet: langsamer

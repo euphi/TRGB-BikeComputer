@@ -139,6 +139,27 @@ erkannt: 30 s ohne Nav- oder GPS-Frame beenden sie (`BLEDevices::checkNavAlive()
 nächste Scan verbindet neu. Gemessen 2026-10-02: 46 s vom Neustart der App bis zur neuen
 Verbindung.
 
+## Eine Characteristic des TrailBridge-Peers lesen (Streckenübersicht)
+
+Der Streckenübersicht-Service ist nur lesbar; ein Revisions-Tag in den Nav-Frames sagt, wann
+gelesen wird. `readValue()` blockiert, bis der ganze Wert da ist (ein Long Read mit bis zu 512
+Byte, mehrere Round Trips), und der BLE-Host-Task, der die Antwort liefert, ruft auch
+`onDisconnect()` auf. Regeln (`BLEDevices::overviewReaderTask()`):
+
+- **Nie in einem Indicate-Callback lesen** (er läuft im Host-Task: Deadlock) und auch nicht
+  im Scan-Task (der schläft zwischen zwei Runden 20 s, eine Revision würde eine halbe Minute
+  zu spät gelesen). Das Lesen hat einen eigenen Task, geweckt vom Nav-Frame.
+- `xNavIoMutex` hält das Lesen vom Verbinden/Abonnieren derselben Verbindung fern und vom
+  **Löschen des Clients**: Der Characteristic-Zeiger gehört zum `BLEClient`; deshalb setzen
+  `onDisconnect()` und `checkNavAlive()` ihn unter diesem Mutex zurück, bevor sie den Client
+  löschen. **Reihenfolge der Locks: `xNavIoMutex` vor `xDevMutex`**, nie umgekehrt.
+- `onDisconnect()` nimmt `xNavIoMutex` nur für den TrailBridge-Client (Zeigervergleich). Bei
+  jedem anderen Peer würde es den Host-Task aufhalten, während ein Read auf genau diesen
+  Task wartet.
+- Am Gerät nicht probiert: der Long Read über eine echte Verbindung (aus dem Quelltext der
+  Bibliothek gelesen), und dass der laufende Read vor `onDisconnect()` wirklich endet
+  (sonst gilt dort die Zeitgrenze von 1,5 s, und der Client wird trotzdem gelöscht).
+
 ## Arduino `String` und `c_str()`
 
 BLE-`readValue()`/`getValue()` liefern unter Arduino-ESP32 3.x `String`.
@@ -224,6 +245,11 @@ auf dem Gerät.
   EEZ-Platzhalter. Wenn die C-Logik nur auf Übergänge reagiert
   (`static bool shown`), beim ersten Aufruf einmal explizit in den
   richtigen Anfangszustand zwingen.
+- **`LV_LABEL_LONG_DOT` bricht erst um.** Es trennt den Text an einem Wort und setzt Punkte
+  in die letzte Zeile, die passt: Eine einzeilige Zeile mit langem Namen zeigt „Kreuzung
+  Alte...", obwohl mehr hineinpasste. Braucht außerdem eine feste Höhe, sonst bricht das
+  Label einfach um. Für eine Zeile den Text selbst kürzen (`fitText()` in
+  `src/ui/RimRidgeRouteCustFunc.cpp`) und `LV_LABEL_LONG_CLIP` nehmen.
 - **Geometrie zur Laufzeit.** Grundregel: Position/Größe gehören ins
   `.eez-project`, nicht in C. Bewusste Ausnahme: der "geschobene" Zustand
   von `rr_nav_pill` bei sichtbarer Spur-Anzeige (EEZ kann keine

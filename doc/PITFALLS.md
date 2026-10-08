@@ -123,6 +123,26 @@ arrives. The dead connection is detected by the heartbeat of the protocol instea
 nav or GPS frame for 30 s ends it (`BLEDevices::checkNavAlive()`), the next scan
 connects again. Measured 2026-10-02: 46 s from restarting the app to the new connection.
 
+## Reading a characteristic of the TrailBridge peer (route overview)
+
+The route overview service is read only; a revision tag in the nav frames says when to read
+it. `readValue()` blocks until the whole value is in (a long read of up to 512 byte, several
+round trips), and the BLE host task that delivers the answer is the one that calls
+`onDisconnect()`. Rules (`BLEDevices::overviewReaderTask()`):
+
+- **Never read in an indicate callback** (it runs in the host task: deadlock), and not in the
+  scan task either (it sleeps 20 s between its rounds, so a revision would be read half a
+  minute late). The read has a task of its own, woken by the nav frame.
+- `xNavIoMutex` keeps that read away from the connect/subscribe sequence of the same link
+  and from the **deletion of the client**: the characteristic pointer belongs to the
+  `BLEClient`, so `onDisconnect()` and `checkNavAlive()` clear it under this mutex before they
+  delete the client. **Lock order: `xNavIoMutex` before `xDevMutex`**, never the other way.
+- `onDisconnect()` takes `xNavIoMutex` only for the TrailBridge client (pointer comparison).
+  For any other peer it would stall the host task while a read waits for that very task.
+- Not tried on the device: the long read over a real link (read from the library source),
+  and that the pending read really ends before `onDisconnect()` runs (otherwise the 1.5 s
+  timeout there applies and the client is deleted anyway).
+
 ## Arduino `String` and `c_str()`
 
 BLE `readValue()`/`getValue()` return `String` under Arduino-ESP32 3.x. A `c_str()`
@@ -201,6 +221,10 @@ All points here fail silently: no build error, only wrong behaviour on the devic
   `lv_img_set_src()` start with the visible EEZ placeholder. If the C logic only reacts
   to transitions (`static bool shown`), force the right initial state explicitly once on
   the first call.
+- **`LV_LABEL_LONG_DOT` wraps first.** It breaks the text at a word and dots the last line
+  that fits: a one-line row with a long name shows "Kreuzung Alte..." although more would
+  fit. Needs a fixed height, too, else the label just wraps. For a single line, cut the text
+  yourself (`fitText()` in `src/ui/RimRidgeRouteCustFunc.cpp`) and use `LV_LABEL_LONG_CLIP`.
 - **Geometry at run time.** Basic rule: position and size belong into the
   `.eez-project`, not into C. Deliberate exception: the "pushed" state of `rr_nav_pill`
   when the lane display is visible (EEZ cannot express state-dependent geometry). The

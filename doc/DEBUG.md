@@ -10,6 +10,8 @@ Linked from `/debug/menu`:
   gradient, I²C error counters
 * **Climbs** (`/debug/climb`) -- elevation profile state, climb settings, demo profile
   (see [CLIMB.md](CLIMB.md))
+* **Route overview** (`/debug/route.json`, `/debug/route/demo`) -- the list as the screen
+  gets it, demo route (see [ROUTE.md](ROUTE.md)); also the serial command `route`
 * **Last crash** (`/debug/coredump`) -- reset reason, task and backtrace of the core dump
 * **Simulator** (`/debug/sim`) -- only in the simulator build, see [SIMULATOR.md](SIMULATOR.md)
 * **Chart array** (`/stat/debugarray`) and **distance details**

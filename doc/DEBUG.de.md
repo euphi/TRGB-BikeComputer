@@ -10,6 +10,9 @@ Verlinkt von `/debug/menu`:
   Wegequalität, Stöße, Steigung, I²C-Fehlerzähler
 * **Anstiege** (`/debug/climb`) -- Zustand des Höhenprofils, Einstellungen, Demo-Profil
   (siehe [Anstiege](CLIMB.md))
+* **Streckenübersicht** (`/debug/route.json`, `/debug/route/demo`) -- die Liste, wie der
+  Screen sie bekommt, Demo-Strecke (siehe [ROUTE.md](ROUTE.md)); auch der serielle Befehl
+  `route`
 * **Letzter Absturz** (`/debug/coredump`) -- Neustart-Grund, Task und Backtrace des Core-Dumps
 * **Simulator** (`/debug/sim`) -- nur im Simulator-Build, siehe [Simulator](SIMULATOR.md)
 * **Chart-Array** (`/stat/debugarray`) und **Distanz-Details**

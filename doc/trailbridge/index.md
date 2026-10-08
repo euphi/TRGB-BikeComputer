@@ -29,6 +29,10 @@ The app's texts are German.
 - **Climbs**: if the route has elevation data, the elevation profile of every climb goes
   out shortly before it (500 m before its foot), up to the summit -- also for long passes
   in one piece. The bike computer shows it on its [climb screen](../CLIMB.md).
+- **Route overview**: a fourth BLE service tells what is still ahead on the GPX route --
+  the destination, the waypoints of the file (`wpt`, with names) and the climbs of the whole
+  route -- as anchors from which the bike computer works out distance and arrival time. It
+  shows them on its [route screen](../ROUTE.md).
 - **Test ride**: the loaded GPX route can be "played" for testing. TrailBridge then sends
   a made-up position along the route instead of the real one -- with a matching speed
   (from the GPX timestamps, otherwise computed: slower uphill, faster downhill, careful

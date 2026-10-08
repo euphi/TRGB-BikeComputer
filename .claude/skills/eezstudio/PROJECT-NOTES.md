@@ -22,7 +22,9 @@ Screens: `rim_ridge` (Main), `rim_ridge_nav` (Navigation), `rim_ridge_rq`
 (RQ-Ride), `rim_ridge_settings` (Einstellungen), `rim_ridge_climb` (Kletter-Anzeige),
 `rim_ridge_wifi` / `rim_ridge_wifi_pw` (WLAN-Liste und Passwort, gebaut von
 `EEZStudio/tmp/add_wifi_screens.py`; Liste-Zeilen und Tastatur-Layout kommen zur Laufzeit aus
-`src/ui/RimRidgeWifiCustFunc.cpp`). Die Fahrzustand/RQ-Gruppe gibt es nur auf den ersten fünf.
+`src/ui/RimRidgeWifiCustFunc.cpp`), `rim_ridge_route` (Streckenübersicht, gebaut von
+`EEZStudio/tmp/add_route_screen.py`, das auf den Helfern von `add_wifi_screens.py` aufbaut und
+eine vorhandene Seite an gleicher Stelle neu baut; Zeilen aus `src/ui/RimRidgeRouteCustFunc.cpp`). Die Fahrzustand/RQ-Gruppe gibt es nur auf den ersten fünf.
 Handgeschriebene Logik je Screen in `src/ui/RimRidge*CustFunc.*`. Die
 Fahrzustand/RQ-Gruppe unten (`*_group_rq_mode`) ist auf allen fünf Screens
 identisch -- Änderungen dort überall gleich machen

@@ -38,8 +38,8 @@ ist das Protokoll die Quelle der Wahrheit.
 - Rollen: **TrailBridge (Handy) = Peripheral/GATT-Server, dieser ESP32 =
   Central/GATT-Client** -- wie bei allen anderen Sensoren in
   `src/BLEDevices.cpp`. Nicht umdrehen ohne Rücksprache.
-- Drei unabhängige Services auf demselben Peer, alle Indicate + Read, je
-  eigene Subscription:
+- Vier unabhängige Services auf demselben Peer, die ersten drei Indicate + Read mit je
+  eigener Subscription, der vierte nur Read:
   - **Navigation** (`f7ac2b76-986b-45fd-8e44-f116a61f319d` /
     `7473da02-2de8-4f48-9e46-21b36380c176`) -- wird beworben, darüber wird
     der Peer gefunden. Parser: `BLEDevices::handleNavData()`, Konstanten in
@@ -55,6 +55,14 @@ ist das Protokoll die Quelle der Wahrheit.
     nur bei abgespielter GPX-Route. `subscribeProfile()`, Konstanten in
     `src/BikeProfileProtocol.h`, Auswertung in `ClimbMonitor`. Position im
     Profil = `REMAINING_DISTANCE_M` des Nav-Frames.
+  - **Streckenübersicht** (`7ee954a6-7a19-4b48-b052-f00d00e01e58` /
+    `f031faa3-083d-4818-9eca-38420be835d0`) -- nicht beworben, **nur Read** (kein CCCD,
+    kein Heartbeat). Das Signal „neu lesen" ist der Tag `OVERVIEW_REVISION` (0x0E) im
+    Nav-Frame; der Long Read (bis 512 Byte) blockiert und läuft deshalb im eigenen Task
+    `BLEDevices::overviewReaderTask()`, nie im Indicate-Callback. `xNavIoMutex` vor
+    `xDevMutex` (`doc/PITFALLS.md`). Konstanten `src/BikeOverviewProtocol.h`, Parser und
+    Entfernungs-/Zeitrechnung (Anker minus Nav-Frame) `src/RouteOverview.*`, Anbindung
+    `src/RouteMonitor.*`, Screen `RimRidgeRoute`, Doku `doc/ROUTE.md`.
 - Frames: Byte 0 Version, Byte 1 Message-Type, danach TLV (Tag 1 Byte |
   Länge 1 Byte | Wert). Unbekannte Tags über die Länge überspringen, nie
   als Fehler behandeln.
@@ -79,7 +87,8 @@ Mobilfunk); danach das Netz mit `cmd wifi forget-network <id>` wieder vergessen.
 ## UI
 
 - Aktiver Main-Screen ist **RimRidge** (EEZ Studio), dazu **RimRidgeNav**
-  (Navigation), **RimRidgeRQ** (Wege-Labels), **RimRidgeSettings**
+  (Navigation), **RimRidgeRoute** (Streckenübersicht, Wischen nach links auf Nav,
+  `src/ui/RimRidgeRouteCustFunc.*`), **RimRidgeRQ** (Wege-Labels), **RimRidgeSettings**
   (Einstellungen: Hub mit Version/Sim-Markierung, Neustart/Tiefschlaf; Unterseiten
   **RimRidgeSettingsWifi** / **-Imu** / **-Alt** (Höhenkalibrierung, `doc/HEIGHT.md`) und die
   Zahleneingabe **RimRidgeSettingsNum**, BLE-Geräte **RimRidgeSettingsDev** (`RimRidgeDevCustFunc.*`), Logik in `src/ui/RimRidgeSettingsCustFunc.*` und
@@ -185,6 +194,19 @@ Mobilfunk); danach das Netz mit `cmd wifi forget-network <id>` wieder vergessen.
   `PARAMS`.
 - Das Profil wird im Draw-Event von `rrclimb_profile` gezeichnet
   (`src/ui/RimRidgeClimbCustFunc.cpp`), ohne Canvas-Puffer.
+
+## Streckenübersicht
+
+[`doc/ROUTE.md`](doc/ROUTE.md): Ziel, Wegpunkte (`wpt`) und Anstiege der GPX-Route voraus.
+
+- `src/RouteOverview.*` ist der reine Teil (Frame parsen, Revisions-Logik, Entfernung und
+  Zeit aus den Ankern). Host-Test: `test/native_routeoverview/routeoverview_test.cpp`
+  (Build-Befehl im Dateikopf), Testvektor ist das 78-Byte-Beispiel aus dem TrailBridge-
+  PROTOCOL.md. Ändert sich das Protokoll, Test und `BikeOverviewProtocol.h` zusammen.
+- `src/RouteMonitor.*`: Mutex, Radsensor-Weiterführung der Entfernung, CLI `route`
+  (`route demo` zeigt den Screen ohne Handy), `/debug/route.json`.
+- Zeilen der Liste entstehen zur Laufzeit (`RimRidgeRouteCustFunc.cpp`, wie die WLAN-Liste);
+  Namen kürzt `fitText()` selbst (`LV_LABEL_LONG_DOT` bricht erst um, `doc/PITFALLS.md`).
 
 ## Serielle Konsole
 

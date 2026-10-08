@@ -40,6 +40,11 @@ climb.
 by gradient, with category, altitude and distance to the summit. It opens by itself at
 the foot of a rated climb ([doc/CLIMB.md](doc/CLIMB.md)).
 
+**Route overview** on a GPX route: one swipe to the left on the navigation screen opens the
+list of what is still ahead -- destination with arrival time, the waypoints of the file with
+name, distance and arrival time, and the climbs (which of how many, distance to the foot,
+height gain, length, gradient) ([doc/ROUTE.md](doc/ROUTE.md)).
+
 **Main screen**: speed (number and outer ring), cadence, heart rate with zone band,
 temperature, altitude, gradient, distance (ride / trip / tour / total), ride time or
 clock, driving state, status icons for WiFi, GPS fix and battery.
@@ -143,6 +148,7 @@ sources are in [`doc/`](doc/): `X.md` is English, `X.de.md` German.
 | [ROADMAP](doc/ROADMAP.md) | state of the features, known bugs, planned features |
 | [USABILITY-TODO](doc/USABILITY-TODO.md) | what is still missing on the device for use on the road |
 | [CLIMB](doc/CLIMB.md) | climbs: categories, settings, demo |
+| [ROUTE](doc/ROUTE.md) | route overview: destination, waypoints and climbs ahead |
 | [ROADQUALITY](doc/ROADQUALITY.md) | road quality from the IMU sensor, road labels |
 | [WIFI](doc/WIFI.md) | WiFi: networks, hotspot, web page |
 | [HEIGHT](doc/HEIGHT.md) | height calibration |
