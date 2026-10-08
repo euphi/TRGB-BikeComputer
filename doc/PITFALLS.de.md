@@ -102,8 +102,8 @@ wenn ein Connect scheitert. Eine Lösung braucht eine andere sdkconfig (pioardui
 `custom_sdkconfig`, das die IDF-Bibliotheken neu baut) oder die NimBLE-Arduino-Bibliothek mit
 `-DCONFIG_BT_NIMBLE_MAX_CONNECTIONS=4` -- jede Verbindung kostet internes RAM. Die Logzeile eines gescheiterten Connects nennt jetzt, wie viele andere Gegenstellen verbunden
 waren; Fehlschläge immer bei 3 würden den Verdacht bestätigen. `pio run -e trgb-esp32-s3-ble4`
-baut mit `custom_sdkconfig = CONFIG_BT_NIMBLE_MAX_CONNECTIONS=4` (lässt sich bauen, lief noch nicht
-auf dem Gerät). Bis dahin verbindet sich das 4. Gerät schlicht nie.
+baut mit `custom_sdkconfig = CONFIG_BT_NIMBLE_MAX_CONNECTIONS=4` (läuft auf dem Gerät, vier Gegenstellen
+gleichzeitig noch nicht ausprobiert). Bis dahin verbindet sich das 4. Gerät schlicht nie.
 
 ## `custom_sdkconfig` (Hybrid-Compile) baut das gemeinsame Framework-Paket um
 
@@ -125,8 +125,18 @@ noch mit der Kopie einer bestehenden Installation. Die Variante bekommt ein eige
 Core-Verzeichnis, dann wird auch beim Wechsel nichts neu installiert:
 
 ```
-PLATFORMIO_CORE_DIR=~/.platformio-ble4 pio run -e trgb-esp32-s3-ble4-ota -t upload
+PLATFORMIO_CORE_DIR=~/.platformio-ble4 PLATFORMIO_BUILD_DIR=$PWD/.pio/build-ble4 \
+    pio run -e trgb-esp32-s3-ble4-ota -t upload
 ```
+
+Auch das eigene Build-Verzeichnis ist nötig: PlatformIO leert `.pio/build` komplett, sobald ein
+Build mit einem anderen Core-Verzeichnis läuft, und damit auch die `firmware.elf`, mit der sich ein
+Core-Dump der Firmware auf dem Gerät auflösen lässt.
+
+Gemessen am 2026-10-09 am Gerät (WLAN + TrailBridge mit laufender Navigation, derselbe Commit, Zeile
+`MEM int=`): normaler Build 45 KB freier interner Heap, Tiefststand 27 KB; `ble4`-Build 45 KB,
+Tiefststand 28 KB. Der vierte Verbindungsplatz allein kostet nichts Messbares; was vier verbundene
+Gegenstellen kosten, ist noch offen.
 
 Der Build hinterlässt `sdkconfig.defaults`, `sdkconfig.<env>`, `managed_components/` und `.dummy/`
 im Projektverzeichnis (von git ignoriert). `sdkconfig.defaults` trägt den Hash der Einstellungen;

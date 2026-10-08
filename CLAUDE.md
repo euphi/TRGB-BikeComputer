@@ -232,7 +232,8 @@ Arduino-Framework). Environments:
   ausdrückliche Anfrage des Nutzers.
 * `trgb-esp32-s3-ble4`, `trgb-esp32-s3-ble4-ota` -- vier statt drei BLE-Verbindungen über
   `custom_sdkconfig` (Hybrid-Compile). Nur mit eigenem Core-Verzeichnis bauen
-  (`PLATFORMIO_CORE_DIR=~/.platformio-ble4`), nie parallel zu einem anderen Build im selben
+  und Build-Verzeichnis
+  (`PLATFORMIO_CORE_DIR=~/.platformio-ble4 PLATFORMIO_BUILD_DIR=$PWD/.pio/build-ble4`), nie parallel zu einem anderen Build im selben
   Core-Verzeichnis (`doc/PITFALLS.md`).
 * `trgb-esp32-s3-sim`, `trgb-esp32-s3-sim-ota` -- Debug-Build mit
   Sensor-Simulator (`-DBC_SIM`, `src/SimSensors.*`): Fake-Speed/Cadence/Puls

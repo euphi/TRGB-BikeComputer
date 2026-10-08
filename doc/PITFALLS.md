@@ -92,7 +92,7 @@ sdkconfig (pioarduino `custom_sdkconfig`, which compiles the IDF libraries) or t
 library with `-DCONFIG_BT_NIMBLE_MAX_CONNECTIONS=4` -- every connection costs internal RAM.
 The log line of a failed connect now says how many other peers were connected; failures always at 3
 would confirm it. `pio run -e trgb-esp32-s3-ble4` builds with `custom_sdkconfig =
-CONFIG_BT_NIMBLE_MAX_CONNECTIONS=4` (compiles, not yet run on the device). Until then the 4th device
+CONFIG_BT_NIMBLE_MAX_CONNECTIONS=4` (runs on the device, four peers at once not tried yet). Until then the 4th device
 simply never connects.
 
 ## `custom_sdkconfig` (hybrid compile) rebuilds the shared framework package
@@ -114,8 +114,18 @@ build only, neither a fresh one nor a copy of an existing installation. Give the
 directory of its own, then nothing is reinstalled when switching either:
 
 ```
-PLATFORMIO_CORE_DIR=~/.platformio-ble4 pio run -e trgb-esp32-s3-ble4-ota -t upload
+PLATFORMIO_CORE_DIR=~/.platformio-ble4 PLATFORMIO_BUILD_DIR=$PWD/.pio/build-ble4 \
+    pio run -e trgb-esp32-s3-ble4-ota -t upload
 ```
+
+The build directory of its own matters as well: PlatformIO empties `.pio/build` completely as soon
+as a build runs with a different core directory, and with it the `firmware.elf` needed to resolve
+a core dump of the firmware that is on the device.
+
+Measured 2026-10-09 on the device (WiFi + TrailBridge navigating, same commit, line `MEM int=`):
+normal build 45 KB free internal heap, low mark 27 KB; `ble4` build 45 KB, low mark 28 KB. The
+fourth connection slot alone costs nothing measurable; what four connected peers cost is still
+open.
 
 The build leaves `sdkconfig.defaults`, `sdkconfig.<env>`, `managed_components/` and `.dummy/` in the
 project directory (ignored by git). `sdkconfig.defaults` carries the hash of the settings; deleting
