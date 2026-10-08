@@ -4531,13 +4531,13 @@ void create_screen_rim_ridge_route() {
             // rrroute_dest
             lv_obj_t *obj = lv_label_create(parent_obj);
             objects.rrroute_dest = obj;
-            lv_obj_set_pos(obj, 100, 90);
+            lv_obj_set_pos(obj, 100, 88);
             lv_obj_set_size(obj, 280, LV_SIZE_CONTENT);
             lv_label_set_long_mode(obj, LV_LABEL_LONG_DOT);
             lv_obj_add_flag(obj, LV_OBJ_FLAG_CLICKABLE);
             lv_obj_clear_flag(obj, LV_OBJ_FLAG_SCROLLABLE);
             lv_obj_set_style_text_color(obj, lv_color_hex(theme_colors[active_theme_index][21]), LV_PART_MAIN | LV_STATE_DEFAULT);
-            lv_obj_set_style_text_font(obj, &ui_font_montserrat22, LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_obj_set_style_text_font(obj, &ui_font_montserrat26, LV_PART_MAIN | LV_STATE_DEFAULT);
             lv_obj_set_style_text_align(obj, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
             lv_label_set_text(obj, "Ziel 36.0 km  15:42");
         }
@@ -4545,8 +4545,8 @@ void create_screen_rim_ridge_route() {
             // rrroute_list
             lv_obj_t *obj = lv_obj_create(parent_obj);
             objects.rrroute_list = obj;
-            lv_obj_set_pos(obj, 80, 120);
-            lv_obj_set_size(obj, 320, 248);
+            lv_obj_set_pos(obj, 62, 128);
+            lv_obj_set_size(obj, 356, 216);
             lv_obj_set_style_pad_left(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
             lv_obj_set_style_pad_top(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
             lv_obj_set_style_pad_right(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -4569,7 +4569,7 @@ void create_screen_rim_ridge_route() {
             lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
             lv_obj_clear_flag(obj, LV_OBJ_FLAG_SCROLLABLE);
             lv_obj_set_style_text_color(obj, lv_color_hex(theme_colors[active_theme_index][22]), LV_PART_MAIN | LV_STATE_DEFAULT);
-            lv_obj_set_style_text_font(obj, &ui_font_montserrat22, LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_obj_set_style_text_font(obj, &ui_font_montserrat26, LV_PART_MAIN | LV_STATE_DEFAULT);
             lv_obj_set_style_align(obj, LV_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
             lv_label_set_text(obj, "Keine Strecke");
         }
@@ -4577,11 +4577,11 @@ void create_screen_rim_ridge_route() {
             // rrroute_empty2
             lv_obj_t *obj = lv_label_create(parent_obj);
             objects.rrroute_empty2 = obj;
-            lv_obj_set_pos(obj, 0, 24);
+            lv_obj_set_pos(obj, 0, 26);
             lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
             lv_obj_clear_flag(obj, LV_OBJ_FLAG_SCROLLABLE);
             lv_obj_set_style_text_color(obj, lv_color_hex(theme_colors[active_theme_index][22]), LV_PART_MAIN | LV_STATE_DEFAULT);
-            lv_obj_set_style_text_font(obj, &ui_font_montserrat14, LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_obj_set_style_text_font(obj, &ui_font_montserrat18, LV_PART_MAIN | LV_STATE_DEFAULT);
             lv_obj_set_style_align(obj, LV_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
             lv_label_set_text(obj, "GPX-Route in TrailBridge");
         }
@@ -4589,12 +4589,12 @@ void create_screen_rim_ridge_route() {
             // rrroute_foot
             lv_obj_t *obj = lv_label_create(parent_obj);
             objects.rrroute_foot = obj;
-            lv_obj_set_pos(obj, 0, 374);
+            lv_obj_set_pos(obj, 0, 350);
             lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
             lv_obj_add_flag(obj, LV_OBJ_FLAG_CLICKABLE);
             lv_obj_clear_flag(obj, LV_OBJ_FLAG_SCROLLABLE);
             lv_obj_set_style_text_color(obj, lv_color_hex(theme_colors[active_theme_index][22]), LV_PART_MAIN | LV_STATE_DEFAULT);
-            lv_obj_set_style_text_font(obj, &ui_font_montserrat14, LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_obj_set_style_text_font(obj, &ui_font_montserrat18, LV_PART_MAIN | LV_STATE_DEFAULT);
             lv_obj_set_style_align(obj, LV_ALIGN_TOP_MID, LV_PART_MAIN | LV_STATE_DEFAULT);
             lv_label_set_text(obj, "3 Wegpunkte, 7 Anstiege");
         }

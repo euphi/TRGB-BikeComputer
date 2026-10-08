@@ -27,8 +27,8 @@ const uint32_t COLOR_MUTED = 0x9BA097;
 const uint32_t BAND_COLOR[] = {0x6C90B0, 0x6FA98C, 0xD7B463, 0xCE8A4C, 0xE8392A};
 const uint32_t BAND_PCT[] = {1, 4, 7, 10};				// Climb::Config::gradeBandPct, as shipped
 
-const lv_coord_t ROW_W = 320, ROW_H = 42, ROW_PITCH = 46;	// inside rrroute_list (320 x 224)
-const lv_coord_t DIST_W = 104;							// the right-hand figure of a row
+const lv_coord_t ROW_W = 356, ROW_H = 52, ROW_PITCH = 58;	// inside rrroute_list (356 x 216): three rows and most of a fourth
+const lv_coord_t DIST_W = 140;							// the right-hand figure of a row
 const uint8_t MAX_ROWS = RouteOv::MAX_VIEW_ROWS;
 
 struct RowWidgets {
@@ -97,7 +97,7 @@ bool formatArrival(char* out, size_t size, uint32_t timeS) {
 // dot the last line that fits ("Kreuzung Alte..."), but a row has one line. Cuts on a UTF-8 boundary.
 // out holds OVERVIEW_NAME_MAX + 4 byte.
 void fitText(char* out, const char* text, lv_coord_t maxW) {
-	const lv_font_t* font = &ui_font_montserrat18;
+	const lv_font_t* font = &ui_font_montserrat22;
 	size_t len = strlen(text);
 	if (len > OVERVIEW_NAME_MAX) len = OVERVIEW_NAME_MAX;
 	memcpy(out, text, len);
@@ -140,27 +140,27 @@ void makeRow(uint8_t i) {
 
 	w.name = lv_label_create(w.box);
 	lv_label_set_long_mode(w.name, LV_LABEL_LONG_CLIP);		// the text is cut by fitText(); CLIP keeps it on one line
-	lv_obj_set_height(w.name, 21);
-	lv_obj_set_style_text_font(w.name, &ui_font_montserrat18, LV_PART_MAIN | LV_STATE_DEFAULT);
+	lv_obj_set_height(w.name, 24);
+	lv_obj_set_style_text_font(w.name, &ui_font_montserrat22, LV_PART_MAIN | LV_STATE_DEFAULT);
 	lv_obj_set_style_text_color(w.name, lv_color_hex(COLOR_PARCHMENT), LV_PART_MAIN | LV_STATE_DEFAULT);
-	lv_obj_align(w.name, LV_ALIGN_TOP_LEFT, 24, 1);
+	lv_obj_align(w.name, LV_ALIGN_TOP_LEFT, 26, 2);
 
 	w.dist = lv_label_create(w.box);
 	lv_obj_set_width(w.dist, DIST_W);
 	lv_label_set_long_mode(w.dist, LV_LABEL_LONG_CLIP);
 	lv_obj_set_style_text_align(w.dist, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN | LV_STATE_DEFAULT);
-	lv_obj_set_style_text_font(w.dist, &ui_font_montserrat18, LV_PART_MAIN | LV_STATE_DEFAULT);
+	lv_obj_set_style_text_font(w.dist, &ui_font_montserrat22, LV_PART_MAIN | LV_STATE_DEFAULT);
 	lv_obj_set_style_text_color(w.dist, lv_color_hex(COLOR_BRASS), LV_PART_MAIN | LV_STATE_DEFAULT);
-	lv_obj_align(w.dist, LV_ALIGN_TOP_RIGHT, -12, 1);
-	lv_obj_set_height(w.dist, 21);
+	lv_obj_align(w.dist, LV_ALIGN_TOP_RIGHT, -14, 2);
+	lv_obj_set_height(w.dist, 24);
 
 	w.info = lv_label_create(w.box);
-	lv_obj_set_width(w.info, ROW_W - 24 - 12);
+	lv_obj_set_width(w.info, ROW_W - 26 - 14);
 	lv_label_set_long_mode(w.info, LV_LABEL_LONG_CLIP);
-	lv_obj_set_height(w.info, 17);
-	lv_obj_set_style_text_font(w.info, &ui_font_montserrat14, LV_PART_MAIN | LV_STATE_DEFAULT);
+	lv_obj_set_height(w.info, 21);
+	lv_obj_set_style_text_font(w.info, &ui_font_montserrat18, LV_PART_MAIN | LV_STATE_DEFAULT);
 	lv_obj_set_style_text_color(w.info, lv_color_hex(COLOR_MUTED), LV_PART_MAIN | LV_STATE_DEFAULT);
-	lv_obj_align(w.info, LV_ALIGN_TOP_LEFT, 24, 22);
+	lv_obj_align(w.info, LV_ALIGN_TOP_LEFT, 26, 28);
 }
 
 void fillRow(uint8_t i, const RouteOv::Row& r) {
@@ -191,20 +191,20 @@ void fillRow(uint8_t i, const RouteOv::Row& r) {
 	}
 	// A dot for a waypoint, a bar for a climb (in the colour of its gradient): told apart by shape, not only by colour
 	if (r.kind == RouteOv::KIND_CLIMB) {
-		lv_obj_set_size(w.stripe, 4, ROW_H - 16);
+		lv_obj_set_size(w.stripe, 5, ROW_H - 16);
 		lv_obj_set_style_radius(w.stripe, 2, LV_PART_MAIN | LV_STATE_DEFAULT);
 		lv_obj_align(w.stripe, LV_ALIGN_LEFT_MID, 9, 0);
 	} else {
-		lv_obj_set_size(w.stripe, 8, 8);
+		lv_obj_set_size(w.stripe, 10, 10);
 		lv_obj_set_style_radius(w.stripe, LV_RADIUS_CIRCLE, LV_PART_MAIN | LV_STATE_DEFAULT);
-		lv_obj_align(w.stripe, LV_ALIGN_LEFT_MID, 7, 0);
+		lv_obj_align(w.stripe, LV_ALIGN_LEFT_MID, 8, 0);
 	}
 	lv_obj_set_style_bg_color(w.stripe, lv_color_hex(stripe), LV_PART_MAIN | LV_STATE_DEFAULT);
 	setText(w.dist, dist);
 	setText(w.info, info);
 	// The name gets what the figure on the right leaves
-	const lv_coord_t distW = lv_txt_get_width(dist, strlen(dist), &ui_font_montserrat18, 0, LV_TEXT_FLAG_NONE);
-	const lv_coord_t nameW = ROW_W - 24 - 12 - distW - 8;
+	const lv_coord_t distW = lv_txt_get_width(dist, strlen(dist), &ui_font_montserrat22, 0, LV_TEXT_FLAG_NONE);
+	const lv_coord_t nameW = ROW_W - 26 - 14 - distW - 8;
 	lv_obj_set_width(w.name, nameW);
 	fitText(fitted, name, nameW);
 	setText(w.name, fitted);
@@ -258,9 +258,9 @@ void update() {
 	if (view.waypointsLeft == 0 && !cut) {
 		setHidden(objects.rrroute_foot, true);
 	} else {
-		if (view.waypointsLeft == 255) snprintf(text, sizeof(text), "255+ Wegpunkte voraus%s", cut ? ", Liste gekürzt" : "");
-		else if (view.waypointsLeft == 0) snprintf(text, sizeof(text), "Liste gekürzt");
-		else snprintf(text, sizeof(text), "%u Wegpunkt%s voraus%s", view.waypointsLeft, view.waypointsLeft == 1 ? "" : "e", cut ? ", Liste gekürzt" : "");
+		if (view.waypointsLeft == 255) snprintf(text, sizeof(text), "255+ Wegpunkte voraus%s", cut ? ", gekürzt" : "");
+		else if (view.waypointsLeft == 0) snprintf(text, sizeof(text), "gekürzt");
+		else snprintf(text, sizeof(text), "%u Wegpunkt%s voraus%s", view.waypointsLeft, view.waypointsLeft == 1 ? "" : "e", cut ? ", gekürzt" : "");
 		setText(objects.rrroute_foot, text);
 		setHidden(objects.rrroute_foot, false);
 	}
