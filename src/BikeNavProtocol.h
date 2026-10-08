@@ -37,7 +37,9 @@ typedef enum {
 												// of NAV_TAG_MANEUVER_DISTANCE_M: the point where a lane choice
 												// becomes relevant (road forks into lanes) is typically well
 												// before the maneuver itself, do not conflate the two.
-	NAV_TAG_NEXT_LANE_DISTANCE_M = 0x0D		// uint32 LE, meters - like 0x0C, only present alongside tag 0x0B
+	NAV_TAG_NEXT_LANE_DISTANCE_M = 0x0D,	// uint32 LE, meters - like 0x0C, only present alongside tag 0x0B
+	NAV_TAG_OVERVIEW_REVISION = 0x0E		// uint8, 1..255 - only while TrailBridge plays a GPX route: revision of the route
+												// overview (BikeOverviewProtocol.h); when it differs from the one held, read it again
 } ENavTlvTag;
 
 // One entry of a LANES/NEXT_LANES list (tag 0x0A/0x0B), left-to-right as in

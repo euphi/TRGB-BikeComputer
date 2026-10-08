@@ -85,6 +85,12 @@ public:
 	void showClimbScreen();
 	void hideClimbScreen();
 
+	// Route overview screen (RimRidgeRoute, destination/waypoints/climbs of the GPX route ahead --
+	// RouteMonitor.h): a swipe to the left on RimRidgeNav, or "route show"; any swipe goes back to
+	// the base screen. Coming from the nav screen counts as dismissing it, like the RQ screen.
+	void showRouteScreen();
+	void hideRouteScreen();
+
 	// Received (BLE TLV tags 0x0A-0x0D, PROTOCOL.md "Fahrspur-
 	// Informationen") and rendered on BOTH RimRidge's compact lane-row
 	// chip (rr_lane_row) and RimRidgeNav's own strip (rrnav_lane_row) -

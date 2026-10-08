@@ -15,6 +15,7 @@
 #include "Stats/Distance.h"
 #include "BikeNavProtocol.h"
 #include "BikeGpsProtocol.h"
+#include "BikeOverviewProtocol.h"
 #include "ClockSync.h"
 #include "BleSlots.h"
 
@@ -36,6 +37,11 @@ const BLEUUID BLEDevices::gpsCharUUID = BLEUUID("10c49e7b-4808-4d63-9b68-9ba6c38
 // service on the DEV_NAV peer, not advertised either. Event-driven, no heartbeat.
 const BLEUUID BLEDevices::profileServiceUUID = BLEUUID("3c1f6a90-5b2e-4d7a-9c48-e0a1b7d25f63");
 const BLEUUID BLEDevices::profileCharUUID = BLEUUID("a84e0d17-6f3b-4c52-8e9d-1b70c2f4a596");
+
+// Route-overview service (see ../TrailBridge/PROTOCOL.md "Streckenübersicht-Service") -- fourth service
+// on the DEV_NAV peer, not advertised, READ only.
+const BLEUUID BLEDevices::overviewServiceUUID = BLEUUID("7ee954a6-7a19-4b48-b052-f00d00e01e58");
+const BLEUUID BLEDevices::overviewCharUUID = BLEUUID("f031faa3-083d-4818-9eca-38420be835d0");
 
 const char* BLEDevices::DEV_EMOJI[DEV_COUNT] = {"❤️","🚴","🚴","⚡", "🧭"};
 const char* BLEDevices::DEV_STRING[DEV_COUNT] = {"HeartRate","CSC1","CSC2","Forumslader", "TrailBridge"};
@@ -64,6 +70,7 @@ static bool sameAddress(BLEAddress a, BLEAddress b) {
 BLEDevices::BLEDevices()
 {
 	xDevMutex = xSemaphoreCreateMutex();
+	xNavIoMutex = xSemaphoreCreateMutex();
 }
 
 void BLEDevices::setup() {
@@ -76,6 +83,7 @@ void BLEDevices::setup() {
 	  // was connected -- its connect runs the service discovery for both services (nav + GPS)
 	  // in this task.
 	  xTaskCreate(+[](void* thisInstance){((BLEDevices*)thisInstance)->scanAndConnectTask();}, "BLEScanConnect", 4096, this, 5, &scanTaskHandle);
+	  xTaskCreate(+[](void* thisInstance){((BLEDevices*)thisInstance)->overviewReaderTask();}, "BLEOverview", 4096, this, 4, &overviewTaskHandle);
 
 //	  scanCB = [this](BLEScanResults result) {
 //		  bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "🔵 ✔️ BLE scan completed: %d devices found.", result.getCount());
@@ -221,6 +229,12 @@ void BLEDevices::onDisconnect(BLEClient *pClient) {
 
     BLEAddress discAddr = pClient->getPeerAddress();
     bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "🛑 Disconnect %s", discAddr.toString().c_str());
+	// TrailBridge only, and before xDevMutex (lock order, see xNavIoMutex): a read of the route overview may be on
+	// its way on this very link; the disconnect ends it, and the client may only be deleted once it is out. Another
+	// peer's disconnect must not wait for it: this callback runs in the BLE host task, which the read needs to finish.
+	// If the read is not out in time, carry on as before -- a lost disconnect is worse than the race. (Pointer
+	// comparison only, the client is not touched.)
+	const bool navIo = pClient == clients[DEV_NAV].get() && xSemaphoreTake(xNavIoMutex, static_cast<TickType_t>(1500 / portTICK_PERIOD_MS)) == pdTRUE;
 	if (xSemaphoreTake(xDevMutex, static_cast<TickType_t>(500 / portTICK_PERIOD_MS)) == pdTRUE) {
 		// Find the client in the array
 		auto it = std::find_if(clients.begin(), clients.end(), [&](const std::unique_ptr<BLEClient> &client) {
@@ -230,6 +244,7 @@ void BLEDevices::onDisconnect(BLEClient *pClient) {
 		if (it != clients.end()) {
 			EDevType dt = static_cast<EDevType>(std::distance(clients.begin(), it));  // Get index
 			bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "%s diconnected. Remove Client for %s.", DEV_EMOJI[dt], DEV_STRING[dt]);
+			if (dt == DEV_NAV) overviewChar = nullptr;		// belongs to the client that goes now
 			it->reset();  // Delete the client and set pointer to nullptr
 			connState[dt] = CONN_LOST;
 			updateDisconnectedDev(dt);
@@ -241,6 +256,7 @@ void BLEDevices::onDisconnect(BLEClient *pClient) {
 	} else {
 		bclog.logf(BCLogger::Log_Error, BCLogger::TAG_BLE, "❌⚠️❌⚠️❌ Mutex blocked while trying to find disconnected device ❌⚠️❌⚠️❌");
 	}
+	if (navIo) xSemaphoreGive(xNavIoMutex);
 }
 
 BLEDevices::EDevType BLEDevices::filterDevice(BLEAdvertisedDevice& dev) {
@@ -362,6 +378,7 @@ void BLEDevices::updateDisconnectedDev(const EDevType dt) {
 		ui.updateLanes(nullptr, 0, 0, nullptr, 0, 0);
 		gpsFix = SGpsFix();		// GPS-Positions-Service shares this connection, so it's gone too
 		climb.onRouteGone();	// ... and so is the elevation profile
+		routeMon.onRouteGone();	// ... and the route overview
 #ifdef BC_SIM
 		sim.endTrailBridgeFeed();
 #endif
@@ -492,9 +509,14 @@ void BLEDevices::resetAdress(EDevType type) {
  */
 void BLEDevices::checkNavAlive() {
 	bool removed = false, timedOut = false;
-	if (xSemaphoreTake(xDevMutex, static_cast<TickType_t>(500 / portTICK_PERIOD_MS)) != pdTRUE) return;
+	const bool navIo = xSemaphoreTake(xNavIoMutex, static_cast<TickType_t>(1500 / portTICK_PERIOD_MS)) == pdTRUE;		// first: lock order
+	if (xSemaphoreTake(xDevMutex, static_cast<TickType_t>(500 / portTICK_PERIOD_MS)) != pdTRUE) {
+		if (navIo) xSemaphoreGive(xNavIoMutex);
+		return;
+	}
 	if (clients[DEV_NAV] && !clients[DEV_NAV]->isConnected()) {
 		// No disconnect to wait for, e.g. the connect went through but onDisconnect() never did
+		overviewChar = nullptr;
 		clients[DEV_NAV].reset();
 		connState[DEV_NAV] = CONN_LOST;
 		removed = true;
@@ -503,6 +525,7 @@ void BLEDevices::checkNavAlive() {
 		timedOut = true;
 	}
 	xSemaphoreGive(xDevMutex);
+	if (navIo) xSemaphoreGive(xNavIoMutex);
 
 	if (removed) {
 		bclog.log(BCLogger::Log_Warn, BCLogger::TAG_BLE, "🧭 TrailBridge client without connection removed");
@@ -590,6 +613,8 @@ bool BLEDevices::connectToServer(SDevToConnect& dev) {
 	bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "🔵%s %s registered\n", DEV_EMOJI[dt], useNotify ? "Notify" : "Indicate");
 
 	if (dt == DEV_NAV) {
+		// The route overview is read by a task of its own; not while this sequence talks to the peer (xNavIoMutex)
+		const bool navIo = xSemaphoreTake(xNavIoMutex, static_cast<TickType_t>(5000 / portTICK_PERIOD_MS)) == pdTRUE;
 		navLastFrameMs = millis();
 		// Fallback per PROTOCOL.md: Read the last frame directly, don't wait for the first Indicate/heartbeat.
 		String initial = pRemoteCharacteristic->readValue();
@@ -600,6 +625,10 @@ bool BLEDevices::connectToServer(SDevToConnect& dev) {
 		subscribeGpsPosition(clients[dt].get());
 		// Third one: the elevation profile of a GPX route. See PROTOCOL.md "Höhenprofil-Service".
 		subscribeProfile(clients[dt].get());
+		// Fourth: the route overview, read only. See PROTOCOL.md "Streckenübersicht-Service".
+		findOverview(clients[dt].get());
+		if (navIo) xSemaphoreGive(xNavIoMutex);
+		wakeOverviewReader();		// the first nav frame may have announced a revision before the characteristic was known
 	}
 
 	storeAdress(dt, addr);	// update stored adress in NVS - regardless if it really has changed or not
@@ -763,6 +792,7 @@ void BLEDevices::handleNavData(const uint8_t* pData, size_t length) {
 		ui.updateNavi(String(), 0, NAV_MANEUVER_NONE, 0, NAV_MANEUVER_NONE, 0, String(), 0, 0);
 		ui.updateLanes(nullptr, 0, 0, nullptr, 0, 0);
 		climb.onRouteGone();
+		routeMon.onRouteGone();
 		break;
 
 	case NAV_MSG_NAV_UPDATE: {
@@ -770,7 +800,8 @@ void BLEDevices::handleNavData(const uint8_t* pData, size_t length) {
 		uint8_t nextManeuver = NAV_MANEUVER_UNKNOWN;
 		uint8_t roundaboutExit = 0;
 		uint32_t maneuverDist = 0, nextManeuverDist = 0, remainingDist = 0, remainingTime = 0;
-		bool hasRemainingDist = false;
+		bool hasRemainingDist = false, hasOverviewRevision = false;
+		uint8_t overviewRevision = 0;
 		String street, nextStreet;
 		NavLane lanes[NAV_LANES_MAX];
 		NavLane nextLanes[NAV_LANES_MAX];
@@ -828,6 +859,9 @@ void BLEDevices::handleNavData(const uint8_t* pData, size_t length) {
 			case NAV_TAG_NEXT_LANE_DISTANCE_M:
 				if (len >= 4) nextLaneDist = val[0] | (val[1] << 8) | (val[2] << 16) | ((uint32_t)val[3] << 24);
 				break;
+			case NAV_TAG_OVERVIEW_REVISION:
+				if (len >= 1) { hasOverviewRevision = true; overviewRevision = val[0]; }
+				break;
 			default:
 				break;	// unknown tag: length already respected below, value ignored
 			}
@@ -838,6 +872,8 @@ void BLEDevices::handleNavData(const uint8_t* pData, size_t length) {
 		nav_distance_int = stats.getDistance(Statistics::SUM_ESP_START, true);
 		// The rider's place in the elevation profile (PROTOCOL.md "Position im Profil ohne Wegstreckenzähler")
 		if (hasRemainingDist) climb.onNavRemaining(remainingDist);
+		// The route overview: its revision says whether the one held is current (a frame without the tag drops it)
+		if (routeMon.onNavFrame(hasOverviewRevision, overviewRevision, hasRemainingDist, remainingDist, remainingTime)) wakeOverviewReader();
 
 		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "🧭 %s in %d m auf %s (Rest: %d m / %d s). Next: %s in %d m auf %s",
 				navManeuverToString(maneuver), maneuverDist, street.c_str(), remainingDist, remainingTime,
@@ -923,6 +959,64 @@ void BLEDevices::subscribeProfile(BLEClient* pClient) {
 	// No heartbeat on this service: the last frame is only to be had by reading it.
 	String initial = pCharacteristic->readValue();
 	if (initial.length() > 0) climb.onProfileFrame(reinterpret_cast<const uint8_t*>(initial.c_str()), initial.length());
+}
+
+/**
+ * @brief Looks up the route-overview characteristic on an already-connected DEV_NAV peer.
+ *
+ * Same discovery as subscribeProfile(), but nothing to subscribe to: the characteristic is READ
+ * only (PROTOCOL.md "Streckenübersicht-Service"). Only remembered, for overviewReaderTask(). Missing
+ * on a TrailBridge version without the service -- then no nav frame carries OVERVIEW_REVISION either.
+ * Called with xNavIoMutex held.
+ */
+void BLEDevices::findOverview(BLEClient* pClient) {
+	overviewChar = nullptr;
+	BLERemoteService* pService = pClient->getService(overviewServiceUUID);
+	if (pService == nullptr) {
+		bclog.log(BCLogger::Log_Warn, BCLogger::TAG_BLE, "🗺️⚠️ Route overview service not found on peer (older TrailBridge version?)");
+		return;
+	}
+	BLERemoteCharacteristic* pCharacteristic = pService->getCharacteristic(overviewCharUUID);
+	if (pCharacteristic == nullptr) {
+		bclog.log(BCLogger::Log_Warn, BCLogger::TAG_BLE, "🗺️⚠️ Route overview characteristic not found");
+		return;
+	}
+	overviewChar = pCharacteristic;
+	bclog.log(BCLogger::Log_Debug, BCLogger::TAG_BLE, "🗺️ Route overview characteristic found (read only)");
+}
+
+/**
+ * @brief Reads the route overview when the nav frames announce a revision that is not the one held.
+ *
+ * A task of its own because readValue() blocks until the whole value is in (a long read, up to 512
+ * byte, several round trips) and may not run in the indicate callback, and the scan task is asleep
+ * for 20 s between its rounds. Woken by handleNavData() (wakeOverviewReader()); also every 2 s, which
+ * covers the retry after a read that failed (RouteMonitor::readWanted() backs off for a few seconds).
+ */
+void BLEDevices::overviewReaderTask() {
+	for (;;) {
+		ulTaskNotifyTake(pdTRUE, 2000 / portTICK_PERIOD_MS);
+		uint8_t revision;
+		if (!routeMon.readWanted(revision)) continue;
+
+		String value;
+		bool tried = false;
+		if (xSemaphoreTake(xNavIoMutex, static_cast<TickType_t>(2000 / portTICK_PERIOD_MS)) == pdTRUE) {
+			// Not connected, or the characteristic not (yet) known: nothing was tried, ask again at the next wake-up
+			if (overviewChar && clients[DEV_NAV] && clients[DEV_NAV]->isConnected()) {
+				tried = true;
+				routeMon.readAttempted();
+				value = overviewChar->readValue();
+			}
+			xSemaphoreGive(xNavIoMutex);
+		}
+		if (!tried) continue;
+		if (value.length() == 0) {
+			bclog.logf(BCLogger::Log_Warn, BCLogger::TAG_BLE, "🗺️⚠️ Reading route overview revision %u failed", revision);
+			continue;
+		}
+		routeMon.onOverviewFrame(reinterpret_cast<const uint8_t*>(value.c_str()), value.length());
+	}
 }
 
 /**

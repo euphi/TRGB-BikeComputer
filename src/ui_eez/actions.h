@@ -45,6 +45,7 @@ extern void action_alt_num_cancel(lv_event_t * e);
 extern void action_alt_num_save(lv_event_t * e);
 extern void action_go_to_settings_dev(lv_event_t * e);
 extern void action_dev_forget(lv_event_t * e);
+extern void action_route_screen_gesture(lv_event_t * e);
 
 #ifdef __cplusplus
 }

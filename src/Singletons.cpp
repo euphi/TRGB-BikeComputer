@@ -23,6 +23,7 @@ BLEDevices bleDevs;
 I2CSensors sensors;
 #endif
 ClimbMonitor climb;
+RouteMonitor routeMon;
 #ifdef BC_SIM
 SimSensors sim;
 #endif

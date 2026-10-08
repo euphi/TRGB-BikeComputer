@@ -35,6 +35,7 @@
 #include "ui/RimRidgeAltCustFunc.h"
 #include "ui/RimRidgeDevCustFunc.h"
 #include "ui/RimRidgeClimbCustFunc.h"
+#include "ui/RimRidgeRouteCustFunc.h"
 #include "ui/RimRidgeWifiCustFunc.h"
 #include "UiDebug.h"
 
@@ -100,6 +101,8 @@ void UIFacade::initDisplay() {
     create_screen_rim_ridge_wifi();
     create_screen_rim_ridge_wifi_pw();
     ui_RimRidgeWifiInit(); // keyboard layout, row styles, list refresh timer
+    create_screen_rim_ridge_route();
+    ui_RimRidgeRouteInit(); // "no route" instead of the canvas' example texts, refresh timer
     UiDebug::setup(); // /debug/ui/*: screenshot and synthetic touch for testing screens remotely
 
     // 3. set main screen
@@ -768,6 +771,32 @@ void UIFacade::hideClimbScreen() {
 		if (!uiTask) xSemaphoreGive(xUIDrawMutex);
 	} else {
 		bclog.log(BCLogger::Log_Warn, BCLogger::TAG_UI, "Hide climb screen blocked by mutex");
+	}
+}
+
+void UIFacade::showRouteScreen() {
+	// Swipe left on RimRidgeNav, or "route show". Same same-task mutex re-entrancy note as showNavScreen().
+	// Coming from the nav screen is a manual dismiss of it (the pending auto-hide would otherwise pull the
+	// display back to the main screen); the next maneuver brings the nav screen up again as usual.
+	bool uiTask = isDrawTask();
+	if (uiTask || xSemaphoreTake(xUIDrawMutex, 150 / portTICK_PERIOD_MS) == pdTRUE) {
+		if (navScreenActive) dismissNavScreen();
+		lv_disp_load_scr(objects.rim_ridge_route);
+		ui_RimRidgeRouteRefresh();		// not the figures of a second ago
+		if (!uiTask) xSemaphoreGive(xUIDrawMutex);
+	} else {
+		bclog.log(BCLogger::Log_Warn, BCLogger::TAG_UI, "Show route screen blocked by mutex");
+	}
+}
+
+void UIFacade::hideRouteScreen() {
+	// Manual close (swipe on RimRidgeRoute, or "route hide").
+	bool uiTask = isDrawTask();
+	if (uiTask || xSemaphoreTake(xUIDrawMutex, 150 / portTICK_PERIOD_MS) == pdTRUE) {
+		if (lv_scr_act() == objects.rim_ridge_route) lv_disp_load_scr(baseScreen());
+		if (!uiTask) xSemaphoreGive(xUIDrawMutex);
+	} else {
+		bclog.log(BCLogger::Log_Warn, BCLogger::TAG_UI, "Hide route screen blocked by mutex");
 	}
 }
 

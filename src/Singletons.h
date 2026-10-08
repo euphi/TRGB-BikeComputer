@@ -45,6 +45,9 @@ extern I2CSensors sensors;
 #include "ClimbMonitor.h"
 extern ClimbMonitor climb;
 
+#include "RouteMonitor.h"
+extern RouteMonitor routeMon;
+
 #ifdef BC_SIM
 #include "SimSensors.h"
 extern SimSensors sim;

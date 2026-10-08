@@ -111,6 +111,22 @@ private:
 	// route distance -- the rider's position in the profile.
 	void subscribeProfile(BLEClient* pClient);
 
+	// Route-overview service: fourth service on the DEV_NAV peer. Read only, no CCCD: the nav frames
+	// announce a revision (tag OVERVIEW_REVISION), and when RouteMonitor does not hold it, a task of
+	// its own reads the characteristic -- a long read of up to 512 byte, which blocks, so never from
+	// the indicate callback and not from the scan task (it sleeps 20 s between its rounds).
+	//
+	// xNavIoMutex keeps that read away from the TrailBridge connect/subscribe sequence (two GATT
+	// procedures at once on one link) and away from the deletion of the client: overviewChar belongs
+	// to the client, so onDisconnect()/checkNavAlive() clear it under this mutex before they delete
+	// the client. Lock order: xNavIoMutex before xDevMutex, never the other way round.
+	void findOverview(BLEClient* pClient);
+	void overviewReaderTask();
+	void wakeOverviewReader() {if (overviewTaskHandle) xTaskNotifyGive(overviewTaskHandle);}
+	SemaphoreHandle_t xNavIoMutex = nullptr;
+	BLERemoteCharacteristic* overviewChar = nullptr;
+	TaskHandle_t overviewTaskHandle = nullptr;
+
 	// millis() of the last nav or GPS frame, for checkNavAlive(). Six heartbeats.
 	static constexpr uint32_t NAV_TIMEOUT_MS = 30000;
 	std::atomic<uint32_t> navLastFrameMs{0};
@@ -144,6 +160,8 @@ public:
 	static const BLEUUID gpsCharUUID;
 	static const BLEUUID profileServiceUUID;
 	static const BLEUUID profileCharUUID;
+	static const BLEUUID overviewServiceUUID;
+	static const BLEUUID overviewCharUUID;
 
 	// Latest known GPS fix (or invalid, if none received / lost with the DEV_NAV connection).
 	// fixAgeMs is updated to reflect the time elapsed since it was received over BLE.

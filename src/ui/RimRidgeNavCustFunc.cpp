@@ -126,7 +126,8 @@ void ui_RimRidgeNavUpdateLanes(const NavLane* lanes, uint8_t laneCount) {
 
 // EEZ Studio action, wired to the RimRidgeNav screen root's GESTURE event
 // - a left-to-right swipe (LV_DIR_RIGHT) manually returns to the main
-// screen (see UIFacade::hideNavScreen()). Other directions ignored.
+// screen (see UIFacade::hideNavScreen()), a right-to-left one (LV_DIR_LEFT)
+// opens the route overview (UIFacade::showRouteScreen()). Other directions ignored.
 void action_nav_screen_gesture(lv_event_t * e) {
 	(void) e;
 	lv_indev_t * indev = lv_indev_get_act();
@@ -135,5 +136,7 @@ void action_nav_screen_gesture(lv_event_t * e) {
 	lv_indev_wait_release(indev);
 	if (dir == LV_DIR_RIGHT) {
 		ui.hideNavScreen();
+	} else if (dir == LV_DIR_LEFT) {
+		ui.showRouteScreen();
 	}
 }

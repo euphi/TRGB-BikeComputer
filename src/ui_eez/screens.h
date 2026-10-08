@@ -23,7 +23,8 @@ enum ScreensEnum {
     SCREEN_ID_RIM_RIDGE_SETTINGS_ALT = 10,
     SCREEN_ID_RIM_RIDGE_SETTINGS_NUM = 11,
     SCREEN_ID_RIM_RIDGE_SETTINGS_DEV = 12,
-    _SCREEN_ID_LAST = 12
+    SCREEN_ID_RIM_RIDGE_ROUTE = 13,
+    _SCREEN_ID_LAST = 13
 };
 
 typedef struct _objects_t {
@@ -39,6 +40,7 @@ typedef struct _objects_t {
     lv_obj_t *rim_ridge_settings_alt;
     lv_obj_t *rim_ridge_settings_num;
     lv_obj_t *rim_ridge_settings_dev;
+    lv_obj_t *rim_ridge_route;
     lv_obj_t *rr_speed_arc;
     lv_obj_t *rr_ic_wifi;
     lv_obj_t *rr_ic_gps;
@@ -306,6 +308,13 @@ typedef struct _objects_t {
     lv_obj_t *rrsd_hint;
     lv_obj_t *rrsd_btn_back;
     lv_obj_t *rrsd_btn_back_lbl;
+    lv_obj_t *rrroute_ic;
+    lv_obj_t *rrroute_title;
+    lv_obj_t *rrroute_dest;
+    lv_obj_t *rrroute_list;
+    lv_obj_t *rrroute_empty;
+    lv_obj_t *rrroute_empty2;
+    lv_obj_t *rrroute_foot;
 } objects_t;
 
 extern objects_t objects;
@@ -345,6 +354,9 @@ void tick_screen_rim_ridge_settings_num();
 
 void create_screen_rim_ridge_settings_dev();
 void tick_screen_rim_ridge_settings_dev();
+
+void create_screen_rim_ridge_route();
+void tick_screen_rim_ridge_route();
 
 void tick_screen_by_id(enum ScreensEnum screenId);
 void tick_screen(int screen_index);

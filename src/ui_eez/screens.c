@@ -4491,6 +4491,121 @@ void create_screen_rim_ridge_settings_dev() {
 void tick_screen_rim_ridge_settings_dev() {
 }
 
+void create_screen_rim_ridge_route() {
+    lv_obj_t *obj = lv_obj_create(0);
+    objects.rim_ridge_route = obj;
+    lv_obj_set_pos(obj, 0, 0);
+    lv_obj_set_size(obj, 480, 480);
+    lv_obj_add_event_cb(obj, action_route_screen_gesture, LV_EVENT_GESTURE, (void *)0);
+    lv_obj_clear_flag(obj, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_bg_color(obj, lv_color_hex(theme_colors[active_theme_index][16]), LV_PART_MAIN | LV_STATE_DEFAULT);
+    {
+        lv_obj_t *parent_obj = obj;
+        {
+            // rrroute_ic
+            lv_obj_t *obj = lv_img_create(parent_obj);
+            objects.rrroute_ic = obj;
+            lv_obj_set_pos(obj, 224, 30);
+            lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+            lv_img_set_src(obj, &img_rr_icon_height);
+            lv_obj_add_flag(obj, LV_OBJ_FLAG_CLICKABLE);
+            lv_obj_clear_flag(obj, LV_OBJ_FLAG_ADV_HITTEST|LV_OBJ_FLAG_SCROLLABLE);
+            lv_obj_set_style_img_recolor(obj, lv_color_hex(theme_colors[active_theme_index][19]), LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_obj_set_style_img_recolor_opa(obj, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
+        }
+        {
+            // rrroute_title
+            lv_obj_t *obj = lv_label_create(parent_obj);
+            objects.rrroute_title = obj;
+            lv_obj_set_pos(obj, 0, 68);
+            lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+            lv_obj_add_flag(obj, LV_OBJ_FLAG_CLICKABLE);
+            lv_obj_clear_flag(obj, LV_OBJ_FLAG_SCROLLABLE);
+            lv_obj_set_style_text_color(obj, lv_color_hex(theme_colors[active_theme_index][19]), LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_obj_set_style_text_font(obj, &ui_font_montserrat14, LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_obj_set_style_align(obj, LV_ALIGN_TOP_MID, LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_obj_set_style_text_letter_space(obj, 3, LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_label_set_text(obj, "STRECKE");
+        }
+        {
+            // rrroute_dest
+            lv_obj_t *obj = lv_label_create(parent_obj);
+            objects.rrroute_dest = obj;
+            lv_obj_set_pos(obj, 100, 90);
+            lv_obj_set_size(obj, 280, LV_SIZE_CONTENT);
+            lv_label_set_long_mode(obj, LV_LABEL_LONG_DOT);
+            lv_obj_add_flag(obj, LV_OBJ_FLAG_CLICKABLE);
+            lv_obj_clear_flag(obj, LV_OBJ_FLAG_SCROLLABLE);
+            lv_obj_set_style_text_color(obj, lv_color_hex(theme_colors[active_theme_index][21]), LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_obj_set_style_text_font(obj, &ui_font_montserrat22, LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_obj_set_style_text_align(obj, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_label_set_text(obj, "Ziel 36.0 km  15:42");
+        }
+        {
+            // rrroute_list
+            lv_obj_t *obj = lv_obj_create(parent_obj);
+            objects.rrroute_list = obj;
+            lv_obj_set_pos(obj, 80, 120);
+            lv_obj_set_size(obj, 320, 248);
+            lv_obj_set_style_pad_left(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_obj_set_style_pad_top(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_obj_set_style_pad_right(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_obj_set_style_pad_bottom(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_obj_set_scrollbar_mode(obj, LV_SCROLLBAR_MODE_AUTO);
+            lv_obj_set_scroll_dir(obj, LV_DIR_VER);
+            lv_obj_set_style_bg_opa(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_obj_set_style_border_width(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_obj_set_style_radius(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_obj_set_style_bg_color(obj, lv_color_hex(theme_colors[active_theme_index][19]), LV_PART_SCROLLBAR | LV_STATE_DEFAULT);
+            lv_obj_set_style_bg_opa(obj, 140, LV_PART_SCROLLBAR | LV_STATE_DEFAULT);
+            lv_obj_set_style_width(obj, 3, LV_PART_SCROLLBAR | LV_STATE_DEFAULT);
+            lv_obj_set_style_radius(obj, 2, LV_PART_SCROLLBAR | LV_STATE_DEFAULT);
+        }
+        {
+            // rrroute_empty
+            lv_obj_t *obj = lv_label_create(parent_obj);
+            objects.rrroute_empty = obj;
+            lv_obj_set_pos(obj, 0, -10);
+            lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+            lv_obj_clear_flag(obj, LV_OBJ_FLAG_SCROLLABLE);
+            lv_obj_set_style_text_color(obj, lv_color_hex(theme_colors[active_theme_index][22]), LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_obj_set_style_text_font(obj, &ui_font_montserrat22, LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_obj_set_style_align(obj, LV_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_label_set_text(obj, "Keine Strecke");
+        }
+        {
+            // rrroute_empty2
+            lv_obj_t *obj = lv_label_create(parent_obj);
+            objects.rrroute_empty2 = obj;
+            lv_obj_set_pos(obj, 0, 24);
+            lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+            lv_obj_clear_flag(obj, LV_OBJ_FLAG_SCROLLABLE);
+            lv_obj_set_style_text_color(obj, lv_color_hex(theme_colors[active_theme_index][22]), LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_obj_set_style_text_font(obj, &ui_font_montserrat14, LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_obj_set_style_align(obj, LV_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_label_set_text(obj, "GPX-Route in TrailBridge");
+        }
+        {
+            // rrroute_foot
+            lv_obj_t *obj = lv_label_create(parent_obj);
+            objects.rrroute_foot = obj;
+            lv_obj_set_pos(obj, 0, 374);
+            lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+            lv_obj_add_flag(obj, LV_OBJ_FLAG_CLICKABLE);
+            lv_obj_clear_flag(obj, LV_OBJ_FLAG_SCROLLABLE);
+            lv_obj_set_style_text_color(obj, lv_color_hex(theme_colors[active_theme_index][22]), LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_obj_set_style_text_font(obj, &ui_font_montserrat14, LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_obj_set_style_align(obj, LV_ALIGN_TOP_MID, LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_label_set_text(obj, "3 Wegpunkte, 7 Anstiege");
+        }
+    }
+    
+    tick_screen_rim_ridge_route();
+}
+
+void tick_screen_rim_ridge_route() {
+}
+
 typedef void (*tick_screen_func_t)();
 tick_screen_func_t tick_screen_funcs[] = {
     tick_screen_rim_ridge,
@@ -4505,9 +4620,10 @@ tick_screen_func_t tick_screen_funcs[] = {
     tick_screen_rim_ridge_settings_alt,
     tick_screen_rim_ridge_settings_num,
     tick_screen_rim_ridge_settings_dev,
+    tick_screen_rim_ridge_route,
 };
 void tick_screen(int screen_index) {
-    if (screen_index >= 0 && screen_index < 12) {
+    if (screen_index >= 0 && screen_index < 13) {
         tick_screen_funcs[screen_index]();
     }
 }
@@ -5012,6 +5128,16 @@ void change_color_theme(uint32_t theme_index) {
         lv_obj_set_style_text_color(objects.rrsd_btn_back_lbl, lv_color_hex(theme_colors[theme_index][21]), LV_PART_MAIN | LV_STATE_DEFAULT);
         lv_obj_set_style_text_color(objects.rrsd_btn_back_lbl, lv_color_hex(theme_colors[theme_index][22]), LV_PART_MAIN | LV_STATE_DISABLED);
     }
+    {
+        lv_obj_set_style_bg_color(objects.rim_ridge_route, lv_color_hex(theme_colors[theme_index][16]), LV_PART_MAIN | LV_STATE_DEFAULT);
+        lv_obj_set_style_img_recolor(objects.rrroute_ic, lv_color_hex(theme_colors[theme_index][19]), LV_PART_MAIN | LV_STATE_DEFAULT);
+        lv_obj_set_style_text_color(objects.rrroute_title, lv_color_hex(theme_colors[theme_index][19]), LV_PART_MAIN | LV_STATE_DEFAULT);
+        lv_obj_set_style_text_color(objects.rrroute_dest, lv_color_hex(theme_colors[theme_index][21]), LV_PART_MAIN | LV_STATE_DEFAULT);
+        lv_obj_set_style_bg_color(objects.rrroute_list, lv_color_hex(theme_colors[theme_index][19]), LV_PART_SCROLLBAR | LV_STATE_DEFAULT);
+        lv_obj_set_style_text_color(objects.rrroute_empty, lv_color_hex(theme_colors[theme_index][22]), LV_PART_MAIN | LV_STATE_DEFAULT);
+        lv_obj_set_style_text_color(objects.rrroute_empty2, lv_color_hex(theme_colors[theme_index][22]), LV_PART_MAIN | LV_STATE_DEFAULT);
+        lv_obj_set_style_text_color(objects.rrroute_foot, lv_color_hex(theme_colors[theme_index][22]), LV_PART_MAIN | LV_STATE_DEFAULT);
+    }
     lv_obj_invalidate(objects.rim_ridge);
     lv_obj_invalidate(objects.rim_ridge_nav);
     lv_obj_invalidate(objects.rim_ridge_rq);
@@ -5024,6 +5150,7 @@ void change_color_theme(uint32_t theme_index) {
     lv_obj_invalidate(objects.rim_ridge_settings_alt);
     lv_obj_invalidate(objects.rim_ridge_settings_num);
     lv_obj_invalidate(objects.rim_ridge_settings_dev);
+    lv_obj_invalidate(objects.rim_ridge_route);
 }
 uint32_t theme_colors[1][31] = {
     { 0xff00ff80, 0xff000000, 0xffc8fff7, 0xffe0e0e0, 0xff00ff26, 0xffe5deae, 0xffffe200, 0xffff3a00, 0xff005766, 0xff3fff00, 0xffff0000, 0xfffdffde, 0xff00ff00, 0xff85ebff, 0xff0000ff, 0xffffffff, 0xff161b1f, 0xff3a362e, 0xff332f28, 0xffcba36b, 0xfff3ecdf, 0xffe7e2d6, 0xff9ba097, 0xff7fa08f, 0xff1e252b, 0xff282019, 0xff6c90b0, 0xff6fa98c, 0xffd7b463, 0xffce8a4c, 0xffc1604a },
@@ -5054,4 +5181,5 @@ void create_screens() {
     create_screen_rim_ridge_settings_alt();
     create_screen_rim_ridge_settings_num();
     create_screen_rim_ridge_settings_dev();
+    create_screen_rim_ridge_route();
 }

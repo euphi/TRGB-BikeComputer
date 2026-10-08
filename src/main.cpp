@@ -89,6 +89,7 @@ void setup() {
 	ui.initDisplay();
     stats.setup();
 	climb.setup();
+	routeMon.setup();
 	bleDevs.setup();
 #ifdef BC_SIM
 	sim.setup();
