@@ -140,7 +140,9 @@ same device with at most `BIKELOG_KOMOOT_MERGE_GAP_S` of pause between them are 
 merged into one ride and uploaded as one GPX
 ([`komoot.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/BikeLogService/bikelogservice/komoot.py));
 all sessions involved show the same `komoot_status` afterwards. A second attempt without
-`?force=true` is rejected with `409`.
+`?force=true` is rejected with `409`. The rides list shows such a ride as one row with the
+figures of the whole ride (distance, moving time, average) and its parts smaller below it
+("Teil 1/2", no rule between them); the head row links to the report of the whole ride.
 
 Needs `pip install "bikelog[komoot]"` (kompy + gpxpy, not part of `[service]`) and
 `BIKELOG_KOMOOT_EMAIL`/`BIKELOG_KOMOOT_PASSWORD` in `bikelog.env` -- without both the

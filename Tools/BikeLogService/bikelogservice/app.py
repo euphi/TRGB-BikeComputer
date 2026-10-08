@@ -106,13 +106,13 @@ def create_app(settings: Settings | None = None, puller: Puller | None = None) -
                               tests=tests, idle=False)
         hidden = 0 if tests else (store.count(min_m, max_m, idle=False)
                                   - store.count(min_m, max_m, tests=False, idle=False))
+        split = [g for g in analysis.tours_of(store) if len(g) > 1]
         return webui.index(sessions, puller.as_dict() if puller else None,
                            min_km=min_km_v, max_km=max_km_v,
                            prompts=komoot.pending_prompts(store), message=msg,
                            tests=tests, hidden_tests=hidden, idle=len(store.idle_sessions()),
-                           tours={s.id: (i + 1, len(g), g[0].id) for g in analysis.tours_of(store)
-                                  if len(g) > 1 for i, s in enumerate(g)},
-                           bike_names=_bike_names(store, sessions),
+                           groups=split,
+                           bike_names=_bike_names(store, sessions + [g[0] for g in split]),
                            registry=analysis.registry(store), events=analysis.events(store))
 
     def _bike_names(store: Storage, sessions: list[Session]) -> dict[int, str]:
