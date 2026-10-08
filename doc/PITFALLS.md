@@ -91,8 +91,35 @@ NimBLE error code and the number of connected clients when a connect fails. A fi
 sdkconfig (pioarduino `custom_sdkconfig`, which compiles the IDF libraries) or the NimBLE-Arduino
 library with `-DCONFIG_BT_NIMBLE_MAX_CONNECTIONS=4` -- every connection costs internal RAM.
 The log line of a failed connect now says how many other peers were connected; failures always at 3
-would confirm it. `pio run -e trgb-esp32-s3-ble4` (untested) builds with `custom_sdkconfig =
-CONFIG_BT_NIMBLE_MAX_CONNECTIONS=4`. Until then the 4th device simply never connects.
+would confirm it. `pio run -e trgb-esp32-s3-ble4` builds with `custom_sdkconfig =
+CONFIG_BT_NIMBLE_MAX_CONNECTIONS=4` (compiles, not yet run on the device). Until then the 4th device
+simply never connects.
+
+## `custom_sdkconfig` (hybrid compile) rebuilds the shared framework package
+
+The `ble4` environments make pioarduino compile the IDF libraries itself. The first build downloads
+ESP-IDF, cmake and ninja (about 1 GB more in the core directory) and takes 10 to 20 minutes. The
+result is written **into the shared package** `framework-arduinoespressif32-libs` of the PlatformIO
+core directory, marked by a file `sdkconfig` there. The next build of an environment without
+`custom_sdkconfig` sees the marker, prints `*** Reinstall Arduino framework ***`, deletes both
+framework packages and downloads them again; the next `ble4` build compiles the libraries again.
+The platform also re-checks its tool packages (`tool-scons` among them) from inside the running
+build.
+
+So two builds sharing one core directory must never run at the same time when one of them is a
+hybrid build: one deletes the packages the other is reading. A build that dies with a missing
+module of a tool package (`ModuleNotFoundError: No module named 'SCons.Tool.FortranCommon'` while
+linking, seen on 2026-10-08) fits that; it could not be reproduced with a core directory used by one
+build only, neither a fresh one nor a copy of an existing installation. Give the variant a core
+directory of its own, then nothing is reinstalled when switching either:
+
+```
+PLATFORMIO_CORE_DIR=~/.platformio-ble4 pio run -e trgb-esp32-s3-ble4-ota -t upload
+```
+
+The build leaves `sdkconfig.defaults`, `sdkconfig.<env>`, `managed_components/` and `.dummy/` in the
+project directory (ignored by git). `sdkconfig.defaults` carries the hash of the settings; deleting
+it forces the libraries to be compiled again.
 
 ## The BLE stack is NimBLE, not Bluedroid
 

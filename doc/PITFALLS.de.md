@@ -102,8 +102,35 @@ wenn ein Connect scheitert. Eine Lösung braucht eine andere sdkconfig (pioardui
 `custom_sdkconfig`, das die IDF-Bibliotheken neu baut) oder die NimBLE-Arduino-Bibliothek mit
 `-DCONFIG_BT_NIMBLE_MAX_CONNECTIONS=4` -- jede Verbindung kostet internes RAM. Die Logzeile eines gescheiterten Connects nennt jetzt, wie viele andere Gegenstellen verbunden
 waren; Fehlschläge immer bei 3 würden den Verdacht bestätigen. `pio run -e trgb-esp32-s3-ble4`
-(ungetestet) baut mit `custom_sdkconfig = CONFIG_BT_NIMBLE_MAX_CONNECTIONS=4`. Bis dahin
-verbindet sich das 4. Gerät schlicht nie.
+baut mit `custom_sdkconfig = CONFIG_BT_NIMBLE_MAX_CONNECTIONS=4` (lässt sich bauen, lief noch nicht
+auf dem Gerät). Bis dahin verbindet sich das 4. Gerät schlicht nie.
+
+## `custom_sdkconfig` (Hybrid-Compile) baut das gemeinsame Framework-Paket um
+
+Die `ble4`-Environments lassen pioarduino die IDF-Bibliotheken selbst kompilieren. Der erste Build
+lädt ESP-IDF, cmake und ninja nach (rund 1 GB mehr im Core-Verzeichnis) und dauert 10 bis 20
+Minuten. Das Ergebnis landet **im gemeinsamen Paket** `framework-arduinoespressif32-libs` des
+PlatformIO-Core-Verzeichnisses, markiert durch eine Datei `sdkconfig` dort. Der nächste Build eines
+Environments ohne `custom_sdkconfig` sieht die Markierung, meldet
+`*** Reinstall Arduino framework ***`, löscht beide Framework-Pakete und lädt sie neu; der nächste
+`ble4`-Build kompiliert die Bibliotheken wieder. Außerdem prüft die Plattform ihre Tool-Pakete
+(darunter `tool-scons`) noch einmal aus dem laufenden Build heraus.
+
+Zwei Builds mit demselben Core-Verzeichnis dürfen deshalb nie gleichzeitig laufen, wenn einer davon
+ein Hybrid-Build ist: Der eine löscht die Pakete, die der andere gerade liest. Ein Build, der mit
+einem fehlenden Modul eines Tool-Pakets abbricht (`ModuleNotFoundError: No module named
+'SCons.Tool.FortranCommon'` beim Linken, gesehen am 2026-10-08), passt dazu; mit einem
+Core-Verzeichnis, das nur ein Build benutzt, ließ er sich nicht nachstellen, weder mit einem frischen
+noch mit der Kopie einer bestehenden Installation. Die Variante bekommt ein eigenes
+Core-Verzeichnis, dann wird auch beim Wechsel nichts neu installiert:
+
+```
+PLATFORMIO_CORE_DIR=~/.platformio-ble4 pio run -e trgb-esp32-s3-ble4-ota -t upload
+```
+
+Der Build hinterlässt `sdkconfig.defaults`, `sdkconfig.<env>`, `managed_components/` und `.dummy/`
+im Projektverzeichnis (von git ignoriert). `sdkconfig.defaults` trägt den Hash der Einstellungen;
+wer die Datei löscht, erzwingt das erneute Kompilieren der Bibliotheken.
 
 ## BLE-Stack ist NimBLE, nicht Bluedroid
 

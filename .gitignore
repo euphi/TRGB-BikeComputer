@@ -10,6 +10,11 @@ coredump.*
 compile_commands.json
 
 /versioning
+
+# Hybrid compile (custom_sdkconfig, env trgb-esp32-s3-ble4): generated on every build
+/sdkconfig.*
+/managed_components/
+/.dummy/
 include/version.h
 
 /Tools/DL_Data/
