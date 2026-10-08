@@ -77,6 +77,33 @@ class Settings:
     #: not two separate ones -- merged into a single upload.
     komoot_merge_gap_s: float = 1800.0
 
+    #: Rider data for the session report (bikelog.report.Athlete as JSON:
+    #: hr_max, hr_rest, mass_kg, rider_kg, ...). Default: <data_dir>/athlete.json;
+    #: a missing file just means a report without zones/TRIMP/W/kg.
+    athlete_file: Path | None = None
+
+    #: Idle sessions (switched on, no ride -- only debug data) move to archive_dir
+    #: this many days after they were stored; 0 = never (archive.py).
+    idle_archive_days: float = 7.0
+
+    #: Ride reports as prose from a local LLM (llm.py): the Ollama server, e.g.
+    #: http://localhost:11434. Unset = no texts, nothing else changes.
+    llm_url: str | None = None
+    llm_model: str = "qwen3:8b"
+    #: one answer may take this long (CPU only: a few minutes)
+    llm_timeout_s: float = 1800.0
+    #: A text whose facts changed (new goal, new bike, ...) is rewritten only for rides
+    #: of the last this many days -- older ones keep their text; a ride without one always gets one.
+    llm_refresh_days: float = 14.0
+
+    @property
+    def llm_enabled(self) -> bool:
+        return bool(self.llm_url)
+
+    @property
+    def athlete_path(self) -> Path:
+        return self.athlete_file or self.data_dir / "athlete.json"
+
     @property
     def komoot_enabled(self) -> bool:
         return bool(self.komoot_email and self.komoot_password)
@@ -125,6 +152,12 @@ class Settings:
             nextcloud_user=env.get("BIKELOG_NEXTCLOUD_USER") or None,
             nextcloud_password=env.get("BIKELOG_NEXTCLOUD_PASSWORD") or None,
             nextcloud_dir=env.get("BIKELOG_NEXTCLOUD_DIR", "BikeLog"),
+            athlete_file=Path(env["BIKELOG_ATHLETE_FILE"]) if env.get("BIKELOG_ATHLETE_FILE") else None,
+            idle_archive_days=float(env.get("BIKELOG_IDLE_ARCHIVE_DAYS", 7)),
+            llm_url=(env.get("BIKELOG_LLM_URL") or "").rstrip("/") or None,
+            llm_model=env.get("BIKELOG_LLM_MODEL") or "qwen3:8b",
+            llm_timeout_s=float(env.get("BIKELOG_LLM_TIMEOUT_S", 1800)),
+            llm_refresh_days=float(env.get("BIKELOG_LLM_REFRESH_DAYS", 14)),
         )
 
     @property
@@ -134,6 +167,10 @@ class Settings:
     @property
     def gpx_dir(self) -> Path:
         return self.export_dir or self.data_dir / "export" / "gpx"
+
+    @property
+    def archive_dir(self) -> Path:
+        return self.data_dir / "archive"
 
     @property
     def db_path(self) -> Path:

@@ -33,6 +33,18 @@ int Config::find(const char* s) const {
 	return -1;
 }
 
+bool validHostname(const char* name) {
+	if (!name) return false;
+	const size_t len = strlen(name);
+	if (len < 1 || len > HOSTNAME_MAX || name[0] == '-' || name[len - 1] == '-') return false;
+	for (size_t i = 0; i < len; i++) {
+		const char c = name[i];
+		const bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-';
+		if (!ok) return false;
+	}
+	return true;
+}
+
 bool Config::validSsid(const char* s) {
 	if (!s) return false;
 	const size_t len = strlen(s);

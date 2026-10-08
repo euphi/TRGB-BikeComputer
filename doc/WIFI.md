@@ -59,11 +59,22 @@ start, if nobody joined).
 
 With no network saved, WiFi stays off after boot.
 
+## Device name
+
+Name of the bike computer in the network: `<name>.local` (mDNS), the DHCP host name the router
+shows, and the default SSID of the hotspot. Default per build variant -- `TRGB-BC`, Forumslader
+build `TRGB-FL` (`BC_HOSTNAME` in `platformio.ini`) -- changeable on the page `/wifi` ("Device
+name"): 1..31 letters, digits and hyphens. Stored in the NVS (namespace `WifiSettings`, key
+`host`), mDNS announces the new name right away, the DHCP name follows with the next connect.
+An existing hotspot SSID stays as it is (it has its own field). The log service finds the bike
+computer by this name: change `BIKELOG_PULL_TARGETS` along with it (keep the device name before
+the `=`), and the OTA upload port (`--upload-port <name>.local`).
+
 ## Hotspot
 
 SSID `TRGB-BC` unless changed, WPA2. The password is generated at the first start (10
 characters) and shown on the settings screen while the hotspot runs; the web page can set a
-new one. Address `192.168.4.1` (and `TRGB-BC.local`). Up to 4 clients.
+new one. Address `192.168.4.1` (and `TRGB-BC.local`; the Forumslader build is `TRGB-FL`, hotspot and `.local` alike). Up to 4 clients.
 
 The hotspot is a captive portal: it answers every name with its own address and redirects
 every unknown URL to `/wifi`. Android and iOS then open the page by themselves and use the

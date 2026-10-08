@@ -79,8 +79,9 @@ hand-over point for Nextcloud sync, Komoot/Strava etc.
   jumps around a standing position don't count, see
   `bikelog.gpx.GpxStats.real_distance_m`).
 - `Debug_Archive/` -- everything else with a usable GPS fix: short test rides, a bike
-  standing on the trainer with jittering phone GPS. Nothing is lost, it just does not end
-  up in Nextcloud/Strava.
+  standing on the trainer with jittering phone GPS, and every [test session](#test-sessions)
+  however long (`gpx_status` `test`). Nothing is lost, it just does not end up in
+  Nextcloud/Strava/Komoot.
 
 Sessions without any usable GPS fix get no file at all (`gpx_status` `no-gps`),
 unreadable logs `error: …`.
@@ -182,6 +183,180 @@ off.
 Known gap: if a session is deleted (`DELETE /api/v1/sessions/{id}`), only the local copy
 disappears -- the Nextcloud copy stays and has to be removed by hand.
 
+## Test sessions
+
+Sessions with emulated data are recognised and kept apart from the rides
+([`bikelog/testride.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/bikelog/testride.py)):
+
+| Marker | Recognised by |
+|---|---|
+| **Simuliert** | `LOG_SIMULATED` in the log: the sensor simulator (`sim` on the serial console, simulator build) or a TrailBridge test ride (`SIM_FLAGS`, firmware since 2026-10-02) |
+| **GPS-Wiedergabe?** | older TrailBridge test rides without the flag: GPS travels at least 500 m, the wheel sensor less than 15 % of that. A real ride with a dead wheel sensor looks the same, hence the question mark |
+
+Test sessions are **hidden** in the ride list (and in `GET /api/v1/sessions`), the filter
+says how many; "Testfahrten zeigen" shows them with their marker. They do not count in
+training, recurring climbs or goals, go to `Debug_Archive/` and are never synchronised or
+offered for Komoot. The ride page says why a session counts as a test and has a button
+to overrule the detection in either direction ("Doch eine echte Fahrt", "Als Testfahrt
+markieren"; API: `POST /api/v1/sessions/{id}/test?mark=test|real|auto`).
+
+## Idle sessions and archive
+
+Every boot of the bike computer is a session, also when it was only switched on at home.
+A session in which the wheel stood and the position got nowhere (wheel < 50 m, all GPS
+fixes within 300 m), or which has no binary log at all or only an empty one (nothing but
+zero bytes), is **idle**
+([`bikelog/testride.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/bikelog/testride.py)).
+A log in an unknown format, on the other hand, stays in the list marked "Log unlesbar"
+(the hover text names the version byte found) and is not tried again for the report.
+Idle sessions never appear in the ride list (it links to them: "N Leerlauf-Sitzungen im
+Archiv") or in `GET /api/v1/sessions` (`idle=true` includes them), get no GPX and count
+nowhere.
+
+`BIKELOG_IDLE_ARCHIVE_DAYS` (default 7) days after they were fetched, their files move
+from `<data>/sessions/` to `<data>/archive/` (same tree) -- debug logs stay available
+with a shell
+([`archive.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/BikeLogService/bikelogservice/archive.py)).
+The index keeps a tombstone of them for as long as the files are still on the SD card,
+otherwise the next pull would fetch them again; the pull drops it once they are gone
+from the card's listing (this applies to deleted sessions as well).
+
+The page **Archiv** (`/archive`) lists idle sessions not yet archived and archived ones
+still on the card. "Auf dem BC löschen" (one session, or all) deletes their files on the
+bike computer right away through the firmware's `/del/` endpoint -- only while it is
+reachable; nothing is queued. A session whose files are all gone from the card is moved
+to the archive and dropped from the index. API: `POST /api/v1/archive/device-delete`
+(`session_id`, all if omitted; 409 when the device is not reachable).
+
+## Bikes
+
+The page **Räder** (`/bikes`) holds the bikes -- name, type, weight ready to ride, CdA,
+Crr -- and which bike computer rides on which bike from which day on
+([`bikelog/bikes.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/bikelog/bikes.py),
+stored in `<data>/bikes.json`). A session gets the bike its device was assigned to on the
+day of the ride; on the ride page one ride can be given another bike. The power estimate
+of the report then uses rider weight (page **Fahrer**) + bike weight, and the bike's CdA
+and Crr; rides without a bike keep the rider page's defaults. Changing a bike or an
+assignment recomputes the reports concerned. The page shows the kilometres per bike.
+
+## Importing rides (GPX)
+
+"GPX-Fahrten importieren" on the ride list takes rides recorded elsewhere (Garmin, Strava,
+Komoot ...): GPX with times; heart rate, cadence and temperature from Garmin's
+TrackPointExtension are taken over, the gradient is smoothed over ±50 m
+([`bikelog/gpximport.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/bikelog/gpximport.py)).
+An imported ride is a session of the device `import` (the log made from it next to the
+original GPX) and counts like any other ride -- report, training, climbs -- but is neither
+exported nor uploaded. Optionally with a bike and as an **earlier edition of a goal**: the
+goal then lists "Deine bisherigen Teilnahmen" with time, speed, heart rate, power and TRIMP.
+Importing the same file again replaces the session. API: `PUT /api/v1/import/gpx`
+(`bike_id`, `event_id`, body = the file).
+
+## Session report
+
+`/ride/{id}` (click on a ride in the list) shows the report of a session: key figures,
+elevation profile with the climbs, heart-rate zones, estimated power, road quality and
+shocks, technical findings. `GET /api/v1/sessions/{id}/report.md` is the same as German
+Markdown, `…/report.json` the figures behind it. All of it comes from
+[`bikelog/report.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/bikelog/report.py)
+(details: [tools](TOOLS.md#session-report)).
+
+Reports are kept in the `reports` table of the index, under a key made of the report
+version, the hash of the `L_` file and the rider data. After a pull (and at start) the
+service computes whatever is missing or stale, at the lowest CPU priority
+([`analysis.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/BikeLogService/bikelogservice/analysis.py)).
+A new report version or changed rider data therefore reach every past ride by themselves.
+
+Rider data for heart-rate zones, TRIMP and W/kg are entered on the page **Fahrer**
+(`/athlete`) and end up in `<data>/athlete.json` (other path: `BIKELOG_ATHLETE_FILE`).
+Every key is optional; without the file the report simply has no zones:
+
+```json
+{"hr_max": 186, "hr_rest": 48, "mass_kg": 88, "rider_kg": 76, "cda": 0.38, "crr": 0.006}
+```
+
+The JSON is meant as the input for a text generator (template or local LLM): every
+number is computed there, a model only has to put it into words -- see
+[the ride in words](#the-ride-in-words-local-llm).
+
+## The ride in words (local LLM)
+
+With `BIKELOG_LLM_URL` set (an [Ollama](https://ollama.com) server, e.g.
+`http://localhost:11434`) the ride page gets a section **In Worten**: two or three
+paragraphs on what kind of ride it was, how load and heart rate compare with the recent
+rides, whether that fits the training phase of the next goal, and technical warnings.
+Everything stays on the home server.
+
+- The model only puts figures into words. The prompt
+  ([`bikelog/narrate.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/bikelog/narrate.py)) gives it labelled lines with spelled-out
+  units and their meaning ("Höhenmeter bergauf: 480 m", "Form (TSB): -12 (negativ =
+  ermüdet)"), plus the comparison with the rides of the 42 days before, the load on the
+  morning of the ride and the next goal with its phase -- no abbreviations, nothing to
+  compute. (In the first test qwen3:8b read "480 hm" as hectometres and added them to the
+  distance.)
+- Every number in the answer that is not in the prompt (allowing for rounding) is listed
+  under the text: not proof of a mistake, a reason to look.
+- Thinking is switched off (`"think": false`): qwen3 otherwise reasons for several hundred
+  tokens first -- minutes on a CPU.
+- Texts are written in the background after the reports, newest ride first, one at a time
+  ([`llm.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/BikeLogService/bikelogservice/llm.py)), and kept in the table
+  `narratives`. A ride without a text always gets one; if its facts change (new goal,
+  another bike, new prompt) it is rewritten only for rides of the last
+  `BIKELOG_LLM_REFRESH_DAYS`. **Neu schreiben** on the page writes it again, before any other.
+  Test sessions and rides under 1 km get none.
+
+On the Orange Pi 5 (16 GB, CPU only) `qwen3:8b` writes about 2.7 tokens/s, a text takes
+2--4 minutes. A 14B model needs about 9 GB while loading (Ollama repacks the weights for
+the ARM CPU) -- with other services on the machine that ends in the OOM killer. Recommended
+Ollama settings (`sudo systemctl edit ollama`):
+
+```ini
+[Service]
+Nice=10
+OOMScoreAdjust=500
+Environment=OLLAMA_NUM_PARALLEL=1
+Environment=OLLAMA_CONTEXT_LENGTH=4096
+Environment=OLLAMA_FLASH_ATTENTION=1
+Environment=OLLAMA_KV_CACHE_TYPE=q8_0
+```
+
+## Training, goals, climbs
+
+The web pages are in the bike computer's Rim & Ridge design
+([design system](design/rim-ridge-design-system.md)). Besides the ride list and the ride
+report there are:
+
+| Page | Content |
+|---|---|
+| **Training** (`/training`) | fitness (CTL, 42-day mean of the TRIMP), fatigue (ATL, 7 days) and form (TSB) over time; kilometres and hours per heart-rate zone per week; weekly table. Needs `hr_max`, rides without heart rate count as 0 |
+| **Ziele** (`/goals`) | target events with date and priority (A/B/C), countdown and training phase (base, build, peak, taper); upload the course as GPX (button in the goal, or right away in the form for a new one) for distance, elevation and climbs. Compared with the last 6 weeks: longest ride against the race distance, biggest weekly elevation against the race's; for every climb of the course an estimated time from the best VAM on comparable climbs of the last 90 days |
+| **Anstiege** (`/climbs`) | climbs ridden more than once (foot and summit at most 150 m apart, needs GPS), every effort with time, gap to the best, VAM, heart rate, power |
+| **Fahrer** (`/athlete`) | rider data, see above |
+
+Code: [`bikelog/training.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/bikelog/training.py)
+(pure, works on the report JSON only, tests `tests/test_training.py`), pages in
+[`webui.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/BikeLogService/bikelogservice/webui.py)
+and [`charts.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/BikeLogService/bikelogservice/charts.py)
+(SVG on the server, no JS library), tests `tests/test_pages.py`. Target events live in
+`<data>/events.json`, their GPX files in `<data>/events/`.
+
+### One ride, several sessions
+
+When the bike computer reboots on the way, one ride becomes several sessions. Sessions of
+the same device whose gap (end of one to start of the next) is at most
+`BIKELOG_KOMOOT_MERGE_GAP_S` (30 min) are one ride -- the same grouping as for the Komoot
+upload
+([`tours.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/BikeLogService/bikelogservice/tours.py)).
+Training, goals and climbs count the ride, its report runs over the joined records (the
+distance continues, the reboot is a stop). The ride list marks the parts ("Teil 1/2"),
+the session page links to the report of the whole ride (`/tour/{id}`). This relies on the
+times: after a reset without clock the firmware takes the GPS time from TrailBridge and
+corrects the timestamps written before; a session that never got a time (no WLAN, no
+TrailBridge) stays on its own. Test and idle sessions never join a ride.
+
+The pages load the fonts from Google Fonts; without internet the browser falls back to
+system fonts.
+
 ## Installation (home server: `~/bikelog`)
 
 ```bash
@@ -252,11 +427,20 @@ Environment variables (in the service: `~/bikelog/bikelog.env`):
 | `BIKELOG_KOMOOT_MERGE_GAP_S` | `1800` | sessions of the same device with at most this much pause between them count as one interrupted ride |
 | `BIKELOG_NEXTCLOUD_URL` / `_USER` / `_PASSWORD` | -- | Nextcloud login (app password); without all three the sync is off |
 | `BIKELOG_NEXTCLOUD_DIR` | `BikeLog` | target directory (WebDAV path, created if needed) |
+| `BIKELOG_ATHLETE_FILE` | `<data>/athlete.json` | rider data for the session report |
+| `BIKELOG_IDLE_ARCHIVE_DAYS` | `7` | idle sessions to `archive/` after this many days, 0 = never |
+| `BIKELOG_LLM_URL` | -- | Ollama server for the ride in words; unset = off |
+| `BIKELOG_LLM_MODEL` | `qwen3:8b` | Ollama model |
+| `BIKELOG_LLM_TIMEOUT_S` | `1800` | longest wait for one answer |
+| `BIKELOG_LLM_REFRESH_DAYS` | `14` | texts whose facts changed are rewritten for rides of this many days only |
 
-Both variants of the bike computer (gravel and Forumslader) announce themselves as
-`TRGB-BC` today -- the service cannot tell them apart and stores everything under one
-device. Remedy as soon as both are in the same network: an mDNS name of its own per
-variant or a `device` field in `/logfiles.json`.
+Several bike computers: each build variant has a network name of its own (mDNS host and
+default hotspot SSID, `BC_HOSTNAME` in `platformio.ini`): the gravel build `TRGB-BC`, the
+Forumslader build `TRGB-FL`; changeable on the bike computer's page `/wifi`
+([WiFi](WIFI.md#device-name)). One pull target per bike computer, e.g.
+`BIKELOG_PULL_TARGETS=trgb=TRGB-BC,pendler=TRGB-FL`; the part before `=` is the device name
+the sessions are filed under and that bikes are assigned to (see [bikes](#bikes)). Keep the
+name of an existing target, the stored sessions are filed under it.
 
 ## API (v1)
 
@@ -264,11 +448,19 @@ variant or a `device` field in `/logfiles.json`.
 |---|---|---|
 | `GET` | `/` | list of rides (HTML) |
 | `GET` | `/api/v1/health` | reachability + number of sessions |
-| `GET` | `/api/v1/sessions` | list (`limit`, `offset`), newest first |
+| `GET` | `/api/v1/sessions` | list (`limit`, `offset`, `tests`: include test sessions, `idle`: include idle sessions), newest first |
 | `GET` | `/api/v1/sessions/{id}` | session with files, key figures, `I_` statistics |
 | `GET` | `/api/v1/sessions/{id}.gpx` | GPX as in the export (`max_fix_age_ms`, `segment_gap_s`, `ele`, `max_accuracy_m`, `shocks`, `labels`, `rich`) |
 | `GET` | `/api/v1/sessions/{id}.csv` | CSV (`with_gps`) |
 | `GET` | `/api/v1/sessions/{id}/files/{name}` | one file unchanged |
+| `GET` | `/api/v1/sessions/{id}/report.json` | key figures of the session, see [session report](#session-report) |
+| `GET` | `/api/v1/sessions/{id}/report.md` | the same as a German Markdown report |
+| `POST` | `/api/v1/sessions/{id}/test` | overrule the test detection (`mark=test|real|auto`) |
+| `POST` | `/api/v1/archive/device-delete` | delete idle/archived sessions on the bike computer now (`session_id`) |
+| `PUT` | `/api/v1/import/gpx` | import a recorded ride (`bike_id`, `event_id`; body = GPX) |
+| `GET` | `/api/v1/training` | daily load (TRIMP, CTL, ATL, TSB), weeks, recurring climbs (`days`, `weeks`) |
+| `GET` | `/api/v1/events` | target events with readiness |
+| `PUT` | `/api/v1/events/{id}/gpx` | course GPX of a target event (body = file) |
 | `DELETE` | `/api/v1/sessions/{id}` | delete the files, keep the tombstone |
 | `POST` | `/api/v1/sessions/{id}/komoot` | upload as part of its tour (`force`), see above |
 | `POST` | `/api/v1/sessions/{id}/komoot/ignore` | answer the page's question with "no" (`ask_again=true`: ask again) |

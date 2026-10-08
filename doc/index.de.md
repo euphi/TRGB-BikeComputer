@@ -87,6 +87,19 @@ vergessen), Höhenkalibrierung, IMU-Kalibrierung, Neustart und Ausschalten.
 - Python-[Werkzeuge](TOOLS.md), die Logs in CSV und GPX umwandeln, und ein
   [Dienst](LOGSERVICE.md), der die Sitzungen abholt, sobald der Fahrradcomputer im WLAN
   auftaucht, sie archiviert, GPX exportiert, mit Nextcloud abgleicht und zu Komoot hochlädt
+- Sitzungsbericht: alle Kennzahlen einer Fahrt (Anstiege, Pulszonen, TRIMP, geschätzte
+  Leistung, Wegequalität, Sensor-Aussetzer und andere technische Auffälligkeiten) als
+  Webseite, Markdown oder JSON; auf Wunsch auch in Worten, geschrieben von einem lokalen LLM
+  (Ollama) auf dem Heimserver, mit Prüfung jeder Zahl, die es verwendet
+- Trainingsauswertung im Log-Dienst, im Rim-&-Ridge-Design: Fitness, Ermüdung und Form im
+  Verlauf, Wochen nach Pulszonen, Zielrennen mit Countdown, Trainingsphase und den
+  Anstiegen der Strecke, Bestzeiten auf wiederkehrenden Anstiegen
+- Testfahrten (Sensor-Simulator, GPX-Testfahrt von TrailBridge) werden erkannt, markiert und
+  aus Fahrtenliste, Training, Nextcloud und Komoot herausgehalten; Leerlauf-Sitzungen (an, aber
+  nicht gefahren) werden archiviert und lassen sich vom Dienst aus auf dem BC löschen
+- Räder mit Gewicht und Aerodynamik, den Fahrradcomputern nach Datum zugeordnet (mehrere
+  Fahrradcomputer im selben Netz: `TRGB-BC`, `TRGB-FL`); anderswo aufgezeichnete Fahrten als
+  GPX importieren, auch als frühere Teilnahmen an einem Ziel
 
 **Web-Oberfläche** (im WLAN)
 

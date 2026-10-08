@@ -91,6 +91,11 @@ public:
 	WifiCfg::Result removeNetwork(const char* ssid);
 	WifiCfg::Result moveNetwork(const char* ssid, int delta);		// -1 = higher priority
 	WifiCfg::Result setAccessPoint(const char* ssid, const char* password);
+	// Network name (mDNS <name>.local, DHCP host name); default WifiCfg::DEFAULT_HOSTNAME.
+	// setHostname() stores it and re-announces mDNS from checkLoop(); the DHCP name follows
+	// with the next connect.
+	void getHostname(char* out, size_t len);
+	WifiCfg::Result setHostname(const char* name);
 	// Display: the NVS write needs more stack than the UI task has (doc/PITFALLS.md), so this
 	// stores the network in a task of its own and then starts the autoconnect.
 	bool addNetworkAsync(const char* ssid, const char* password);
@@ -123,6 +128,8 @@ private:
 	// --- network list ---------------------------------------------------------------
 	SemaphoreHandle_t cfgMutex = nullptr;	// guards cfg, scan cache and status; never call ui.* while holding it
 	WifiCfg::Config cfg;
+	char host[WifiCfg::HOSTNAME_MAX + 1] = "";	// guarded by cfgMutex
+	std::atomic<bool> hostChanged{false};		// set by setHostname(), handled by checkLoop()
 	void loadConfig();
 	void saveConfigLocked();				// NVS write, cfgMutex held
 

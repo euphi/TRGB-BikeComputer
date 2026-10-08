@@ -3,6 +3,7 @@
 record.py      read (and write) the binary records (src/LogRecords.h)
 csvexport.py   records -> CSV: ride data, road-quality intervals, shocks, manual labels
 gpx.py         records -> GPX 1.1 with Garmin TrackPointExtension, shocks as waypoints
+report.py      records -> all key figures of a session (JSON) and a Markdown report
 fixtures.py    build synthetic .bin logs for testing without hardware
 """
 

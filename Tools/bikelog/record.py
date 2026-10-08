@@ -657,9 +657,12 @@ def detect_format(head: bytes) -> Format:
     """Pick the format whose version byte matches the start of a log file."""
     if len(head) > VERSION_OFFSET and head[VERSION_OFFSET] in FORMATS:
         return FORMATS[head[VERSION_OFFSET]]
+    if len(head) <= VERSION_OFFSET:
+        raise UnknownLogFormat("file too short for one record (%d byte)" % len(head))
     raise UnknownLogFormat(
-        "no format in bikelog.record.FORMATS matches this file. If the firmware "
-        "bumped LogRec::FORMAT_VERSION (src/LogRecords.h), add the new layouts there."
+        "no format in bikelog.record.FORMATS matches this file (version byte %d). If the "
+        "firmware bumped LogRec::FORMAT_VERSION (src/LogRecords.h), add the new layouts there."
+        % head[VERSION_OFFSET]
     )
 
 

@@ -72,6 +72,7 @@ python3 -m bikelog info -i /path/L0001.bin          # overview of a log
 python3 -m bikelog csv  -i /path/L0001.bin -o out.csv [--gps] [--roadq]
 python3 -m bikelog csv  -i /path/L0001.bin -o out.csv --roadq-out roads.csv --shocks-out shocks.csv --labels-out labels.csv
 python3 -m bikelog gpx  -i /path/L0001.bin -o tour.gpx [--no-shocks] [--min-severity 2]
+python3 -m bikelog report -i /path/L0001.bin [--json] [--athlete athlete.json] [-o report.md]
 ./ReadTachoBin.py -i /path/L0001.bin -o out.csv     # as before
 ```
 
@@ -109,6 +110,30 @@ Every run reports what was discarded:
 ```
 195/243 Punkte in 2 Segment(en), 20 verworfen (ohne Fix), 25 verworfen (veraltet)
 ```
+
+### Session report
+
+`bikelog report` computes all key figures of a session; `--json` outputs them as JSON
+(the input for a text generator, template or LLM), without it a German Markdown report is
+printed. Code: [`bikelog/report.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/bikelog/report.py),
+tests: `tests/test_report.py`.
+
+| Section | Content |
+|---|---|
+| `meta` | time span, format, record counts, clock; `test`: test session (simulator flag or GPS playback suspected, see the [log service](LOGSERVICE.md#test-sessions)) |
+| `ride` | distance, moving time, speeds, elevation, stops (a logging gap counts as a stop: the device sleeps), temperature, cadence and share of pedalling |
+| `climbs` | climbs in the barometric profile with the firmware's criteria and categories ([climbs](CLIMB.md)): length, height, mean/max. gradient, time, VAM, heart rate, power, position of foot and summit; `--hills` also lists hills below category 6 |
+| `profile` | barometric elevation profile (`[km, m]`, at most 300 points) for charts |
+| `heart` | mean/max., coverage, time in zones, TRIMP (Banister with `hr_rest`, else Edwards), aerobic decoupling (power/heart rate, first against second half, from 40 min), efficiency W/bpm |
+| `power` | **estimated** from speed, gradient, mass, CdA and Crr, without wind: mean, normalised power, work, best 1/5/20/60 min, W/kg with `rider_kg` -- for comparing rides, not a measurement |
+| `road` | road classes, manual labels against the automatic class, shocks by severity, the five hardest with position |
+| `health` | heart-rate dropouts, wheel sensor against GPS (dropouts, wheel circumference), GPS freshness and accuracy, baro against GPS altitude (offset, drift), lost records (gaps in the numbering), cut-off file, unset clock, simulator, IMU flags; plus `findings`, a list of everything that stood out |
+
+`--athlete` takes a JSON file with rider data, all optional: `hr_max`, `hr_rest`,
+`mass_kg` (rider + bike, default 85), `rider_kg`, `cda` (0.40), `crr` (0.006),
+`drivetrain` (0.97), `zones_pct` (upper bounds of zones 1-4 in % of `hr_max`, default
+60/70/80/90), `trimp_b` (1.92). Times within the ride are seconds since its start (`t_s`),
+positions trip kilometres (`km`).
 
 ### Raw data of the accelerometer
 

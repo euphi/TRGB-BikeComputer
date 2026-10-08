@@ -75,8 +75,23 @@ def settings(tmp_path):
                     nextcloud_dir="Rides/BikeLog")
 
 
+class _NoThread:
+    """The app syncs in a background thread after every upload; these tests call
+    sync_pending() themselves and count what it did -- with the thread racing them the
+    count would depend on who came first."""
+
+    def __init__(self, *args, **kwargs):
+        pass
+
+    def start(self):
+        pass
+
+
 @pytest.fixture
-def client(settings):
+def client(settings, monkeypatch):
+    import bikelogservice.app as app_module
+    # only the app module's name "threading" -- the real module stays as it is
+    monkeypatch.setattr(app_module, "threading", types.SimpleNamespace(Thread=_NoThread))
     with TestClient(create_app(settings)) as client:
         yield client
 

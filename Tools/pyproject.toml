@@ -9,7 +9,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bikelog"
-version = "2.1.0"
+version = "2.2.0"
 description = "TRGB-BikeComputer log tools and log service"
 requires-python = ">=3.10"
 dependencies = []

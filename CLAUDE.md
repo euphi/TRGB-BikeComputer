@@ -139,6 +139,35 @@ Mobilfunk); danach das Netz mit `cmd wifi forget-network <id>` wieder vergessen.
   aus dem Repo): holt Sitzungen per mDNS-Trigger vom BC ab (`/logfiles/` bzw.
   `/logfiles.json` + `/log/...`). Ändert sich das Namensschema auf der SD
   oder die HTML-Liste, `bikelogservice/sdlayout.py`/`puller.py` mitziehen.
+- Auswertung: `bikelog/report.py` (Kennzahlen einer Sitzung als JSON, `bikelog report`),
+  `bikelog/training.py` (Trainingslast, Wochen, Zielrennen, wiederkehrende Anstiege; arbeitet
+  nur auf dem Bericht-JSON, nie auf dem Binärformat). Im Dienst: Bericht-Cache und
+  Hintergrundberechnung `analysis.py`, Seiten im Rim-&-Ridge-Design `webui.py` + `charts.py`
+  (SVG auf dem Server). Ändert sich ein Feld des Bericht-JSON, `REPORT_VERSION` erhöhen --
+  das berechnet alle gespeicherten Berichte neu.
+- Fahrt in Worten (lokales LLM, Ollama, `BIKELOG_LLM_URL`): Prompt und Zahlen-Prüfung
+  `bikelog/narrate.py` (beschriftete Fakten mit ausgeschriebenen Einheiten, Modell rechnet
+  nichts), Hintergrund-Worker `bikelogservice/llm.py`, Tabelle `narratives`. Ändert sich der
+  Prompt, `PROMPT_VERSION` erhöhen.
+- Testfahrten: `bikelog/testride.py` (Sim-Flag `LOG_SIMULATED` oder GPS bewegt sich ohne
+  Radsensor), im Index `sessions.test_kind` + `test_override` (Nutzer-Urteil), SQL `TEST_SQL`.
+  Testfahrten sind in Liste und API ausgeblendet, zählen nicht im Training, gehen nach
+  `Debug_Archive` (Status `test`), also nie nach Nextcloud/Komoot.
+- Leerlauf-Sitzungen (`testride.idle()`, Spalte `sessions.idle`, auch Sitzungen ohne `L_`):
+  nie gelistet, kein GPX, nach `BIKELOG_IDLE_ARCHIVE_DAYS` nach `<data>/archive/`
+  (`archive.py`). Der Grabstein im Index bleibt, bis die Dateien nicht mehr in der Liste der
+  SD-Karte stehen (`Storage.purge_gone()` beim Abruf). Löschen auf dem BC nur sofort über
+  `/del/` der Firmware (`Puller.delete_files()`), nie vorgemerkt.
+- Neustart unterwegs: Sitzungen mit Abstand <= `komoot_merge_gap_s` sind eine Fahrt
+  (`tours.py`, auch für Komoot). Training rechnet pro Fahrt, Bericht über die verbundenen
+  Sätze (`analysis.tour_report_for()`, Tabelle `tour_reports`), Seite `/tour/{id}`.
+- Gerät = Abhol-Ziel des Dienstes; Netzwerkname: Standard je Build-Variante (`BC_HOSTNAME`:
+  `TRGB-BC`, FL `TRGB-FL`, `src/WifiConfig.h`), änderbar auf `/wifi` (NVS `WifiSettings/host`,
+  `WifiWebserver::setHostname()`, mDNS neu aus `checkLoop()`). Räder und Zuordnung Gerät → Rad ab Datum:
+  `bikelog/bikes.py`, `<data>/bikes.json`, Seite `/bikes`; Sitzungs-Override `sessions.bike_id`.
+  Der Bericht rechnet mit Fahrer + Rad (`bikes.effective_athlete()`, im Cache-Schlüssel).
+- GPX-Import (`bikelog/gpximport.py`, `importer.py`): Sitzungen des Geräts `import`, nie
+  exportiert; optional als frühere Teilnahme eines Ziels (`Event.participations`).
 
 ## Anstiege (Höhenprofil)
 

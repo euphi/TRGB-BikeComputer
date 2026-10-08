@@ -76,7 +76,8 @@ def test_files_of_one_session_are_grouped(client, ride_bytes):
     _put(client, b"debug\n", "20260920/D_143012.log")
     _put(client, b"\x01" * 64, "20260920/R_143012_01.bin")
     _put(client, b"other\n", "20260920/D_150000.log")
-    listed = client.get(API + "/sessions").json()
+    assert client.get(API + "/sessions").json()["total"] == 1      # D_150000 alone: idle
+    listed = client.get(API + "/sessions", params={"idle": True}).json()
     assert listed["total"] == 2
     ours = next(s for s in listed["sessions"] if s["stem"] == "_143012")
     assert sorted(f["name"] for f in ours["files"]) == \
@@ -233,6 +234,21 @@ def test_csv_export(client, ride_bytes):
     assert "GPS_Lat" in with_gps.splitlines()[0]
 
 
+def test_report(client, settings, ride_bytes):
+    sid = _session_id(client, ride_bytes)
+    body = client.get(f"{API}/sessions/{sid}/report.json").json()
+    assert body["ride"]["distance_km"] > 0
+    assert body["heart"]["zones_s"] is None                 # no athlete.json yet
+    settings.athlete_path.write_text('{"hr_max": 190, "hr_rest": 50}')
+    body = client.get(f"{API}/sessions/{sid}/report.json").json()
+    assert body["heart"]["trimp_method"] == "banister"
+    md = client.get(f"{API}/sessions/{sid}/report.md")
+    assert md.headers["content-type"].startswith("text/markdown")
+    assert md.text.startswith("# Sitzungsbericht")
+    settings.athlete_path.write_text('{"hr_maximum": 190}')
+    assert client.get(f"{API}/sessions/{sid}/report.json").status_code == 500
+
+
 def test_raw_download_returns_the_exact_bytes(client, ride_bytes):
     sid = _session_id(client, ride_bytes)
     assert client.get(f"{API}/sessions/{sid}/files/L_143012.bin").content == ride_bytes
@@ -269,14 +285,14 @@ def test_index_page(client, ride_bytes):
     _put(client, SUMMARY, "20260920/I_143012.txt")
     page = client.get("/")
     assert page.status_code == 200
-    assert "23.5 km" in page.text
+    assert "23,5</span> km" in page.text
     assert f"{API}/sessions/1.gpx" in page.text
 
 
 def test_index_page_distance_filter(client, ride_bytes):
     _put(client, ride_bytes)
-    assert "No sessions match" not in client.get("/").text
-    assert "No sessions match" in client.get("/", params={"min_km": 100}).text
+    assert "Keine Fahrten" not in client.get("/").text
+    assert "Keine Fahrten" in client.get("/", params={"min_km": 100}).text
     filtered = client.get("/", params={"min_km": 1, "max_km": 5})
     assert 'value="1"' in filtered.text and 'value="5"' in filtered.text
 
@@ -450,12 +466,40 @@ def test_every_route_requires_a_token_once_auth_is_on(tmp_path, ride_bytes):
             ("GET", f"{API}/sessions/{sid}.gpx"),
             ("GET", f"{API}/sessions/{sid}.csv"),
             ("GET", f"{API}/sessions/{sid}/files/L_143012.bin"),
+            ("GET", f"{API}/sessions/{sid}/report.json"),
+            ("GET", f"{API}/sessions/{sid}/report.md"),
+            ("GET", f"/ride/{sid}"),
+            ("GET", f"/tour/{sid}"),
+            ("GET", "/bikes"),
+            ("POST", "/bikes"),
+            ("POST", "/bikes/x/delete"),
+            ("POST", "/bikes/assign"),
+            ("POST", "/bikes/assign/delete"),
+            ("POST", f"/ui/sessions/{sid}/bike"),
+            ("PUT", f"{API}/import/gpx"),
+            ("POST", f"/goals/x/participations/{sid}/delete"),
+            ("GET", "/training"),
+            ("GET", "/goals"),
+            ("POST", "/goals"),
+            ("POST", "/goals/x/delete"),
+            ("GET", "/climbs"),
+            ("GET", "/athlete"),
+            ("POST", "/athlete"),
+            ("GET", f"{API}/training"),
+            ("GET", f"{API}/events"),
+            ("PUT", f"{API}/events/x/gpx"),
             ("PUT", f"{API}/devices/gravel/files/20260920/L_143012.bin"),
             ("DELETE", f"{API}/sessions/{sid}"),
             ("POST", f"{API}/sessions/{sid}/komoot"),
             ("POST", f"{API}/sessions/{sid}/komoot/ignore"),
             ("POST", f"/ui/sessions/{sid}/komoot"),
             ("POST", f"/ui/sessions/{sid}/komoot-ignore"),
+            ("POST", f"/ui/sessions/{sid}/test"),
+            ("POST", f"/ui/narrative/{sid}"),
+            ("POST", f"{API}/sessions/{sid}/test?mark=test"),
+            ("GET", "/archive"),
+            ("POST", "/ui/archive/device-delete"),
+            ("POST", f"{API}/archive/device-delete"),
             ("GET", f"{API}/pull"),
             ("POST", f"{API}/pull"),
         ]

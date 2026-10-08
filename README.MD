@@ -74,6 +74,19 @@ sensor), height calibration, IMU calibration, restart and power off.
   [service](doc/LOGSERVICE.md) that fetches the sessions when the bike
   computer shows up in the WiFi, archives them, exports GPX, syncs to Nextcloud and
   uploads to Komoot
+- Session report: all key figures of a ride (climbs, heart-rate zones, TRIMP, estimated
+  power, road quality, sensor dropouts and other technical findings) as a web page,
+  Markdown or JSON; optionally also in words, written by a local LLM (Ollama) on the home
+  server, with a check of every number it uses
+- Training analysis in the log service, in the Rim & Ridge design: fitness, fatigue and
+  form over time, weeks by heart-rate zone, target events with countdown, training phase
+  and the course's climbs, best times on recurring climbs
+- Test sessions (sensor simulator, TrailBridge GPX test ride) are recognised, marked and
+  kept out of the ride list, training, Nextcloud and Komoot; idle sessions (switched on,
+  no ride) are archived and can be deleted on the bike computer from the service
+- Bikes with weight and aerodynamics, assigned to the bike computers by date (several bike
+  computers in one network: `TRGB-BC`, `TRGB-FL`); rides recorded elsewhere imported as
+  GPX, also as earlier editions of a goal
 
 **Web interface** (when on WiFi)
 - Download, replay and delete log files; live log with adjustable log levels

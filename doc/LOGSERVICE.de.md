@@ -82,7 +82,9 @@ Fahrt) -- als Übergabestelle für Nextcloud-Sync, Komoot/Strava usw.
   siehe `bikelog.gpx.GpxStats.real_distance_m`).
 - `Debug_Archive/` -- alles andere mit verwertbarem GPS-Fix: kurze
   Testfahrten, ein am Rollentrainer stehendes Rad mit jitterndem
-  Telefon-GPS. Nichts geht verloren, es landet nur nicht in Nextcloud/Strava.
+  Telefon-GPS, und jede [Testfahrt](#testfahrten) unabhängig von der Länge
+  (`gpx_status` `test`). Nichts geht verloren, es landet nur nicht in
+  Nextcloud/Strava/Komoot.
 
 Sitzungen ganz ohne verwertbaren GPS-Fix bekommen gar keine Datei
 (`gpx_status` `no-gps`), unlesbare Logs `error: …`.
@@ -187,6 +189,182 @@ Bekannte Lücke: Wird eine Sitzung gelöscht (`DELETE /api/v1/sessions/{id}`),
 verschwindet nur die lokale Kopie -- die Nextcloud-Kopie bleibt liegen und
 muss von Hand entfernt werden.
 
+## Testfahrten
+
+Sitzungen mit emulierten Daten werden erkannt und von den Fahrten getrennt
+([`bikelog/testride.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/bikelog/testride.py)):
+
+| Markierung | Erkannt an |
+|---|---|
+| **Simuliert** | `LOG_SIMULATED` im Log: der Sensor-Simulator (`sim` auf der seriellen Konsole, Simulator-Build) oder eine TrailBridge-Testfahrt (`SIM_FLAGS`, Firmware seit 2.10.2026) |
+| **GPS-Wiedergabe?** | ältere TrailBridge-Testfahrten ohne Flag: GPS legt mindestens 500 m zurück, der Radsensor weniger als 15 % davon. Eine echte Fahrt mit ausgefallenem Radsensor sieht genauso aus, daher das Fragezeichen |
+
+Testfahrten sind in der Fahrtenliste (und in `GET /api/v1/sessions`) **ausgeblendet**, der
+Filter sagt, wie viele; „Testfahrten zeigen" blendet sie mit ihrer Markierung ein. Sie zählen
+nicht im Training, bei den Anstiegen und Zielen, landen in `Debug_Archive/` und werden nie
+synchronisiert oder für Komoot angeboten. Die Fahrtseite sagt, warum eine Sitzung als Test
+gilt, und hat einen Knopf, um die Erkennung in beide Richtungen zu überstimmen („Doch eine
+echte Fahrt", „Als Testfahrt markieren"; API: `POST /api/v1/sessions/{id}/test?mark=test|real|auto`).
+
+## Leerlauf-Sitzungen und Archiv
+
+Jeder Start des Fahrradcomputers ist eine Sitzung, auch wenn er nur zu Hause an war. Eine
+Sitzung, in der das Rad stand und die Position nirgendwohin kam (Rad < 50 m, alle GPS-Fixe
+innerhalb von 300 m), oder die gar kein oder nur ein leeres Binärlog hat (nur Nullbytes),
+ist **Leerlauf**
+([`bikelog/testride.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/bikelog/testride.py)).
+Ein Log in unbekanntem Format bleibt dagegen mit „Log unlesbar" in der Liste (der Hover-Text
+nennt das gefundene Versions-Byte) und wird für den Bericht nicht erneut versucht.
+Leerlauf-Sitzungen erscheinen nie in der Fahrtenliste (sie verweist darauf: „N
+Leerlauf-Sitzungen im Archiv") oder in `GET /api/v1/sessions` (`idle=true` schließt sie ein),
+bekommen kein GPX und zählen nirgends.
+
+`BIKELOG_IDLE_ARCHIVE_DAYS` (Standard 7) Tage nach dem Abholen wandern ihre Dateien von
+`<data>/sessions/` nach `<data>/archive/` (gleicher Baum) -- Debug-Logs bleiben mit der Shell
+erreichbar
+([`archive.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/BikeLogService/bikelogservice/archive.py)).
+Der Index behält einen Grabstein, solange die Dateien noch auf der SD-Karte liegen, sonst
+holt der nächste Abruf sie wieder; der Abruf entfernt ihn, sobald sie aus der Dateiliste der
+Karte verschwunden sind (das gilt auch für gelöschte Sitzungen).
+
+Die Seite **Archiv** (`/archive`) zeigt die noch nicht archivierten Leerlauf-Sitzungen und
+die archivierten, die noch auf der Karte liegen. „Auf dem BC löschen" (eine Sitzung oder alle)
+löscht ihre Dateien sofort auf dem Fahrradcomputer über den `/del/`-Endpunkt der Firmware --
+nur solange er erreichbar ist, es wird nichts vorgemerkt. Eine Sitzung, deren Dateien alle von
+der Karte sind, wandert ins Archiv und verschwindet aus dem Index. API:
+`POST /api/v1/archive/device-delete` (`session_id`, ohne = alle; 409, wenn das Gerät nicht
+erreichbar ist).
+
+## Räder
+
+Die Seite **Räder** (`/bikes`) führt die Räder -- Name, Typ, Gewicht fahrbereit, CdA, Crr --
+und welcher Fahrradcomputer ab welchem Tag an welchem Rad fährt
+([`bikelog/bikes.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/bikelog/bikes.py),
+gespeichert in `<data>/bikes.json`). Eine Sitzung bekommt das Rad, dem ihr Gerät am Fahrtag
+zugeordnet war; auf der Fahrtseite kann eine einzelne Fahrt ein anderes Rad bekommen. Die
+Leistungsschätzung des Berichts nimmt dann Körpergewicht (Seite **Fahrer**) + Radgewicht und
+CdA/Crr des Rads; Fahrten ohne Rad behalten die Standardwerte der Fahrer-Seite. Eine Änderung an
+Rad oder Zuordnung berechnet die betroffenen Berichte neu. Die Seite zeigt die Kilometer je Rad.
+
+## Fahrten importieren (GPX)
+
+„GPX-Fahrten importieren" in der Fahrtenliste nimmt anderswo aufgezeichnete Fahrten (Garmin,
+Strava, Komoot …): GPX mit Zeiten; Puls, Trittfrequenz und Temperatur aus Garmins
+TrackPointExtension werden übernommen, die Steigung über ±50 m geglättet
+([`bikelog/gpximport.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/bikelog/gpximport.py)).
+Eine importierte Fahrt ist eine Sitzung des Geräts `import` (das daraus gebaute Log neben der
+Original-GPX) und zählt wie jede andere Fahrt -- Bericht, Training, Anstiege --, wird aber weder
+exportiert noch hochgeladen. Optional mit Rad und als **frühere Teilnahme an einem Ziel**: Das
+Ziel zeigt dann „Deine bisherigen Teilnahmen" mit Zeit, Tempo, Puls, Leistung und TRIMP. Dieselbe
+Datei noch einmal ersetzt die Sitzung. API: `PUT /api/v1/import/gpx` (`bike_id`, `event_id`,
+Body = die Datei).
+
+## Sitzungsbericht
+
+`/ride/{id}` (Klick auf eine Fahrt in der Liste) zeigt den Bericht einer Sitzung: Kennzahlen,
+Höhenprofil mit den Anstiegen, Pulszonen, geschätzte Leistung, Wegequalität und Stöße,
+technische Auffälligkeiten. `GET /api/v1/sessions/{id}/report.md` ist dasselbe als Markdown,
+`…/report.json` die Zahlen dahinter. Alles kommt aus
+[`bikelog/report.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/bikelog/report.py)
+(Details: [Werkzeuge](TOOLS.md#sitzungsbericht)).
+
+Die Berichte liegen in der Tabelle `reports` des Index, unter einem Schlüssel aus
+Berichtsversion, Hash der `L_`-Datei und Fahrerdaten. Nach dem Abholen (und beim Start)
+berechnet der Dienst, was fehlt oder veraltet ist, mit niedrigster CPU-Priorität
+([`analysis.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/BikeLogService/bikelogservice/analysis.py)).
+Eine neue Berichtsversion oder geänderte Fahrerdaten erreichen so von selbst alle alten Fahrten.
+
+Fahrerdaten für Pulszonen, TRIMP und W/kg werden auf der Seite **Fahrer** (`/athlete`)
+eingetragen und landen in `<data>/athlete.json` (anderer Pfad: `BIKELOG_ATHLETE_FILE`).
+Jeder Schlüssel ist optional; ohne die Datei hat der Bericht einfach keine Zonen:
+
+```json
+{"hr_max": 186, "hr_rest": 48, "mass_kg": 88, "rider_kg": 76, "cda": 0.38, "crr": 0.006}
+```
+
+Das JSON ist als Eingabe für einen Textgenerator gedacht (Vorlage oder lokales LLM): Alle
+Zahlen werden dort berechnet, ein Modell muss sie nur noch in Worte fassen -- siehe
+[die Fahrt in Worten](#die-fahrt-in-worten-lokales-llm).
+
+## Die Fahrt in Worten (lokales LLM)
+
+Mit `BIKELOG_LLM_URL` (ein [Ollama](https://ollama.com)-Server, z. B.
+`http://localhost:11434`) bekommt die Fahrtseite einen Abschnitt **In Worten**: zwei, drei
+Absätze dazu, was für eine Fahrt das war, wie Belastung und Puls zu den letzten Fahrten
+stehen, ob das zur Trainingsphase des nächsten Ziels passt, und technische Warnungen. Alles
+bleibt auf dem Heimserver.
+
+- Das Modell fasst nur Zahlen in Worte. Der Prompt
+  ([`bikelog/narrate.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/bikelog/narrate.py)) gibt ihm beschriftete Zeilen mit
+  ausgeschriebenen Einheiten und ihrer Bedeutung („Höhenmeter bergauf: 480 m“, „Form (TSB):
+  -12 (negativ = ermüdet)“), dazu den Vergleich mit den Fahrten der 42 Tage davor, die
+  Belastung am Morgen der Fahrt und das nächste Ziel mit seiner Phase -- keine Abkürzungen,
+  nichts zu rechnen. (Im ersten Test las qwen3:8b „480 hm“ als Hektometer und zählte sie zur
+  Strecke.)
+- Jede Zahl der Antwort, die nicht im Prompt steht (Rundung erlaubt), steht unter dem Text:
+  kein Beweis für einen Fehler, ein Grund hinzusehen.
+- Das Denken ist abgeschaltet (`"think": false`): qwen3 überlegt sonst erst mehrere hundert
+  Tokens lang -- auf der CPU Minuten.
+- Die Texte entstehen im Hintergrund nach den Berichten, neueste Fahrt zuerst, einer nach dem
+  anderen ([`llm.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/BikeLogService/bikelogservice/llm.py)), und liegen in der Tabelle
+  `narratives`. Eine Fahrt ohne Text bekommt immer einen; ändern sich ihre Fakten (neues Ziel,
+  anderes Rad, neuer Prompt), wird er nur für Fahrten der letzten `BIKELOG_LLM_REFRESH_DAYS`
+  neu geschrieben. **Neu schreiben** auf der Seite schreibt ihn neu, vor allen anderen.
+  Testfahrten und Fahrten unter 1 km bekommen keinen.
+
+Auf dem Orange Pi 5 (16 GB, nur CPU) schreibt `qwen3:8b` etwa 2,7 Tokens/s, ein Text dauert
+2--4 Minuten. Ein 14B-Modell braucht beim Laden etwa 9 GB (Ollama packt die Gewichte für die
+ARM-CPU um) -- mit anderen Diensten auf der Maschine endet das beim OOM-Killer. Empfohlene
+Ollama-Einstellungen (`sudo systemctl edit ollama`):
+
+```ini
+[Service]
+Nice=10
+OOMScoreAdjust=500
+Environment=OLLAMA_NUM_PARALLEL=1
+Environment=OLLAMA_CONTEXT_LENGTH=4096
+Environment=OLLAMA_FLASH_ATTENTION=1
+Environment=OLLAMA_KV_CACHE_TYPE=q8_0
+```
+
+## Training, Ziele, Anstiege
+
+Die Webseiten sind im Rim-&-Ridge-Design des Fahrradcomputers gestaltet
+([Design-System](design/rim-ridge-design-system.md)). Neben der Fahrtenliste und dem
+Fahrtbericht gibt es:
+
+| Seite | Inhalt |
+|---|---|
+| **Training** (`/training`) | Fitness (CTL, 42-Tage-Mittel des TRIMP), Ermüdung (ATL, 7 Tage) und Form (TSB) im Verlauf; Kilometer und Stunden je Pulszone pro Woche; Wochentabelle. Braucht `hr_max`, Fahrten ohne Puls zählen als 0 |
+| **Ziele** (`/goals`) | Zielrennen mit Datum und Priorität (A/B/C), Countdown und Trainingsphase (Grundlage, Aufbau, Spitze, Tapering); die Strecke als GPX hochladen (Knopf im Ziel, oder gleich im Formular für ein neues) für Distanz, Höhenmeter und Anstiege. Verglichen mit den letzten 6 Wochen: längste Fahrt gegen die Renndistanz, meiste Wochenhöhenmeter gegen die des Rennens; für jeden Anstieg der Strecke eine geschätzte Zeit aus der besten VAM auf vergleichbaren Anstiegen der letzten 90 Tage |
+| **Anstiege** (`/climbs`) | mehrmals gefahrene Anstiege (Fuß und Gipfel höchstens 150 m auseinander, braucht GPS), jede Fahrt mit Zeit, Abstand zur besten, VAM, Puls, Leistung |
+| **Fahrer** (`/athlete`) | Fahrerdaten, siehe oben |
+
+Code: [`bikelog/training.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/bikelog/training.py)
+(rein, arbeitet nur auf dem Bericht-JSON, Tests `tests/test_training.py`), Seiten in
+[`webui.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/BikeLogService/bikelogservice/webui.py)
+und [`charts.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/BikeLogService/bikelogservice/charts.py)
+(SVG auf dem Server, keine JS-Bibliothek), Tests `tests/test_pages.py`. Die Zielrennen liegen in
+`<data>/events.json`, ihre GPX-Dateien in `<data>/events/`.
+
+### Eine Fahrt, mehrere Sitzungen
+
+Startet der Fahrradcomputer unterwegs neu, wird aus einer Fahrt mehrere Sitzungen.
+Sitzungen desselben Geräts, deren Abstand (Ende der einen bis Start der nächsten) höchstens
+`BIKELOG_KOMOOT_MERGE_GAP_S` (30 min) beträgt, sind eine Fahrt -- dieselbe Gruppierung wie
+für den Komoot-Upload
+([`tours.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/BikeLogService/bikelogservice/tours.py)).
+Training, Ziele und Anstiege zählen die Fahrt, ihr Bericht läuft über die verbundenen Daten
+(die Strecke läuft weiter, der Neustart ist ein Stopp). Die Fahrtenliste markiert die Teile
+(„Teil 1/2"), die Sitzungsseite verlinkt den Bericht der ganzen Fahrt (`/tour/{id}`). Das
+hängt an den Uhrzeiten: Nach einem Reset ohne Uhr übernimmt die Firmware die GPS-Zeit von
+TrailBridge und korrigiert die vorher geschriebenen Zeitstempel; eine Sitzung, die nie eine
+Uhrzeit bekam (kein WLAN, kein TrailBridge), bleibt für sich. Test- und Leerlauf-Sitzungen
+gehören nie zu einer Fahrt.
+
+Die Seiten laden die Schriften von Google Fonts; ohne Internet nimmt der Browser
+Systemschriften.
+
 ## Installation (Heimserver: `~/bikelog`)
 
 ```bash
@@ -257,11 +435,20 @@ Umgebungsvariablen (im Dienst: `~/bikelog/bikelog.env`):
 | `BIKELOG_KOMOOT_MERGE_GAP_S` | `1800` | Sitzungen desselben Geräts mit höchstens so viel Pause dazwischen gelten als eine unterbrochene Fahrt |
 | `BIKELOG_NEXTCLOUD_URL` / `_USER` / `_PASSWORD` | -- | Nextcloud-Login (App-Passwort); ohne alle drei ist der Sync aus |
 | `BIKELOG_NEXTCLOUD_DIR` | `BikeLog` | Zielverzeichnis (WebDAV-Pfad, wird bei Bedarf angelegt) |
+| `BIKELOG_ATHLETE_FILE` | `<data>/athlete.json` | Fahrerdaten für den Sitzungsbericht |
+| `BIKELOG_IDLE_ARCHIVE_DAYS` | `7` | Leerlauf-Sitzungen nach so vielen Tagen nach `archive/`, 0 = nie |
+| `BIKELOG_LLM_URL` | -- | Ollama-Server für die Fahrt in Worten; leer = aus |
+| `BIKELOG_LLM_MODEL` | `qwen3:8b` | Ollama-Modell |
+| `BIKELOG_LLM_TIMEOUT_S` | `1800` | längste Wartezeit auf eine Antwort |
+| `BIKELOG_LLM_REFRESH_DAYS` | `14` | Texte mit geänderten Fakten werden nur für Fahrten so vieler Tage neu geschrieben |
 
-Beide BC-Varianten (Gravel und FL) melden sich heute als `TRGB-BC` -- der
-Dienst kann sie nicht auseinanderhalten und legt alles unter einem Gerät ab.
-Abhilfe, sobald beide im selben Netz sind: eigener mDNS-Name je Variante oder
-ein `device`-Feld in `/logfiles.json`.
+Mehrere Fahrradcomputer: Jede Build-Variante hat einen eigenen Netzwerknamen (mDNS-Host und
+Standard-Hotspot-SSID, `BC_HOSTNAME` in `platformio.ini`): der Gravel-Build `TRGB-BC`, der
+Forumslader-Build `TRGB-FL`; änderbar auf der Seite `/wifi` des Fahrradcomputers
+([WLAN](WIFI.md#geratename)). Ein Abhol-Ziel je Fahrradcomputer, z. B.
+`BIKELOG_PULL_TARGETS=trgb=TRGB-BC,pendler=TRGB-FL`; der Teil vor `=` ist der Gerätename, unter
+dem die Sitzungen abgelegt und dem Räder zugeordnet werden (siehe [Räder](#rader)). Den Namen
+eines bestehenden Ziels beibehalten, die gespeicherten Sitzungen liegen darunter.
 
 ## API (v1)
 
@@ -269,11 +456,19 @@ ein `device`-Feld in `/logfiles.json`.
 |---|---|---|
 | `GET` | `/` | Fahrtenliste (HTML) |
 | `GET` | `/api/v1/health` | Erreichbarkeit + Anzahl Sitzungen |
-| `GET` | `/api/v1/sessions` | Liste (`limit`, `offset`), neueste zuerst |
+| `GET` | `/api/v1/sessions` | Liste (`limit`, `offset`, `tests`: Testfahrten, `idle`: Leerlauf-Sitzungen einschließen), neueste zuerst |
 | `GET` | `/api/v1/sessions/{id}` | Sitzung mit Dateien, Kennzahlen, `I_`-Statistik |
 | `GET` | `/api/v1/sessions/{id}.gpx` | GPX wie im Export (`max_fix_age_ms`, `segment_gap_s`, `ele`, `max_accuracy_m`, `shocks`, `labels`, `rich`) |
 | `GET` | `/api/v1/sessions/{id}.csv` | CSV (`with_gps`) |
 | `GET` | `/api/v1/sessions/{id}/files/{name}` | eine Datei unverändert |
+| `GET` | `/api/v1/sessions/{id}/report.json` | Kennzahlen der Sitzung, siehe [Sitzungsbericht](#sitzungsbericht) |
+| `GET` | `/api/v1/sessions/{id}/report.md` | dasselbe als Markdown-Bericht |
+| `POST` | `/api/v1/sessions/{id}/test` | Test-Erkennung überstimmen (`mark=test|real|auto`) |
+| `POST` | `/api/v1/archive/device-delete` | Leerlauf-/archivierte Sitzungen sofort auf dem BC löschen (`session_id`) |
+| `PUT` | `/api/v1/import/gpx` | aufgezeichnete Fahrt importieren (`bike_id`, `event_id`; Body = GPX) |
+| `GET` | `/api/v1/training` | Tageslast (TRIMP, CTL, ATL, TSB), Wochen, wiederkehrende Anstiege (`days`, `weeks`) |
+| `GET` | `/api/v1/events` | Zielrennen mit Stand der Vorbereitung |
+| `PUT` | `/api/v1/events/{id}/gpx` | Strecken-GPX eines Zielrennens (Body = Datei) |
 | `DELETE` | `/api/v1/sessions/{id}` | Dateien löschen, Grabstein behalten |
 | `POST` | `/api/v1/sessions/{id}/komoot` | zur zusammengehörigen Tour hochladen (`force`), siehe unten |
 | `POST` | `/api/v1/sessions/{id}/komoot/ignore` | die Frage der Seite mit „nein“ beantworten (`ask_again=true`: wieder fragen) |

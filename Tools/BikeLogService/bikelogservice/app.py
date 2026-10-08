@@ -14,22 +14,24 @@ API doc: http://<host>:8080/docs (FastAPI generates it from the routes)
 from __future__ import annotations
 
 import asyncio
+import datetime
 import io
 import re
 import threading
 from contextlib import asynccontextmanager
-from urllib.parse import urlencode
+from urllib.parse import parse_qs, urlencode
 
 from fastapi import Depends, FastAPI, HTTPException, Path, Query, Request, Response, status
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
+from fastapi.concurrency import run_in_threadpool
 
-from bikelog import csvexport
+from bikelog import bikes, csvexport, gpximport, report, training
 from bikelog.record import ReadStats
 
-from . import exporter, komoot, nextcloud, sdlayout, webui
+from . import analysis, archive, exporter, importer, llm, tours, komoot, nextcloud, sdlayout, webui
 from .auth import AuthDep, Principal
 from .config import Settings
-from .puller import Puller
+from .puller import DeviceUnavailable, Puller
 from .storage import Session, Storage
 
 API = "/api/v1"
@@ -42,9 +44,19 @@ def create_app(settings: Settings | None = None, puller: Puller | None = None) -
     if puller is None and settings.pull:
         puller = Puller(store, settings)
 
+    def _analyse(store: Storage) -> None:
+        # reports first (the pages need them), then the texts (minutes each)
+        analysis.refresh(store)
+        llm.refresh(store)
+
     def _export_and_sync(store: Storage) -> None:
         exporter.export_pending(store)
         nextcloud.sync_pending(store)
+        _analyse(store)
+
+    def _sync_and_analyse(store: Storage) -> None:
+        nextcloud.sync_pending(store)
+        _analyse(store)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -81,16 +93,104 @@ def create_app(settings: Settings | None = None, puller: Puller | None = None) -
     # ------------------------------------------------------------------
 
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
-    def index(min_km: float | None = Query(default=None, ge=0),
-             max_km: float | None = Query(default=None, ge=0),
+    def index(min_km: str | None = Query(default=None, max_length=20),
+             max_km: str | None = Query(default=None, max_length=20),
              msg: str | None = Query(default=None, max_length=300),
+             tests: bool = Query(default=False),
              principal: Principal = AuthDep, store: Storage = Depends(storage)):
-        min_m = min_km * 1000 if min_km is not None else None
-        max_m = max_km * 1000 if max_km is not None else None
-        sessions = store.list(limit=500, min_distance_m=min_m, max_distance_m=max_m)
+        # The filter form sends empty fields as "min_km=" -- that is "no bound", not an error.
+        min_km_v, max_km_v = _opt_km(min_km), _opt_km(max_km)
+        min_m = min_km_v * 1000 if min_km_v is not None else None
+        max_m = max_km_v * 1000 if max_km_v is not None else None
+        sessions = store.list(limit=500, min_distance_m=min_m, max_distance_m=max_m,
+                              tests=tests, idle=False)
+        hidden = 0 if tests else (store.count(min_m, max_m, idle=False)
+                                  - store.count(min_m, max_m, tests=False, idle=False))
         return webui.index(sessions, puller.as_dict() if puller else None,
-                           min_km=min_km, max_km=max_km,
-                           prompts=komoot.pending_prompts(store), message=msg)
+                           min_km=min_km_v, max_km=max_km_v,
+                           prompts=komoot.pending_prompts(store), message=msg,
+                           tests=tests, hidden_tests=hidden, idle=len(store.idle_sessions()),
+                           tours={s.id: (i + 1, len(g), g[0].id) for g in analysis.tours_of(store)
+                                  if len(g) > 1 for i, s in enumerate(g)},
+                           bike_names=_bike_names(store, sessions),
+                           registry=analysis.registry(store), events=analysis.events(store))
+
+    def _bike_names(store: Storage, sessions: list[Session]) -> dict[int, str]:
+        reg = analysis.registry(store)
+        out = {}
+        for s in sessions:
+            bike = analysis.bike_for(store, s, reg)
+            if bike:
+                out[s.id] = bike.name
+        return out
+
+    def _opt_km(value: str | None) -> float | None:
+        if value is None or not value.strip():
+            return None
+        try:
+            km = float(value.replace(",", "."))
+        except ValueError:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"not a distance: {value!r}")
+        if km < 0:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "distance must not be negative")
+        return km
+
+    # --- archive: idle sessions, deleting on the device ---
+
+    def _device_online() -> dict[str, bool]:
+        return {t["device"]: bool(t["online"]) for t in (puller.as_dict()["targets"] if puller else [])}
+
+    @app.get("/archive", response_class=HTMLResponse, include_in_schema=False)
+    def archive_page(msg: str | None = Query(default=None, max_length=500),
+                     principal: Principal = AuthDep, store: Storage = Depends(storage)):
+        return webui.archive_page(store.idle_sessions(), store.archived_sessions(),
+                                  settings.idle_archive_days, _device_online(),
+                                  pull_enabled=puller is not None, message=msg)
+
+    def _delete_on_device(store: Storage, sessions: list[Session]) -> tuple[int, list[str]]:
+        if puller is None:
+            raise DeviceUnavailable("pulling is disabled (BIKELOG_PULL) -- the device is unknown")
+        return archive.delete_on_device(store, puller, sessions)
+
+    def _deletable(store: Storage, session_id: int | None) -> list[Session]:
+        """Idle or archived sessions (only those may be deleted on the device from here)."""
+        candidates = store.idle_sessions() + store.archived_sessions()
+        if session_id is None:
+            return candidates
+        chosen = [s for s in candidates if s.id == session_id]
+        if not chosen:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "no idle or archived session with this id")
+        return chosen
+
+    @app.post("/ui/archive/device-delete", include_in_schema=False)
+    async def ui_device_delete(request: Request, principal: Principal = AuthDep,
+                               store: Storage = Depends(storage)):
+        form = await _form(request)
+        sid = int(form["id"]) if form.get("id", "").isdigit() else None
+        try:
+            # blocking mDNS lookup + HTTP to the device: not on the event loop
+            done, errors = await run_in_threadpool(
+                lambda: _delete_on_device(store, _deletable(store, sid)))
+            text = f"{done} Sitzung(en) auf dem BC gelöscht und archiviert."
+            if errors:
+                text += " Nicht gelöscht: " + "; ".join(errors[:3]) + (" …" if len(errors) > 3 else "")
+        except DeviceUnavailable as exc:
+            text = f"Nichts gelöscht: {exc}"
+        return RedirectResponse("/archive?" + urlencode({"msg": text}),
+                                status_code=status.HTTP_303_SEE_OTHER)
+
+    @app.post(API + "/archive/device-delete", tags=["sessions"])
+    def device_delete(session_id: int | None = Query(default=None,
+                                                     description="one idle/archived session; all if omitted"),
+                      principal: Principal = AuthDep, store: Storage = Depends(storage)):
+        """Delete idle and archived sessions on the bike computer now -- only while it is
+        reachable, nothing is queued. Sessions whose files are all gone from the card are
+        archived and dropped from the index."""
+        try:
+            done, errors = _delete_on_device(store, _deletable(store, session_id))
+        except DeviceUnavailable as exc:
+            raise HTTPException(status.HTTP_409_CONFLICT, str(exc))
+        return {"deleted_sessions": done, "errors": errors}
 
     # The page's own buttons: same actions as the API routes below, but they answer with a
     # redirect back to the page (a form post must not end on a bare JSON document).
@@ -110,12 +210,354 @@ def create_app(settings: Settings | None = None, puller: Puller | None = None) -
             return _back(session_id, "Zu Komoot hochgeladen.")
         return _back(session_id, "Komoot-Upload nicht erfolgt: %s" % (result.message or result.status))
 
+    @app.post("/ui/sessions/{session_id}/test", include_in_schema=False)
+    async def ui_test(session_id: int, request: Request, principal: Principal = AuthDep,
+                      store: Storage = Depends(storage)):
+        _require(store, session_id)
+        mark = (await _form(request)).get("mark", "")
+        _set_test(store, session_id, mark)
+        return RedirectResponse(f"/ride/{session_id}", status_code=status.HTTP_303_SEE_OTHER)
+
+    def _set_test(store: Storage, session_id: int, mark: str) -> None:
+        if mark not in ("test", "real", "auto"):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "mark must be test, real or auto")
+        store.set_test_override(session_id, None if mark == "auto" else mark)
+        exporter.export_pending(store)       # into Tours or Debug_Archive
+        threading.Thread(target=nextcloud.sync_pending, args=(store,),
+                         name="bikelog-nextcloud", daemon=True).start()
+
+    @app.post(API + "/sessions/{session_id}/test", tags=["sessions"])
+    def mark_test(session_id: int, mark: str = Query(pattern="^(test|real|auto)$",
+                                                     description="test, real, or auto (as the log says)"),
+                  principal: Principal = AuthDep, store: Storage = Depends(storage)):
+        """Overrule the automatic test detection (simulator flag, GPS playback) of a session."""
+        _require(store, session_id)
+        _set_test(store, session_id, mark)
+        return store.get(session_id).as_dict()
+
     @app.post("/ui/sessions/{session_id}/komoot-ignore", include_in_schema=False)
     def ui_komoot_ignore(session_id: int, principal: Principal = AuthDep,
                          store: Storage = Depends(storage)):
         session = _require(store, session_id)
         store.set_komoot_prompt([s.id for s in komoot.group_for(store, session)], "ignored")
         return _back(session_id, "Gut, diese Fahrt wird nicht zu Komoot hochgeladen.")
+
+    # --- pages (Rim & Ridge) ---
+
+    def _athlete_or_default(store: Storage) -> report.Athlete:
+        try:
+            return analysis.athlete(store)
+        except (OSError, ValueError, TypeError):
+            return report.Athlete()
+
+    @app.get("/ride/{session_id}", response_class=HTMLResponse, include_in_schema=False)
+    def ride_page(session_id: int, principal: Principal = AuthDep, store: Storage = Depends(storage)):
+        session = _require_log(store, session_id)
+        group = [session] if (session.is_test or session.idle) else tours.group_for(store, session)
+        reg = analysis.registry(store)
+        rep = _report(store, session)
+        return webui.ride_page(session, rep, group=group, registry=reg,
+                               bike=analysis.bike_for(store, session, reg),
+                               narrative=llm.for_page(store, group, rep) if len(group) == 1 else None)
+
+    @app.get("/tour/{session_id}", response_class=HTMLResponse, include_in_schema=False)
+    def tour_page(session_id: int, principal: Principal = AuthDep, store: Storage = Depends(storage)):
+        """The whole ride a session belongs to (several sessions after a reboot on the way)."""
+        session = _require_log(store, session_id)
+        group = tours.group_for(store, session)
+        try:
+            rep = analysis.tour_report_for(store, group)
+        except (OSError, ValueError, TypeError) as exc:
+            raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, str(exc))
+        return webui.ride_page(group[0], rep, group=group, tour=len(group) > 1,
+                               narrative=llm.for_page(store, group, rep))
+
+    @app.post("/ui/narrative/{session_id}", include_in_schema=False)
+    def narrative_again(session_id: int, principal: Principal = AuthDep,
+                        store: Storage = Depends(storage)):
+        """Write the ride's text again (prompt or model changed, or it was just bad)."""
+        session = _require_log(store, session_id)
+        group = tours.group_for(store, session)
+        llm.regenerate(store, group)
+        target = f"/tour/{group[0].id}" if len(group) > 1 else f"/ride/{session.id}"
+        return RedirectResponse(target, status_code=status.HTTP_303_SEE_OTHER)
+
+    @app.get("/training", response_class=HTMLResponse, include_in_schema=False)
+    def training_page(days: int = Query(default=180, ge=28, le=1100),
+                      principal: Principal = AuthDep, store: Storage = Depends(storage)):
+        rides = analysis.rides(store)
+        today = analysis.today()
+        # the chart starts with the first ride if that is later -- no months of zeros
+        start = today - datetime.timedelta(days=days - 1)
+        if rides:
+            start = max(start, min(today - datetime.timedelta(days=27), rides[0].day))
+        load = training.load_series(rides, start, today)
+        return webui.training_page(load, training.weeks(rides, today, 16), len(rides),
+                                   bool(_athlete_or_default(store).hr_max),
+                                   sum(1 for r in rides if r.trimp is None))
+
+    @app.get("/goals", response_class=HTMLResponse, include_in_schema=False)
+    def goals_page(principal: Principal = AuthDep, store: Storage = Depends(storage)):
+        rides = analysis.rides(store)
+        today = analysis.today()
+        items = []
+        for e in analysis.events(store):
+            parts = []
+            for sid in e.participations:
+                session = store.get(sid)
+                if session is not None and session.file("L"):
+                    try:
+                        parts.append((session, analysis.report_for(store, session)))
+                    except Exception:
+                        continue
+            items.append((e, training.readiness(e, rides, today), parts))
+        # upcoming first (nearest on top), past ones at the end
+        items.sort(key=lambda er: (er[1]["days_left"] < 0, abs(er[1]["days_left"])))
+        return webui.goals_page(items, today)
+
+    async def _form(request: Request) -> dict[str, str]:
+        body = (await request.body()).decode("utf-8", "replace")
+        return {k: v[0].strip() for k, v in parse_qs(body, keep_blank_values=True).items()}
+
+    def _num(value: str, kind=float):
+        return kind(value.replace(",", ".")) if value else None
+
+    @app.post("/goals", include_in_schema=False)
+    async def save_goal(request: Request, principal: Principal = AuthDep,
+                        store: Storage = Depends(storage)):
+        form = await _form(request)
+        try:
+            when = datetime.date.fromisoformat(form.get("date", ""))
+            distance, ascent = _num(form.get("distance_km", "")), _num(form.get("ascent_m", ""))
+        except ValueError as exc:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"invalid value: {exc}")
+        if not form.get("name"):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "name missing")
+        old = next((e for e in analysis.events(store) if e.id == form.get("id")), None)
+        event = old or training.Event(name=form["name"], date=when)
+        event.name, event.date = form["name"], when
+        event.priority = form.get("priority", "A") if form.get("priority") in ("A", "B", "C") else "A"
+        event.distance_km, event.ascent_m, event.notes = distance, ascent, form.get("notes", "")
+        analysis.save_event(store, event)
+        if "application/json" in request.headers.get("accept", ""):
+            return {"id": event.id}             # the page's script uploads the GPX next
+        return RedirectResponse(f"/goals#e{event.id}", status_code=status.HTTP_303_SEE_OTHER)
+
+    @app.post("/goals/{event_id}/delete", include_in_schema=False)
+    def delete_goal(event_id: str, principal: Principal = AuthDep, store: Storage = Depends(storage)):
+        if not analysis.delete_event(store, event_id):
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown event")
+        return RedirectResponse("/goals", status_code=status.HTTP_303_SEE_OTHER)
+
+    @app.get("/climbs", response_class=HTMLResponse, include_in_schema=False)
+    def climbs_page(principal: Principal = AuthDep, store: Storage = Depends(storage)):
+        return webui.climbs_page(training.recurring_climbs(analysis.rides(store)))
+
+    @app.get("/athlete", response_class=HTMLResponse, include_in_schema=False)
+    def athlete_page(saved: bool = False, principal: Principal = AuthDep,
+                     store: Storage = Depends(storage)):
+        try:
+            return webui.athlete_page(analysis.athlete(store), saved=saved)
+        except (OSError, ValueError, TypeError) as exc:
+            return webui.athlete_page(report.Athlete(), error=f"athlete.json unbrauchbar: {exc}")
+
+    @app.post("/athlete", include_in_schema=False)
+    async def save_athlete(request: Request, principal: Principal = AuthDep,
+                           store: Storage = Depends(storage)):
+        form = await _form(request)
+        rider = _athlete_or_default(store)
+        try:
+            for name, kind in (("hr_max", int), ("hr_rest", int), ("rider_kg", float)):
+                if name in form:
+                    setattr(rider, name, _num(form[name], kind))
+            for name in ("mass_kg", "cda", "crr"):
+                if form.get(name):
+                    setattr(rider, name, _num(form[name]))
+            if form.get("zones_pct"):
+                zones = tuple(float(z.replace(",", ".")) for z in form["zones_pct"].replace(";", " ").split())
+                if len(zones) != 4 or list(zones) != sorted(zones):
+                    raise ValueError("vier aufsteigende Zonengrenzen, z. B. 60 70 80 90")
+                rider.zones_pct = zones
+        except ValueError as exc:
+            return HTMLResponse(webui.athlete_page(rider, error=str(exc)), status_code=400)
+        analysis.save_athlete(store, rider)
+        threading.Thread(target=_analyse, args=(store,), name="bikelog-analysis",
+                         daemon=True).start()
+        return RedirectResponse("/athlete?saved=1", status_code=status.HTTP_303_SEE_OTHER)
+
+    # --- bikes ---
+
+    def _reanalyse() -> None:
+        threading.Thread(target=_analyse, args=(app.state.storage,), name="bikelog-analysis",
+                         daemon=True).start()
+
+    def _devices(store: Storage) -> list[str]:
+        known = set(store.devices()) | {t.partition("=")[0].strip() for t in settings.pull_targets}
+        return sorted(known - {importer.IMPORT_DEVICE})
+
+    @app.get("/bikes", response_class=HTMLResponse, include_in_schema=False)
+    def bikes_page(msg: str | None = Query(default=None, max_length=300),
+                   principal: Principal = AuthDep, store: Storage = Depends(storage)):
+        rides = analysis.rides(store)
+        per_bike: dict[str, list] = {}
+        for r in rides:
+            per_bike.setdefault(r.bike or "", []).append(r)
+        return webui.bikes_page(analysis.registry(store), _devices(store), per_bike,
+                                analysis.today(), message=msg)
+
+    def _back_bikes(text: str) -> RedirectResponse:
+        return RedirectResponse("/bikes?" + urlencode({"msg": text}), status_code=status.HTTP_303_SEE_OTHER)
+
+    @app.post("/bikes", include_in_schema=False)
+    async def save_bike(request: Request, principal: Principal = AuthDep, store: Storage = Depends(storage)):
+        form = await _form(request)
+        if not form.get("name"):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "name missing")
+        reg = analysis.registry(store)
+        bike = reg.bike(form.get("id")) or bikes.Bike(name=form["name"])
+        if bike not in reg.bikes:
+            reg.bikes.append(bike)
+        try:
+            bike.name = form["name"]
+            bike.type = form.get("type") if form.get("type") in bikes.TYPES else bike.type
+            bike.mass_kg, bike.cda, bike.crr = (_num(form.get(k, "")) for k in ("mass_kg", "cda", "crr"))
+        except ValueError as exc:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"invalid value: {exc}")
+        bike.notes = form.get("notes", "")
+        reg.save(analysis.bikes_path(store))
+        _reanalyse()
+        return _back_bikes(f"{bike.name} gespeichert.")
+
+    @app.post("/bikes/assign", include_in_schema=False)
+    async def assign_bike(request: Request, principal: Principal = AuthDep, store: Storage = Depends(storage)):
+        form = await _form(request)
+        reg = analysis.registry(store)
+        try:
+            since = datetime.date.fromisoformat(form.get("since", ""))
+        except ValueError:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "invalid date")
+        if not form.get("device") or reg.bike(form.get("bike_id")) is None:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "device or bike missing")
+        reg.assignments = [a for a in reg.assignments
+                           if not (a.device == form["device"] and a.since == since)]
+        reg.assignments.append(bikes.Assignment(form["device"], form["bike_id"], since))
+        reg.save(analysis.bikes_path(store))
+        _reanalyse()
+        return _back_bikes(f"{form['device']} fährt ab {since:%d.%m.%Y} am {reg.bike(form['bike_id']).name}.")
+
+    @app.post("/bikes/assign/delete", include_in_schema=False)
+    async def unassign_bike(request: Request, principal: Principal = AuthDep, store: Storage = Depends(storage)):
+        form = await _form(request)
+        reg = analysis.registry(store)
+        reg.assignments = [a for a in reg.assignments
+                           if not (a.device == form.get("device") and a.since.isoformat() == form.get("since"))]
+        reg.save(analysis.bikes_path(store))
+        _reanalyse()
+        return _back_bikes("Zuordnung entfernt.")
+
+    # after the fixed /bikes/assign/... paths: {bike_id} would swallow "assign"
+    @app.post("/bikes/{bike_id}/delete", include_in_schema=False)
+    def delete_bike(bike_id: str, principal: Principal = AuthDep, store: Storage = Depends(storage)):
+        reg = analysis.registry(store)
+        bike = reg.bike(bike_id)
+        if bike is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown bike")
+        reg.bikes.remove(bike)
+        reg.assignments = [a for a in reg.assignments if a.bike_id != bike_id]
+        reg.save(analysis.bikes_path(store))
+        _reanalyse()
+        return _back_bikes(f"{bike.name} gelöscht.")
+
+    @app.post("/ui/sessions/{session_id}/bike", include_in_schema=False)
+    async def ui_session_bike(session_id: int, request: Request, principal: Principal = AuthDep,
+                              store: Storage = Depends(storage)):
+        _require(store, session_id)
+        bike_id = (await _form(request)).get("bike_id") or None
+        if bike_id and analysis.registry(store).bike(bike_id) is None:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "unknown bike")
+        store.set_bike(session_id, bike_id)
+        return RedirectResponse(f"/ride/{session_id}", status_code=status.HTTP_303_SEE_OTHER)
+
+    # --- import ---
+
+    @app.put(API + "/import/gpx", tags=["sessions"])
+    async def import_gpx(request: Request,
+                         bike_id: str | None = Query(default=None, description="bike of this ride (bikes.json)"),
+                         event_id: str | None = Query(default=None,
+                                                      description="an earlier edition of this goal"),
+                         principal: Principal = AuthDep, store: Storage = Depends(storage)):
+        """A ride recorded elsewhere (request body = the GPX file, with times): becomes a
+        session of the device "import" and counts like any other ride."""
+        payload = await request.body()
+        if not payload or len(payload) > settings.max_upload_bytes:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "empty or too large")
+        if bike_id and analysis.registry(store).bike(bike_id) is None:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "unknown bike")
+        event = next((e for e in analysis.events(store) if e.id == event_id), None) if event_id else None
+        if event_id and event is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown event")
+        try:
+            session = importer.import_gpx(store, payload, bike_id)
+        except gpximport.NotARide as exc:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc))
+        except Exception as exc:                    # ET.ParseError and friends
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"GPX unbrauchbar: {exc}")
+        if event and session.id not in event.participations:
+            event.participations.append(session.id)
+            analysis.save_event(store, event)
+        exporter.export_pending(store)
+        _reanalyse()
+        return session.as_dict()
+
+    @app.post("/goals/{event_id}/participations/{session_id}/delete", include_in_schema=False)
+    def drop_participation(event_id: str, session_id: int, principal: Principal = AuthDep,
+                           store: Storage = Depends(storage)):
+        event = next((e for e in analysis.events(store) if e.id == event_id), None)
+        if event is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown event")
+        event.participations = [s for s in event.participations if s != session_id]
+        analysis.save_event(store, event)
+        return RedirectResponse(f"/goals#e{event_id}", status_code=status.HTTP_303_SEE_OTHER)
+
+    # --- training API ---
+
+    @app.get(API + "/training", tags=["training"])
+    def training_data(days: int = Query(default=180, ge=1, le=1100), weeks: int = Query(default=16, ge=1, le=156),
+                      principal: Principal = AuthDep, store: Storage = Depends(storage)):
+        """Daily load (TRIMP, fitness/fatigue/form) and weekly totals -- the
+        figures behind /training, e.g. for an LLM."""
+        rides = analysis.rides(store)
+        today = analysis.today()
+        load = training.load_series(rides, today - datetime.timedelta(days=days - 1), today)
+        return {
+            "today": today.isoformat(),
+            "load": [{**vars(p), "day": p.day.isoformat()} for p in load],
+            "weeks": [{**vars(w), "monday": w.monday.isoformat()} for w in training.weeks(rides, today, weeks)],
+            "recurring_climbs": training.recurring_climbs(rides),
+        }
+
+    @app.get(API + "/events", tags=["training"])
+    def list_events(principal: Principal = AuthDep, store: Storage = Depends(storage)):
+        """Target events with the rider's readiness for each."""
+        rides = analysis.rides(store)
+        today = analysis.today()
+        return [{**e.as_dict(), "readiness": training.readiness(e, rides, today)}
+                for e in analysis.events(store)]
+
+    @app.put(API + "/events/{event_id}/gpx", tags=["training"])
+    async def put_event_gpx(event_id: str, request: Request, principal: Principal = AuthDep,
+                            store: Storage = Depends(storage)):
+        """Course GPX of an event (request body = the file): distance, ascent, climbs."""
+        payload = await request.body()
+        if not payload or len(payload) > settings.max_upload_bytes:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "empty or too large")
+        try:
+            event = analysis.set_event_gpx(store, event_id, payload)
+        except KeyError:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown event")
+        except Exception as exc:                    # ET.ParseError, no elevations, ...
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"GPX unbrauchbar: {exc}")
+        return event.as_dict()
 
     @app.get(API + "/health", tags=["service"])
     def health(principal: Principal = AuthDep, store: Storage = Depends(storage)):
@@ -136,12 +578,16 @@ def create_app(settings: Settings | None = None, puller: Puller | None = None) -
                                                     description="only sessions with at least this much distance"),
                       max_km: float | None = Query(default=None, ge=0,
                                                     description="only sessions with at most this much distance"),
+                      tests: bool = Query(default=False,
+                                          description="include test sessions (simulator, GPS playback)"),
+                      idle: bool = Query(default=False,
+                                         description="include idle sessions (switched on, no ride)"),
                       principal: Principal = AuthDep,
                       store: Storage = Depends(storage)):
         min_m = min_km * 1000 if min_km is not None else None
         max_m = max_km * 1000 if max_km is not None else None
-        return {"total": store.count(min_m, max_m),
-                "sessions": [s.as_dict() for s in store.list(limit, offset, min_m, max_m)]}
+        return {"total": store.count(min_m, max_m, tests, idle),
+                "sessions": [s.as_dict() for s in store.list(limit, offset, min_m, max_m, tests, idle)]}
 
     def _require(store: Storage, session_id: int) -> Session:
         session = store.get(session_id)
@@ -200,6 +646,28 @@ def create_app(settings: Settings | None = None, puller: Puller | None = None) -
         csvexport.write_stream(buffer, store.records(session, ReadStats()), with_gps=with_gps)
         return PlainTextResponse(buffer.getvalue(), media_type="text/csv", headers={
             "Content-Disposition": 'attachment; filename="%s.csv"' % _export_name(session)})
+
+    def _report(store: Storage, session: Session) -> dict:
+        try:
+            return analysis.report_for(store, session)
+        except (OSError, ValueError, TypeError) as exc:
+            raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR,
+                                f"{settings.athlete_path}: {exc}")
+
+    @app.get(API + "/sessions/{session_id}/report.json", tags=["export"])
+    def get_report(session_id: int, principal: Principal = AuthDep,
+                   store: Storage = Depends(storage)):
+        """All key figures of the session (bikelog.report) -- the input for a
+        report generator."""
+        return _report(store, _require_log(store, session_id))
+
+    @app.get(API + "/sessions/{session_id}/report.md", tags=["export"])
+    def get_report_md(session_id: int, principal: Principal = AuthDep,
+                      store: Storage = Depends(storage)):
+        """The same figures as a German Markdown report, without an LLM."""
+        session = _require_log(store, session_id)
+        return PlainTextResponse(report.to_markdown(_report(store, session)),
+                                 media_type="text/markdown; charset=utf-8")
 
     @app.get(API + "/sessions/{session_id}/files/{name}", tags=["export"])
     def download_file(session_id: int, name: str, principal: Principal = AuthDep,
@@ -295,9 +763,10 @@ def create_app(settings: Settings | None = None, puller: Puller | None = None) -
             raise HTTPException(413, "upload exceeds %d bytes" % settings.max_upload_bytes)
         result = store.put_file(device, sdfile, payload, source="push:" + principal.name)
         exporter.export_pending(store)
-        # Nextcloud is a network call (WebDAV) -- don't hold up the device's
-        # upload on it; the session's gpx_status is already current above.
-        threading.Thread(target=nextcloud.sync_pending, args=(store,),
+        # Nextcloud is a network call (WebDAV) and the report takes a while --
+        # don't hold up the device's upload on either; the session's
+        # gpx_status is already current above.
+        threading.Thread(target=_sync_and_analyse, args=(store,),
                          name="bikelog-nextcloud", daemon=True).start()
         return {"status": result.status, "session": result.session.as_dict()}
 

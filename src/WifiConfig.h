@@ -26,7 +26,18 @@ constexpr size_t SSID_MAX = 32;			// IEEE 802.11: 0..32 bytes
 constexpr size_t PW_MAX = 63;			// WPA2-PSK passphrase: 8..63 ASCII characters
 constexpr size_t PW_MIN = 8;
 constexpr size_t MAX_NETWORKS = 8;
-constexpr const char* DEFAULT_AP_SSID = "TRGB-BC";
+// Name of this bike computer in the network: mDNS host (<name>.local), DHCP host name and the
+// default hotspot SSID. The default comes per build variant (platformio.ini: the FL build is
+// "TRGB-FL"), so that two bike computers in the same WLAN do not collide and the log service can
+// tell them apart; it can be changed on the /wifi page (stored in the NVS, WifiWebserver).
+#ifndef BC_HOSTNAME
+#define BC_HOSTNAME "TRGB-BC"
+#endif
+constexpr const char* DEFAULT_HOSTNAME = BC_HOSTNAME;
+constexpr const char* DEFAULT_AP_SSID = BC_HOSTNAME;
+constexpr size_t HOSTNAME_MAX = 31;
+// A DNS label: 1..HOSTNAME_MAX of A-Z a-z 0-9 and '-', not starting or ending with '-'.
+bool validHostname(const char* name);
 
 struct Network {
 	char ssid[SSID_MAX + 1];
@@ -63,6 +74,7 @@ enum class Result : uint8_t {
 	BAD_PASSWORD,
 	FULL,
 	BAD_INDEX,
+	BAD_HOSTNAME,
 };
 
 class Config {

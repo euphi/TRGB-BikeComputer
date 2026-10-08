@@ -7,8 +7,9 @@ quality and labels, shocks and label changes as waypoints, ride summary in
 the metadata). SUBDIR_TOURS is meant to be picked up by whatever comes next
 (Nextcloud sync, a Komoot/Strava uploader); SUBDIR_DEBUG holds everything
 that is not a real ride -- a session parked somewhere with the phone's GPS
-wandering a few metres, a five-minute test -- kept for reference but out of
-the uploaders' way. File names sort chronologically and each file's mtime is
+wandering a few metres, a five-minute test, a simulator or GPS-playback session
+(Session.is_test, status "test") -- kept for reference but out of the uploaders' way.
+Idle sessions (switched on, no ride) get no file at all (status "idle"). File names sort chronologically and each file's mtime is
 the ride's start.
 
 A file is (re)written -- and, if its distance moved it from one subdirectory
@@ -29,11 +30,12 @@ import threading
 
 from bikelog import gpx
 
+from . import archive
 from .storage import Session, Storage
 
 log = logging.getLogger("bikelog.export")
 
-EXPORT_VERSION = 3
+EXPORT_VERSION = 5
 
 #: Below this, a session goes to Debug_Archive instead of Tours -- see the
 #: module docstring. Raise/lower it here, not per-session; the automatic
@@ -70,6 +72,16 @@ def file_name(session: Session, first_fix: datetime.datetime | None) -> str:
 def export_session(store: Storage, session: Session) -> str:
     settings = store.settings
     root = settings.gpx_dir
+    if session.device == "import":
+        # Imported from a GPX (importer.py): the original is wherever it came from already.
+        store.set_export(session.id, None, "import", EXPORT_VERSION)
+        return "import"
+    if session.idle:
+        # Switched on, no ride: no GPX at all (archive.py takes the files later).
+        if session.gpx_file:
+            (root / session.gpx_file).unlink(missing_ok=True)
+        store.set_export(session.id, None, "idle", EXPORT_VERSION)
+        return "idle"
     try:
         xml, stats = render(store, session)
     except Exception as exc:                    # unreadable log: record it, keep going
@@ -79,9 +91,11 @@ def export_session(store: Storage, session: Session) -> str:
     if stats.written == 0:
         rel, status = None, "no-gps"
     else:
-        real_ride = stats.real_distance_m >= MIN_EXPORT_DISTANCE_M
+        # A test session (simulator, GPS playback) is no ride however long it is: it goes
+        # to Debug_Archive with status "test", which keeps it out of Nextcloud and Komoot.
+        real_ride = stats.real_distance_m >= MIN_EXPORT_DISTANCE_M and not session.is_test
         subdir = SUBDIR_TOURS if real_ride else SUBDIR_DEBUG
-        status = "ok" if real_ride else "debug"
+        status = "ok" if real_ride else ("test" if session.is_test else "debug")
         rel = f"{subdir}/{file_name(session, stats.first_time)}"
         path = root / rel
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -100,6 +114,7 @@ def export_session(store: Storage, session: Session) -> str:
 
 
 def export_pending(store: Storage) -> dict[str, int]:
+    archive.archive_idle(store)         # housekeeping rides along with every export run
     if not store.settings.export_gpx:
         return {}
     counts: dict[str, int] = {}

@@ -75,6 +75,7 @@ python3 -m bikelog info -i /pfad/L0001.bin          # Übersicht über ein Log
 python3 -m bikelog csv  -i /pfad/L0001.bin -o out.csv [--gps] [--roadq]
 python3 -m bikelog csv  -i /pfad/L0001.bin -o out.csv --roadq-out wege.csv --shocks-out stoesse.csv --labels-out labels.csv
 python3 -m bikelog gpx  -i /pfad/L0001.bin -o tour.gpx [--no-shocks] [--min-severity 2]
+python3 -m bikelog report -i /pfad/L0001.bin [--json] [--athlete athlete.json] [-o bericht.md]
 ./ReadTachoBin.py -i /pfad/L0001.bin -o out.csv     # wie bisher
 ```
 
@@ -114,6 +115,30 @@ Jeder Lauf meldet, was verworfen wurde:
 ```
 195/243 Punkte in 2 Segment(en), 20 verworfen (ohne Fix), 25 verworfen (veraltet)
 ```
+
+### Sitzungsbericht
+
+`bikelog report` berechnet alle Kennzahlen einer Sitzung; `--json` gibt sie als JSON aus
+(die Eingabe für einen Textgenerator, Vorlage oder LLM), ohne kommt ein Markdown-Bericht
+auf Deutsch. Code: [`bikelog/report.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/bikelog/report.py),
+Tests: `tests/test_report.py`.
+
+| Abschnitt | Inhalt |
+|---|---|
+| `meta` | Zeitraum, Format, Satzzahlen, Uhr; `test`: Testfahrt (Sim-Flag oder GPS-Wiedergabe vermutet, siehe [Log-Dienst](LOGSERVICE.md#testfahrten)) |
+| `ride` | Strecke, Fahrzeit, Geschwindigkeiten, Höhenmeter, Stopps (eine Aufzeichnungslücke zählt als Stopp: das Gerät schläft), Temperatur, Trittfrequenz und Anteil getreten |
+| `climbs` | Anstiege im Baro-Profil mit den Kriterien und Kategorien der Firmware ([Anstiege](CLIMB.md)): Länge, Höhe, mittlere/max. Steigung, Zeit, VAM, Puls, Leistung, Position von Fuß und Gipfel; `--hills` listet auch Hügel unterhalb Kategorie 6 |
+| `profile` | Baro-Höhenprofil (`[km, m]`, höchstens 300 Punkte) für Diagramme |
+| `heart` | Ø/max., Abdeckung, Zeit in den Zonen, TRIMP (Banister mit `hr_rest`, sonst Edwards), aerobe Entkopplung (Leistung/Puls, erste gegen zweite Hälfte, ab 40 min), Effizienz W/bpm |
+| `power` | **geschätzt** aus Tempo, Steigung, Masse, CdA und Crr, ohne Wind: Ø, normalisierte Leistung, Arbeit, beste 1/5/20/60 min, W/kg mit `rider_kg` -- für Vergleiche zwischen Fahrten, kein Messwert |
+| `road` | Wegeklassen, manuelle Labels gegen die automatische Klasse, Stöße nach Schwere, die fünf stärksten mit Position |
+| `health` | Puls-Aussetzer, Radsensor gegen GPS (Aussetzer, Radumfang), GPS-Frische und -Genauigkeit, Baro- gegen GPS-Höhe (Versatz, Drift), verlorene Datensätze (Lücken in der Nummerierung), abgeschnittene Datei, ungesetzte Uhr, Simulator, IMU-Flags; dazu `findings`, eine Liste aller Auffälligkeiten |
+
+`--athlete` nimmt eine JSON-Datei mit Fahrerdaten, alles optional: `hr_max`, `hr_rest`,
+`mass_kg` (Fahrer + Rad, Standard 85), `rider_kg`, `cda` (0,40), `crr` (0,006),
+`drivetrain` (0,97), `zones_pct` (Obergrenzen der Zonen 1-4 in % von `hr_max`, Standard
+60/70/80/90), `trimp_b` (1,92). Zeiten innerhalb der Fahrt sind Sekunden seit dem Start
+(`t_s`), Positionen Trip-Kilometer (`km`).
 
 ### Rohdaten des Beschleunigungssensors
 

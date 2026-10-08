@@ -27,12 +27,13 @@ import threading
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
+from bikelog import testride
 from bikelog.record import ReadStats, UnknownLogFormat, read_stream
 
 from . import sdlayout
 from .sdlayout import SdFile
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 10
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions (
@@ -67,6 +68,17 @@ CREATE TABLE IF NOT EXISTS sessions (
     -- The question "upload this ride to Komoot?" (webui.py): NULL = still to be asked,
     -- 'ignored' = the rider said no. Uploading is komoot_status, not this.
     komoot_prompt   TEXT,
+    -- test session (bikelog.testride: "sim" | "gps_playback", NULL = ride) as the
+    -- log says, and the rider's verdict over it ("test" | "real", NULL = as detected)
+    test_kind       TEXT,
+    test_override   TEXT,
+    -- no ride: switched on, nothing happened (bikelog.testride.idle), or no L_ file at
+    -- all (yet). 1 until an L_ file says otherwise. Archived after a while (archive.py):
+    idle            INTEGER NOT NULL DEFAULT 1,
+    archived_at     TEXT,
+    -- the bike of this session when it is not the device's (imports; later: told apart by
+    -- the sensors). NULL: the device's bike on that day, bikes.json
+    bike_id         TEXT,
     -- Nextcloud sync (nextcloud.py): the Tours file, kept up to date the
     -- same way the local export is -- see nextcloud_gpx_version below.
     nextcloud_status    TEXT,
@@ -74,6 +86,32 @@ CREATE TABLE IF NOT EXISTS sessions (
     nextcloud_synced_at TEXT,
     nextcloud_gpx_version INTEGER,
     UNIQUE (device, day, stem)
+);
+-- Session reports (bikelog.report) as computed, see analysis.py. cache_key says
+-- what they were computed from; a different key means compute again.
+CREATE TABLE IF NOT EXISTS reports (
+    session_id      INTEGER PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+    cache_key       TEXT NOT NULL,
+    report          TEXT NOT NULL,
+    computed_at     TEXT NOT NULL
+);
+-- Reports of tours made of several sessions (tours.py, analysis.py), keyed by what
+-- they were computed from (the sessions' cache keys); a stale one is simply not found.
+CREATE TABLE IF NOT EXISTS tour_reports (
+    cache_key       TEXT PRIMARY KEY,
+    report          TEXT NOT NULL,
+    computed_at     TEXT NOT NULL
+);
+-- Ride reports as prose from a local LLM (llm.py, bikelog.narrate). subject names the ride
+-- ("tour:<first session id>"), prompt_key what the text was written from.
+CREATE TABLE IF NOT EXISTS narratives (
+    subject         TEXT PRIMARY KEY,
+    prompt_key      TEXT NOT NULL,
+    model           TEXT NOT NULL,
+    text            TEXT NOT NULL,
+    unverified      TEXT NOT NULL,
+    seconds         REAL,
+    created_at      TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS files (
     session_id      INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
@@ -137,6 +175,11 @@ class Session:
     komoot_tour_id: str | None = None
     komoot_uploaded_at: str | None = None
     komoot_prompt: str | None = None
+    test_kind: str | None = None
+    test_override: str | None = None
+    idle: int = 1
+    archived_at: str | None = None
+    bike_id: str | None = None
     nextcloud_status: str | None = None
     nextcloud_file: str | None = None
     nextcloud_synced_at: str | None = None
@@ -154,19 +197,35 @@ class Session:
     def file(self, kind: str) -> StoredFile | None:
         return next((f for f in self.files if f.kind == kind), None)
 
+    @property
+    def is_test(self) -> bool:
+        """Simulator or GPS playback, not a ride -- unless the rider said otherwise."""
+        if self.test_override:
+            return self.test_override == "test"
+        return bool(self.test_kind)
+
     def as_dict(self) -> dict:
         data = asdict(self)
         data["clock_unset"] = bool(self.clock_unset)
         data["gpx_dirty"] = bool(self.gpx_dirty)
         data["start_time"] = self.start_time
+        data["is_test"] = self.is_test
+        data["idle"] = bool(self.idle)
         data["duration_s"] = (self.last_time - self.first_time
                               if self.first_time and self.last_time else None)
         data["files"] = [asdict(f) for f in self.files]
         return data
 
 
-def _distance_clause(min_distance_m: float | None, max_distance_m: float | None) -> tuple[str, tuple]:
-    clause, params = "", []
+#: SQL for Session.is_test
+#: (COALESCE: never NULL, so NOT TEST_SQL keeps the rides -- NULL = 'test' would drop them)
+TEST_SQL = ("(COALESCE(test_override, CASE WHEN test_kind IS NULL THEN 'real' ELSE 'test' END)"
+            " = 'test')")
+
+
+def _distance_clause(min_distance_m: float | None, max_distance_m: float | None,
+                     tests: bool = True, idle: bool = True) -> tuple[str, tuple]:
+    clause, params = ("" if tests else f"AND NOT {TEST_SQL} ") + ("" if idle else "AND idle = 0 "), []
     if min_distance_m is not None:
         clause += "AND distance_m >= ? "
         params.append(min_distance_m)
@@ -208,6 +267,11 @@ class Storage:
             for column in ("nextcloud_status TEXT", "nextcloud_file TEXT", "nextcloud_synced_at TEXT",
                            "nextcloud_gpx_version INTEGER"):
                 self._db.execute(f"ALTER TABLE sessions ADD COLUMN {column}")
+        # Columns added without a re-derive: just make sure they are there.
+        columns = {r[1] for r in self._db.execute("PRAGMA table_info(sessions)")}
+        for column, kind in (("bike_id", "TEXT"),):
+            if column not in columns:
+                self._db.execute(f"ALTER TABLE sessions ADD COLUMN {column} {kind}")
         self._db.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
         self._db.commit()
         if 0 < version < 7:
@@ -218,9 +282,17 @@ class Storage:
                 # (Their "Komoot" button in the table stays.)
                 self._db.execute("UPDATE sessions SET komoot_prompt = 'ignored'")
                 self._db.commit()
-        if 0 < version < 6:
-            # 6: clock steps inside a session are repaired (bikelog.timefix) -- every
-            # stored session gets its times, summary and GPX derived again.
+        if 0 < version < 10:
+            columns = {r[1] for r in self._db.execute("PRAGMA table_info(sessions)")}
+            for column, kind in (("test_kind", "TEXT"), ("test_override", "TEXT"),
+                                 ("idle", "INTEGER NOT NULL DEFAULT 1"), ("archived_at", "TEXT")):
+                if column not in columns:
+                    self._db.execute(f"ALTER TABLE sessions ADD COLUMN {column} {kind}")
+            self._db.commit()
+            # 6: clock steps inside a session are repaired (bikelog.timefix); 8: test
+            # sessions, 9: idle sessions are recognised (bikelog.testride), 10: empty
+            # logs (only zero bytes) count as idle -- every stored session gets its
+            # index columns derived again.
             self.rederive_all()
 
     def close(self) -> None:
@@ -263,12 +335,14 @@ class Storage:
 
     def list(self, limit: int = 100, offset: int = 0,
              min_distance_m: float | None = None,
-             max_distance_m: float | None = None) -> list[Session]:
+             max_distance_m: float | None = None, tests: bool = True,
+             idle: bool = True) -> list[Session]:
         """Sessions newest first, optionally restricted to a distance range
         (the wheel-sensor trip distance, same figure the session list shows).
         A session whose log could not be parsed (distance_m is NULL) matches
-        neither bound, same as SQL's usual NULL handling."""
-        clause, params = _distance_clause(min_distance_m, max_distance_m)
+        neither bound, same as SQL's usual NULL handling. ``tests=False`` leaves
+        out test sessions (simulator, GPS playback), ``idle=False`` the ones without a ride."""
+        clause, params = _distance_clause(min_distance_m, max_distance_m, tests, idle)
         with self._lock:
             # Day directories sort chronologically, NO_TIME/legacy after them;
             # within a day the HHMMSS stem does the rest.
@@ -279,8 +353,8 @@ class Storage:
             return [self._session(row) for row in rows]
 
     def count(self, min_distance_m: float | None = None,
-              max_distance_m: float | None = None) -> int:
-        clause, params = _distance_clause(min_distance_m, max_distance_m)
+              max_distance_m: float | None = None, tests: bool = True, idle: bool = True) -> int:
+        clause, params = _distance_clause(min_distance_m, max_distance_m, tests, idle)
         with self._lock:
             return self._db.execute(
                 "SELECT COUNT(*) FROM sessions WHERE deleted_at IS NULL " + clause,
@@ -288,10 +362,13 @@ class Storage:
 
     def sessions_for_device(self, device: str) -> list[Session]:
         """Every non-deleted session of one device that has a binary log, in
-        ride order -- the input to komoot.py's short-pause grouping."""
+        ride order -- the input to komoot.py's short-pause grouping. Test sessions
+        and idle sessions are left out: a desk test or the device lying switched on
+        between two rides must not join them."""
         with self._lock:
             rows = self._db.execute(
                 "SELECT s.* FROM sessions s WHERE s.deleted_at IS NULL AND s.device = ? "
+                f"AND NOT {TEST_SQL} AND s.idle = 0 "
                 "AND EXISTS (SELECT 1 FROM files f WHERE f.session_id = s.id "
                 "            AND substr(f.name, 1, 1) = 'L') "
                 "ORDER BY s.day, s.stem", (device,)).fetchall()
@@ -353,7 +430,7 @@ class Storage:
                     "VALUES (?, ?, ?, ?, ?)", (device, sdfile.day, sdfile.stem, now, now))
                 session = self.get(cur.lastrowid)
             elif session.deleted_at:
-                self._db.execute("UPDATE sessions SET deleted_at = NULL WHERE id = ?",
+                self._db.execute("UPDATE sessions SET deleted_at = NULL, archived_at = NULL WHERE id = ?",
                                  (session.id,))
                 self._db.execute("DELETE FROM files WHERE session_id = ?", (session.id,))
                 session = self.get(session.id)
@@ -467,6 +544,78 @@ class Storage:
                                  [(value, sid) for sid in session_ids])
             self._db.commit()
 
+    def idle_to_archive(self, older_than: str) -> list[Session]:
+        """Live idle sessions stored before ``older_than`` (ISO time) -- archive.py's work."""
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT * FROM sessions WHERE deleted_at IS NULL AND idle = 1 AND created_at < ?",
+                (older_than,)).fetchall()
+            return [self._session(row) for row in rows]
+
+    def idle_sessions(self) -> list[Session]:
+        """Live idle sessions, newest first -- not archived yet."""
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT * FROM sessions WHERE deleted_at IS NULL AND idle = 1 "
+                "ORDER BY created_at DESC").fetchall()
+            return [self._session(row) for row in rows]
+
+    def archived_sessions(self) -> list[Session]:
+        """Archived sessions whose files are still on the SD card (their tombstones), newest first."""
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT * FROM sessions WHERE archived_at IS NOT NULL ORDER BY day DESC, stem DESC"
+            ).fetchall()
+            return [self._session(row) for row in rows]
+
+    def purge_gone(self, device: str, listed: set[str]) -> int:
+        """Drop the index rows of deleted/archived sessions none of whose files is in the
+        device's listing any more: the tombstone was only there to stop the puller from
+        fetching them again. Returns how many."""
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT s.id, s.day, f.name FROM sessions s JOIN files f ON f.session_id = s.id "
+                "WHERE s.device = ? AND s.deleted_at IS NOT NULL", (device,)).fetchall()
+            on_card: dict[int, bool] = {}
+            for r in rows:
+                on_card[r["id"]] = on_card.get(r["id"], False) or SdFile(r["day"], r["name"]).path in listed
+            gone = [sid for sid, there in on_card.items() if not there]
+            for sid in gone:
+                self._db.execute("DELETE FROM sessions WHERE id = ?", (sid,))
+            self._db.commit()
+            return len(gone)
+
+    def remove_index(self, session_id: int) -> None:
+        """Forget a session completely (its files are neither here nor on the SD card)."""
+        with self._lock:
+            self._db.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
+            self._db.commit()
+
+    def mark_archived(self, session_id: int) -> None:
+        """Out of every list, a tombstone for the puller (known_files: never fetch again);
+        the files were moved to the archive by the caller."""
+        now = _now()
+        with self._lock:
+            self._db.execute("UPDATE sessions SET deleted_at = ?, archived_at = ?, gpx_file = NULL "
+                             "WHERE id = ?", (now, now, session_id))
+            self._db.execute("DELETE FROM reports WHERE session_id = ?", (session_id,))
+            self._db.commit()
+
+    def set_bike(self, session_id: int, bike_id: str | None) -> None:
+        with self._lock:
+            self._db.execute("UPDATE sessions SET bike_id = ? WHERE id = ?", (bike_id, session_id))
+            self._db.commit()
+
+    def set_test_override(self, session_id: int, value: str | None) -> None:
+        """The rider's verdict: "test", "real", or None (back to what the log says).
+        The GPX is exported again -- a test belongs in Debug_Archive, not in Tours."""
+        if value not in ("test", "real", None):
+            raise ValueError(value)
+        with self._lock:
+            self._db.execute("UPDATE sessions SET test_override = ?, gpx_dirty = 1 WHERE id = ?",
+                             (value, session_id))
+            self._db.commit()
+
     def devices(self) -> list[str]:
         with self._lock:
             return [r[0] for r in self._db.execute(
@@ -496,6 +645,72 @@ class Storage:
                 (status, file, _now(), gpx_version, session_id))
             self._db.commit()
 
+    def sessions_with_log(self) -> list[Session]:
+        """All live sessions that have a binary log and are not idle, oldest first."""
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT s.* FROM sessions s WHERE s.deleted_at IS NULL AND s.idle = 0 "
+                "AND EXISTS (SELECT 1 FROM files f WHERE f.session_id = s.id "
+                "            AND substr(f.name, 1, 1) = 'L') "
+                "ORDER BY s.first_time, s.id").fetchall()
+            return [self._session(row) for row in rows]
+
+    def cached_report(self, session_id: int) -> tuple[str, dict] | None:
+        with self._lock:
+            row = self._db.execute("SELECT cache_key, report FROM reports WHERE session_id = ?",
+                                   (session_id,)).fetchone()
+        return (row["cache_key"], json.loads(row["report"])) if row else None
+
+    def cached_tour_report(self, cache_key: str) -> dict | None:
+        with self._lock:
+            row = self._db.execute("SELECT report FROM tour_reports WHERE cache_key = ?",
+                                   (cache_key,)).fetchone()
+        return json.loads(row["report"]) if row else None
+
+    def store_tour_report(self, cache_key: str, report: dict) -> None:
+        with self._lock:
+            self._db.execute("INSERT OR REPLACE INTO tour_reports (cache_key, report, computed_at) "
+                             "VALUES (?, ?, ?)", (cache_key, json.dumps(report, ensure_ascii=False), _now()))
+            self._db.commit()
+
+    def narrative(self, subject: str) -> dict | None:
+        with self._lock:
+            row = self._db.execute("SELECT * FROM narratives WHERE subject = ?", (subject,)).fetchone()
+        if row is None:
+            return None
+        data = dict(row)
+        data["unverified"] = json.loads(data["unverified"])
+        return data
+
+    def store_narrative(self, subject: str, prompt_key: str, model: str, text: str,
+                        unverified: list[str], seconds: float | None) -> None:
+        with self._lock:
+            self._db.execute(
+                "INSERT OR REPLACE INTO narratives (subject, prompt_key, model, text, unverified, "
+                "seconds, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (subject, prompt_key, model, text, json.dumps(unverified, ensure_ascii=False),
+                 seconds, _now()))
+            self._db.commit()
+
+    def delete_narrative(self, subject: str) -> None:
+        with self._lock:
+            self._db.execute("DELETE FROM narratives WHERE subject = ?", (subject,))
+            self._db.commit()
+
+    def cache_keys(self) -> dict[int, str]:
+        with self._lock:
+            return {r["session_id"]: r["cache_key"] for r in
+                    self._db.execute("SELECT session_id, cache_key FROM reports").fetchall()}
+
+    def store_report(self, session_id: int, cache_key: str, report: dict) -> None:
+        with self._lock:
+            self._db.execute(
+                "INSERT INTO reports (session_id, cache_key, report, computed_at) VALUES (?, ?, ?, ?) "
+                "ON CONFLICT (session_id) DO UPDATE SET cache_key = excluded.cache_key, "
+                "report = excluded.report, computed_at = excluded.computed_at",
+                (session_id, cache_key, json.dumps(report, ensure_ascii=False), _now()))
+            self._db.commit()
+
     def delete(self, session_id: int) -> bool:
         with self._lock:
             session = self.get(session_id)
@@ -507,6 +722,7 @@ class Storage:
                 (self.settings.gpx_dir / session.gpx_file).unlink(missing_ok=True)
             self._db.execute("UPDATE sessions SET deleted_at = ?, gpx_file = NULL WHERE id = ?",
                              (_now(), session_id))
+            self._db.execute("DELETE FROM reports WHERE session_id = ?", (session_id,))
             self._db.commit()
             return True
 
@@ -517,12 +733,17 @@ def _summarise_log(payload: bytes, hints: bytes | None = None) -> dict:
     the reason recorded."""
     blank = dict(format_version=None, record_count=None, trailing_bytes=None,
                  first_time=None, last_time=None, distance_m=None, gps_points=None,
-                 clock_unset=0, time_steps=0)
+                 clock_unset=0, time_steps=0, test_kind=None, idle=1)
+    if not payload.strip(b"\0"):
+        # Nothing but zero bytes (preallocated, or the device died before the first
+        # write): no ride, no error worth anyone's attention -- idle, archived later.
+        return {**blank, "log_error": "empty log (%d zero byte)" % len(payload)}
     stats = ReadStats()
     try:
         records = list(read_stream(io.BytesIO(payload), stats, repair_time=True, time_hints=hints))
     except UnknownLogFormat as exc:
-        return {**blank, "log_error": str(exc)}
+        # visible, not idle: someone has to look at it
+        return {**blank, "idle": 0, "log_error": str(exc)}
     if not records:
         return {**blank, "format_version": stats.version or None,
                 "log_error": "no complete data record (%d byte)" % len(payload)}
@@ -538,4 +759,6 @@ def _summarise_log(payload: bytes, hints: bytes | None = None) -> dict:
         "clock_unset": int(first.timestamp < MIN_PLAUSIBLE_TIMESTAMP),
         "log_error": None,
         "time_steps": stats.time_steps,
+        "test_kind": testride.classify(records).kind,
+        "idle": int(testride.idle(records)),
     }
