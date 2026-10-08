@@ -70,6 +70,11 @@ td .big{font:600 19px var(--num);color:var(--parch-b)}
 .chip.tour{background:var(--tour)}
 .chip.test{background:var(--z4);color:var(--bg);border-color:var(--z4)}
 tr.test td{opacity:.75}
+tr.tour-head td,tr.tour-part td{border-bottom:none}
+tr.tour-part td{padding-top:2px;padding-bottom:2px;font-size:.88em}
+tr.tour-part td:first-child{padding-left:26px}
+tr.tour-part .big{font-size:15px}
+tr.tour-part.last td{border-bottom:1px solid var(--track);padding-bottom:7px}
 .banner.test{border-color:var(--z4)}
 form.inline{display:inline;margin:0}
 button,.btn{font:600 13px var(--sans);background:var(--panel);color:var(--parch);border:1.5px solid var(--brass);
@@ -288,24 +293,74 @@ def test_chip(s: Session) -> str:
     return f'<span class="chip test" title="Testfahrt, zählt nicht im Training">{escape(label)}</span>'
 
 
-def _row(s: Session, tour: tuple[int, int, int] | None = None, bike: str | None = None) -> str:
+def _row(s: Session, tour: tuple[int, int, int] | None = None, bike: str | None = None,
+         last: bool = False) -> str:
+    """One session. With ``tour`` (part, of parts, first session id) it is a part below its
+    tour's head row (_tour_head): smaller, no rule above, ``last`` closes the block."""
     summ = s.summary or {}
     dist = summ.get("dist_m", s.distance_m)
     move = summ.get("move_s")
     vavg = summ.get("vavg_kmh")
     when = escape(_when(s))
     title = f'<a href="/ride/{s.id}">{when}</a>' if s.file("L") else when
+    classes = (["tour-part"] + (["last"] if last else [])) if tour else []
+    if s.is_test:
+        classes.append("test")
+    cls = f' class="{" ".join(classes)}"' if classes else ""
     return (
-        f'<tr id="s{s.id}"{" class=test" if s.is_test else ""}>'
+        f'<tr id="s{s.id}"{cls}>'
         f'<td>{title} {test_chip(s)}'
-        + (f' <a class="chip tour" href="/tour/{tour[2]}" title="Neustart unterwegs: eine Fahrt aus '
-           f'{tour[1]} Sitzungen">Teil {tour[0]}/{tour[1]}</a>' if tour else "")
-        + f'<br><span class="mut">{escape(s.device)}{" · " + escape(bike) if bike else ""}</span></td>'
+        + (f' <span class="mut">Teil {tour[0]}/{tour[1]}</span>' if tour else "")
+        + (f'<br><span class="mut">{escape(s.device)}{" · " + escape(bike) if bike else ""}</span>'
+           if not tour else "")
+        + "</td>"
         f'<td class="num"><span class="big">{num((dist or 0) / 1000)}</span> km</td>'
         f'<td class="num hide-s">{hm(move)}</td>'
         f'<td class="num hide-s">{num(vavg) + " km/h" if vavg else ""}</td>'
         f'<td class="chips">{"".join(_links(s))}<br>{" · ".join(_notes(s))}</td>'
         "</tr>")
+
+
+def _tour_head(group: list[Session], bike: str | None = None) -> str:
+    """The row of a ride that a reboot split into several sessions: the figures of the whole
+    ride (distance and moving time add up, the average follows from them); the parts follow
+    below it."""
+    sums = [s.summary or {} for s in group]
+    dist = sum((m.get("dist_m", s.distance_m) or 0) for m, s in zip(sums, group))
+    move = sum(m.get("move_s") or 0 for m in sums)
+    vavg = dist / move * 3.6 if move else None
+    first = group[0]
+    return (
+        f'<tr id="t{first.id}" class="tour-head">'
+        f'<td><a href="/tour/{first.id}">{escape(_when(first))}</a> '
+        f'<a class="chip tour" href="/tour/{first.id}" title="Neustart unterwegs: eine Fahrt aus '
+        f'{len(group)} Sitzungen">Fahrt aus {len(group)} Teilen</a>'
+        f'<br><span class="mut">{escape(first.device)}{" · " + escape(bike) if bike else ""}</span></td>'
+        f'<td class="num"><span class="big">{num(dist / 1000)}</span> km</td>'
+        f'<td class="num hide-s">{hm(move)}</td>'
+        f'<td class="num hide-s">{num(vavg) + " km/h" if vavg else ""}</td>'
+        f'<td class="chips"><a href="/tour/{first.id}">Bericht der Fahrt</a></td>'
+        "</tr>")
+
+
+def _rows(sessions: list[Session], groups: list[list[Session]],
+          bike_names: dict[int, str]) -> str:
+    """The list, newest first. The parts of a split ride sit together under one head row (at
+    the place of its newest part in the list), oldest part first."""
+    where = {s.id: g for g in groups if len(g) > 1 for s in g}
+    shown = {s.id for s in sessions}
+    done, out = set(), []
+    for s in sessions:
+        group = where.get(s.id)
+        if group is None:
+            out.append(_row(s, None, bike_names.get(s.id)))
+        elif group[0].id not in done:
+            done.add(group[0].id)
+            parts = [p for p in group if p.id in shown]
+            out.append(_tour_head(group, bike_names.get(group[0].id)))
+            out.extend(_row(p, (group.index(p) + 1, len(group), group[0].id), None, p is parts[-1])
+                       for p in parts)
+    return "\n".join(out)
 
 
 def _pull_line(pull: dict | None) -> str:
@@ -438,12 +493,11 @@ def index(sessions: list[Session], pull: dict | None,
           min_km: float | None = None, max_km: float | None = None,
           prompts: list[list[Session]] | None = None, message: str | None = None,
           tests: bool = False, hidden_tests: int = 0, idle: int = 0,
-          tours: dict[int, tuple[int, int, int]] | None = None,
+          groups: list[list[Session]] | None = None,
           bike_names: dict[int, str] | None = None, registry=None, events=None) -> str:
-    """``tours``: session id -> (part, of parts, first session id) for rides split by a reboot;
+    """``groups``: the rides split by a reboot (lists of sessions, oldest first);
     ``bike_names``: session id -> bike; ``registry``/``events`` for the import form."""
-    tours, bike_names = tours or {}, bike_names or {}
-    rows = "\n".join(_row(s, tours.get(s.id), bike_names.get(s.id)) for s in sessions) or \
+    rows = _rows(sessions, groups or [], bike_names or {}) or \
         '<tr><td colspan="5" class="mut">Keine Fahrten für diesen Filter.</td></tr>'
     working = "".join(_activity(t) for t in (pull or {}).get("targets", []))
     # While something is being fetched or processed the page reloads itself, so the progress

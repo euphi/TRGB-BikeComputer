@@ -50,6 +50,11 @@ def test_reboot_on_the_way_is_one_ride(client, tmp_path):
 
     page = client.get("/").text
     assert f'href="/tour/{a}"' in page and "Teil 1/2" in page and "Teil 2/2" in page
+    # one head row for the whole ride, its parts below it (oldest first), the lone ride apart
+    assert page.count('class="tour-head"') == 1 and f'id="t{a}"' in page
+    assert page.index(f'id="s{c}"') < page.index(f'id="t{a}"') < page.index(f'id="s{a}"') < page.index(f'id="s{b}"')
+    assert page.count("tour-part") >= 2 and 'class="tour-part last"' in page
+    assert f'id="s{c}" class' not in page
     ride = client.get(f"/ride/{b}").text
     assert "Teil 2 von 2 einer Fahrt" in ride and f'href="/tour/{a}"' in ride
     whole = client.get(f"/tour/{b}").text

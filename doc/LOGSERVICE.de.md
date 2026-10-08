@@ -355,8 +355,9 @@ Sitzungen desselben Geräts, deren Abstand (Ende der einen bis Start der nächst
 für den Komoot-Upload
 ([`tours.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/BikeLogService/bikelogservice/tours.py)).
 Training, Ziele und Anstiege zählen die Fahrt, ihr Bericht läuft über die verbundenen Daten
-(die Strecke läuft weiter, der Neustart ist ein Stopp). Die Fahrtenliste markiert die Teile
-(„Teil 1/2"), die Sitzungsseite verlinkt den Bericht der ganzen Fahrt (`/tour/{id}`). Das
+(die Strecke läuft weiter, der Neustart ist ein Stopp). Die Fahrtenliste zeigt eine Fahrt aus
+mehreren Teilen als eine Zeile mit den Summen der ganzen Fahrt (Strecke, Fahrzeit, Ø) und den Teilen
+kleiner darunter („Teil 1/2", ohne Trennlinie dazwischen); die Sitzungsseite verlinkt den Bericht der ganzen Fahrt (`/tour/{id}`). Das
 hängt an den Uhrzeiten: Nach einem Reset ohne Uhr übernimmt die Firmware die GPS-Zeit von
 TrailBridge und korrigiert die vorher geschriebenen Zeitstempel; eine Sitzung, die nie eine
 Uhrzeit bekam (kein WLAN, kein TrailBridge), bleibt für sich. Test- und Leerlauf-Sitzungen
