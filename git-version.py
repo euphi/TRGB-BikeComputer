@@ -10,6 +10,9 @@ def get_firmware_specifier_build_flag():
     print ("Firmware Revision: " + str(build_version) + " Len:" + str(len(build_version)))
     if (len(build_version) > 1):
         build_flag = "-D GIT_VERSION=\\\"" + build_version[0] + "\\\"" + " -D COMMIT_VERSION=\\\"" + build_version[1] + "\\\"" + " -D GIT_HASH=\\\"" + build_version[2] + "\\\""
+    elif build_version[0]:
+        # exactly on a tag: git describe prints the tag alone, no commit count and no hash
+        build_flag = "-D GIT_VERSION=\\\"" + build_version[0] + "\\\""
     else:
         build_flag = ""
     return (build_flag)
