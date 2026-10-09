@@ -138,8 +138,9 @@ this on 2026-10-09: the OTA upload ends with "OK", the device answers again, **b
 previous firmware** -- rollback is enabled (`CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE`), an image that
 does not reach a clean start is dropped. The only traces are "Last reset PANIC" on `/debug/coredump`
 (without a new core dump) and the old version on the settings screen. So after every OTA of a build
-with changed `custom_sdkconfig`, check the version and the build tags there (`GRAVEL BLE5 I2C`:
-variant, connection limit of the libraries, I2C sensors; `BLE3 STD` are the stock libraries). To see
+with changed `custom_sdkconfig`, check the version and the build tags there (`5xBLE I2C`:
+connection limit of the libraries, I2C sensors; `STD_BLE` are the stock libraries, `FL` the
+Forumslader variant). To see
 what else differs from the stock libraries, diff `esp32s3/qio_opi/include/sdkconfig.h` of the two
 `framework-arduinoespressif32-libs` packages; left as they are: static instead of dynamic WiFi TX
 buffers, no TinyUSB.

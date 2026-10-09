@@ -152,8 +152,8 @@ läuft die vorherige Firmware** -- Rollback ist aktiv (`CONFIG_BOOTLOADER_APP_RO
 Image, das keinen sauberen Start schafft, wird verworfen. Die einzigen Spuren sind „Last reset
 PANIC" auf `/debug/coredump` (ohne neuen Core-Dump) und die alte Version auf dem Settings-Screen.
 Deshalb nach jedem OTA eines Builds mit geänderter `custom_sdkconfig` dort Version und Build-Tags
-prüfen (`GRAVEL BLE5 I2C`: Variante, Verbindungsgrenze der Bibliotheken, I2C-Sensoren; `BLE3 STD`
-sind die Standard-Bibliotheken). Was sonst von den Standard-Bibliotheken abweicht, zeigt ein Diff
+prüfen (`5xBLE I2C`: Verbindungsgrenze der Bibliotheken, I2C-Sensoren; `STD_BLE` sind die
+Standard-Bibliotheken, `FL` die Forumslader-Variante). Was sonst von den Standard-Bibliotheken abweicht, zeigt ein Diff
 von `esp32s3/qio_opi/include/sdkconfig.h` der beiden `framework-arduinoespressif32-libs`-Pakete;
 so belassen: statische statt dynamische WLAN-TX-Puffer, kein TinyUSB.
 

@@ -166,35 +166,32 @@ void ui_RimRidgeSettingsInit() {
 	lv_label_set_text(objects.rrset_build_val, build);
 	// Build tags below the version: which variant this firmware is. One word per build option
 	// that changes behaviour, so a new option gets a tag here.
-	//   GRAVEL / FL   display + sensor variant (BC_FL_SUPPORT = Forumslader)
-	//   BLEn          NimBLE's connection limit the IDF libraries were compiled with; "BLE3 STD"
+	//   SIMULATOR     fake sensors (BC_SIM) -- not for riding, so the whole line turns red
+	//   FL            Forumslader variant (BC_FL_SUPPORT); the other variant has no tag
+	//   5xBLE         NimBLE's connection limit the IDF libraries were compiled with; STD_BLE
 	//                 are pioarduino's stock libraries (no custom_sdkconfig, doc/PITFALLS.md)
 	//   I2C           BME280 + BMI160 (TRGBBC_SENSORS_I2C)
 	//   LOGn          core log level, only if raised above the usual 1
-	//   SIMULATOR     fake sensors (BC_SIM) -- not for riding, so the whole line turns red
-	char tags[64];
+	char tags[64] = "";
 	int n = 0;
 #ifdef BC_SIM
 	n += snprintf(tags + n, sizeof(tags) - n, "SIMULATOR  ");
 #endif
 #ifdef BC_FL_SUPPORT
-	n += snprintf(tags + n, sizeof(tags) - n, "FL");
-#else
-	n += snprintf(tags + n, sizeof(tags) - n, "GRAVEL");
+	n += snprintf(tags + n, sizeof(tags) - n, "FL  ");
 #endif
-#ifdef CONFIG_BT_NIMBLE_MAX_CONNECTIONS
 #ifdef CONFIG_LIB_BUILDER_COMPILE		// only set in the libraries pioarduino ships
-	n += snprintf(tags + n, sizeof(tags) - n, "  BLE%d STD", CONFIG_BT_NIMBLE_MAX_CONNECTIONS);
-#else
-	n += snprintf(tags + n, sizeof(tags) - n, "  BLE%d", CONFIG_BT_NIMBLE_MAX_CONNECTIONS);
-#endif
+	n += snprintf(tags + n, sizeof(tags) - n, "STD_BLE  ");
+#elif defined(CONFIG_BT_NIMBLE_MAX_CONNECTIONS)
+	n += snprintf(tags + n, sizeof(tags) - n, "%dxBLE  ", CONFIG_BT_NIMBLE_MAX_CONNECTIONS);
 #endif
 #ifdef TRGBBC_SENSORS_I2C
-	n += snprintf(tags + n, sizeof(tags) - n, "  I2C");
+	n += snprintf(tags + n, sizeof(tags) - n, "I2C  ");
 #endif
 #if defined(CORE_DEBUG_LEVEL) && CORE_DEBUG_LEVEL > 1
-	n += snprintf(tags + n, sizeof(tags) - n, "  LOG%d", CORE_DEBUG_LEVEL);
+	n += snprintf(tags + n, sizeof(tags) - n, "LOG%d  ", CORE_DEBUG_LEVEL);
 #endif
+	if (n >= 2) tags[n - 2] = 0;		// the separator after the last tag
 	lv_label_set_text(objects.rrset_build_flag, tags);
 #ifndef BC_SIM
 	// The label is styled as a warning in the EEZ project (the simulator case); a normal build

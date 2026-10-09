@@ -92,7 +92,7 @@ Mobilfunk); danach das Netz mit `cmd wifi forget-network <id>` wieder vergessen.
 - Aktiver Main-Screen ist **RimRidge** (EEZ Studio), dazu **RimRidgeNav**
   (Navigation), **RimRidgeRoute** (Streckenübersicht, Wischen nach links auf Nav,
   `src/ui/RimRidgeRouteCustFunc.*`), **RimRidgeRQ** (Wege-Labels), **RimRidgeSettings**
-  (Einstellungen: Hub mit Version und Build-Tags (Variante, BLE-Verbindungen, Simulator), Neustart/Tiefschlaf; Unterseiten
+  (Einstellungen: Hub mit Version und Build-Tags (FL, BLE-Verbindungen, Simulator), Neustart/Tiefschlaf; Unterseiten
   **RimRidgeSettingsWifi** / **-Imu** / **-Alt** (Höhenkalibrierung, `doc/HEIGHT.md`) und die
   Zahleneingabe **RimRidgeSettingsNum**, BLE-Geräte **RimRidgeSettingsDev** (`RimRidgeDevCustFunc.*`), Logik in `src/ui/RimRidgeSettingsCustFunc.*` und
   `RimRidgeAltCustFunc.*`),
