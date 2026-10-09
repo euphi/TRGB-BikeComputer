@@ -404,10 +404,10 @@ Zähler stehen auf `/debug/imu`.
 - Der Dump wird **nur auf Anfrage** gelesen, nie beim Boot. Ein früherer
   Kopierversuch beim Boot hat eine Endlosschleife aus Abstürzen ausgelöst
   (TODO in `BCLogger::setup()`). Ohne USB wäre das Gerät dann nicht mehr erreichbar.
-- Auflösen geht nur mit der **ELF genau der abgestürzten Firmware**. Vor jedem neuen Build
-  `.pio/build/trgb-esp32-s3/firmware.elf` sichern, wenn noch ein Dump aussteht.
-  Ob die Datei passt, zeigen die ersten Zeichen von `sha256sum firmware.elf`.
-  Befehl:
+- Auflösen geht nur mit der **ELF genau der abgestürzten Firmware**. Jeder Build
+  wird automatisch (`archive_firmware.py`) unter `firmware-archive/builds/<id>/`
+  abgelegt; `<id>` ist die „Firmware ELF“ auf `/debug/coredump`. `Tools/fwarchive.sh <id>` entpackt
+  die ELF und gibt den Pfad aus (ohne Argument: Liste der Builds). Befehl:
   ```
   curl -o coredump.bin http://<ip>/debug/coredump.elf
   esp-coredump info_corefile -t raw \

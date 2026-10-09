@@ -23,6 +23,9 @@ deutsch, `PROTOCOL.en.md` englisch). Links auf Quelldateien in `doc/` als GitHub
 schreiben, relative Links nur auf andere Seiten in `doc/`. Lokal prüfen:
 `doc/fetch_trailbridge.sh && mkdocs build --strict`.
 
+**Coredump analysieren:** ELF-ID von `/debug/coredump` → `Tools/fwarchive.sh <id>` liefert die
+passende `firmware.elf` aus dem Build-Archiv (`doc/DEBUG.md`, `doc/PITFALLS.md` "Crashes without USB").
+
 **Bekannte Fallstricke (PSRAM/Display-Flackern, NimBLE, USB, ...):
 [`doc/PITFALLS.md`](doc/PITFALLS.md) -- vor Änderungen an Speicherlayout,
 BLE-Adressen oder beim Debuggen von Anzeige-Artefakten lesen.**

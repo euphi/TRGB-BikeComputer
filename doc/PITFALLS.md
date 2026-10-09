@@ -367,9 +367,10 @@ are on `/debug/imu`.
 - The dump is read **only on request**, never at boot. An earlier attempt to copy it at
   boot caused an endless loop of crashes (TODO in `BCLogger::setup()`). Without USB the
   device would then be unreachable.
-- Resolving it needs the **ELF of exactly the firmware that crashed**. Before every new
-  build, save `.pio/build/trgb-esp32-s3/firmware.elf` if a dump is still pending. Whether
-  the file matches is shown by the first characters of `sha256sum firmware.elf`. Command:
+- Resolving it needs the **ELF of exactly the firmware that crashed**. Every
+  build is archived automatically (`archive_firmware.py`) in `firmware-archive/builds/<id>/`;
+  `<id>` is the "Firmware ELF" shown on `/debug/coredump`. `Tools/fwarchive.sh <id>` unpacks
+  the ELF and prints its path (no argument: list the builds). Command:
 
     ```
     curl -o coredump.bin http://<ip>/debug/coredump.elf
