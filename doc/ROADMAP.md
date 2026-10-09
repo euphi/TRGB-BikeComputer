@@ -26,8 +26,9 @@ Open, to be fixed.
 
 - **A fourth BLE device does not connect**: with speed sensor, heart-rate strap and
   TrailBridge connected, the cadence sensor stayed out on the test ride. The suspected
-  cause is the BLE stack's limit of three connections ([pitfalls](PITFALLS.md)). A build
-  with four (`trgb-esp32-s3-ble4`) runs on the device, but four peers at once have not been tried yet.
+  cause is the BLE stack's limit of three connections ([pitfalls](PITFALLS.md)). The
+  firmware is now built with four; it runs on the device, but four peers at once have not been
+  tried yet.
 
 ## Next: usable on the road
 

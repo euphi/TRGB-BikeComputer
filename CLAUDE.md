@@ -230,17 +230,19 @@ Arduino-Framework). Environments:
 * `trgb-esp32-s3-ota`, `trgb-esp32-s3-FL-ota` -- dieselben Builds, Upload per
   WLAN über den eigenen `/update`-Endpunkt (curl, nicht espota). Flashen nur auf
   ausdrückliche Anfrage des Nutzers.
-* `trgb-esp32-s3-ble4`, `trgb-esp32-s3-ble4-ota` -- vier statt drei BLE-Verbindungen über
-  `custom_sdkconfig` (Hybrid-Compile). Nur mit eigenem Core-Verzeichnis bauen
-  und Build-Verzeichnis
-  (`PLATFORMIO_CORE_DIR=~/.platformio-ble4 PLATFORMIO_BUILD_DIR=$PWD/.pio/build-ble4`), nie parallel zu einem anderen Build im selben
-  Core-Verzeichnis (`doc/PITFALLS.md`).
 * `trgb-esp32-s3-sim`, `trgb-esp32-s3-sim-ota` -- Debug-Build mit
   Sensor-Simulator (`-DBC_SIM`, `src/SimSensors.*`): Fake-Speed/Cadence/Puls
   über `sim` (seriell), `/debug/sim` oder `bikelog sim <gpx>`, eigene
   NVS-Namespaces für die Statistik. Alles Simulator-Spezifische hinter
   `#ifdef BC_SIM`, die normalen Builds bleiben frei davon.
   [`doc/SIMULATOR.md`](doc/SIMULATOR.md).
+
+Alle Environments bauen mit `custom_sdkconfig` (vier BLE-Verbindungen, Abschnitt `[env]`): Die
+IDF-Bibliotheken werden einmal selbst kompiliert (~11 min) und liegen dann im
+PlatformIO-Core-Verzeichnis. `sdkconfig.defaults` ist eingecheckt und darf nicht gelöscht oder von
+Hand geändert werden, sonst wird neu kompiliert. Meldet ein Build
+`*** Reinstall Arduino framework ***`, nicht parallel in einem zweiten Checkout bauen
+(`doc/PITFALLS.md`).
 
 ## Programmiersprachen-Präferenz
 

@@ -101,46 +101,54 @@ einer, HR, zwei CSC). Den Slot zu löschen ändert nichts, wie das Log zeigt. Zu
 wenn ein Connect scheitert. Eine Lösung braucht eine andere sdkconfig (pioarduino
 `custom_sdkconfig`, das die IDF-Bibliotheken neu baut) oder die NimBLE-Arduino-Bibliothek mit
 `-DCONFIG_BT_NIMBLE_MAX_CONNECTIONS=4` -- jede Verbindung kostet internes RAM. Die Logzeile eines gescheiterten Connects nennt jetzt, wie viele andere Gegenstellen verbunden
-waren; Fehlschläge immer bei 3 würden den Verdacht bestätigen. `pio run -e trgb-esp32-s3-ble4`
-baut mit `custom_sdkconfig = CONFIG_BT_NIMBLE_MAX_CONNECTIONS=4` (läuft auf dem Gerät, vier Gegenstellen
-gleichzeitig noch nicht ausprobiert). Bis dahin verbindet sich das 4. Gerät schlicht nie.
+waren; Fehlschläge immer bei 3 würden den Verdacht bestätigen. Seit 2026-10-09 bauen alle
+Environments mit `custom_sdkconfig = CONFIG_BT_NIMBLE_MAX_CONNECTIONS=4` (nächster Abschnitt); das
+läuft auf dem Gerät, vier Gegenstellen gleichzeitig sind noch nicht ausprobiert.
 
 ## `custom_sdkconfig` (Hybrid-Compile) baut das gemeinsame Framework-Paket um
 
-Die `ble4`-Environments lassen pioarduino die IDF-Bibliotheken selbst kompilieren. Der erste Build
-lädt ESP-IDF, cmake und ninja nach (rund 1 GB mehr im Core-Verzeichnis) und dauert 10 bis 20
-Minuten. Das Ergebnis landet **im gemeinsamen Paket** `framework-arduinoespressif32-libs` des
-PlatformIO-Core-Verzeichnisses, markiert durch eine Datei `sdkconfig` dort. Der nächste Build eines
-Environments ohne `custom_sdkconfig` sieht die Markierung, meldet
-`*** Reinstall Arduino framework ***`, löscht beide Framework-Pakete und lädt sie neu; der nächste
-`ble4`-Build kompiliert die Bibliotheken wieder. Außerdem prüft die Plattform ihre Tool-Pakete
-(darunter `tool-scons`) noch einmal aus dem laufenden Build heraus.
+`custom_sdkconfig` im Abschnitt `[env]` der `platformio.ini` (vier BLE-Verbindungen) lässt pioarduino
+die IDF-Bibliotheken selbst kompilieren. Das lädt einmalig ESP-IDF, cmake und ninja nach (rund 1 GB
+mehr im Core-Verzeichnis) und dauert etwa 11 Minuten (18 mit den Downloads). Das Ergebnis landet
+**im gemeinsamen Paket** `framework-arduinoespressif32-libs` des PlatformIO-Core-Verzeichnisses,
+markiert durch eine Datei `sdkconfig` dort. Der passende Hash steht in der ersten Zeile von
+`sdkconfig.defaults` im Projektverzeichnis.
 
-Zwei Builds mit demselben Core-Verzeichnis dürfen deshalb nie gleichzeitig laufen, wenn einer davon
-ein Hybrid-Build ist: Der eine löscht die Pakete, die der andere gerade liest. Ein Build, der mit
-einem fehlenden Modul eines Tool-Pakets abbricht (`ModuleNotFoundError: No module named
-'SCons.Tool.FortranCommon'` beim Linken, gesehen am 2026-10-08), passt dazu; mit einem
-Core-Verzeichnis, das nur ein Build benutzt, ließ er sich nicht nachstellen, weder mit einem frischen
-noch mit der Kopie einer bestehenden Installation. Die Variante bekommt ein eigenes
-Core-Verzeichnis, dann wird auch beim Wechsel nichts neu installiert:
+Gemessen am 2026-10-09 (jeweils kompletter Build der Anwendung): ohne `custom_sdkconfig` 3:16 min,
+mit `custom_sdkconfig` und schon kompilierten Bibliotheken 2:39 bis 3:05 min. Sind die Bibliotheken
+einmal da, dauert ein Build also so lange wie vorher. Neu kompiliert werden sie nur, wenn
 
-```
-PLATFORMIO_CORE_DIR=~/.platformio-ble4 PLATFORMIO_BUILD_DIR=$PWD/.pio/build-ble4 \
-    pio run -e trgb-esp32-s3-ble4-ota -t upload
-```
+- sich der Wert von `custom_sdkconfig`, der Speichertyp des Boards oder die Plattform-Version ändert,
+- `sdkconfig.defaults` fehlt oder nicht passt. Deshalb ist die Datei **eingecheckt**: Ein frischer
+  Checkout oder Worktree mit der Datei baut in 2:44 min, ohne sie wird das Framework neu installiert
+  und die Bibliotheken werden neu kompiliert;
+- das Core-Verzeichnis zuletzt von einem Projekt (oder einem älteren Branch von diesem) **ohne**
+  `custom_sdkconfig` benutzt wurde. So ein Build sieht die Markierung, meldet
+  `*** Reinstall Arduino framework ***`, löscht beide Framework-Pakete und lädt sie neu; der nächste
+  Build hier kompiliert die Bibliotheken wieder. Deshalb tragen alle Environments denselben Wert (er
+  steht in `[env]`), und der Wechsel zwischen `trgb-esp32-s3` und `trgb-esp32-s3-sim` installiert
+  nichts neu.
 
-Auch das eigene Build-Verzeichnis ist nötig: PlatformIO leert `.pio/build` komplett, sobald ein
-Build mit einem anderen Core-Verzeichnis läuft, und damit auch die `firmware.elf`, mit der sich ein
-Core-Dump der Firmware auf dem Gerät auflösen lässt.
+Eine Neuinstallation löscht Pakete, die ein anderer Build vielleicht gerade liest, und die Plattform
+prüft ihre Tool-Pakete (darunter `tool-scons`) noch einmal aus dem laufenden Build heraus. Zwei
+Builds mit demselben Core-Verzeichnis dürfen deshalb nicht gleichzeitig laufen, solange einer davon
+das Framework neu installiert. Ein Build, der mit einem fehlenden Modul eines Tool-Pakets abbricht
+(`ModuleNotFoundError: No module named 'SCons.Tool.FortranCommon'` beim Linken, gesehen am
+2026-10-08), passt dazu; mit einem Core-Verzeichnis, das nur ein Build benutzt, ließ er sich nicht
+nachstellen, weder mit einem frischen noch mit der Kopie einer bestehenden Installation. Für einen
+Branch, der noch die Standard-Bibliotheken braucht, ein eigenes Core-Verzeichnis nehmen
+(`PLATFORMIO_CORE_DIR=...`) -- und dazu ein eigenes Build-Verzeichnis (`PLATFORMIO_BUILD_DIR=...`),
+denn PlatformIO leert `.pio/build` komplett, sobald ein Build mit einem anderen Core-Verzeichnis
+läuft, und damit auch die `firmware.elf`, mit der sich ein Core-Dump der Firmware auf dem Gerät
+auflösen lässt.
 
 Gemessen am 2026-10-09 am Gerät (WLAN + TrailBridge mit laufender Navigation, derselbe Commit, Zeile
-`MEM int=`): normaler Build 45 KB freier interner Heap, Tiefststand 27 KB; `ble4`-Build 45 KB,
-Tiefststand 28 KB. Der vierte Verbindungsplatz allein kostet nichts Messbares; was vier verbundene
-Gegenstellen kosten, ist noch offen.
+`MEM int=`): drei Verbindungen 45 KB freier interner Heap, Tiefststand 27 KB; vier Verbindungen
+45 KB, Tiefststand 28 KB. Der vierte Verbindungsplatz allein kostet nichts Messbares; was vier
+verbundene Gegenstellen kosten, ist noch offen.
 
-Der Build hinterlässt `sdkconfig.defaults`, `sdkconfig.<env>`, `managed_components/` und `.dummy/`
-im Projektverzeichnis (von git ignoriert). `sdkconfig.defaults` trägt den Hash der Einstellungen;
-wer die Datei löscht, erzwingt das erneute Kompilieren der Bibliotheken.
+Der Bibliotheks-Build hinterlässt außerdem `sdkconfig.<env>`, `managed_components/` (570 MB) und
+`.dummy/` im Projektverzeichnis (von git ignoriert).
 
 ## BLE-Stack ist NimBLE, nicht Bluedroid
 

@@ -11,8 +11,11 @@ compile_commands.json
 
 /versioning
 
-# Hybrid compile (custom_sdkconfig, env trgb-esp32-s3-ble4): generated on every build
+# Hybrid compile (custom_sdkconfig in platformio.ini): generated when the IDF libraries are
+# compiled. sdkconfig.defaults is checked in on purpose: its first line carries the hash the
+# platform compares, without it every fresh checkout recompiles the libraries (doc/PITFALLS.md).
 /sdkconfig.*
+!/sdkconfig.defaults
 /managed_components/
 /.dummy/
 include/version.h
