@@ -92,7 +92,7 @@ Mobilfunk); danach das Netz mit `cmd wifi forget-network <id>` wieder vergessen.
 - Aktiver Main-Screen ist **RimRidge** (EEZ Studio), dazu **RimRidgeNav**
   (Navigation), **RimRidgeRoute** (Streckenübersicht, Wischen nach links auf Nav,
   `src/ui/RimRidgeRouteCustFunc.*`), **RimRidgeRQ** (Wege-Labels), **RimRidgeSettings**
-  (Einstellungen: Hub mit Version/Sim-Markierung, Neustart/Tiefschlaf; Unterseiten
+  (Einstellungen: Hub mit Version und Build-Tags (Variante, BLE-Verbindungen, Simulator), Neustart/Tiefschlaf; Unterseiten
   **RimRidgeSettingsWifi** / **-Imu** / **-Alt** (Höhenkalibrierung, `doc/HEIGHT.md`) und die
   Zahleneingabe **RimRidgeSettingsNum**, BLE-Geräte **RimRidgeSettingsDev** (`RimRidgeDevCustFunc.*`), Logik in `src/ui/RimRidgeSettingsCustFunc.*` und
   `RimRidgeAltCustFunc.*`),
@@ -237,12 +237,13 @@ Arduino-Framework). Environments:
   `#ifdef BC_SIM`, die normalen Builds bleiben frei davon.
   [`doc/SIMULATOR.md`](doc/SIMULATOR.md).
 
-Alle Environments bauen mit `custom_sdkconfig` (vier BLE-Verbindungen, Abschnitt `[env]`): Die
+Alle Environments bauen mit `custom_sdkconfig` (fünf BLE-Verbindungen und PSRAM-Boot-Init, Abschnitt `[env]`): Die
 IDF-Bibliotheken werden einmal selbst kompiliert (~11 min) und liegen dann im
 PlatformIO-Core-Verzeichnis. `sdkconfig.defaults` ist eingecheckt und darf nicht gelöscht oder von
 Hand geändert werden, sonst wird neu kompiliert. Meldet ein Build
-`*** Reinstall Arduino framework ***`, nicht parallel in einem zweiten Checkout bauen
-(`doc/PITFALLS.md`).
+`*** Reinstall Arduino framework ***`, nicht parallel in einem zweiten Checkout bauen. Nach einem OTA
+mit geänderter `custom_sdkconfig` auf dem Settings-Screen Version und Build-Tags prüfen: Eine
+Firmware, die nicht bootet, wird kommentarlos zurückgerollt (`doc/PITFALLS.md`).
 
 ## Programmiersprachen-Präferenz
 

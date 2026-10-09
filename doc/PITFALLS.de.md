@@ -102,12 +102,13 @@ wenn ein Connect scheitert. Eine Lösung braucht eine andere sdkconfig (pioardui
 `custom_sdkconfig`, das die IDF-Bibliotheken neu baut) oder die NimBLE-Arduino-Bibliothek mit
 `-DCONFIG_BT_NIMBLE_MAX_CONNECTIONS=4` -- jede Verbindung kostet internes RAM. Die Logzeile eines gescheiterten Connects nennt jetzt, wie viele andere Gegenstellen verbunden
 waren; Fehlschläge immer bei 3 würden den Verdacht bestätigen. Seit 2026-10-09 bauen alle
-Environments mit `custom_sdkconfig = CONFIG_BT_NIMBLE_MAX_CONNECTIONS=4` (nächster Abschnitt); das
-läuft auf dem Gerät, vier Gegenstellen gleichzeitig sind noch nicht ausprobiert.
+Environments über `custom_sdkconfig` mit `CONFIG_BT_NIMBLE_MAX_CONNECTIONS=5` (nächster Abschnitt;
+die fünfte ist für einen Leistungsmesser); das läuft auf dem Gerät, mehr als eine Gegenstelle
+gleichzeitig ist noch nicht ausprobiert.
 
 ## `custom_sdkconfig` (Hybrid-Compile) baut das gemeinsame Framework-Paket um
 
-`custom_sdkconfig` im Abschnitt `[env]` der `platformio.ini` (vier BLE-Verbindungen) lässt pioarduino
+`custom_sdkconfig` im Abschnitt `[env]` der `platformio.ini` (fünf BLE-Verbindungen) lässt pioarduino
 die IDF-Bibliotheken selbst kompilieren. Das lädt einmalig ESP-IDF, cmake und ninja nach (rund 1 GB
 mehr im Core-Verzeichnis) und dauert etwa 11 Minuten (18 mit den Downloads). Das Ergebnis landet
 **im gemeinsamen Paket** `framework-arduinoespressif32-libs` des PlatformIO-Core-Verzeichnisses,
@@ -142,10 +143,26 @@ denn PlatformIO leert `.pio/build` komplett, sobald ein Build mit einem anderen 
 läuft, und damit auch die `firmware.elf`, mit der sich ein Core-Dump der Firmware auf dem Gerät
 auflösen lässt.
 
-Gemessen am 2026-10-09 am Gerät (WLAN + TrailBridge mit laufender Navigation, derselbe Commit, Zeile
-`MEM int=`): drei Verbindungen 45 KB freier interner Heap, Tiefststand 27 KB; vier Verbindungen
-45 KB, Tiefststand 28 KB. Der vierte Verbindungsplatz allein kostet nichts Messbares; was vier
-verbundene Gegenstellen kosten, ist noch offen.
+**Ein Hybrid-Build braucht die PSRAM-Boot-Einstellungen ausdrücklich.** Die Bibliotheken, die
+pioarduino für `qio_opi` mitliefert, setzen `CONFIG_SPIRAM_BOOT_HW_INIT`, `CONFIG_SPIRAM_BOOT_INIT`
+und `CONFIG_SPIRAM_IGNORE_NOTFOUND`; ein Hybrid-Build startet von der allgemeinen
+ESP32-S3-Konfiguration, in der sie aus sind. Ohne sie stürzt die Firmware beim Booten ab. Von außen
+sah das am 2026-10-09 so aus: Der OTA-Upload endet mit „OK", das Gerät antwortet wieder, **aber es
+läuft die vorherige Firmware** -- Rollback ist aktiv (`CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE`), ein
+Image, das keinen sauberen Start schafft, wird verworfen. Die einzigen Spuren sind „Last reset
+PANIC" auf `/debug/coredump` (ohne neuen Core-Dump) und die alte Version auf dem Settings-Screen.
+Deshalb nach jedem OTA eines Builds mit geänderter `custom_sdkconfig` dort Version und Build-Tags
+prüfen (`GRAVEL BLE5 I2C`: Variante, Verbindungsgrenze der Bibliotheken, I2C-Sensoren; `BLE3 STD`
+sind die Standard-Bibliotheken). Was sonst von den Standard-Bibliotheken abweicht, zeigt ein Diff
+von `esp32s3/qio_opi/include/sdkconfig.h` der beiden `framework-arduinoespressif32-libs`-Pakete;
+so belassen: statische statt dynamische WLAN-TX-Puffer, kein TinyUSB.
+
+Gemessen am 2026-10-09 am Gerät (WLAN + TrailBridge mit laufender Navigation, Zeile `MEM int=`):
+Standard-Bibliotheken (drei Verbindungen) 45 KB freier interner Heap, Tiefststand 27 KB, 6745 KB
+PSRAM frei; Hybrid-Build mit fünf Verbindungen 46 KB, Tiefststand 35 KB, 6279 KB PSRAM frei. Die
+zwei zusätzlichen Verbindungsplätze kosten keinen nennenswerten internen Heap, die
+Hybrid-Bibliotheken belegen rund 470 KB mehr PSRAM. Was vier oder fünf verbundene Gegenstellen
+kosten, ist noch offen.
 
 Der Bibliotheks-Build hinterlässt außerdem `sdkconfig.<env>`, `managed_components/` (570 MB) und
 `.dummy/` im Projektverzeichnis (von git ignoriert).

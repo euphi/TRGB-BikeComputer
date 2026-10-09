@@ -91,13 +91,13 @@ NimBLE error code and the number of connected clients when a connect fails. A fi
 sdkconfig (pioarduino `custom_sdkconfig`, which compiles the IDF libraries) or the NimBLE-Arduino
 library with `-DCONFIG_BT_NIMBLE_MAX_CONNECTIONS=4` -- every connection costs internal RAM.
 The log line of a failed connect now says how many other peers were connected; failures always at 3
-would confirm it. Since 2026-10-09 every environment builds with `custom_sdkconfig =
-CONFIG_BT_NIMBLE_MAX_CONNECTIONS=4` (next section); it runs on the device, four peers at once have
-not been tried yet.
+would confirm it. Since 2026-10-09 every environment builds with
+`CONFIG_BT_NIMBLE_MAX_CONNECTIONS=5` through `custom_sdkconfig` (next section; the fifth is for a
+power meter); it runs on the device, more than one peer at once has not been tried yet.
 
 ## `custom_sdkconfig` (hybrid compile) rebuilds the shared framework package
 
-`custom_sdkconfig` in the `[env]` section of `platformio.ini` (four BLE connections) makes pioarduino
+`custom_sdkconfig` in the `[env]` section of `platformio.ini` (five BLE connections) makes pioarduino
 compile the IDF libraries itself. That downloads ESP-IDF, cmake and ninja once (about 1 GB more in
 the core directory) and takes about 11 minutes (18 with the downloads). The result is written
 **into the shared package** `framework-arduinoespressif32-libs` of the PlatformIO core directory,
@@ -130,10 +130,25 @@ because PlatformIO empties `.pio/build` completely as soon as a build runs with 
 directory, and with it the `firmware.elf` needed to resolve a core dump of the firmware on the
 device.
 
-Measured 2026-10-09 on the device (WiFi + TrailBridge navigating, same commit, line `MEM int=`):
-three connections 45 KB free internal heap, low mark 27 KB; four connections 45 KB, low mark 28 KB.
-The fourth connection slot alone costs nothing measurable; what four connected peers cost is still
-open.
+**A hybrid build needs the PSRAM boot settings spelled out.** The libraries pioarduino ships for
+`qio_opi` set `CONFIG_SPIRAM_BOOT_HW_INIT`, `CONFIG_SPIRAM_BOOT_INIT` and
+`CONFIG_SPIRAM_IGNORE_NOTFOUND`; a hybrid build starts from the generic ESP32-S3 configuration, where
+they are off. Without them the firmware panics while booting. Seen from outside that looked like
+this on 2026-10-09: the OTA upload ends with "OK", the device answers again, **but it runs the
+previous firmware** -- rollback is enabled (`CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE`), an image that
+does not reach a clean start is dropped. The only traces are "Last reset PANIC" on `/debug/coredump`
+(without a new core dump) and the old version on the settings screen. So after every OTA of a build
+with changed `custom_sdkconfig`, check the version and the build tags there (`GRAVEL BLE5 I2C`:
+variant, connection limit of the libraries, I2C sensors; `BLE3 STD` are the stock libraries). To see
+what else differs from the stock libraries, diff `esp32s3/qio_opi/include/sdkconfig.h` of the two
+`framework-arduinoespressif32-libs` packages; left as they are: static instead of dynamic WiFi TX
+buffers, no TinyUSB.
+
+Measured 2026-10-09 on the device (WiFi + TrailBridge navigating, line `MEM int=`): stock libraries
+(three connections) 45 KB free internal heap, low mark 27 KB, 6745 KB PSRAM free; hybrid build with
+five connections 46 KB, low mark 35 KB, 6279 KB PSRAM free. The two extra connection slots cost no
+internal heap worth mentioning, the hybrid libraries take about 470 KB more PSRAM. What four or five
+connected peers cost is still open.
 
 The library build also leaves `sdkconfig.<env>`, `managed_components/` (570 MB) and `.dummy/` in the
 project directory (ignored by git).

@@ -27,7 +27,7 @@ Offen, zu beheben.
 - **Ein viertes BLE-Gerät verbindet sich nicht**: Mit Speed-Sensor, Pulsgurt und
   TrailBridge blieb auf der Testfahrt der Trittfrequenz-Sensor außen vor. Vermutete
   Ursache ist die Grenze des BLE-Stacks von drei Verbindungen
-  ([Fallstricke](PITFALLS.md)). Die Firmware wird jetzt mit vier gebaut; das läuft auf dem
+  ([Fallstricke](PITFALLS.md)). Die Firmware wird jetzt mit fünf gebaut; das läuft auf dem
   Gerät, vier Gegenstellen gleichzeitig sind aber noch nicht ausprobiert.
 
 ## Als Nächstes: unterwegs bedienbar

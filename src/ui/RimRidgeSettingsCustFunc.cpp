@@ -17,6 +17,7 @@
 #include "Singletons.h"	// ui, webserver, stats, bclog, trgb, sensors (TRGBBC_SENSORS_I2C only)
 #include "Stats/Distance.h"
 #include <version.h>
+#include <sdkconfig.h>		// build tags: CONFIG_BT_NIMBLE_MAX_CONNECTIONS
 #ifdef TRGBBC_SENSORS_I2C
 #include "I2CSensors.h"
 #endif
@@ -163,18 +164,44 @@ void ui_RimRidgeSettingsInit() {
 	snprintf(build, sizeof(build), "%s #%s", GIT_VERSION, BUILD_NUMBER);
 #endif
 	lv_label_set_text(objects.rrset_build_val, build);
-	// Marks a build that is not for riding: the simulator fakes sensors (BC_SIM). Add further
-	// debug builds here.
-	const char* flag = nullptr;
+	// Build tags below the version: which variant this firmware is. One word per build option
+	// that changes behaviour, so a new option gets a tag here.
+	//   GRAVEL / FL   display + sensor variant (BC_FL_SUPPORT = Forumslader)
+	//   BLEn          NimBLE's connection limit the IDF libraries were compiled with; "BLE3 STD"
+	//                 are pioarduino's stock libraries (no custom_sdkconfig, doc/PITFALLS.md)
+	//   I2C           BME280 + BMI160 (TRGBBC_SENSORS_I2C)
+	//   LOGn          core log level, only if raised above the usual 1
+	//   SIMULATOR     fake sensors (BC_SIM) -- not for riding, so the whole line turns red
+	char tags[64];
+	int n = 0;
 #ifdef BC_SIM
-	flag = "SIMULATOR-BUILD";
+	n += snprintf(tags + n, sizeof(tags) - n, "SIMULATOR  ");
 #endif
-	if (flag) {
-		lv_label_set_text(objects.rrset_build_flag, flag);
-		lv_obj_clear_flag(objects.rrset_build_flag, LV_OBJ_FLAG_HIDDEN);
-	} else {
-		lv_obj_add_flag(objects.rrset_build_flag, LV_OBJ_FLAG_HIDDEN);
-	}
+#ifdef BC_FL_SUPPORT
+	n += snprintf(tags + n, sizeof(tags) - n, "FL");
+#else
+	n += snprintf(tags + n, sizeof(tags) - n, "GRAVEL");
+#endif
+#ifdef CONFIG_BT_NIMBLE_MAX_CONNECTIONS
+#ifdef CONFIG_LIB_BUILDER_COMPILE		// only set in the libraries pioarduino ships
+	n += snprintf(tags + n, sizeof(tags) - n, "  BLE%d STD", CONFIG_BT_NIMBLE_MAX_CONNECTIONS);
+#else
+	n += snprintf(tags + n, sizeof(tags) - n, "  BLE%d", CONFIG_BT_NIMBLE_MAX_CONNECTIONS);
+#endif
+#endif
+#ifdef TRGBBC_SENSORS_I2C
+	n += snprintf(tags + n, sizeof(tags) - n, "  I2C");
+#endif
+#if defined(CORE_DEBUG_LEVEL) && CORE_DEBUG_LEVEL > 1
+	n += snprintf(tags + n, sizeof(tags) - n, "  LOG%d", CORE_DEBUG_LEVEL);
+#endif
+	lv_label_set_text(objects.rrset_build_flag, tags);
+#ifndef BC_SIM
+	// The label is styled as a warning in the EEZ project (the simulator case); a normal build
+	// shows its tags muted. There is only one theme, nothing re-applies the color later.
+	lv_obj_set_style_text_color(objects.rrset_build_flag, lv_color_hex(COLOR_MUTED), LV_PART_MAIN | LV_STATE_DEFAULT);
+#endif
+	lv_obj_clear_flag(objects.rrset_build_flag, LV_OBJ_FLAG_HIDDEN);
 	ui_RimRidgeSettingsUpdateCal();
 	ui_RimRidgeAltUpdate();
 	ui_RimRidgeDevUpdate();
