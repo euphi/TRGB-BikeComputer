@@ -117,6 +117,11 @@ Without USB: `/debug/coredump` shows the task and backtrace of the last crash, a
 `/debug/coredump.elf` downloads the dump for `esp-coredump` (command and caveats in
 [pitfalls](PITFALLS.md), "Crashes without USB"). The steps below read it over USB.
 
+The ELF id shown there ("Firmware ELF 4f1cb0873") finds the matching build: every build is kept in
+`firmware-archive/builds/<id>/` (local, `archive_firmware.py`, the newest 30 untagged ones plus all
+tagged ones). `Tools/fwarchive.sh <id>` unpacks its `firmware.elf` and prints the path; without an
+argument it lists the builds. Builds with uncommitted changes carry a `dirty.patch`.
+
 ### How to get a coredump
 
 1. Install ESP32 IDF: https://docs.espressif.com/projects/esp-idf/en/stable/esp32/get-started/
