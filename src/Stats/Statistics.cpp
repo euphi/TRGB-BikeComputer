@@ -288,7 +288,7 @@ void Statistics::cycle() {
 		}
 		// no break - also switch off in NO_CONN
 	case DS_NO_CONN:
-		if (time_in_break > (offAfterMinutes * 60000)) {		// auto-switch off  (default 50min, can be delayed)
+		if (offAfterMinutes != 255 && time_in_break > (offAfterMinutes * 60000)) {		// auto-switch off (255 = disabled, never)
 			persistNow();
 			trgb.deepSleep();
 		}
@@ -360,7 +360,7 @@ void Statistics::updateRoadQualityUi() {
 
 void Statistics::delayStandby() {
 	time_t time_in_break = millis() - timestamp_stop;
-	if ((offAfterMinutes * 60000 - time_in_break ) < 60000 ) {
+	if (offAfterMinutes < 254 && (offAfterMinutes * 60000 - time_in_break ) < 60000 ) {	// 255 = disabled, 254 max (+1 would disable)
 		offAfterMinutes++;
 		updateStateIcon();	// Immediate update (user feedback)
 	}
