@@ -166,7 +166,7 @@ void ui_RimRidgeSettingsInit() {
 	lv_label_set_text(objects.rrset_build_val, build);
 	// Build tags below the version: which variant this firmware is. One word per build option
 	// that changes behaviour, so a new option gets a tag here.
-	//   SIMULATOR     fake sensors (BC_SIM) -- not for riding, so the whole line turns red
+	//   SIMULATOR     fake sensors (BC_SIM) -- not for riding, so the whole line keeps its warning color
 	//   FL            Forumslader variant (BC_FL_SUPPORT); the other variant has no tag
 	//   5xBLE         NimBLE's connection limit the IDF libraries were compiled with; STD_BLE
 	//                 are pioarduino's stock libraries (no custom_sdkconfig, doc/PITFALLS.md)
