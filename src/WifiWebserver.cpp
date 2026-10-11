@@ -742,8 +742,11 @@ void WifiWebserver::checkLoop() {
 
 	// The 5 minute rule, for everything that is not (yet) a working connection: no network found
 	// or none that works, connection lost, or an access point nobody joined.
+	// millis() again, not `now`: the connection-lost branch above sets offlineSince later than `now`
+	// was read, and the unsigned difference then wraps to ~4e9 -- WiFi was disabled the moment the
+	// link dropped instead of five minutes later.
 	const WifiPhase p = phase.load();
-	if (p != WifiPhase::OFF && p != WifiPhase::ONLINE && now - offlineSince > OFFLINE_TIMEOUT_MS) {
+	if (p != WifiPhase::OFF && p != WifiPhase::ONLINE && millis() - offlineSince > OFFLINE_TIMEOUT_MS) {
 		bclog.logf(BCLogger::Log_Warn, TAG, "No WiFi connection for %u min - disabling it", (unsigned) (OFFLINE_TIMEOUT_MS / 60000));
 		disableWifi(p == WifiPhase::ACCESS_POINT ? "Hotspot aus (kein Client)"
 		            : everConnected ? "Verbindung verloren" : "kein WLAN gefunden");

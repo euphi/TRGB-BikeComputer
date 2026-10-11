@@ -709,7 +709,7 @@ void BLEDevices::notifyCallbackCSC(BLERemoteCharacteristic *pBLERemoteCharacteri
 				if (millis() - crank_time_last_received > 1200) {
 					cadence = 0;
 				} else {
-					bclog.log(BCLogger::Log_Info, BCLogger::TAG_BLE, "Iwwwwwwwgnore 0 revolutions since last update is less than 1200ms");
+					bclog.log(BCLogger::Log_Info, BCLogger::TAG_BLE, "Ignore 0 revolutions since last update is less than 1200ms");
 				}
 			}
 			crank_rev_last = crank_rev;
@@ -875,9 +875,16 @@ void BLEDevices::handleNavData(const uint8_t* pData, size_t length) {
 		// The route overview: its revision says whether the one held is current (a frame without the tag drops it)
 		if (routeMon.onNavFrame(hasOverviewRevision, overviewRevision, hasRemainingDist, remainingDist, remainingTime)) wakeOverviewReader();
 
-		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "🧭 %s in %d m auf %s (Rest: %d m / %d s). Next: %s in %d m auf %s",
+		// An unchanged frame (TrailBridge keeps sending its heartbeat at the destination, or while
+		// standing) goes to Debug, so it stays out of the file: 70 % of an idle day's log was this line.
+		static char navLine[320];		// static: the NimBLE host task has little stack to spare
+		snprintf(navLine, sizeof(navLine), "🧭 %s in %d m auf %s (Rest: %d m / %d s). Next: %s in %d m auf %s",
 				navManeuverToString(maneuver), maneuverDist, street.c_str(), remainingDist, remainingTime,
 				navManeuverToString(nextManeuver), nextManeuverDist, nextStreet.c_str());
+		static char lastNavLine[sizeof(navLine)];
+		const bool navChanged = strcmp(navLine, lastNavLine) != 0;
+		if (navChanged) strcpy(lastNavLine, navLine);
+		bclog.log(navChanged ? BCLogger::Log_Info : BCLogger::Log_Debug, BCLogger::TAG_BLE, navLine);
 
 		if (laneCount > 0 || nextLaneCount > 0) {
 			auto laneStr = [](const NavLane* l, uint8_t n) {

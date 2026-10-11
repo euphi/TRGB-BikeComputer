@@ -52,6 +52,9 @@ Command cmdMem;
 static void logBatteryState(uint16_t mv, uint8_t perc, uint16_t remainMin, bool charging) {
 	const char* wifi = WiFi.getMode() == WIFI_OFF ? "off" : WiFi.getMode() == WIFI_AP ? "ap"
 	                 : WiFi.status() == WL_CONNECTED ? "sta" : "search";
+	char wifiText[24];
+	snprintf(wifiText, sizeof(wifiText), "%s", wifi);
+	if (WiFi.getMode() != WIFI_OFF && WiFi.status() == WL_CONNECTED) snprintf(wifiText, sizeof(wifiText), "%s %d dBm", wifi, (int) WiFi.RSSI());
 	char ble[BLEDevices::DEV_COUNT + 1];
 	uint8_t connected = 0;
 	for (int d = 0; d < BLEDevices::DEV_COUNT; d++) {
@@ -65,7 +68,7 @@ static void logBatteryState(uint16_t mv, uint8_t perc, uint16_t remainMin, bool 
 	char left[16] = "";
 	if (!charging) snprintf(left, sizeof(left), " (~%u min)", remainMin);
 	bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "🔋 Battery %u mV (avg 60 s) %u%%%s %s | wifi %s | BLE %u [%s] | heap %u",
-	           mv, perc, left, charging ? "charging" : "discharging", wifi, connected, ble, (unsigned) ESP.getFreeHeap());
+	           mv, perc, left, charging ? "charging" : "discharging", wifiText, connected, ble, (unsigned) ESP.getFreeHeap());
 }
 
 void batCheck() {

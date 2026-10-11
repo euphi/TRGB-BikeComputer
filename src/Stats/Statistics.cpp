@@ -622,7 +622,7 @@ void Statistics::updateTimeSeries() {
 
 		timeData.data[timeData.index++] = timeData.currentMinMax;
 		if (timeData.index >= 400) {
-			bclog.log(BCLogger::Log_Warn, BCLogger::TAG_STAT, "Statistics TimeData overflow - resetting index to 0");
+			bclog.log(BCLogger::Log_Debug, BCLogger::TAG_STAT, "Statistics TimeData overflow - resetting index to 0");
 			timeData.index = 0;
 		}
 		timeData.currentMinMax.cadence.min = NAN;
