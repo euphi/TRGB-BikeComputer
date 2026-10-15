@@ -9,7 +9,45 @@
 
 #include <WiFi.h>
 #include <Battery.h>
-Battery batt = Battery(3000, 4200, BAT_VOLT_PIN);
+
+// Measured discharge curve instead of the library's generic sigmoid: the percentage is the
+// share of the runtime that is left, so 50% really means half the time to switch-off. Taken
+// from the full run of 2026-10-13 22:00 to 2026-10-14 06:19 (8 h 19 min, display on, WiFi on
+// for the first 1.5 h, no sensors -- the minute lines of logBatteryState() in
+// Tools/TestData/battery-discharge-20261013.csv; monotone least-squares fit of voltage over
+// time, percentage = remaining time / total time; the breakpoints keep that within 2.2
+// percentage points). Caveats worth knowing before trusting the low end:
+//  * The bounds are what the ADC reads here, not cell voltage: a full battery reads about
+//    3.9 V right after unplugging (the charger pulls the pin to 4.5 V, see `charging` below),
+//    and the board cut off at 2.65 V. Both are well below the 4.2 V / 3.0 V of a LiPo, so
+//    either the divider or the measuring point has an offset -- for the percentage it does
+//    not matter, as long as the same pin is read.
+//  * The reading sags under load: switching WiFi off lifted it by about 25 mV, so on a ride
+//    (sensors, more draw) the percentage reads somewhat low. Only one run, at room
+//    temperature; cold weather will shorten it.
+static uint8_t batteryCurve(uint16_t mv, uint16_t, uint16_t) {
+	static const struct { uint16_t mv; uint8_t pct; } CURVE[] = {	// percent, minutes left
+		{3910, 100},	// 499
+		{3860, 100},	// 499
+		{3760,  88},	// 439
+		{3710,  85},	// 424
+		{3660,  75},	// 374
+		{3540,  57},	// 284
+		{3520,  51},	// 254
+		{3480,  34},	// 170
+		{3400,  22},	// 110
+		{3100,   9},	//  45
+		{2650,   0},	//   0
+	};
+	for (size_t i = 1; i < sizeof(CURVE) / sizeof(CURVE[0]); i++) {		// Battery::level() clamps outside
+		if (mv >= CURVE[i].mv) {
+			const uint16_t span = CURVE[i - 1].mv - CURVE[i].mv;
+			return CURVE[i].pct + (CURVE[i - 1].pct - CURVE[i].pct) * (mv - CURVE[i].mv) / span;
+		}
+	}
+	return 0;
+}
+Battery batt = Battery(2650, 3910, BAT_VOLT_PIN);	// bounds of batteryCurve(), see there
 
 #include <Ticker.h>
 Ticker batCheckTicker;
@@ -72,7 +110,7 @@ void setup() {
 	TRGBSuppport::print_chip_info();
 	TRGBSuppport::scan_iic();
 	trgb.SD_init();
-	batt.begin(3300, 2.0/4.0 * 1.03, &sigmoidal); // divider ratio is 2, but ESP32-S3 has 4096 bit DAC instead of 1024, so an additional division by 4 is needed --> 0.5 ratio  + 3% error correction (individual setting?)
+	batt.begin(3300, 2.0/4.0 * 1.03, &batteryCurve); // divider ratio is 2, but ESP32-S3 has 4096 bit DAC instead of 1024, so an additional division by 4 is needed --> 0.5 ratio  + 3% error correction (individual setting?)
 
 	bclog.setup();
 	NvsUtil::removeStaleKeys();
@@ -80,7 +118,8 @@ void setup() {
     cli.setOnError(errorCallback);
     cmdPing = console.addCmd("ping", [](cmd* c) {Serial.println("Pong!");});
     cmdPing.setDescription("Responds with a pong and logs it");
-    cmdBat = console.addCmd("showbat", [](cmd* c) {Serial.printf("Battery: %d%% - charging [%c]\r\n", batt.level(), batt.voltage()>3300?'x':' ');});
+    cmdBat = console.addCmd("showbat", [](cmd* c) {const uint16_t mv = batt.voltage();
+    	Serial.printf("Battery: %d%% [%d mV] - charging [%c]\r\n", batt.level(mv), mv, mv > 4150 ? 'x' : ' ');});	// 4150: same threshold as batCheck()
     // Same output FlusherTask emits every 5s, but on demand -- so a memory reading right
     // after a request doesn't have to wait for the next flush cycle. Stack watermarks
     // included here (the periodic report only prints them every 60s).

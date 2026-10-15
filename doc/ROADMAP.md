@@ -110,8 +110,12 @@ Low priority:
 
 - Reminder to eat and drink, by time or distance.
 - Radar (Garmin Varia over BLE).
-- Remaining battery runtime. The battery is a plain LiPo and its state of charge is
-  only estimated from the voltage, which is inaccurate; it lasts about six hours.
+- Remaining battery runtime as a time. Since the measured discharge curve of 2026-10-13
+  (`batteryCurve()` in `src/main.cpp`, data in
+  [`Tools/TestData/battery-discharge-20261013.csv`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/TestData/battery-discharge-20261013.csv))
+  the percentage is the share of the runtime that is left, so the time only needs the full
+  runtime of about 8 h -- but it depends on the load, and the curve rests on a single run
+  without sensors at room temperature.
 - Real sensor values passed on by TrailBridge (e.g. a heart-rate strap paired with the
   phone). The protocol tags are reserved; the bike computer pairs its sensors itself,
   so the benefit is small.

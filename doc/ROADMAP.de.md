@@ -114,8 +114,12 @@ Niedrige Priorität:
 
 - Erinnerung ans Essen und Trinken, nach Zeit oder Strecke.
 - Radar (Garmin Varia über BLE).
-- Restlaufzeit des Akkus. Der Akku ist ein einfacher LiPo, sein Ladezustand wird nur aus
-  der Spannung geschätzt und ist ungenau; er hält etwa sechs Stunden.
+- Restlaufzeit des Akkus als Zeitangabe. Seit der gemessenen Entladekurve vom 13.10.2026
+  (`batteryCurve()` in `src/main.cpp`, Daten in
+  [`Tools/TestData/battery-discharge-20261013.csv`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/TestData/battery-discharge-20261013.csv))
+  ist der Prozentwert der Anteil der verbleibenden Laufzeit; für die Zeit fehlt nur noch die
+  Gesamtlaufzeit von etwa 8 h -- die hängt aber von der Last ab, und die Kurve beruht auf
+  einem einzigen Lauf ohne Sensoren bei Zimmertemperatur.
 - Echte Sensorwerte, die TrailBridge weiterreicht (z. B. ein Pulsgurt am Handy). Die
   Protokoll-Tags sind reserviert; der Fahrradcomputer koppelt seine Sensoren selbst,
   der Nutzen ist deshalb klein.

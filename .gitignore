@@ -58,8 +58,10 @@ EEZStudio/tmp
 # bikelog raw replay: rq_replay, built on demand from src/RoadQuality.cpp
 Tools/.build/
 
-# Testtracks etc
-Tools/TestData/
+# Testtracks etc -- aber Messreihen, auf denen Firmware-Kennlinien beruhen, kommen mit
+# (batteryCurve() in src/main.cpp). Nicht Tools/TestData/, sonst steigt git gar nicht erst hinein.
+Tools/TestData/*
+!Tools/TestData/battery-discharge-*.csv
 
 # Copied from the TrailBridge repo when the documentation site is built
 # (doc/fetch_trailbridge.sh); the source of truth is ../TrailBridge/PROTOCOL.md
