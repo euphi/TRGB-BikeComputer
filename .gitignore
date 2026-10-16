@@ -59,7 +59,7 @@ EEZStudio/tmp
 Tools/.build/
 
 # Testtracks etc -- aber Messreihen, auf denen Firmware-Kennlinien beruhen, kommen mit
-# (batteryCurve() in src/main.cpp). Nicht Tools/TestData/, sonst steigt git gar nicht erst hinein.
+# (src/BatteryGauge.cpp). Nicht Tools/TestData/, sonst steigt git gar nicht erst hinein.
 Tools/TestData/*
 !Tools/TestData/battery-discharge-*.csv
 

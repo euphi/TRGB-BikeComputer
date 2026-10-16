@@ -114,12 +114,20 @@ Niedrige Priorität:
 
 - Erinnerung ans Essen und Trinken, nach Zeit oder Strecke.
 - Radar (Garmin Varia über BLE).
-- Restlaufzeit des Akkus als Zeitangabe. Seit der gemessenen Entladekurve vom 13.10.2026
-  (`batteryCurve()` in `src/main.cpp`, Daten in
-  [`Tools/TestData/battery-discharge-20261013.csv`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/TestData/battery-discharge-20261013.csv))
-  ist der Prozentwert der Anteil der verbleibenden Laufzeit; für die Zeit fehlt nur noch die
-  Gesamtlaufzeit von etwa 8 h -- die hängt aber von der Last ab, und die Kurve beruht auf
-  einem einzigen Lauf ohne Sensoren bei Zimmertemperatur.
+- Akku-Restlaufzeit **verlässlicher** machen. Angezeigt wird sie: ein Tipp auf das Akku- oder
+  WLAN-Symbol des Hauptschirms öffnet die WLAN-Seite, dort stehen Prozent und geschätzte
+  Restzeit. Das Symbol selbst färbt sich nur (grün ab 80 %, orange, rot unter 20 %, beim Laden
+  ein Blitz) -- 14x8 px Füllfläche sind für eine Balkenanzeige zu wenig. Die Schätzung kommt aus
+  `src/BatteryGauge.*`: zählt die Laufzeit mit und lässt die gemessene Entladekurve sie
+  korrigieren (Messreihen
+  [`battery-discharge-20261013.csv`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/TestData/battery-discharge-20261013.csv)
+  und
+  [`battery-discharge-20261016.csv`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/TestData/battery-discharge-20261016.csv),
+  Host-Test `test/native_batterygauge/`). Zwei Dinge fehlen, bevor die Zeit wirklich belastbar
+  ist: die Laufzeitkonstante stammt aus zwei Laborläufen (Display an, keine Sensoren,
+  Zimmertemperatur), und es gibt keine Temperaturkompensation -- Kälte verkürzt die Laufzeit
+  und drückt gleichzeitig die Spannung. Der BME280 liegt dafür schon auf der Platine.
+  Nachjustieren an echten Fahrten: `Config::fullRuntimeMin` gegen die mitgeschriebene Restzeit.
 - Echte Sensorwerte, die TrailBridge weiterreicht (z. B. ein Pulsgurt am Handy). Die
   Protokoll-Tags sind reserviert; der Fahrradcomputer koppelt seine Sensoren selbst,
   der Nutzen ist deshalb klein.

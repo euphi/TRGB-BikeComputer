@@ -85,6 +85,7 @@ typedef struct _objects_t {
     lv_obj_t *rr_grp_battery;
     lv_obj_t *rr_ic_battery;
     lv_obj_t *rr_battery_fill;
+    lv_obj_t *rr_bolt;
     lv_obj_t *rr_group_rq_mode;
     lv_obj_t *rr_ic_state;
     lv_obj_t *rr_line_rq;
@@ -242,6 +243,9 @@ typedef struct _objects_t {
     lv_obj_t *rrset_btn_wifisetup_lbl;
     lv_obj_t *rrsw_btn_back;
     lv_obj_t *rrsw_btn_back_lbl;
+    lv_obj_t *rrsw_bat_caption;
+    lv_obj_t *rrsw_bat_val;
+    lv_obj_t *rrsw_bat_left;
     lv_obj_t *rrsi_ic;
     lv_obj_t *rrsi_title;
     lv_obj_t *rrset_btn_cal;

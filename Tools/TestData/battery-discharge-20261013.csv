@@ -1,7 +1,8 @@
 # BC battery discharge, session _1044, full run to switch-off (board cut off at 2653 mV).
 # Source: the minute lines of logBatteryState() in /BIKECOMP/NO_TIME/D_1044.log, display on,
 # no sensors, WiFi on until 23:28. mv = 60 s average as the firmware uses it for the level,
-# pct_old = what the generic sigmoid showed at the time. Basis of batteryCurve() in src/main.cpp.
+# pct_old = what the generic sigmoid showed at the time. One of the two runs the curve in
+# src/BatteryGauge.cpp is fitted over.
 time,minutes,mv,pct_old,wifi,ble
 2026-10-13 22:00:28,0,3907,85,sta,0
 2026-10-13 22:01:28,1,3828,75,sta,0

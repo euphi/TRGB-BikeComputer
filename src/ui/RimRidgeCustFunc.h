@@ -31,7 +31,14 @@ void ui_RimRidgeUpdateCadence(int16_t cadence);
 void ui_RimRidgeUpdateHR(int16_t hr);
 void ui_RimRidgeUpdateGrad(float grad, float height);
 
-void ui_RimRidgeUpdateIntBatPerc(uint8_t perc);
+// Once, after create_screen_rim_ridge(): widens the battery group's touch area and puts the
+// icon into the discharging state (the EEZ canvas shows fill and bolt at the same time, so
+// that both can be judged there).
+void ui_RimRidgeInitBattery();
+
+// The battery icon. Its fill is 14x8 px, too small for a bar, so the colour carries the state;
+// while charging there is no state of charge to show and the bolt replaces the fill.
+void ui_RimRidgeUpdateIntBat(uint8_t perc, bool charging);
 
 // modeStr/avgStr mirror ui_SMainNoFLUpdateStats' signature so callers don't
 // need to change, but RimRidge only has a place for the mode text right

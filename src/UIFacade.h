@@ -110,9 +110,14 @@ public:
 	void updateLanes(const NavLane* lanes, uint8_t laneCount, uint32_t laneDist, const NavLane* nextLanes,
 			uint8_t nextLaneCount, uint32_t nextLaneDist);
 
-	void updateBatInt(float voltage, uint8_t batPerc, bool charging);
+	void updateBatInt(float voltage, uint8_t batPerc, bool charging, uint16_t remainMin);
 
 	float getBatIntVoltageAvg() const {return batIntVoltageAvg;}
+	// For the battery block on RimRidgeSettingsWifi (ui_RimRidgeSettingsTick()). -1 = not read
+	// yet; the minutes are the gauge's estimate and meaningless while charging.
+	int8_t   getBatIntPerc() const {return batIntPerc;}
+	bool     getBatIntCharging() const {return batIntCharging;}
+	uint16_t getBatIntRemainMin() const {return batIntRemainMin;}
 
 	Statistics::ESummaryType getStatMode() const {return statMode;}
 
@@ -222,6 +227,7 @@ private:
 	uint8_t batIntSamples = 0;
 	int8_t batIntPerc = -1;
 	bool batIntCharging = false;
+	uint16_t batIntRemainMin = 0;
 
 	// Is RimRidgeNav the currently displayed screen? Written by
 	// evaluateNaviAutoSwitch() AND by showNavScreen()/hideNavScreen()

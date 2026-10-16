@@ -110,12 +110,20 @@ Low priority:
 
 - Reminder to eat and drink, by time or distance.
 - Radar (Garmin Varia over BLE).
-- Remaining battery runtime as a time. Since the measured discharge curve of 2026-10-13
-  (`batteryCurve()` in `src/main.cpp`, data in
-  [`Tools/TestData/battery-discharge-20261013.csv`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/TestData/battery-discharge-20261013.csv))
-  the percentage is the share of the runtime that is left, so the time only needs the full
-  runtime of about 8 h -- but it depends on the load, and the curve rests on a single run
-  without sensors at room temperature.
+- Making the remaining battery runtime **dependable**. It is shown: a tap on the battery or the
+  WLAN icon of the main screen opens the WLAN page, which carries the percentage and the
+  estimated time left. The icon itself only changes colour (green from 80%, orange, red below
+  20%, a bolt while charging) -- 14x8 px of fill is too little for a bar. The estimate comes
+  from `src/BatteryGauge.*`: it counts the runtime and lets the measured discharge curve
+  correct it (data in
+  [`battery-discharge-20261013.csv`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/TestData/battery-discharge-20261013.csv)
+  and
+  [`battery-discharge-20261016.csv`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/TestData/battery-discharge-20261016.csv),
+  host test `test/native_batterygauge/`). Two things are missing before the time really holds
+  up: the runtime constant comes from two lab runs (display on, no sensors, room temperature), and
+  there is no temperature compensation -- cold shortens the runtime and depresses the voltage at
+  the same time. The BME280 for that is already on the board. Tuning from real rides means
+  checking `Config::fullRuntimeMin` against the logged remaining minutes.
 - Real sensor values passed on by TrailBridge (e.g. a heart-rate strap paired with the
   phone). The protocol tags are reserved; the bike computer pairs its sensors itself,
   so the benefit is small.

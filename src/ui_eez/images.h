@@ -11,6 +11,7 @@ extern const lv_img_dsc_t img_settings_icon;
 extern const lv_img_dsc_t img_rr_icon_wifi;
 extern const lv_img_dsc_t img_rr_icon_gps;
 extern const lv_img_dsc_t img_rr_icon_battery;
+extern const lv_img_dsc_t img_rr_icon_bolt;
 extern const lv_img_dsc_t img_rr_icon_turn;
 extern const lv_img_dsc_t img_rr_icon_cadence;
 extern const lv_img_dsc_t img_rr_icon_power;
@@ -41,7 +42,7 @@ typedef struct _ext_img_desc_t {
 } ext_img_desc_t;
 #endif
 
-extern const ext_img_desc_t images[25];
+extern const ext_img_desc_t images[26];
 
 #ifdef __cplusplus
 }

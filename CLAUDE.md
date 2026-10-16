@@ -93,7 +93,9 @@ Mobilfunk); danach das Netz mit `cmd wifi forget-network <id>` wieder vergessen.
   (Navigation), **RimRidgeRoute** (Streckenübersicht, Wischen nach links auf Nav,
   `src/ui/RimRidgeRouteCustFunc.*`), **RimRidgeRQ** (Wege-Labels), **RimRidgeSettings**
   (Einstellungen: Hub mit Version und Build-Tags (FL, BLE-Verbindungen, Simulator), Neustart/Tiefschlaf; Unterseiten
-  **RimRidgeSettingsWifi** / **-Imu** / **-Alt** (Höhenkalibrierung, `doc/HEIGHT.md`) und die
+  **RimRidgeSettingsWifi** (auch Akkustand und Restlaufzeit; direkt vom Hauptschirm über das
+  Akku-/WLAN-Symbol erreichbar, dann führt „Zurück" dorthin zurück statt in die Einstellungen)
+  / **-Imu** / **-Alt** (Höhenkalibrierung, `doc/HEIGHT.md`) und die
   Zahleneingabe **RimRidgeSettingsNum**, BLE-Geräte **RimRidgeSettingsDev** (`RimRidgeDevCustFunc.*`), Logik in `src/ui/RimRidgeSettingsCustFunc.*` und
   `RimRidgeAltCustFunc.*`),
   **RimRidgeClimb** (Kletter-Anzeige mit Höhenprofil) sowie **RimRidgeWifi** (Netzliste,
@@ -210,6 +212,24 @@ Mobilfunk); danach das Netz mit `cmd wifi forget-network <id>` wieder vergessen.
   (`route demo` zeigt den Screen ohne Handy), `/debug/route.json`.
 - Zeilen der Liste entstehen zur Laufzeit (`RimRidgeRouteCustFunc.cpp`, wie die WLAN-Liste);
   Namen kürzt `fitText()` selbst (`LV_LABEL_LONG_DOT` bricht erst um, `doc/PITFALLS.md`).
+
+## Akku-Ladezustand
+
+`src/BatteryGauge.*` (reiner Teil): Der Prozentwert ist der **Anteil der verbleibenden
+Laufzeit**, nicht die Zellenladung. Weil die Spannung im 3,5-V-Plateau nichts über die Zeit
+sagt (zwei gleich lange Referenzläufe liegen dort 50 mV = 100 min auseinander), läuft eine
+Uhr, die von der gemessenen Kennlinie korrigiert wird -- gewichtet nach der Steigung der
+Kennlinie, also schnell an den steilen Enden und über Stunden im Plateau. Messreihen:
+`Tools/TestData/battery-discharge-*.csv`, Host-Test `test/native_batterygauge/` (Build-Befehl
+im Dateikopf) spielt beide Läufe durch und prüft den Fehler gegen die tatsächlich verbliebene
+Zeit. Anbindung, RTC-Zustand über Resets hinweg und CLI `showbat`: `src/main.cpp`. Anzeige:
+Das Symbol auf dem Hauptschirm wird nur eingefärbt (Zonen-Rampe, `batteryColor()` in
+`RimRidgeCustFunc.cpp`), beim Laden liegt ein Blitz darüber; Prozent und Restzeit stehen auf
+der WLAN-Seite, die ein Tipp auf das Akku- oder WLAN-Symbol öffnet. Die
+Laufzeitkonstante `Config::fullRuntimeMin` stammt aus dem Labor (Display an, keine Sensoren,
+Zimmertemperatur) und ist der Wert, den echte Fahrten nachjustieren müssen; die Minutenzeile
+im Log schreibt dafür die geschätzte Restzeit mit.
+Keine Temperaturkompensation -- das ist der nächste große Fehlerposten.
 
 ## Serielle Konsole
 

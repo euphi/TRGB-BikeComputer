@@ -9,45 +9,33 @@
 
 #include <WiFi.h>
 #include <Battery.h>
+#include <esp_system.h>
 
-// Measured discharge curve instead of the library's generic sigmoid: the percentage is the
-// share of the runtime that is left, so 50% really means half the time to switch-off. Taken
-// from the full run of 2026-10-13 22:00 to 2026-10-14 06:19 (8 h 19 min, display on, WiFi on
-// for the first 1.5 h, no sensors -- the minute lines of logBatteryState() in
-// Tools/TestData/battery-discharge-20261013.csv; monotone least-squares fit of voltage over
-// time, percentage = remaining time / total time; the breakpoints keep that within 2.2
-// percentage points). Caveats worth knowing before trusting the low end:
-//  * The bounds are what the ADC reads here, not cell voltage: a full battery reads about
-//    3.9 V right after unplugging (the charger pulls the pin to 4.5 V, see `charging` below),
-//    and the board cut off at 2.65 V. Both are well below the 4.2 V / 3.0 V of a LiPo, so
-//    either the divider or the measuring point has an offset -- for the percentage it does
-//    not matter, as long as the same pin is read.
-//  * The reading sags under load: switching WiFi off lifted it by about 25 mV, so on a ride
-//    (sensors, more draw) the percentage reads somewhat low. Only one run, at room
-//    temperature; cold weather will shorten it.
-static uint8_t batteryCurve(uint16_t mv, uint16_t, uint16_t) {
-	static const struct { uint16_t mv; uint8_t pct; } CURVE[] = {	// percent, minutes left
-		{3910, 100},	// 499
-		{3860, 100},	// 499
-		{3760,  88},	// 439
-		{3710,  85},	// 424
-		{3660,  75},	// 374
-		{3540,  57},	// 284
-		{3520,  51},	// 254
-		{3480,  34},	// 170
-		{3400,  22},	// 110
-		{3100,   9},	//  45
-		{2650,   0},	//   0
-	};
-	for (size_t i = 1; i < sizeof(CURVE) / sizeof(CURVE[0]); i++) {		// Battery::level() clamps outside
-		if (mv >= CURVE[i].mv) {
-			const uint16_t span = CURVE[i - 1].mv - CURVE[i].mv;
-			return CURVE[i].pct + (CURVE[i - 1].pct - CURVE[i].pct) * (mv - CURVE[i].mv) / span;
-		}
-	}
-	return 0;
-}
-Battery batt = Battery(2650, 3910, BAT_VOLT_PIN);	// bounds of batteryCurve(), see there
+#include "BatteryGauge.h"
+
+// The Battery library only reads the pin here; the percentage comes from BatGauge::Gauge, which
+// runs a clock and lets the measured discharge curve correct it. src/BatteryGauge.h explains why
+// the voltage alone cannot do that job in the middle of the discharge. batt.level() still
+// answers with the bare curve, so `showbat` can print both -- that is what tuning needs.
+static uint8_t bareCurve(uint16_t mv, uint16_t, uint16_t) { return BatGauge::curvePercent(mv); }
+Battery batt = Battery(BatGauge::EMPTY_MV, BatGauge::FULL_MV, BAT_VOLT_PIN);
+BatGauge::Gauge batGauge;
+
+// In RTC memory, not in the NVS: the estimate has to survive a brownout reboot or a restart
+// from the settings screen -- otherwise the gauge re-anchors to the plateau voltage, the one
+// reading it exists to avoid -- but writing it every minute would stall the bus the panel reads
+// its framebuffer from (doc/PITFALLS.md, "NVS-Schreiben und Display-Flackern"). RTC memory
+// survives a reset and deep sleep but not a power cycle, which is exactly the right rule: after
+// a power-on the board was off, probably on the charger, and nothing remembered is worth having.
+RTC_NOINIT_ATTR static BatGauge::State batRtcState;
+RTC_NOINIT_ATTR static uint32_t batRtcMagic;
+RTC_NOINIT_ATTR static uint32_t batRtcEpoch;	// unix time of the last save, 0 = clock was not set
+static constexpr uint32_t BAT_RTC_MAGIC = 0x62617467;	// "batg"
+// A gap this long makes the remembered estimate worthless: deep sleep keeps drawing current
+// while the clock inside the gauge stands still, and nobody has measured the sleep current to
+// drain it with. After a rest the voltage is at its best anyway -- an unloaded cell, no sag --
+// so the gauge starts over from the curve. Short gaps (a reboot, a brief sleep) are kept.
+static constexpr uint32_t BAT_STALE_S = 600;
 
 #include <Ticker.h>
 Ticker batCheckTicker;
@@ -67,11 +55,9 @@ Command cmdPing;
 Command cmdBat;
 Command cmdMem;
 
-int8_t batLevel = -1;
-
 // Once a minute at Info under TAG_STAT (the file level of TAG_OP is Error), so the discharge
 // curve ends up in the debug log together with what drained it: WiFi and connected sensors.
-static void logBatteryState(uint16_t mv, uint8_t perc, bool charging) {
+static void logBatteryState(uint16_t mv, uint8_t perc, uint16_t remainMin, bool charging) {
 	const char* wifi = WiFi.getMode() == WIFI_OFF ? "off" : WiFi.getMode() == WIFI_AP ? "ap"
 	                 : WiFi.status() == WL_CONNECTED ? "sta" : "search";
 	char ble[BLEDevices::DEV_COUNT + 1];
@@ -82,22 +68,30 @@ static void logBatteryState(uint16_t mv, uint8_t perc, bool charging) {
 		connected += c;
 	}
 	ble[BLEDevices::DEV_COUNT] = 0;
-	bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "🔋 Battery %u mV (avg 60 s) %u%% %s | wifi %s | BLE %u [%s] | heap %u",
-	           mv, perc, charging ? "charging" : "discharging", wifi, connected, ble, (unsigned) ESP.getFreeHeap());
+	// The estimated minutes left are what a ride has to say about Config::fullRuntimeMin -- the
+	// one number of the gauge that the lab runs cannot pin down. Meaningless on the charger.
+	char left[16] = "";
+	if (!charging) snprintf(left, sizeof(left), " (~%u min)", remainMin);
+	bclog.logf(BCLogger::Log_Info, BCLogger::TAG_STAT, "🔋 Battery %u mV (avg 60 s) %u%%%s %s | wifi %s | BLE %u [%s] | heap %u",
+	           mv, perc, left, charging ? "charging" : "discharging", wifi, connected, ble, (unsigned) ESP.getFreeHeap());
 }
 
 void batCheck() {
 	const uint16_t mv = batt.voltage();
 	const bool charging = mv > 4150;
-	bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_OP, "Battery:  %d%% [%d mV]- charging [%c]", batt.level(), mv, charging ? 'x' : ' ');
-	ui.updateBatInt(mv / 1000.0, batt.level(uint16_t (ui.getBatIntVoltageAvg()*1000)), charging);
+	const float avg = ui.getBatIntVoltageAvg();		// NAN until the first minute is full
+	const uint16_t avgMv = isnan(avg) ? mv : uint16_t(avg * 1000);
+	batGauge.update(1000, avgMv, charging);			// the ticker calls us once a second
+	batRtcState = batGauge.state();					// survives a reset, see BAT_RTC_MAGIC
+	batRtcEpoch = (uint32_t) time(nullptr);			// ... but only counts while the clock is set
+	const uint8_t perc = batGauge.percent();
+	bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_OP, "Battery:  %u%% [%d mV]- charging [%c]", perc, mv, charging ? 'x' : ' ');
+	ui.updateBatInt(mv / 1000.0, perc, charging, batGauge.remainingMinutes());
 
 	static uint8_t seconds = 0;
 	if (++seconds >= 60) {
 		seconds = 0;
-		const float avg = ui.getBatIntVoltageAvg();		// NAN until the first minute is full
-		const uint16_t avgMv = isnan(avg) ? mv : uint16_t(avg * 1000);
-		logBatteryState(avgMv, batt.level(avgMv), charging);
+		logBatteryState(avgMv, perc, batGauge.remainingMinutes(), charging);
 	}
 }
 
@@ -110,7 +104,17 @@ void setup() {
 	TRGBSuppport::print_chip_info();
 	TRGBSuppport::scan_iic();
 	trgb.SD_init();
-	batt.begin(3300, 2.0/4.0 * 1.03, &batteryCurve); // divider ratio is 2, but ESP32-S3 has 4096 bit DAC instead of 1024, so an additional division by 4 is needed --> 0.5 ratio  + 3% error correction (individual setting?)
+	batt.begin(3300, 2.0/4.0 * 1.03, &bareCurve); // divider ratio is 2, but ESP32-S3 has 4096 bit DAC instead of 1024, so an additional division by 4 is needed --> 0.5 ratio  + 3% error correction (individual setting?)
+
+	// Anything but a power-on means the board kept running on the same charge, so the estimate
+	// from before the reset beats what the voltage alone can say now -- unless too much time has
+	// passed since it was written, see BAT_STALE_S. Without a set clock the gap is unknown, and a
+	// reset without one is a reboot, not a long sleep.
+	const uint32_t batNow = (uint32_t) time(nullptr);
+	const bool batGapKnown = batRtcEpoch > 1600000000 && batNow > batRtcEpoch;
+	if (esp_reset_reason() != ESP_RST_POWERON && batRtcMagic == BAT_RTC_MAGIC
+	    && !(batGapKnown && batNow - batRtcEpoch > BAT_STALE_S)) batGauge.restore(batRtcState);
+	batRtcMagic = BAT_RTC_MAGIC;
 
 	bclog.setup();
 	NvsUtil::removeStaleKeys();
@@ -119,7 +123,9 @@ void setup() {
     cmdPing = console.addCmd("ping", [](cmd* c) {Serial.println("Pong!");});
     cmdPing.setDescription("Responds with a pong and logs it");
     cmdBat = console.addCmd("showbat", [](cmd* c) {const uint16_t mv = batt.voltage();
-    	Serial.printf("Battery: %d%% [%d mV] - charging [%c]\r\n", batt.level(mv), mv, mv > 4150 ? 'x' : ' ');});	// 4150: same threshold as batCheck()
+    	Serial.printf("Battery: %u%% (~%u min) [%d mV] - charging [%c] - bare curve %u%%\r\n",
+    	              batGauge.percent(), batGauge.remainingMinutes(), mv, mv > 4150 ? 'x' : ' ',
+    	              BatGauge::curvePercent(mv));});	// 4150: same threshold as batCheck()
     // Same output FlusherTask emits every 5s, but on demand -- so a memory reading right
     // after a request doesn't have to wait for the next flush cycle. Stack watermarks
     // included here (the periodic report only prints them every 60s).

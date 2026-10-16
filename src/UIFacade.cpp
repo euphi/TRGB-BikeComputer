@@ -79,6 +79,7 @@ void UIFacade::initDisplay() {
     create_screen_rim_ridge();
     ui_RimRidgeUpdateNav(nullptr, 0, NAV_MANEUVER_NONE, 0); // start on the "no nav" icon, not rr_ic_turn's EEZ-authored default placeholder
     ui_RimRidgeUpdateLanes(nullptr, 0); // rr_lane_row starts visible in the EEZ canvas - hide it and confirm rr_nav_pill is at rest
+    ui_RimRidgeInitBattery(); // touch area of the battery/WLAN icons, and the icon's discharging state (canvas shows fill and bolt at once)
     create_screen_rim_ridge_nav();
     ui_RimRidgeNavUpdateNav(0, NAV_MANEUVER_NONE, 0, "", NAV_MANEUVER_NONE, 0); // same "no nav" boot fixup as rr_ic_turn above - otherwise this screen keeps showing its EEZ-authored example maneuver/street/distance until the first real update
     ui_RimRidgeNavUpdateLanes(nullptr, 0); // rrnav_lane_row starts visible in the EEZ canvas - hide it
@@ -323,7 +324,7 @@ void UIFacade::updateStats() {
 }
 
 void UIFacade::updateIntBatteryInt() {
-	ui_RimRidgeUpdateIntBatPerc(batIntPerc);
+	ui_RimRidgeUpdateIntBat(batIntPerc < 0 ? 0 : batIntPerc, batIntCharging);
 	// Battery-voltage average for batCheck() in main.cpp: mean of the last 60 samples
 	// (1/s), refreshed once a minute. Same result as the old Chart screen's
 	// ui_ScrChartUpdateBat(), which read the samples back from its lv_chart.
@@ -874,10 +875,11 @@ void UIFacade::updateLanes(const NavLane* _lanes, uint8_t _laneCount, uint32_t _
 	}
 }
 
-void UIFacade::updateBatInt(float voltage, uint8_t batPerc, bool charging) {
+void UIFacade::updateBatInt(float voltage, uint8_t batPerc, bool charging, uint16_t remainMin) {
 	batIntVoltage = voltage;
 	batIntPerc = batPerc;
 	batIntCharging = charging;
+	batIntRemainMin = remainMin;
 }
 
 

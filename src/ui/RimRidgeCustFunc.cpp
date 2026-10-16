@@ -17,6 +17,13 @@
 #include "ui/ui.h"	// driveStateUpdate()/UIDriveStateEvent/statModeNext()/statsTimeMode()
 #include "Singletons.h"	// bclog, ui (UIFacade singleton)
 
+// RRZoneBlue..RRZoneRed (theme_colors[26..30]) -- the calm->harsh ramp of the design system,
+// shared by the road-quality line, the HR zone band and the battery icon. Hardcoded hex rather
+// than indexing theme_colors[] directly, matching how ui_RimRidgeUpdateStateIcon()'s caller
+// resolves RRBrass: this file has no access to the generated theme_colors[]/active_theme_index.
+static const uint32_t ZONE_COLOR[5] = { 0x6C90B0, 0x6FA98C, 0xD7B463, 0xCE8A4C, 0xC1604A };
+enum { ZONE_BLUE = 0, ZONE_GREEN, ZONE_YELLOW, ZONE_ORANGE, ZONE_RED };
+
 void ui_RimRidgeUpdateSpeed(float speed) {
 	// speed can be NAN (no speed sensor connected yet) - rr_speed_val uses
 	// the digit-only by7x128 font (range 0x2B-0x39), which has no glyphs
@@ -57,12 +64,50 @@ void ui_RimRidgeUpdateGrad(float grad, float height) {
 	}
 }
 
-void ui_RimRidgeUpdateIntBatPerc(uint8_t perc) {
-	// rr_battery_fill is a plain rect (not an lv_bar) sized to sit inside
-	// the battery icon's outline - scale its width 0..9px for 0..100%,
-	// left/top/height stay fixed (see build_rimridge.py / patch_rimridge_3).
+// The fill sits in the cavity of rr_icon_battery, 14x8 px (EEZStudio/tmp/add_battery_state.py).
+// A bar in there would be 14 steps of nothing, so the colour carries the state instead: the zone
+// ramp above, interpolated, so that it drifts rather than jumping three times. The anchors are
+// the ones that matter to the rider -- green from 80%, orange at 50%, red at 20% and below.
+static lv_color_t batteryColor(uint8_t perc) {
+	static const struct { uint8_t pct; uint8_t zone; } STOP[] = {
+		{20, ZONE_RED}, {50, ZONE_ORANGE}, {65, ZONE_YELLOW}, {80, ZONE_GREEN},
+	};
+	const size_t n = sizeof(STOP) / sizeof(STOP[0]);
+	if (perc <= STOP[0].pct) return lv_color_hex(ZONE_COLOR[STOP[0].zone]);
+	for (size_t i = 1; i < n; i++) {
+		if (perc >= STOP[i].pct) continue;
+		const uint32_t a = ZONE_COLOR[STOP[i - 1].zone], b = ZONE_COLOR[STOP[i].zone];
+		const int span = STOP[i].pct - STOP[i - 1].pct, off = perc - STOP[i - 1].pct;
+		uint32_t mix = 0;
+		for (int shift = 0; shift <= 16; shift += 8) {		// blue, green, red
+			const int ca = (a >> shift) & 0xFF, cb = (b >> shift) & 0xFF;
+			mix |= uint32_t(ca + (cb - ca) * off / span) << shift;
+		}
+		return lv_color_hex(mix);
+	}
+	return lv_color_hex(ZONE_COLOR[STOP[n - 1].zone]);
+}
+
+void ui_RimRidgeInitBattery() {
+	// 32x32 is a small target for a thumb on the move. The hit area is invisible, so this
+	// changes nothing the EEZ canvas shows.
+	lv_obj_set_ext_click_area(objects.rr_grp_battery, 10);
+	lv_obj_set_ext_click_area(objects.rr_ic_wifi, 10);
+	ui_RimRidgeUpdateIntBat(100, false);
+}
+
+void ui_RimRidgeUpdateIntBat(uint8_t perc, bool charging) {
+	// While charging the pin reads the charger, not the battery (`charging` in batCheck(),
+	// src/main.cpp), so there is no state of charge to colour -- the bolt says why.
+	if (charging) {
+		lv_obj_add_flag(objects.rr_battery_fill, LV_OBJ_FLAG_HIDDEN);
+		lv_obj_clear_flag(objects.rr_bolt, LV_OBJ_FLAG_HIDDEN);
+		return;
+	}
+	lv_obj_add_flag(objects.rr_bolt, LV_OBJ_FLAG_HIDDEN);
+	lv_obj_clear_flag(objects.rr_battery_fill, LV_OBJ_FLAG_HIDDEN);
 	if (perc > 100) perc = 100;
-	lv_obj_set_width(objects.rr_battery_fill, (perc * 9 + 50) / 100);
+	lv_obj_set_style_bg_color(objects.rr_battery_fill, batteryColor(perc), LV_PART_MAIN | LV_STATE_DEFAULT);
 }
 
 void ui_RimRidgeUpdateStats(const char* modeStr, const char* avgStr, float avgSpd, float maxSpd,
@@ -122,15 +167,11 @@ void ui_RimRidgeUpdateRoadQuality(uint8_t roadClass, float roughness, uint32_t s
 	// directly in EEZ Studio (replaces an earlier "5 small squares" design
 	// that never got built - see doc/design/rim-ridge-design-system.md).
 	(void) roughness; (void) shockCount;
-	// RRZoneBlue..RRZoneRed (theme_colors[26..30]) - same 5 tokens as the HR
-	// zone band, reused here for the same calm->harsh color meaning. Hardcoded
-	// hex rather than indexing theme_colors[] directly, matching how
-	// ui_RimRidgeUpdateStateIcon()'s caller resolves RRBrass - this file has
-	// no access to the generated theme_colors[]/active_theme_index globals.
+	// The zone ramp at the top of this file - same 5 tokens as the HR zone
+	// band, for the same calm->harsh color meaning.
 	// Class 0 (standstill/no data) is NOT hidden - it shows the same RRBrass
 	// neutral as the widget's own JSON default, so the line stays a constant
 	// presence rather than flickering in and out with every red light.
-	static const uint32_t ZONE_COLOR[5] = { 0x6C90B0, 0x6FA98C, 0xD7B463, 0xCE8A4C, 0xC1604A };
 	uint32_t color = (roadClass >= 1 && roadClass <= 5) ? ZONE_COLOR[roadClass - 1] : 0xCBA36B;
 	// Same line on every screen that carries the state icon/RQ line group.
 	lv_obj_t* const lines[] = {objects.rr_line_rq, objects.rq_line_rq, objects.rrnav_line_rq, objects.rrset_line_rq, objects.rrclimb_line_rq};

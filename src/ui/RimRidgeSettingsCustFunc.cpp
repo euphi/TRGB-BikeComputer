@@ -28,6 +28,37 @@ static const uint32_t COLOR_MUTED = 0x9BA097;
 static const uint32_t COLOR_ACTIVE = 0xE7E2D6;
 static const uint32_t COLOR_ERROR = 0xC1604A;
 
+// Where "Zurück" and a swipe on the WLAN page return to: the settings hub as on every other
+// sub page, but the main screen when the page was opened from the battery or WLAN icon there
+// (action_go_to_status) -- being dropped into the settings hub after tapping a status icon on
+// the main screen would be a one-way door.
+static bool wifiPageFromMain = false;
+
+// The battery block below the three WLAN buttons. The percentage is the share of the runtime
+// that is left (see src/BatteryGauge.h), so the estimated time is the same number in the unit a
+// rider can actually use. On the charger neither of them means anything -- the pin reads the
+// charger, not the battery.
+static void updateBatteryBlock() {
+	if (ui.getBatIntCharging()) {
+		lv_label_set_text(objects.rrsw_bat_val, "lädt");
+		lv_label_set_text(objects.rrsw_bat_left, "am Ladegerät");
+		return;
+	}
+	const int8_t perc = ui.getBatIntPerc();
+	if (perc < 0) {		// before the first batCheck()
+		lv_label_set_text(objects.rrsw_bat_val, "-/-");
+		lv_label_set_text(objects.rrsw_bat_left, "");
+		return;
+	}
+	lv_label_set_text_fmt(objects.rrsw_bat_val, "%d %%", perc);
+	const uint16_t left = ui.getBatIntRemainMin();
+	if (left >= 60) {
+		lv_label_set_text_fmt(objects.rrsw_bat_left, "noch ca. %u:%02u h", left / 60, left % 60);
+	} else {
+		lv_label_set_text_fmt(objects.rrsw_bat_left, "noch ca. %u min", left);
+	}
+}
+
 // ---------------- restart / deep sleep ----------------
 // Both pills fire on LONG_PRESSED, but the action only arms the request: deep sleep
 // wakes on the touch controller's interrupt, so going to sleep while the finger is
@@ -110,6 +141,18 @@ void action_settings_screen_gesture(lv_event_t* e) {
 // The hub's pills open one page per group; "Zurück" and any swipe on a page go back to the hub.
 void action_go_to_settings_wifi(lv_event_t* e) {
 	(void) e;
+	wifiPageFromMain = false;
+	updateBatteryBlock();
+	lv_disp_load_scr(objects.rim_ridge_settings_wifi);
+}
+
+// Tap on the battery or the WLAN icon of the main screen: the same page, which is where the
+// state of charge, the estimated remaining runtime and the WLAN state live. Both icons are too
+// small to carry the numbers themselves.
+void action_go_to_status(lv_event_t* e) {
+	(void) e;
+	wifiPageFromMain = true;
+	updateBatteryBlock();
 	lv_disp_load_scr(objects.rim_ridge_settings_wifi);
 }
 
@@ -125,8 +168,17 @@ void action_go_to_settings_alt(lv_event_t* e) {
 	lv_disp_load_scr(objects.rim_ridge_settings_alt);
 }
 
+// True once, for the page that was opened from the main screen -- see wifiPageFromMain.
+static bool leaveToMain() {
+	if (!wifiPageFromMain || lv_scr_act() != objects.rim_ridge_settings_wifi) return false;
+	wifiPageFromMain = false;
+	ui.hideSettingsScreen();
+	return true;
+}
+
 void action_settings_sub_back(lv_event_t* e) {
 	(void) e;
+	if (leaveToMain()) return;
 	lv_disp_load_scr(objects.rim_ridge_settings);
 }
 
@@ -135,6 +187,7 @@ void action_settings_sub_gesture(lv_event_t* e) {
 	lv_indev_t* indev = lv_indev_get_act();
 	if (!indev) return;
 	lv_indev_wait_release(indev);
+	if (leaveToMain()) return;
 	lv_disp_load_scr(objects.rim_ridge_settings);
 }
 
@@ -150,6 +203,8 @@ void ui_RimRidgeSettingsTick() {
 		ui_RimRidgeSettingsUpdateCal();
 	} else if (scr == objects.rim_ridge_settings_alt) {
 		ui_RimRidgeAltUpdate();
+	} else if (scr == objects.rim_ridge_settings_wifi) {
+		updateBatteryBlock();
 	}
 }
 
@@ -164,6 +219,7 @@ void ui_RimRidgeSettingsInit() {
 	snprintf(build, sizeof(build), "%s #%s", GIT_VERSION, BUILD_NUMBER);
 #endif
 	lv_label_set_text(objects.rrset_build_val, build);
+	updateBatteryBlock();		// replaces the example values the EEZ canvas shows
 	// Build tags below the version: which variant this firmware is. One word per build option
 	// that changes behaviour, so a new option gets a tag here.
 	//   SIMULATOR     fake sensors (BC_SIM) -- not for riding, so the whole line keeps its warning color
