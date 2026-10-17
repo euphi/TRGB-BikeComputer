@@ -46,6 +46,9 @@ namespace BatGauge {
 // Measured discharge curve, fitted over both reference runs (data in Tools/TestData/
 // battery-discharge-2026101{3,6}.csv). Percent is the share of the runtime that is left at that
 // voltage, averaged over the two runs.
+// Below a LiPo's 4.2 V / 3.0 V because the pin does not see the cell but the system rail behind
+// the P-FET that connects it (see update()), so the FET's drop under load is in every reading --
+// switching WiFi off lifted it by 25 mV. The curve was measured at that same point, so it holds.
 constexpr uint16_t EMPTY_MV = 2620;		// the board browned out at 2623 mV
 constexpr uint16_t FULL_MV  = 3910;		// highest reading seen after unplugging the charger
 
@@ -61,6 +64,7 @@ struct Config {
 	float    sdMinPp        = 2.0f;	// ... which is this measurement error, in percentage points
 	float    tauMaxMinutes  = 600.0f;	// cap, so the plateau never ignores the voltage completely
 	uint16_t chargerMv      = 4100;	// above this the charger holds the pin, not the battery
+	float    settleMinutes  = 1.5f;	// after unplugging: until the caller's 60 s average is clean
 };
 
 // Survives a restart in RTC memory, so a brownout reboot or a restart from the settings screen
@@ -69,6 +73,8 @@ struct State {
 	float   percent;		// the filter's estimate
 	float   shown;			// what percent() returns -- never rises while discharging
 	uint8_t valid;			// 0 = nothing known yet
+	uint8_t onCharger;		// on the charger, or just off it and waiting for a clean reading
+	float   settleMin;		// minutes since the charger went away
 };
 
 class Gauge {
@@ -79,10 +85,17 @@ public:
 	// is the best anyone can do from a single voltage reading.
 	void anchor(uint16_t mv);
 
-	// dtMs since the last call. `charging` is the caller's charger detection; while it is set
-	// the pin reads the charger, not the battery, so the clock stops and the estimate is held
-	// at full -- a charge that is cut short therefore reads too high, as it did before.
+	// dtMs since the last call. `charging` is the caller's charger detection. On the charger
+	// nothing about the battery can be measured: the pin sits on the system rail behind the
+	// power path (LilyGO schematic: divider R2/R3 on net BAT, fed from USB through a diode or
+	// from the cell through a P-FET), so it reads the USB supply, and the charge current shows
+	// up only as the voltage drop in cable and plug. The same charge read 4355 mV on one cable
+	// and 4757 mV on another (2026-10-17), so that reading says nothing portable. The estimate
+	// is therefore held while charging and re-anchored to the voltage once the cable is off
+	// and the reading is clean -- how much went in is not knowable here. A charge in deep sleep,
+	// the normal case, ends the same way: the caller anchors after the wake-up.
 	void update(uint32_t dtMs, uint16_t mv, bool charging);
+	bool onCharger() const { return _st.onCharger != 0; }
 
 	uint8_t percent() const;			// 0..100, monotone while discharging
 	uint16_t remainingMinutes() const;	// percent() of the lab runtime
@@ -95,7 +108,7 @@ public:
 
 private:
 	Config _cfg;
-	State  _st = {0.0f, 0.0f, 0};
+	State  _st = {};
 };
 
 }

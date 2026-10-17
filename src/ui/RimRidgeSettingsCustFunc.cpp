@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
+#include <math.h>
 
 #include "ui_eez/screens.h"
 #include "ui_eez/ui.h"
@@ -40,8 +41,13 @@ static bool wifiPageFromMain = false;
 // charger, not the battery.
 static void updateBatteryBlock() {
 	if (ui.getBatIntCharging()) {
-		lv_label_set_text(objects.rrsw_bat_val, "lädt");
-		lv_label_set_text(objects.rrsw_bat_left, "am Ladegerät");
+		// Whether it is really charging cannot be told (the reading depends on cable and plug,
+		// src/BatteryGauge.h, update()), so say only what is known. The raw reading stays as a
+		// diagnostic for whoever is chasing a cable.
+		lv_label_set_text(objects.rrsw_bat_val, "am Ladegerät");
+		const float avg = ui.getBatIntVoltageAvg();		// NAN for the first minute
+		if (isnan(avg)) lv_label_set_text(objects.rrsw_bat_left, "");
+		else lv_label_set_text_fmt(objects.rrsw_bat_left, "%u mV", unsigned(avg * 1000.0f + 0.5f));
 		return;
 	}
 	const int8_t perc = ui.getBatIntPerc();

@@ -51,21 +51,32 @@ void Gauge::anchor(uint16_t mv) {
 
 void Gauge::restore(const State& s) {
 	if (!s.valid || !(s.percent >= 0.0f) || s.percent > 100.0f) return;	// !(>=0) also catches NaN
+	if (!(s.settleMin >= 0.0f)) return;
 	_st = s;
 }
 
 void Gauge::update(uint32_t dtMs, uint16_t mv, bool charging) {
+	const float dtMin = float(dtMs) / 60000.0f;
+
 	// The charger holds the pin well above any battery voltage, and the caller's 60 s average
-	// stays up there for a few minutes after unplugging. Nothing can be measured until it drops.
+	// stays up there for a minute after unplugging. Nothing can be measured until it is gone.
 	if (charging || mv >= _cfg.chargerMv) {
-		_st.percent = 100.0f;
-		_st.shown   = 100.0f;
-		_st.valid   = 1;
+		_st.onCharger = 1;
+		_st.settleMin = 0.0f;
+		return;
+	}
+	if (_st.onCharger) {
+		// Off the charger: wait until the average holds only battery samples, then take the
+		// voltage at face value. Read a little early the cell still carries surface charge and
+		// reads high, which the filter corrects downwards -- the safe direction, since `shown`
+		// never rises while discharging.
+		_st.settleMin += dtMin;
+		if (_st.settleMin < _cfg.settleMinutes) return;
+		_st.onCharger = 0;
+		anchor(mv);
 		return;
 	}
 	if (!_st.valid) { anchor(mv); return; }
-
-	const float dtMin = float(dtMs) / 60000.0f;
 
 	// The clock. percent is defined as remaining runtime, so it drains linearly.
 	_st.percent -= 100.0f * dtMin / float(_cfg.fullRuntimeMin);

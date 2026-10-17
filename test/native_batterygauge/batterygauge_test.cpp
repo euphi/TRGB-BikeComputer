@@ -63,6 +63,9 @@ static Result replay(const std::vector<Sample>& run, int startAt, bool verbose, 
 		g.update(uint32_t(60000.0f / speed), s.mv, false);
 		const float truth = float(total - s.minute) / float(total) * 100.0f;
 		const int shown = g.percent();
+		// The leading rows of a run still carry the charger in the 60 s average; the gauge waits
+		// those out (onCharger) and has nothing to show yet -- the same rows curveOnly() skips.
+		if (g.onCharger()) continue;
 		if (shown > prevShown) r.monotone = false;
 		prevShown = shown;
 		errs.push_back(float(shown) - truth);
@@ -114,14 +117,37 @@ int main(int argc, char** argv) {
 	CHECK(curveSlopePpPerMv(3530) > curveSlopePpPerMv(3800), "the plateau should be the steepest part of the curve");
 	CHECK(curveSlopePpPerMv(3530) > curveSlopePpPerMv(3000), "the plateau should be steeper than the low end");
 
-	// --- charging and anchoring ------------------------------------------------------------
+	// --- charging ----------------------------------------------------------------------------
+	// On the charger nothing is measurable, so after it the gauge must take the voltage -- not
+	// 100 %, not what it held before. 2026-10-16/17: a charge that stopped at 66 % was shown as
+	// 100 % and the night ran out after five and a half hours.
+	{
+		Gauge g;
+		g.anchor(3415);								// 22 %, as on 2026-10-16 19:46
+		for (int i = 0; i < 274; i++) g.update(60000, 4660, true);
+		CHECK(g.onCharger(), "on the charger the gauge must say so");
+		CHECK(g.percent() == 22, "on the charger the estimate is held, got %u%%", g.percent());
+		g.update(60000, 4300, false);				// average still carries the charger
+		CHECK(g.onCharger(), "above the charger threshold the gauge is still on the charger");
+		g.update(30000, 3630, false);				// clean, but not settled yet
+		CHECK(g.percent() == 22, "before the settle time nothing may change, got %u%%", g.percent());
+		g.update(60000, 3625, false);				// 1.5 min off the charger: anchors now
+		CHECK(!g.onCharger(), "after the settle time the gauge is off the charger");
+		CHECK(g.percent() == curvePercent(3625), "unplugging must anchor to the voltage: %u%% vs %u%%",
+		      g.percent(), curvePercent(3625));
+	}
+	{
+		// Booting with the charger attached: no starting point, and none is invented.
+		Gauge g;
+		for (int i = 0; i < 600; i++) g.update(60000, 4650, true);
+		CHECK(!g.known(), "a boot on the charger must not claim to know anything");
+		g.update(60000, 3600, false);
+		g.update(30000, 3600, false);				// 1.5 min off the charger: anchors now
+		CHECK(g.percent() == curvePercent(3600), "after unplugging: the curve, got %u%%", g.percent());
+	}
 	{
 		Gauge g;
 		CHECK(!g.known(), "a fresh gauge must not claim to know anything");
-		g.update(60000, 4502, true);
-		CHECK(g.percent() == 100, "on the charger the gauge must read 100%%, not %u", g.percent());
-		g.update(60000, 4300, false);		// average still carries the charger
-		CHECK(g.percent() == 100, "above the charger threshold the gauge must stay at 100%%");
 		g.anchor(3174);
 		CHECK(g.percent() == 11, "anchor(3174) gives %u%%, expected the curve value 11%%", g.percent());
 		const State saved = g.state();
@@ -129,7 +155,7 @@ int main(int argc, char** argv) {
 		h.restore(saved);
 		CHECK(h.percent() == g.percent(), "a restored gauge must show what was saved");
 		Gauge bad;
-		State nonsense = {NAN, NAN, 1};
+		State nonsense = {}; nonsense.percent = NAN; nonsense.shown = NAN; nonsense.valid = 1;
 		bad.restore(nonsense);
 		CHECK(!bad.known(), "a NaN state must be rejected");
 	}

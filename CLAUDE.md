@@ -231,6 +231,17 @@ Zimmertemperatur) und ist der Wert, den echte Fahrten nachjustieren müssen; die
 im Log schreibt dafür die geschätzte Restzeit mit.
 Keine Temperaturkompensation -- das ist der nächste große Fehlerposten.
 
+**Messpunkt** (LilyGO-Schaltplan): Der Teiler an GPIO4 hängt nicht an der Zelle, sondern an der
+Systemschiene hinter der Stromumschaltung (USB über Diode, Akku über P-FET; Laderegler TP4065
+direkt an USB). Am Akku liest er die Zelle minus FET-Abfall unter Last -- daher 3,91 statt 4,2 V
+für „voll". Am Kabel liest er die USB-Spannung; der Ladestrom zeigt sich nur als Abfall in Kabel
+und Stecker, der Wert hängt also am Kabel (dieselbe Ladung: 4355 mV an einem, 4757 mV an einem
+anderen). **Beim Laden ist deshalb nichts über den Akku messbar**: Der Gauge hält seinen Wert,
+ankert nach dem Abziehen (1,5 min Wartezeit fürs 60-s-Mittel) an der Spannung, und nach
+Tiefschlaf oder Einschalten ebenso -- geladen wird normalerweise im Tiefschlaf. Nur Resets
+mitten im Betrieb (Brownout, Absturz, Neustart) übernehmen den RTC-Zustand. Ein Versuch mit
+Laderate aus dem Messwert und drei Blitzfarben wurde am 17.10.2026 wieder verworfen.
+
 ## Serielle Konsole
 
 `src/SerialConsole.*`: Zeileneditor mit Verlauf und Tab-Completion vor SimpleCLI.

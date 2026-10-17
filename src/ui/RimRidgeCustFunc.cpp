@@ -98,8 +98,12 @@ void ui_RimRidgeInitBattery() {
 
 void ui_RimRidgeUpdateIntBat(uint8_t perc, bool charging) {
 	// While charging the pin reads the charger, not the battery (`charging` in batCheck(),
-	// src/main.cpp), so there is no state of charge to colour -- the bolt says why.
+	// src/main.cpp), so there is no state of charge to colour -- the bolt says why. One colour
+	// only: whether current is actually flowing cannot be told from that reading, it depends on
+	// the cable (src/BatteryGauge.h, update()).
 	if (charging) {
+		lv_obj_set_style_img_recolor(objects.rr_bolt, lv_color_hex(ZONE_COLOR[ZONE_YELLOW]),
+		                             LV_PART_MAIN | LV_STATE_DEFAULT);
 		lv_obj_add_flag(objects.rr_battery_fill, LV_OBJ_FLAG_HIDDEN);
 		lv_obj_clear_flag(objects.rr_bolt, LV_OBJ_FLAG_HIDDEN);
 		return;

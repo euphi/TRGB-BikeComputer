@@ -24,18 +24,10 @@ BatGauge::Gauge batGauge;
 // In RTC memory, not in the NVS: the estimate has to survive a brownout reboot or a restart
 // from the settings screen -- otherwise the gauge re-anchors to the plateau voltage, the one
 // reading it exists to avoid -- but writing it every minute would stall the bus the panel reads
-// its framebuffer from (doc/PITFALLS.md, "NVS-Schreiben und Display-Flackern"). RTC memory
-// survives a reset and deep sleep but not a power cycle, which is exactly the right rule: after
-// a power-on the board was off, probably on the charger, and nothing remembered is worth having.
+// its framebuffer from (doc/PITFALLS.md, "NVS-Schreiben und Display-Flackern").
 RTC_NOINIT_ATTR static BatGauge::State batRtcState;
 RTC_NOINIT_ATTR static uint32_t batRtcMagic;
-RTC_NOINIT_ATTR static uint32_t batRtcEpoch;	// unix time of the last save, 0 = clock was not set
-static constexpr uint32_t BAT_RTC_MAGIC = 0x62617467;	// "batg"
-// A gap this long makes the remembered estimate worthless: deep sleep keeps drawing current
-// while the clock inside the gauge stands still, and nobody has measured the sleep current to
-// drain it with. After a rest the voltage is at its best anyway -- an unloaded cell, no sag --
-// so the gauge starts over from the curve. Short gaps (a reboot, a brief sleep) are kept.
-static constexpr uint32_t BAT_STALE_S = 600;
+static constexpr uint32_t BAT_RTC_MAGIC = 0x6261746A;	// "batj" -- bump when State changes layout
 
 #include <Ticker.h>
 Ticker batCheckTicker;
@@ -83,7 +75,6 @@ void batCheck() {
 	const uint16_t avgMv = isnan(avg) ? mv : uint16_t(avg * 1000);
 	batGauge.update(1000, avgMv, charging);			// the ticker calls us once a second
 	batRtcState = batGauge.state();					// survives a reset, see BAT_RTC_MAGIC
-	batRtcEpoch = (uint32_t) time(nullptr);			// ... but only counts while the clock is set
 	const uint8_t perc = batGauge.percent();
 	bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_OP, "Battery:  %u%% [%d mV]- charging [%c]", perc, mv, charging ? 'x' : ' ');
 	ui.updateBatInt(mv / 1000.0, perc, charging, batGauge.remainingMinutes());
@@ -106,14 +97,18 @@ void setup() {
 	trgb.SD_init();
 	batt.begin(3300, 2.0/4.0 * 1.03, &bareCurve); // divider ratio is 2, but ESP32-S3 has 4096 bit DAC instead of 1024, so an additional division by 4 is needed --> 0.5 ratio  + 3% error correction (individual setting?)
 
-	// Anything but a power-on means the board kept running on the same charge, so the estimate
-	// from before the reset beats what the voltage alone can say now -- unless too much time has
-	// passed since it was written, see BAT_STALE_S. Without a set clock the gap is unknown, and a
-	// reset without one is a reboot, not a long sleep.
-	const uint32_t batNow = (uint32_t) time(nullptr);
-	const bool batGapKnown = batRtcEpoch > 1600000000 && batNow > batRtcEpoch;
-	if (esp_reset_reason() != ESP_RST_POWERON && batRtcMagic == BAT_RTC_MAGIC
-	    && !(batGapKnown && batNow - batRtcEpoch > BAT_STALE_S)) batGauge.restore(batRtcState);
+	// Only a reset in the middle of running keeps the estimate: the board went on drawing from
+	// the same charge, so what was counted beats a single voltage reading. After deep sleep or a
+	// power-on it is the other way round -- that is how the BC is normally charged, so the battery
+	// may be anything from where it was to full, and the rested voltage is the best there is.
+	switch (esp_reset_reason()) {
+		case ESP_RST_BROWNOUT: case ESP_RST_PANIC: case ESP_RST_INT_WDT: case ESP_RST_TASK_WDT:
+		case ESP_RST_WDT: case ESP_RST_SW:
+			if (batRtcMagic == BAT_RTC_MAGIC) batGauge.restore(batRtcState);
+			break;
+		default:		// ESP_RST_DEEPSLEEP, ESP_RST_POWERON, ...: anchor to the voltage
+			break;
+	}
 	batRtcMagic = BAT_RTC_MAGIC;
 
 	bclog.setup();
