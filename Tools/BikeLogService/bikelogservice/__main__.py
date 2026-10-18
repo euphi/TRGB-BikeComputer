@@ -43,6 +43,22 @@ def _pull(args) -> int:
     return 1 if result.failed else 0
 
 
+def _inbox(args) -> int:
+    """Collect what bike computers pushed to the Nextcloud inbox (inbox.py), once."""
+    from . import inbox
+
+    store = Storage(Settings.from_env())
+    result = inbox.run_once(store)
+    if result is None:
+        print("the push inbox is off: set BIKELOG_NEXTCLOUD_INBOX and the Nextcloud login", file=sys.stderr)
+        return 2
+    print(result.summary())
+    for err in result.errors:
+        print("  " + err, file=sys.stderr)
+    analysis.refresh(store, background=False)
+    return 1 if result.failed else 0
+
+
 def _import(args) -> int:
     """Copy a BIKECOMP tree (card reader, backup) into the storage."""
     store = Storage(Settings.from_env())
@@ -98,6 +114,9 @@ def main(argv=None) -> int:
     p.add_argument("host", nargs="?", default="TRGB-BC.local")
     p.add_argument("--device", default="trgb")
     p.set_defaults(func=_pull)
+
+    p = sub.add_parser("inbox", help="collect pushed sessions from the Nextcloud inbox once")
+    p.set_defaults(func=_inbox)
 
     p = sub.add_parser("import", help="import a BIKECOMP directory tree")
     p.add_argument("dir")

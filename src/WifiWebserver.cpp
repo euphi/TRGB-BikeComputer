@@ -749,6 +749,9 @@ void WifiWebserver::checkLoop() {
 		            : everConnected ? "Verbindung verloren" : "kein WLAN gefunden");
 	}
 
+	// Upload finished sessions (doc/LOGSERVICE.md "Push"); only starts its task when due.
+	logPush.poll(phase.load() == WifiPhase::ONLINE);
+
 	// A successful OTA cannot restart from the upload handler -- that runs on async_tcp
 	// and the client still has to receive the response. The flag is set there and acted
 	// on here, one tick later, by which time the reply has gone out.

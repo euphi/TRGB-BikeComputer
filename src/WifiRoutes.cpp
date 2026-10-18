@@ -120,6 +120,10 @@ and the name the log service pulls from (BIKELOG_PULL_TARGETS). Change it there 
   <div class="row"><input type="submit" value="Save name"></div>
 </form>
 
+<h3>Log upload</h3>
+<p class="eyebrow">For a bike that is not parked in reach of the log service: upload finished sessions to a
+Nextcloud (WebDAV) whenever it is online - <a href="/push">set up the log upload</a>.</p>
+
 <h3>Hotspot</h3>
 <p class="eyebrow">Started from the settings screen of the device. The password is shown on its display.
 It is not shown here - set a new one if you want to change it.</p>

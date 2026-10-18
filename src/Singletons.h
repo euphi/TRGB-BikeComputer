@@ -48,6 +48,9 @@ extern ClimbMonitor climb;
 #include "RouteMonitor.h"
 extern RouteMonitor routeMon;
 
+#include "LogPush.h"
+extern LogPush logPush;
+
 #ifdef BC_SIM
 #include "SimSensors.h"
 extern SimSensors sim;

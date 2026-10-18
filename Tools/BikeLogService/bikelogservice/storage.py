@@ -388,6 +388,11 @@ class Storage:
         return {SdFile(r["day"], r["name"]).path: (None if r["deleted_at"] else r["size"])
                 for r in rows}
 
+    def is_deleted(self, device: str, sdfile: SdFile) -> bool:
+        """The file's session was deleted (or archived) here: tombstoned."""
+        session = self.find(device, sdfile.day, sdfile.stem)
+        return bool(session and session.deleted_at)
+
     def records(self, session: Session, stats: ReadStats | None = None, types=(0,)):
         """Parsed records of the session's L_ file -- the input for every export."""
         log = session.file("L")

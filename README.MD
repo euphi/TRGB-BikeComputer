@@ -79,6 +79,9 @@ sensor), height calibration, IMU calibration, restart and power off.
   [service](doc/LOGSERVICE.md) that fetches the sessions when the bike
   computer shows up in the WiFi, archives them, exports GPX, syncs to Nextcloud and
   uploads to Komoot
+- Log upload from the bike computer to a Nextcloud folder (WebDAV, HTTPS) whenever it is
+  online, for a bike that is not parked in reach of the home WiFi; set up on the web page
+  `/push`, the service collects the files from there just like pulled ones
 - Session report: all key figures of a ride (climbs, heart-rate zones, TRIMP, estimated
   power, road quality, sensor dropouts and other technical findings) as a web page,
   Markdown or JSON; optionally also in words, written by a local LLM (Ollama) on the home

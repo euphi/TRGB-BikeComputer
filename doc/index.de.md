@@ -92,6 +92,9 @@ vergessen), Höhenkalibrierung, IMU-Kalibrierung, Neustart und Ausschalten.
 - Python-[Werkzeuge](TOOLS.md), die Logs in CSV und GPX umwandeln, und ein
   [Dienst](LOGSERVICE.md), der die Sitzungen abholt, sobald der Fahrradcomputer im WLAN
   auftaucht, sie archiviert, GPX exportiert, mit Nextcloud abgleicht und zu Komoot hochlädt
+- Log-Upload vom Fahrradcomputer in einen Nextcloud-Ordner (WebDAV, HTTPS), sobald er online
+  ist, für ein Rad, das nicht in Reichweite des heimischen WLANs steht; eingerichtet auf der
+  Webseite `/push`, der Dienst übernimmt die Dateien von dort genauso wie beim Pull
 - Sitzungsbericht: alle Kennzahlen einer Fahrt (Anstiege, Pulszonen, TRIMP, geschätzte
   Leistung, Wegequalität, Sensor-Aussetzer und andere technische Auffälligkeiten) als
   Webseite, Markdown oder JSON; auf Wunsch auch in Worten, geschrieben von einem lokalen LLM

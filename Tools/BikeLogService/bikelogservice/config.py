@@ -127,6 +127,17 @@ class Settings:
     def nextcloud_enabled(self) -> bool:
         return bool(self.nextcloud_url and self.nextcloud_user and self.nextcloud_password)
 
+    #: Push inbox (inbox.py): the Nextcloud folder bike computers upload their sessions to
+    #: when they are not parked in reach of the pull (firmware: /push page). WebDAV path below
+    #: the user's files root, like nextcloud_dir; uses the same login. Unset = off.
+    nextcloud_inbox: str | None = None
+    #: How often the inbox is looked at.
+    inbox_interval_s: float = 300.0
+
+    @property
+    def inbox_enabled(self) -> bool:
+        return bool(self.nextcloud_enabled and self.nextcloud_inbox)
+
     @classmethod
     def from_env(cls, env=None) -> "Settings":
         env = env if env is not None else os.environ
@@ -152,6 +163,8 @@ class Settings:
             nextcloud_user=env.get("BIKELOG_NEXTCLOUD_USER") or None,
             nextcloud_password=env.get("BIKELOG_NEXTCLOUD_PASSWORD") or None,
             nextcloud_dir=env.get("BIKELOG_NEXTCLOUD_DIR", "BikeLog"),
+            nextcloud_inbox=(env.get("BIKELOG_NEXTCLOUD_INBOX") or "").strip("/") or None,
+            inbox_interval_s=float(env.get("BIKELOG_INBOX_INTERVAL_S", 300)),
             athlete_file=Path(env["BIKELOG_ATHLETE_FILE"]) if env.get("BIKELOG_ATHLETE_FILE") else None,
             idle_archive_days=float(env.get("BIKELOG_IDLE_ARCHIVE_DAYS", 7)),
             llm_url=(env.get("BIKELOG_LLM_URL") or "").rstrip("/") or None,

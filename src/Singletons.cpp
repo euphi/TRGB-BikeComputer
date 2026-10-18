@@ -24,6 +24,7 @@ I2CSensors sensors;
 #endif
 ClimbMonitor climb;
 RouteMonitor routeMon;
+LogPush logPush;
 #ifdef BC_SIM
 SimSensors sim;
 #endif

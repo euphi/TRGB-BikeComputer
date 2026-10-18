@@ -46,8 +46,14 @@ Klasse erledigen) oder nur die Lage, ist nicht bewiesen.
 
 Starkes Flackern während OTA-Updates ist unabhängig davon eine Eigenschaft
 der Hardware: Solange der Flash geschrieben oder gelöscht wird, steht der
-Bus, über den das Panel sein Bild aus dem PSRAM liest. Dasselbe im Kleinen
-ist die dritte Ursache:
+Bus, über den das Panel sein Bild aus dem PSRAM liest. `UIFacade::otaStart()` zeigt deshalb nur einen von unten steigenden Füllstand (vollbreite Zeilen,
+ohne Text), damit der Fortschritt erkennbar bleibt. Der Effekt verschwindet dadurch nicht: Am Gerät
+gemessen (18.10.2026) verrutscht das Bild weiterhin horizontal **und** vertikal und fällt während
+des Uploads zeitweise schwarz aus. Eine niedrigere Bildwiederholrate hilft auch nicht, der
+Pixeltakt liegt schon bei 8 MHz und der Stillstand (~100 ms) übersteigt jeden Puffer. Nicht
+probierte Hebel, beide mit ~11 min IDF-Neubau und dem Rollback-Risiko weiter unten:
+`CONFIG_SPIRAM_XIP_FROM_PSRAM` (Code/Konstanten im PSRAM) und `CONFIG_SPI_FLASH_AUTO_SUSPEND`
+(braucht einen Flash-Chip mit Suspend). Dasselbe im Kleinen ist die dritte Ursache:
 
 **3. NVS-Schreiben** -- Symptom: ein einzelnes kurzes Flackern, regelmäßig
 (vor 2026-10 alle 45-75 s beim Fahren, 2-3×/10 min im Stand). Siehe den
@@ -417,6 +423,15 @@ Regel: Jeden neuen dauerhaften Puffer/Stack/offenen File im internen RAM mit
 geschrieben werden, nicht die ganze Sitzung offen halten. Die Middleware in
 `WifiWebserver.cpp` lehnt Requests unter 20 KB freiem internem Heap mit 503
 ab -- das schützt aber erst nach dem Annehmen der Verbindung.
+
+**TLS (Log-Push) passt nicht in den internen Heap.** mbedTLS braucht pro Verbindung zwei
+16-KB-Record-Puffer plus den Handshake-Zustand, und dieser Build legt alles intern an
+(`CONFIG_MBEDTLS_INTERNAL_MEM_ALLOC`). `LogPush` stellt mbedTLS deshalb für die Dauer eines Laufs
+mit `mbedtls_platform_set_calloc_free()` auf PSRAM um und danach zurück -- zur Laufzeit, nicht in
+`custom_sdkconfig`, also ohne IDF-Neubau. Der Task-Stack (9 KB) bleibt intern und existiert nur
+während eines Laufs; ein Lauf startet nur mit 36 KB frei und hört zwischen zwei Dateien unter
+24 KB auf. Am Ende loggt der Task seine Stack-Reserve (`Log push task: ... byte stack left`,
+Debug-Level). Alles andere, was HTTPS will, braucht dieselbe Umstellung.
 
 ## SD-Karte: offene Dateien nicht löschen oder umbenennen
 

@@ -43,7 +43,8 @@ Verlinkt von der Startseite („WiFi Settings"). Sie zeigt
 - die gespeicherten Netze mit ▲ ▼ (Reihenfolge, nur bei Gleichstand), **Edit** (Passwort) und **Delete**,
 - eine Suche mit Auswahlliste oder eine SSID von Hand (auch für versteckte und offene
   Netze),
-- Name und neues Passwort des Hotspots.
+- Name und neues Passwort des Hotspots,
+- einen Link zum [Log-Upload](LOGSERVICE.md#hochladen-vom-fahrradcomputer-push) (`/push`).
 
 Es werden bis zu 8 Netze gespeichert. Passwörter werden nie an die Seite zurückgeschickt oder
 ins Log geschrieben; im NVS liegen sie im Klartext, wie bei jeder ESP32-Firmware ohne

@@ -130,6 +130,7 @@ void setup() {
     stats.setup();
 	climb.setup();
 	routeMon.setup();
+	logPush.setup();
 	bleDevs.setup();
 #ifdef BC_SIM
 	sim.setup();

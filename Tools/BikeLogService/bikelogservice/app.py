@@ -3,8 +3,8 @@
 Keeps every session the bike computer writes (all of its files, verbatim) and
 derives GPX/CSV from them on demand. Sessions arrive by pull (puller.py: the
 service fetches from the device when it shows up on the network) or by push
-(``PUT /api/v1/devices/{device}/files/{day}/{name}``); both end up in the same
-idempotent Storage.put_file(). Publishing to Nextcloud/Komoot/Strava and the
+(``PUT /api/v1/devices/{device}/files/{day}/{name}``, or by way of a Nextcloud folder the
+device uploads to: inbox.py); all end up in the same idempotent Storage.put_file(). Publishing to Nextcloud/Komoot/Strava and the
 heatmap come later and hang off the same storage.
 
 Run it:  uvicorn bikelogservice.app:app
@@ -28,7 +28,7 @@ from fastapi.concurrency import run_in_threadpool
 from bikelog import bikes, csvexport, gpximport, report, training
 from bikelog.record import ReadStats
 
-from . import analysis, archive, exporter, importer, llm, tours, komoot, nextcloud, sdlayout, webui
+from . import analysis, archive, exporter, importer, inbox, llm, tours, komoot, nextcloud, sdlayout, webui
 from .auth import AuthDep, Principal
 from .config import Settings
 from .puller import DeviceUnavailable, Puller
@@ -43,6 +43,7 @@ def create_app(settings: Settings | None = None, puller: Puller | None = None) -
     store = Storage(settings)
     if puller is None and settings.pull:
         puller = Puller(store, settings)
+    inbox_poller = inbox.InboxPoller(store) if settings.inbox_enabled else None
 
     def _analyse(store: Storage) -> None:
         # reports first (the pages need them), then the texts (minutes each)
@@ -66,7 +67,11 @@ def create_app(settings: Settings | None = None, puller: Puller | None = None) -
                          name="bikelog-export", daemon=True).start()
         if puller:
             puller.start()
+        if inbox_poller:
+            inbox_poller.start()
         yield
+        if inbox_poller:
+            await asyncio.to_thread(inbox_poller.stop)
         if puller:
             # zeroconf refuses to close (blocking I/O) on the event loop thread.
             await asyncio.to_thread(puller.stop)
@@ -567,6 +572,7 @@ def create_app(settings: Settings | None = None, puller: Puller | None = None) -
             "auth_required": settings.require_auth,
             "principal": principal.name,
             "pull": puller is not None,
+            "inbox": inbox_poller is not None,
         }
 
     # --- sessions ---
@@ -748,6 +754,9 @@ def create_app(settings: Settings | None = None, puller: Puller | None = None) -
 
         Idempotent: the same bytes again are ``unchanged``, different bytes
         replace the stored file. A device or script may retry blindly.
+
+        With the header ``X-BikeLog-Auto: 1`` (the firmware's automatic push) the upload is
+        treated like a pulled file: a session deleted here is not brought back (``deleted``).
         """
         try:
             sdfile = sdlayout.parse_path(path)
@@ -756,6 +765,8 @@ def create_app(settings: Settings | None = None, puller: Puller | None = None) -
         if sdfile.day == sdlayout.WORKDIR:
             raise HTTPException(status.HTTP_409_CONFLICT,
                                 "files of the running session are not taken")
+        if request.headers.get("x-bikelog-auto") == "1" and store.is_deleted(device, sdfile):
+            return {"status": "deleted", "session": None}
         payload = await request.body()
         if not payload:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "empty body")
@@ -769,6 +780,21 @@ def create_app(settings: Settings | None = None, puller: Puller | None = None) -
         threading.Thread(target=_sync_and_analyse, args=(store,),
                          name="bikelog-nextcloud", daemon=True).start()
         return {"status": result.status, "session": result.session.as_dict()}
+
+    # --- push inbox (Nextcloud) ---
+
+    @app.get(API + "/inbox", tags=["service"])
+    def inbox_status(principal: Principal = AuthDep):
+        return inbox_poller.as_dict() if inbox_poller else {"enabled": False}
+
+    @app.post(API + "/inbox", status_code=status.HTTP_202_ACCEPTED, tags=["service"])
+    def inbox_now(principal: Principal = AuthDep):
+        """Look into the push inbox now instead of waiting for the next round."""
+        if not inbox_poller:
+            raise HTTPException(status.HTTP_409_CONFLICT,
+                                "the push inbox is off (BIKELOG_NEXTCLOUD_INBOX + Nextcloud login)")
+        inbox_poller.trigger()
+        return {"triggered": True}
 
     # --- pull ---
 

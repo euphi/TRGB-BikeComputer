@@ -502,6 +502,8 @@ def test_every_route_requires_a_token_once_auth_is_on(tmp_path, ride_bytes):
             ("POST", f"{API}/archive/device-delete"),
             ("GET", f"{API}/pull"),
             ("POST", f"{API}/pull"),
+            ("GET", f"{API}/inbox"),
+            ("POST", f"{API}/inbox"),
         ]
         routes = {r.path for r in client.app.routes if hasattr(r, "methods")} - {
             "/openapi.json", "/docs", "/docs/oauth2-redirect", "/redoc"}

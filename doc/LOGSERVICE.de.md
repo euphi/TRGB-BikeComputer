@@ -27,9 +27,10 @@ Exportlogik verbessert damit rückwirkend alle alten Fahrten.
 ## Abholen (Pull)
 
 Der BC stellt seine SD-Karte ohnehin per HTTP bereit (`/log/<tag>/<datei>`).
-Der Dienst holt ab, statt dass die Firmware hochlädt: kein Upload-Client auf
-dem Gerät, keine Zugangsdaten dort, keine Wiederholungslogik in einem Task,
-der mit BLE und Display um internen Heap konkurriert.
+Der Dienst holt ab, statt dass die Firmware hochlädt: keine Zugangsdaten auf dem
+Gerät, keine Wiederholungslogik in einem Task, der mit BLE und Display um internen
+Heap konkurriert. Für ein Rad, das nicht in Reichweite des heimischen WLANs steht,
+gibt es zusätzlich den [Push](#hochladen-vom-fahrradcomputer-push).
 
 **Wann** ([`puller.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/BikeLogService/bikelogservice/puller.py)):
 
@@ -69,6 +70,77 @@ der ESP32 bremst), Folgeabruf 2 s.
 **Löschen** entfernt die Dateien, lässt aber einen Grabstein im Index -- sonst
 käme die Sitzung beim nächsten Abruf von der SD-Karte zurück. Ein
 ausdrücklicher `PUT` holt sie zurück.
+
+## Hochladen vom Fahrradcomputer (Push)
+
+Der Pull braucht den Fahrradcomputer im heimischen WLAN. Ein Rad, das woanders steht (Arbeit,
+Keller ohne Empfang), kann stattdessen hochladen: Sobald es online ist, schickt es jede fertige
+Sitzungsdatei per WebDAV in einen Nextcloud-Ordner, und der Dienst holt sie dort ab. Push ergänzt
+den Pull, ersetzt ihn nicht -- beide können für dasselbe Gerät laufen:
+
+- Die Dateien bleiben unverändert auf der SD-Karte, der Pull findet sie weiterhin.
+- Der Dienst legt eine hochgeladene Datei über dasselbe `put_file()` ab wie eine abgeholte:
+  dieselben Bytes noch einmal sind `unchanged`, nichts liegt doppelt.
+- Eine im Dienst gelöschte oder archivierte Sitzung kommt durch einen Push nicht zurück (der
+  Eingang verwirft ihre Dateien; ein direkter Upload trägt den Header `X-BikeLog-Auto: 1`, siehe
+  API).
+
+**Fahrradcomputer** ([`LogPush.cpp`](https://github.com/euphi/TRGB-BikeComputer/blob/main/src/LogPush.cpp),
+Seite `/push`, verlinkt von der Startseite und von `/wifi`):
+
+| Ziel | URL | User / Password |
+|---|---|---|
+| **Upload-Link** (am einfachsten) | der Freigabe-Link eines als „Dateien ablegen“ (File drop) geteilten Ordners, `https://<cloud>/s/<token>` | leer / das Freigabe-Passwort, falls eins gesetzt ist |
+| WebDAV-Ordner mit Konto | `https://<cloud>/remote.php/dav/files/<nutzer>/BikeLog-Inbox/<netzwerkname>` | Nextcloud-Nutzer / ein eigenes **App-Passwort** (Einstellungen -> Sicherheit -> „Geräte & Sitzungen“), allein widerrufbar |
+
+Ein Upload-Link braucht kein Konto auf dem Fahrradcomputer. Die Firmware macht daraus die
+WebDAV-Seite (`/public.php/webdav`, der Token als Nutzer). Ein File Drop nimmt nur `PUT` und behält
+nur den Dateinamen (Nextcloud 31, `FilesDropPlugin`), deshalb kommen die Dateien flach als
+`<netzwerkname>~<tag>~<datei>` an (`TRGB-FL~20261018~L_143012.bin`, eine Datei direkt in
+`/BIKECOMP`: `TRGB-FL~~L0042.bin`); bei einer „Dateianfrage“ legt Nextcloud sie in einen Ordner je
+Nickname (die Firmware schickt ihren Netzwerknamen). Ein schon vorhandener Name wird nicht ersetzt,
+sondern als `... (2).bin` abgelegt -- der Dienst nimmt solche Kopien älteste zuerst. Mit Konto
+werden fehlende Ordner angelegt (`MKCOL`), und die Tagesordner der Karte bleiben erhalten. *Test
+target* prüft URL und Zugang (bei einem Upload-Link schreibt er `<netzwerkname>~push-test.txt`, das
+der Dienst löscht), *Upload now*
+wartet nicht auf die nächste Runde, *Mark all as uploaded* trägt ein, was auf der Karte liegt,
+ohne es hochzuladen -- für eine Karte, deren Sitzungen der Dienst schon per Pull hat. Das
+Passwort kommt nur über das Formular herein, wird nie wieder angezeigt und nie geloggt.
+
+Wann: 20 s nach jedem WLAN-Connect, danach alle 10 min, solange er online ist (eine mit langem
+Druck beendete Fahrt erscheint ohne Reconnect), nach einem Fehler nach 5 min. Nur fertige
+Sitzungen, nie `CUR/`. Was hochgeladen ist, steht in `/bcpush.txt` auf der SD-Karte
+(`<pfad> <größe>`); eine Datei geht nur dann noch einmal hoch, wenn sich ihre Größe ändert (neues
+Format der Kurzstatistik). Die Datei löschen lädt alles neu hoch. HTTPS wird gegen die gängigen
+Stamm-Zertifizierungsstellen geprüft (Let's Encrypt und die großen CAs,
+[`certs/`](https://github.com/euphi/TRGB-BikeComputer/tree/main/certs), erneuern mit
+`Tools/make_cert_bundle.sh`); ein selbst signiertes Zertifikat geht nicht. Serielle Konsole:
+`push [status|now|test|mark|on|off]`.
+
+Das WLAN selbst folgt seinen eigenen Regeln ([WLAN](WIFI.md)): Das Netz muss eingetragen sein,
+und ohne Netz in Reichweite geht es 5 Minuten nach dem Start aus. Der Upload läuft auch über
+einen Handy-Hotspot mitten in der Tour; er schickt nur fertige Sitzungen, ein paar hundert KB
+pro Fahrt.
+
+**Dienst** ([`inbox.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/BikeLogService/bikelogservice/inbox.py)):
+braucht den Nextcloud-Zugang des [Syncs](#nextcloud-sync) und den Eingangsordner:
+
+```
+BIKELOG_NEXTCLOUD_INBOX=BikeLog-Inbox
+```
+
+`BIKELOG_NEXTCLOUD_INBOX` ist der Ordner hinter dem Upload-Link (bzw. über den Geräteordnern),
+vom Nextcloud-Konto des Dienstes aus gesehen. Er schaut alle `BIKELOG_INBOX_INTERVAL_S` (5 min) in den Eingang, legt jede Datei ab und löscht
+sie dort; ein geleerter Tagesordner verschwindet, sobald eine Stunde nichts mehr hineingeschrieben
+wurde. Der Ordner unter dem Eingang ist der Netzwerkname des Fahrradcomputers;
+`BIKELOG_PULL_TARGETS` ordnet ihn dem Gerätenamen zu (`pendler=TRGB-FL` legt
+`BikeLog-Inbox/TRGB-FL/...` unter `pendler` ab, dieselben Sitzungen wie der Pull von
+`TRGB-FL.local`), ein Name ohne Ziel wird so übernommen. Von Hand: `POST /api/v1/inbox` oder
+`bikelogservice inbox`.
+
+Ohne Nextcloud kann der Fahrradcomputer auch direkt zum Dienst hochladen, wenn er ihn erreicht
+(VPN, Portfreigabe): Folder URL `http://<server>:8080/api/v1/devices/<gerät>/files`, User leer,
+als Passwort ein Token aus `BIKELOG_TOKENS`, falls Auth an ist.
 
 ## GPX-Export
 
@@ -407,6 +479,7 @@ bikelogservice serve [--host 0.0.0.0] [--port 8080]
 bikelogservice pull  [TRGB-BC.local | 192.168.0.171] [--device trgb]   # einmal abholen
 bikelogservice import /media/sd/BIKECOMP [--device trgb]              # SD-Karte im Kartenleser
 bikelogservice export [--all]                                         # GPX-Dateien schreiben
+bikelogservice inbox                                                  # Push-Eingang einmal abholen
 ```
 
 `pull` und `import` arbeiten auf demselben Datenverzeichnis
@@ -436,6 +509,8 @@ Umgebungsvariablen (im Dienst: `~/bikelog/bikelog.env`):
 | `BIKELOG_KOMOOT_MERGE_GAP_S` | `1800` | Sitzungen desselben Geräts mit höchstens so viel Pause dazwischen gelten als eine unterbrochene Fahrt |
 | `BIKELOG_NEXTCLOUD_URL` / `_USER` / `_PASSWORD` | -- | Nextcloud-Login (App-Passwort); ohne alle drei ist der Sync aus |
 | `BIKELOG_NEXTCLOUD_DIR` | `BikeLog` | Zielverzeichnis (WebDAV-Pfad, wird bei Bedarf angelegt) |
+| `BIKELOG_NEXTCLOUD_INBOX` | -- | Ordner, in den die Fahrradcomputer [hochladen](#hochladen-vom-fahrradcomputer-push) (WebDAV-Pfad); leer = wird nicht abgeholt |
+| `BIKELOG_INBOX_INTERVAL_S` | `300` | wie oft der Eingang angeschaut wird |
 | `BIKELOG_ATHLETE_FILE` | `<data>/athlete.json` | Fahrerdaten für den Sitzungsbericht |
 | `BIKELOG_IDLE_ARCHIVE_DAYS` | `7` | Leerlauf-Sitzungen nach so vielen Tagen nach `archive/`, 0 = nie |
 | `BIKELOG_LLM_URL` | -- | Ollama-Server für die Fahrt in Worten; leer = aus |
@@ -475,12 +550,16 @@ eines bestehenden Ziels beibehalten, die gespeicherten Sitzungen liegen darunter
 | `POST` | `/api/v1/sessions/{id}/komoot/ignore` | die Frage der Seite mit „nein“ beantworten (`ask_again=true`: wieder fragen) |
 | `PUT` | `/api/v1/devices/{gerät}/files/{tag}/{name}` | eine Datei einliefern (Body = Datei) |
 | `GET`/`POST` | `/api/v1/pull` | Status des Abholens / jetzt abholen (`device`) |
+| `GET`/`POST` | `/api/v1/inbox` | Status des Push-Eingangs / jetzt hineinschauen |
 
 `PUT` ist idempotent: dieselben Bytes noch einmal ergeben `unchanged`, andere
 Bytes unter demselben Namen `replaced` (der BC schreibt `I_`-Dateien neu,
 wenn sich ihr Format ändert). Ein `L_`, das sich nicht lesen lässt, wird
 trotzdem aufbewahrt und in `log_error` begründet -- es sind die Daten des
-Geräts. `CUR/` wird mit `409` abgelehnt.
+Geräts. `CUR/` wird mit `409` abgelehnt. Eine gelöschte Sitzung kommt mit einem `PUT`
+zurück -- außer mit dem Header `X-BikeLog-Auto: 1` (der automatische Push des
+Fahrradcomputers): Dann lautet die Antwort `{"status": "deleted"}`, und nichts wird abgelegt,
+wie beim Pull.
 
 ```bash
 curl -T L_143012.bin http://server:8080/api/v1/devices/trgb/files/20260920/L_143012.bin

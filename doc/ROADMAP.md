@@ -16,6 +16,7 @@ Help is welcome, especially where marked.
 | [Road quality](ROADQUALITY.md) and manual road labels | two rides; the thresholds are still the first guesses |
 | WiFi setup on the device, hotspot ([doc](WIFI.md)) | tested on the device; choosing the network by signal strength is new and untested |
 | Settings pages, BLE device page, log service | working |
+| Log upload from the bike computer (push to Nextcloud, [doc](LOGSERVICE.md#uploading-from-the-bike-computer-push)) | new: builds, the service side has tests against a fake WebDAV server; not run on the device yet (TLS memory, real Nextcloud) |
 | [Route overview](ROUTE.md) (destination, waypoints, climbs of the GPX route) | new, not run on the device: host test, simulator build and a host rendering of the screen exist; the long read of the 512-byte frame over a real BLE link is untried |
 | Height calibration ([doc](HEIGHT.md)) | presets, manual entry and web page tested on the device; the GPS button shows the phone's GPS height; calibrating with it has not been tried yet |
 | Forumslader variant | builds, rarely tested; its screen is the last one from the old SquareLine UI |

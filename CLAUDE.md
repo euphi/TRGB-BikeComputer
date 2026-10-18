@@ -2,7 +2,8 @@
 
 ESP32-S3-Fahrradcomputer auf LilyGO T-RGB (480×480 rundes RGB-Display,
 LVGL 8.4). Sensoren: Herzfrequenz, CSC (Speed/Cadence), Forumslader
-(nur FL-Variante), BME280, BMI160. Navigation und GPS-Position kommen von
+(nur FL-Variante, über das BT-Classic→BLE-Gateway
+[ESP32_FLClassic2BLE](../ESP32_FLClassic2BLE/CLAUDE.md)), BME280, BMI160. Navigation und GPS-Position kommen von
 der Android-Companion-App [TrailBridge](../TrailBridge/) (Paket
 `com.euphi.trailbridge`).
 
@@ -153,6 +154,11 @@ Mobilfunk); danach das Netz mit `cmd wifi forget-network <id>` wieder vergessen.
   aus dem Repo): holt Sitzungen per mDNS-Trigger vom BC ab (`/logfiles/` bzw.
   `/logfiles.json` + `/log/...`). Ändert sich das Namensschema auf der SD
   oder die HTML-Liste, `bikelogservice/sdlayout.py`/`puller.py` mitziehen.
+- Push (Rad steht nicht in Reichweite des Pulls): Firmware lädt fertige Sitzungen per WebDAV
+  hoch, `src/LogPush.*` (Seite `/push`, CLI `push`, Manifest `/bcpush.txt` auf der SD, TLS-Puffer
+  während des Laufs im PSRAM), reiner Teil `src/LogPushCore.*` (Host-Test `test/native_logpush/`).
+  Dienst holt aus dem Nextcloud-Eingang `BIKELOG_NEXTCLOUD_INBOX` ab (`bikelogservice/inbox.py`),
+  gleiche Ablage wie Pull, Grabsteine gelten. Doku `doc/LOGSERVICE.md` „Push“.
 - Auswertung: `bikelog/report.py` (Kennzahlen einer Sitzung als JSON, `bikelog report`),
   `bikelog/training.py` (Trainingslast, Wochen, Zielrennen, wiederkehrende Anstiege; arbeitet
   nur auf dem Bericht-JSON, nie auf dem Binärformat). Im Dienst: Bericht-Cache und

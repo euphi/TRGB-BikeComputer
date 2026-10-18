@@ -255,7 +255,9 @@ void BCLogger::checkRotate() {
 	if (fraw[RAW_CAPTURE]) {
 		// The raw file belongs to this session: ask for the end of the capture, rotate at the
 		// next cycle once it is closed (the request stays).
+#ifdef TRGBBC_SENSORS_I2C
 		sensors.stopRoadCapture();
+#endif
 		return;
 	}
 	rotateRequested = false;
@@ -1190,7 +1192,9 @@ uint16_t BCLogger::getAllFileLinks(String &rc) {
 
 bool BCLogger::deleteFile(const String& path){
   // The running session's files are open, and the finalizer is moving the earlier ones.
-  if (isActiveSessionFile(path) || (LogSessions::busy() && path.startsWith(LogSessions::WORKDIR + "/"))) {
+  // And the log push may have it open for an upload.
+  if (isActiveSessionFile(path) || (LogSessions::busy() && path.startsWith(LogSessions::WORKDIR + "/"))
+      || logPush.isBusyWith(path)) {
 	  logf(Log_Warn, TAG_SD, "File %s belongs to the running session or is being finished - not deleted.", path.c_str());
 	  return false;
   }

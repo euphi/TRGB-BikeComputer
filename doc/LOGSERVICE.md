@@ -27,8 +27,9 @@ improves all old rides retroactively.
 ## Fetching (pull)
 
 The bike computer serves its SD card by HTTP anyway (`/log/<day>/<file>`). The service
-fetches instead of the firmware uploading: no upload client on the device, no credentials
-there, no retry logic in a task that competes with BLE and display for internal heap.
+fetches instead of the firmware uploading: no credentials on the device, no retry logic in a
+task that competes with BLE and display for internal heap. For a bike that is not parked in
+reach of the home WiFi there is the [push](#uploading-from-the-bike-computer-push) as well.
 
 **When**
 ([`puller.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/BikeLogService/bikelogservice/puller.py)):
@@ -67,6 +68,72 @@ the brake), follow-up fetch 2 s.
 **Deleting** removes the files but leaves a tombstone in the index -- otherwise the
 session would come back from the SD card on the next fetch. An explicit `PUT` brings it
 back.
+
+## Uploading from the bike computer (push)
+
+The pull needs the bike computer in the home WiFi. A bike that is parked elsewhere (at work, in a
+cellar without reception) can upload instead: whenever it is online it sends every finished
+session file by WebDAV to a Nextcloud folder, and the service collects them from there. Push
+is an addition, not a replacement -- both can run for the same device:
+
+- The files stay on the SD card unchanged, the pull still finds them.
+- The service files a pushed file through the same `put_file()` as a pulled one: the same
+  bytes again are `unchanged`, nothing is stored twice.
+- A session deleted or archived in the service is not brought back by a push (the inbox drops
+  its files; a direct upload carries the header `X-BikeLog-Auto: 1`, see the API).
+
+**Bike computer** ([`LogPush.cpp`](https://github.com/euphi/TRGB-BikeComputer/blob/main/src/LogPush.cpp),
+page `/push`, linked from the start page and from `/wifi`):
+
+| Target | URL | User / password |
+|---|---|---|
+| **Upload link** (simplest) | the share link of a folder shared as "File drop", `https://<cloud>/s/<token>` | empty / the share password, if it has one |
+| WebDAV folder with an account | `https://<cloud>/remote.php/dav/files/<user>/BikeLog-Inbox/<network name>` | Nextcloud user / an **app password** (Settings -> Security -> "Devices & sessions") of its own, revocable alone |
+
+An upload link needs no account on the bike computer. The firmware turns it into its WebDAV side
+(`/public.php/webdav`, the token as user). A files drop takes nothing but `PUT` and keeps only the
+file name (Nextcloud 31, `FilesDropPlugin`), so the files arrive flat as
+`<network name>~<day>~<file>` (`TRGB-FL~20261018~L_143012.bin`, a file directly in `/BIKECOMP`:
+`TRGB-FL~~L0042.bin`); for a "file request" Nextcloud puts them into a folder per nickname (the
+firmware sends its network name). A name that is already there is not replaced but stored as
+`... (2).bin` -- the service takes such copies oldest first. With an account, missing folders are
+created (`MKCOL`) and the day folders of the card are kept. *Test target* checks URL and login (on
+an upload link it writes `<network name>~push-test.txt`, which the service deletes), *Upload now* does
+not wait for the next round, *Mark all as uploaded* records what is on the card without
+uploading it -- for a card whose sessions the service already has by pull. The password is
+only taken from the form, never shown again or logged.
+
+When: 20 s after every WiFi connect, then every 10 min while online (a ride ended with a long
+press shows up without a reconnect), 5 min after a failure. Only finished sessions, never
+`CUR/`. What has been uploaded is listed in `/bcpush.txt` on the SD card (`<path> <size>`); a
+file goes up again only if its size changes (new summary format). Delete the file to upload
+everything again. HTTPS is checked against the common root CAs (Let's Encrypt and the large
+CAs, [`certs/`](https://github.com/euphi/TRGB-BikeComputer/tree/main/certs), refresh with
+`Tools/make_cert_bundle.sh`); a self-signed certificate does not work. Serial console:
+`push [status|now|test|mark|on|off]`.
+
+The WiFi itself follows its own rules ([WiFi](WIFI.md)): it must know the network, and it switches
+off 5 minutes after boot if none is in reach. The upload also runs over a phone hotspot in the
+middle of a ride; it only sends finished sessions, a few hundred KB per ride.
+
+**Service** ([`inbox.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/BikeLogService/bikelogservice/inbox.py)):
+needs the Nextcloud login of the [sync](#nextcloud-sync) and the inbox folder:
+
+```
+BIKELOG_NEXTCLOUD_INBOX=BikeLog-Inbox
+```
+
+`BIKELOG_NEXTCLOUD_INBOX` is the folder behind the upload link (or above the device folders),
+seen from the service's Nextcloud account. It looks into the inbox every `BIKELOG_INBOX_INTERVAL_S` (5 min), stores each file and then
+deletes it there; an emptied day folder goes once nothing has been written to it for an hour.
+The folder below the inbox is the network name of the bike computer; `BIKELOG_PULL_TARGETS` maps
+it to the device name (`pendler=TRGB-FL` files `BikeLog-Inbox/TRGB-FL/...` under `pendler`, the
+same sessions as the pull of `TRGB-FL.local`), a name without a target is used as it is. By hand:
+`POST /api/v1/inbox` or `bikelogservice inbox`.
+
+Without a Nextcloud the bike computer can also upload straight to the service, if it can reach it
+(VPN, port forwarding): folder URL `http://<server>:8080/api/v1/devices/<device>/files`, user
+empty, a `BIKELOG_TOKENS` token as the password if auth is on.
 
 ## GPX export
 
@@ -400,6 +467,7 @@ bikelogservice serve [--host 0.0.0.0] [--port 8080]
 bikelogservice pull  [TRGB-BC.local | 192.168.0.171] [--device trgb]   # fetch once
 bikelogservice import /media/sd/BIKECOMP [--device trgb]              # SD card in a card reader
 bikelogservice export [--all]                                         # write GPX files
+bikelogservice inbox                                                  # collect the push inbox once
 ```
 
 `pull` and `import` work on the same data directory (`BIKELOG_DATA_DIR`) and may run in
@@ -429,6 +497,8 @@ Environment variables (in the service: `~/bikelog/bikelog.env`):
 | `BIKELOG_KOMOOT_MERGE_GAP_S` | `1800` | sessions of the same device with at most this much pause between them count as one interrupted ride |
 | `BIKELOG_NEXTCLOUD_URL` / `_USER` / `_PASSWORD` | -- | Nextcloud login (app password); without all three the sync is off |
 | `BIKELOG_NEXTCLOUD_DIR` | `BikeLog` | target directory (WebDAV path, created if needed) |
+| `BIKELOG_NEXTCLOUD_INBOX` | -- | folder the bike computers [push](#uploading-from-the-bike-computer-push) to (WebDAV path); empty = not looked at |
+| `BIKELOG_INBOX_INTERVAL_S` | `300` | how often the inbox is looked at |
 | `BIKELOG_ATHLETE_FILE` | `<data>/athlete.json` | rider data for the session report |
 | `BIKELOG_IDLE_ARCHIVE_DAYS` | `7` | idle sessions to `archive/` after this many days, 0 = never |
 | `BIKELOG_LLM_URL` | -- | Ollama server for the ride in words; unset = off |
@@ -468,11 +538,14 @@ name of an existing target, the stored sessions are filed under it.
 | `POST` | `/api/v1/sessions/{id}/komoot/ignore` | answer the page's question with "no" (`ask_again=true`: ask again) |
 | `PUT` | `/api/v1/devices/{device}/files/{day}/{name}` | deliver one file (body = file) |
 | `GET`/`POST` | `/api/v1/pull` | status of fetching / fetch now (`device`) |
+| `GET`/`POST` | `/api/v1/inbox` | status of the push inbox / look into it now |
 
 `PUT` is idempotent: the same bytes once more give `unchanged`, other bytes under the
 same name `replaced` (the bike computer rewrites `I_` files when their format changes).
 An `L_` that cannot be read is kept anyway and explained in `log_error` -- it is the
-device's data. `CUR/` is rejected with `409`.
+device's data. `CUR/` is rejected with `409`. A deleted session comes back with a `PUT` --
+except with the header `X-BikeLog-Auto: 1` (the bike computer's automatic push): then the
+answer is `{"status": "deleted"}` and nothing is stored, as with the pull.
 
 ```bash
 curl -T L_143012.bin http://server:8080/api/v1/devices/trgb/files/20260920/L_143012.bin

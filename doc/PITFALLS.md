@@ -43,7 +43,13 @@ or only the position has not been proven.
 
 Heavy flicker during OTA updates is, independently of that, a property of the hardware:
 while the flash is written or erased, the bus over which the panel reads its picture
-from PSRAM stands still. The same thing on a small scale is the third cause:
+from PSRAM stands still. `UIFacade::otaStart()` therefore shows only a fill level rising from the bottom (full-width rows,
+no text) so that the progress stays recognisable. It does not remove the effect: measured on the
+device (2026-10-18) the picture still shifts horizontally **and** vertically and drops out black
+during the upload. A lower refresh rate does not help either, the pixel clock is already 8 MHz and
+the stall (~100 ms) exceeds any buffer. Untried levers, both with an ~11 min IDF rebuild and the
+rollback risk below: `CONFIG_SPIRAM_XIP_FROM_PSRAM` (code/rodata in PSRAM) and
+`CONFIG_SPI_FLASH_AUTO_SUSPEND` (needs a flash chip that supports suspend). The same thing on a small scale is the third cause:
 
 **3. Writing to NVS** -- symptom: a single short flicker, regularly (before 2026-10
 every 45-75 s while riding, 2-3 times per 10 min at standstill). See the next section.
@@ -381,6 +387,15 @@ before and after (idle and under web load). Don't keep files that are rarely wri
 for the whole session. The middleware in `WifiWebserver.cpp` rejects requests below 20 KB
 of free internal heap with 503 -- but that only protects after the connection has been
 accepted.
+
+**TLS (log push) does not fit into the internal heap.** mbedTLS takes two 16 KB record buffers
+plus the handshake state per connection, and this build allocates all of it internally
+(`CONFIG_MBEDTLS_INTERNAL_MEM_ALLOC`). `LogPush` therefore switches mbedTLS to PSRAM with
+`mbedtls_platform_set_calloc_free()` for the duration of a run and back afterwards -- at runtime,
+not in `custom_sdkconfig`, so no IDF rebuild. The task stack (9 KB) stays internal and exists only
+during a run; a run starts only with 36 KB free and stops between two files below 24 KB. The
+task logs its stack reserve at the end (`Log push task: ... byte stack left`, debug level).
+Anything else that wants HTTPS needs the same switch.
 
 ## SD card: don't delete or rename open files
 

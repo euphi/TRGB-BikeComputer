@@ -41,7 +41,8 @@ Linked from the start page ("WiFi Settings"). It shows
 - the saved networks with ▲ ▼ (order, the tie-breaker), **Edit** (password) and **Delete**,
 - a scan with a list to pick from, or a manual SSID (also for hidden networks and open
   ones),
-- the hotspot's name and a new password.
+- the hotspot's name and a new password,
+- a link to the [log upload](LOGSERVICE.md#uploading-from-the-bike-computer-push) (`/push`).
 
 Up to 8 networks are stored. Passwords are never sent back to the page or written to the log;
 they are in the NVS as plain text, like in any ESP32 firmware without flash encryption.

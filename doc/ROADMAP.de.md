@@ -16,6 +16,7 @@ kommt. Hilfe ist willkommen, besonders an den markierten Stellen.
 | [Wegequalität](ROADQUALITY.md) und manuelle Wege-Labels | zwei Fahrten; die Schwellen sind noch die ersten Schätzwerte |
 | WLAN-Einrichtung am Gerät, Hotspot ([Doku](WIFI.md)) | am Gerät getestet; die Wahl des Netzes nach Empfangsstärke ist neu und ungetestet |
 | Einstellungs-Seiten, BLE-Geräteseite, Log-Dienst | funktioniert |
+| Log-Upload vom Fahrradcomputer (Push zur Nextcloud, [Doku](LOGSERVICE.md#hochladen-vom-fahrradcomputer-push)) | neu: baut, die Dienst-Seite hat Tests gegen einen nachgebauten WebDAV-Server; noch nicht auf dem Gerät gelaufen (TLS-Speicher, echte Nextcloud) |
 | [Streckenübersicht](ROUTE.md) (Ziel, Wegpunkte, Anstiege der GPX-Route) | neu, am Gerät nicht gelaufen: Host-Test, Simulator-Build und ein Rendering des Screens auf dem Rechner gibt es; der Long Read des 512-Byte-Frames über eine echte BLE-Verbindung ist unerprobt |
 | Höhenkalibrierung ([Doku](HEIGHT.md)) | Presets, manuelle Eingabe und Webseite am Gerät getestet; die GPS-Taste zeigt die GPS-Höhe des Handys an; das Kalibrieren damit wurde noch nicht ausprobiert |
 | Forumslader-Variante | baut, selten getestet; ihr Screen ist der letzte aus der alten SquareLine-Oberfläche |
