@@ -112,7 +112,8 @@ class Inbox:
         self.root = settings.nextcloud_inbox.strip("/")
 
     def url(self, *parts: str) -> str:
-        path = "/".join([self.root, *(urllib.parse.quote(p) for p in parts)])
+        segments = [*self.root.split("/"), *parts]
+        path = "/".join(urllib.parse.quote(p) for p in segments if p)
         return nextcloud._dav_url(self.settings, path)
 
     def list(self, *parts: str) -> list[Entry]:

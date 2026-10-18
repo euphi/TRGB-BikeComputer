@@ -222,6 +222,12 @@ def test_renamed_copies_newest_wins(settings):
     assert store.path_for(session, "I_143012.txt").read_bytes() == new_summary
 
 
+def test_inbox_path_with_umlauts_and_spaces(settings):
+    settings.nextcloud_inbox = "Dokumente/Fahrräder/Bike Upload"
+    url = inbox.Inbox(settings, None).url("TRGB-FL~~L0042.bin")
+    assert url.endswith("/files/bike/Dokumente/Fahrr%C3%A4der/Bike%20Upload/TRGB-FL~~L0042.bin")
+
+
 def test_missing_inbox_is_empty(settings):
     result = _collect(Storage(settings), FakeDav({}))
     assert result.files == 0
