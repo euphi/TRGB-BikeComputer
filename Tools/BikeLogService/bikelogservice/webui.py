@@ -105,7 +105,8 @@ form.filter input{width:5em}
 .spark{width:120px;height:28px;display:block}
 td.sp{width:120px;padding-top:9px}
 details.sec>summary{font:500 12px var(--mono);letter-spacing:.14em;text-transform:uppercase;margin:28px 0 10px}
-@media (max-width:640px){.spark{width:72px}td.sp{width:72px}}
+.show-s{display:none}
+@media (max-width:640px){.show-s{display:inline}}
 .prose p{margin:0 0 10px;line-height:1.55;max-width:46em}
 .prose p.mut{margin:6px 0 0}
 .find .w::marker{content:"⚠  ";color:var(--z4)}
@@ -120,6 +121,11 @@ details summary{cursor:pointer;color:var(--brass);font:500 12px var(--mono);marg
 .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:10px}
 .banner{border:1.5px solid var(--brass);border-radius:14px;padding:12px 16px;margin:14px 0;background:var(--tour)}
 .banner h2{margin:0 0 8px}
+details.tb{border:1.5px solid var(--brass);border-radius:14px;padding:6px 14px;margin:14px 0;background:var(--tour)}
+details.tb summary{font:400 .95rem var(--sans);color:var(--parch);margin:2px 0}
+details.tb summary b{color:var(--brass)}
+details.tb p{margin:4px 0 6px}
+button.sm{font-size:12px;padding:2px 10px;white-space:nowrap}
 .banner .ask{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;padding:8px 0;border-top:1px solid var(--track)}
 .banner .ask:first-of-type{border-top:none}
 .banner .ask .what{flex:1 1 16em}
@@ -1013,15 +1019,16 @@ def _trailbridge_state(r) -> str:
             'Start und dann alle 15 min, solange weder Navigation noch Testfahrt läuft.</p>')
 
 
-def _route_chips(r, verdict_ok: bool = True) -> str:
-    """Kind/archive, tags, TrailBridge and -- in the list only if not fine -- the verdict."""
+def _route_chips(r, verdict_ok: bool = True, trailbridge: bool = True) -> str:
+    """Kind/archive, tags, TrailBridge (the list has a column for it) and -- in the list only
+    if not fine -- the verdict."""
     cls, label = VERDICT_CHIPS.get(r.verdict, VERDICT_CHIPS["error"])
     chips = [f'<span class="chip tour">{"Archiv" if r.archived else escape(ROUTE_KINDS.get(r.kind, r.kind))}'
              '</span>'] if verdict_ok else []
     chips += [f'<span class="chip">{escape(ROUTE_TAGS[t])}</span>' for t in r.tags if t in ROUTE_TAGS]
     if verdict_ok or r.verdict != "ok":
         chips.append(f'<span class="chip {cls}">{label}</span>')
-    if r.marked_at:
+    if r.marked_at and trailbridge:
         chips.append('<span class="chip a">' + ("TrailBridge ✓" if r.on_phone else "TrailBridge") + "</span>")
     return "".join(chips)
 
@@ -1033,17 +1040,30 @@ def _route_row(r) -> str:
     spark = (charts.sparkline(st["profile"], f'Höhenprofil {r.name}: {st["min_ele_m"]}–{st["max_ele_m"]} m')
              if st.get("profile") else "")
     return (f'<tr id="r{escape(r.id)}"><td><a href="{href}"><b>{escape(r.name)}</b></a> '
-            f'<span class="chips">{_route_chips(r, verdict_ok=False)}</span>'
+            f'<span class="chips">{_route_chips(r, verdict_ok=False, trailbridge=False)}</span>'
             + (f'<br><span class="mut">{escape(r.notes)}</span>' if r.notes else "") + "</td>"
-            f'<td class="sp"><a href="{href}" tabindex="-1">{spark}</a></td>'
+            f'<td class="sp hide-s"><a href="{href}" tabindex="-1">{spark}</a></td>'
             f'<td class="num"><span class="big">{num(st.get("distance_km"), 1)}</span> km</td>'
             f'<td class="num">{f"{ascent:.0f} Hm" if ascent is not None else "–"}</td>'
-            f'<td class="num hide-s">{"Rundkurs" if st.get("loop") else ""}</td></tr>')
+            f'<td class="num">{_route_load(r)}</td></tr>')
+
+
+def _route_load(r) -> str:
+    """The list's TrailBridge column: where the marked route is, a button for the others."""
+    if r.marked_at:
+        return (f'<span class="chip a">{"<span class=hide-s>auf dem Handy </span>✓" if r.on_phone else "bereit"}'
+                '</span>')
+    if r.verdict == "error":
+        return ""
+    return (f'<form class="inline" method="post" action="/routes/{escape(r.id)}/trailbridge">'
+            '<input type="hidden" name="on" value="1"><input type="hidden" name="back" value="list">'
+            '<button class="sm" type="submit"><span class="hide-s">In TrailBridge laden</span>'
+            '<span class="show-s">Laden</span></button></form>')
 
 
 def _route_table(group: list) -> str:
-    return ('<table><thead><tr><th>Strecke</th><th>Profil</th><th class="num">Länge</th>'
-            '<th class="num">Anstieg</th><th class="hide-s"></th></tr></thead><tbody>'
+    return ('<table><thead><tr><th>Strecke</th><th class="hide-s">Profil</th><th class="num">Länge</th>'
+            '<th class="num">Anstieg</th><th class="num"><span class="hide-s">TrailBridge</span></th></tr></thead><tbody>'
             + "".join(_route_row(r) for r in group) + "</tbody></table>")
 
 
@@ -1056,21 +1076,17 @@ def routes_page(routes: list, seen: dict | None, base_url: str | None = None,
     if message:
         out.append(f'<div class="msg">{escape(message)}</div>')
     marked = next((r for r in routes if r.marked_at), None)
-    tb = ['<div class="banner"><h2>TrailBridge</h2>']
-    if marked:
-        tb.append(f'<p>Bereitgestellt: <a href="/routes/{escape(marked.id)}"><b>{escape(marked.name)}</b></a> – '
-                  + ("auf dem Handy." if marked.on_phone else "noch nicht abgeholt.") + "</p>")
-    else:
-        tb.append("<p>Keine Strecke bereitgestellt.</p>")
-    tb.append('<p class="mut">' + (f'Letzte Abfrage der App: {_local_time(seen["at"])} ({escape(seen["by"])}).'
-                                   if seen else "Seit dem Start des Dienstes hat TrailBridge nicht gefragt.")
-              + "</p>")
-    tb.append('<details><summary>Einrichten in TrailBridge</summary><p>Adresse des Dienstes: <code>'
-              + escape(base_url or "http://<dieser Rechner>:8080") + "</code>"
-              + ("" if base_url else ' <span class="mut">(BIKELOG_PUBLIC_URL nicht gesetzt)</span>')
-              + '<br><span class="mut">Kein Passwort: Den Zugriff begrenzt das Netz (nur LAN und VPN).</span>'
-              + "</p></details></div>")
-    out.append("".join(tb))
+    # one line: what TrailBridge gets, when it last asked; the setup folded away
+    state = (f'<a href="/routes/{escape(marked.id)}"><b>{escape(marked.name)}</b></a> '
+             + ("auf dem Handy" if marked.on_phone else "bereit, noch nicht abgeholt")
+             if marked else "keine Strecke bereitgestellt")
+    asked = (f'letzte Abfrage {_local_time(seen["at"])}' if seen else "seit dem Start nicht gefragt")
+    out.append('<details class="tb"><summary><b>TrailBridge</b> · ' + state
+               + f' <span class="mut">· {asked}</span></summary><p class="mut">Einrichten in der App: Adresse '
+               '<code>' + escape(base_url or "http://<dieser Rechner>:8080") + "</code>"
+               + ("" if base_url else " (BIKELOG_PUBLIC_URL nicht gesetzt)")
+               + ", kein Passwort – den Zugriff begrenzt das Netz (nur LAN und VPN). Die App fragt beim Start "
+               "und alle 15 min, solange weder Navigation noch Testfahrt läuft.</p></details>")
     opts = "".join(f'<option value="{k}">{v}</option>' for k, v in ROUTE_KINDS.items())
     tags = "".join(f'<label style="margin-right:10px"><input type="checkbox" class="rt-tag" value="{k}"> '
                    f'{escape(v)}</label>' for k, v in ROUTE_TAGS.items())

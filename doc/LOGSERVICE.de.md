@@ -351,7 +351,10 @@ so gelesen wie der `GpxParser` der App
 Die Liste ist kurz: oben die **aktuellen** (geplanten) Strecken, darunter aufklappbar die
 **regelmäßigen** (offen) und das **Archiv** (zu) -- je Zeile Name, Tags, Distanz, Höhenmeter und
 ein kleines Höhenprofil (gleicher Maßstab in jeder Zeile bis 300 m Höhenunterschied, eine flache
-Strecke bleibt flach); das Prüfurteil steht nur da, wenn etwas nicht stimmt. Ein Klick auf die
+Strecke bleibt flach, am Handy ausgeblendet) und ein Knopf **In TrailBridge laden** (bei der
+bereitgestellten Strecke steht dort, ob sie schon auf dem Handy ist); das Prüfurteil steht nur
+da, wenn etwas nicht stimmt. Darüber eine Zeile, welche Strecke TrailBridge hat und wann die
+App zuletzt gefragt hat, aufklappbar mit der Einrichtung. Ein Klick auf die
 Strecke öffnet ihre Seite (`/routes/{id}`) mit Distanz, Höhenmeter (mit Min./Max.), den Anstiegen
 mit Kategorie (dieselben Kriterien wie im Fahrtbericht), geplanter Zeit und Geschwindigkeit, wenn
 die Datei Zeiten hat, dem Höhenprofil (Höhenachse über mindestens 200 m, wie bei allen Höhenprofilen des Dienstes)

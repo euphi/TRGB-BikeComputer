@@ -341,7 +341,10 @@ checked for what TrailBridge's navigation will make of it, read the way the app'
 The list is short: the **current** (planned) routes on top, below them, collapsible, the
 **regular** ones (open) and the **archive** (closed) -- per row name, tags, distance, elevation
 gain and a small elevation profile (the same scale in every row up to 300 m of height
-difference, so a flat route stays flat); the verdict only shows when something is wrong. A
+difference, so a flat route stays flat; hidden on a phone) and a button **In TrailBridge
+laden** (load into TrailBridge; for the route offered it says whether it is on the phone yet);
+the verdict only shows when something is wrong. Above it one line says which route TrailBridge
+has and when the app last asked, unfolding to the setup. A
 click on the route opens its page (`/routes/{id}`) with distance, elevation (with min/max),
 the climbs with category (same criteria as the ride report), planned time and speed if the
 file has times, the elevation profile (its height axis spans at least 200 m, as in every elevation profile of

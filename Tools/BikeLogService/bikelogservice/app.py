@@ -643,15 +643,17 @@ def create_app(settings: Settings | None = None, puller: Puller | None = None) -
     @app.post("/routes/{route_id}/trailbridge", include_in_schema=False)
     async def ui_route_mark(route_id: str, request: Request, principal: Principal = AuthDep,
                             store: Storage = Depends(storage)):
-        on = (await _form(request)).get("on") == "1"
+        form = await _form(request)
+        on = form.get("on") == "1"
+        back = None if form.get("back") == "list" else route_id     # the list's button stays there
         try:
             route = routes.mark(store, route_id, on)
         except KeyError:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown route")
         except routes.Unusable as exc:
-            return _back_routes(f"Nicht bereitgestellt: {exc}", route_id)
+            return _back_routes(f"Nicht bereitgestellt: {exc}", back)
         return _back_routes(f"{route.name} liegt für TrailBridge bereit." if on
-                            else f"{route.name} wird TrailBridge nicht mehr angeboten.", route.id)
+                            else f"{route.name} wird TrailBridge nicht mehr angeboten.", back)
 
     @app.get(API + "/routes", tags=["routes"])
     def list_routes(principal: Principal = AuthDep, store: Storage = Depends(storage)):
