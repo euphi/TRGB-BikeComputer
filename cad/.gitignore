@@ -13,3 +13,6 @@ TEMP_Fotos/
 
 # FreeCAD-Sicherungskopien
 *.FCBak
+
+# Bilder und STEP des FL-Gehaeuses (werden von fl/model_fl.py und fl/render_fl.py erzeugt)
+fl/export/

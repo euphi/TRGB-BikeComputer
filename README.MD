@@ -120,7 +120,9 @@ sensor), height calibration, IMU calibration, restart and power off.
 - Optional: BME280 and BMI160 on the I²C bus
 - LiPo battery
 - 3D-printed case and handlebar mounts -- a parametric model for the Canyon CP0007
-  gravel cockpit is in [`cad/`](https://github.com/euphi/TRGB-BikeComputer/tree/main/cad)
+  gravel cockpit is in [`cad/`](https://github.com/euphi/TRGB-BikeComputer/tree/main/cad),
+  a first draft for the Forumslader build (oval display, ESP32 gateway, sits on stem and
+  drop bar) in [`cad/fl/`](https://github.com/euphi/TRGB-BikeComputer/tree/main/cad/fl)
 
 ![T-RGB Bike Computer on the handlebar (older UI)](doc/IMG20230406075242-cropped.jpg)
 

@@ -137,7 +137,9 @@ vergessen), Höhenkalibrierung, IMU-Kalibrierung, Neustart und Ausschalten.
 - LiPo-Akku
 - Gehäuse und Lenkerhalter aus dem 3D-Drucker -- ein parametrisches Modell für das Canyon
   CP0007 Gravel-Cockpit liegt in
-  [`cad/`](https://github.com/euphi/TRGB-BikeComputer/tree/main/cad)
+  [`cad/`](https://github.com/euphi/TRGB-BikeComputer/tree/main/cad), ein erster Entwurf für
+  den Forumslader-Aufbau (ovales Display, ESP32-Gateway, sitzt auf Vorbau und Rennlenker) in
+  [`cad/fl/`](https://github.com/euphi/TRGB-BikeComputer/tree/main/cad/fl)
 
 ![T-RGB Fahrradcomputer am Lenker (ältere Oberfläche)](IMG20230406075242-cropped.jpg)
 
