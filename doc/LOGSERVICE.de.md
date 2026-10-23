@@ -348,10 +348,16 @@ so gelesen wie der `GpxParser` der App
 | Zeiten | Zeitstempel in der Datei: Die Restzeit kommt aus der geplanten Fahrzeit |
 | Wegpunkte | `wpt` bis 100 m neben der Strecke erscheinen in der Streckenübersicht, die anderen werden gezählt |
 
-Je Strecke zeigt die Seite Distanz, Höhenmeter (mit Min./Max.), die Anstiege mit Kategorie
-(dieselben Kriterien wie im Fahrtbericht), geplante Zeit und Geschwindigkeit, wenn die Datei
-Zeiten hat, die Befunde und das Höhenprofil; eine Strecke lässt sich umbenennen, anders
-einsortieren, durch eine neue Version ihrer GPX ersetzen, herunterladen und löschen. Eine
+Die Liste ist kurz: oben die **aktuellen** (geplanten) Strecken, darunter aufklappbar die
+**regelmäßigen** (offen) und das **Archiv** (zu) -- je Zeile Name, Tags, Distanz, Höhenmeter und
+ein kleines Höhenprofil (gleicher Maßstab in jeder Zeile bis 300 m Höhenunterschied, eine flache
+Strecke bleibt flach); das Prüfurteil steht nur da, wenn etwas nicht stimmt. Ein Klick auf die
+Strecke öffnet ihre Seite (`/routes/{id}`) mit Distanz, Höhenmeter (mit Min./Max.), den Anstiegen
+mit Kategorie (dieselben Kriterien wie im Fahrtbericht), geplanter Zeit und Geschwindigkeit, wenn
+die Datei Zeiten hat, dem Höhenprofil (Höhenachse über mindestens 200 m, wie bei allen Höhenprofilen des Dienstes)
+und den Befunden. Dort lässt sich eine Strecke umbenennen, anders einsortieren, mit den Tags
+**Pendel/Alltag** und **Training** versehen, archivieren (das nimmt sie TrailBridge weg), durch
+eine neue Version ihrer GPX ersetzen, herunterladen und löschen. Eine
 Datei, die TrailBridge gar nicht lesen kann, wird abgelehnt und nicht aufbewahrt. Ablage in
 `<data>/routes.json`, die Dateien unverändert in `<data>/routes/`
 ([`routes.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/BikeLogService/bikelogservice/routes.py)); ändert sich die Prüfung selbst,
@@ -601,7 +607,8 @@ eines bestehenden Ziels beibehalten, die gespeicherten Sitzungen liegen darunter
 | `GET` | `/api/v1/events` | Zielrennen mit Stand der Vorbereitung |
 | `PUT` | `/api/v1/events/{id}/gpx` | Strecken-GPX eines Zielrennens (Body = Datei) |
 | `GET` | `/routes` | geplante und regelmäßige Strecken (HTML) |
-| `GET`/`PUT` | `/api/v1/routes` | Strecken mit Prüfung und Kennzahlen / eine hochladen (`kind=planned|regular`, `name`, `filename`; Body = GPX) |
+| `GET` | `/routes/{id}` | eine Strecke mit Höhenprofil, Anstiegen und Befunden (HTML) |
+| `GET`/`PUT` | `/api/v1/routes` | Strecken mit Prüfung und Kennzahlen (`tags`, `archived`) / eine hochladen (`kind=planned|regular`, `tags=commute,training`, `name`, `filename`; Body = GPX) |
 | `GET`/`DELETE` | `/api/v1/routes/{id}` | eine Strecke / löschen |
 | `GET` | `/api/v1/routes/{id}.gpx` | ihre GPX unverändert |
 | `PUT` | `/api/v1/routes/{id}/gpx` | neue Version der Datei (`filename`) |

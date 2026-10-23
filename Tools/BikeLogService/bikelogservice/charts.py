@@ -208,15 +208,23 @@ def stacked_zones(labels: list[str], zones: list[list[float]], tips: list[str], 
     return _svg("".join(body), label)
 
 
+#: Least height range of a profile: a flat ride stays flat instead of being scaled up to an
+#: Alpine stage; the line then runs near the bottom.
+MIN_PROFILE_SPAN_M = 200.0
+#: The same for the small profile in a list, the same scale in every row up to this range
+SPARK_SPAN_M = 300.0
+
+
 def profile(points: list[list[float]], label: str, climbs: list[dict] | None = None,
-            h: int = 200) -> str:
+            h: int = 200, min_span: float = MIN_PROFILE_SPAN_M) -> str:
     """Elevation over distance: sage line with a 10 % wash, climbs as brass bands."""
     if len(points) < 2:
         return ""
     kms = [p[0] for p in points]
     hs = [p[1] for p in points]
     lo, hi = min(hs), max(hs)
-    span = max(20.0, hi - lo)
+    hi = max(hi, lo + min_span)
+    span = hi - lo
     lo, hi = lo - span * 0.08, hi + span * 0.12
     ys = _ticks(lo, hi, 3)
     lo, hi = min(lo, ys[0]), max(hi, ys[-1])
@@ -252,6 +260,24 @@ def profile(points: list[list[float]], label: str, climbs: list[dict] | None = N
                     f'height="{h - PAD_T - PAD_B}" fill="transparent" data-x="{x:.1f}" '
                     f'data-tip="km {_fmt(k)} · {v:.0f} m"/>')
     return _svg("".join(body), label, h)
+
+
+def sparkline(points: list[list[float]], label: str, w: int = 120, h: int = 28,
+              min_span: float = SPARK_SPAN_M) -> str:
+    """A small elevation profile (distance, height) for a list row: no axes, fixed scale
+    (min_span) so rows compare -- the label says the range in words."""
+    if len(points) < 2:
+        return ""
+    step = max(1, len(points) // w)
+    pts = points[::step] + ([points[-1]] if (len(points) - 1) % step else [])
+    lo = min(p[1] for p in pts)
+    span = max(min_span, max(p[1] for p in pts) - lo)
+    km_max = pts[-1][0] or 1
+    xy = " ".join(f"{p[0] / km_max * w:.1f},{h - 2 - (p[1] - lo) / span * (h - 4):.1f}" for p in pts)
+    return (f'<svg class="spark" viewBox="0 0 {w} {h}" preserveAspectRatio="none" role="img" '
+            f'aria-label="{escape(label)}"><polygon points="0,{h} {xy} {w},{h}" fill="{SAGE}" '
+            f'fill-opacity="0.18"/><polyline points="{xy}" fill="none" stroke="{SAGE}" stroke-width="1.5" '
+            'stroke-linejoin="round" vector-effect="non-scaling-stroke"/></svg>')
 
 
 def zone_band(zones_s: dict) -> str:

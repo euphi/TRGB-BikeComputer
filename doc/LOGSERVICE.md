@@ -338,9 +338,15 @@ checked for what TrailBridge's navigation will make of it, read the way the app'
 | times | time stamps in the file: the remaining time comes from the planned riding time |
 | waypoints | `wpt` within 100 m of the route appear in the route overview, the others are counted |
 
-Per route the page shows distance, elevation (with min/max), the climbs with category
-(same criteria as the ride report), planned time and speed if the file has times, the
-findings and the elevation profile; a route can be renamed, re-filed, replaced by a new
+The list is short: the **current** (planned) routes on top, below them, collapsible, the
+**regular** ones (open) and the **archive** (closed) -- per row name, tags, distance, elevation
+gain and a small elevation profile (the same scale in every row up to 300 m of height
+difference, so a flat route stays flat); the verdict only shows when something is wrong. A
+click on the route opens its page (`/routes/{id}`) with distance, elevation (with min/max),
+the climbs with category (same criteria as the ride report), planned time and speed if the
+file has times, the elevation profile (its height axis spans at least 200 m, as in every elevation profile of
+the service) and the findings. There a route can be renamed, re-filed, tagged **Pendel/Alltag**
+(commute) and **Training**, archived (which takes it back from TrailBridge), replaced by a new
 version of its GPX, downloaded and deleted. A file TrailBridge cannot read at all is
 refused and not kept. Stored in `<data>/routes.json`, the files unchanged in
 `<data>/routes/` ([`routes.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/BikeLogService/bikelogservice/routes.py)); when the check
@@ -586,7 +592,8 @@ name of an existing target, the stored sessions are filed under it.
 | `GET` | `/api/v1/events` | target events with readiness |
 | `PUT` | `/api/v1/events/{id}/gpx` | course GPX of a target event (body = file) |
 | `GET` | `/routes` | planned and regular routes (HTML) |
-| `GET`/`PUT` | `/api/v1/routes` | routes with check and figures / upload one (`kind=planned|regular`, `name`, `filename`; body = GPX) |
+| `GET` | `/routes/{id}` | one route with elevation profile, climbs and findings (HTML) |
+| `GET`/`PUT` | `/api/v1/routes` | routes with check and figures (`tags`, `archived`) / upload one (`kind=planned|regular`, `tags=commute,training`, `name`, `filename`; body = GPX) |
 | `GET`/`DELETE` | `/api/v1/routes/{id}` | one route / delete it |
 | `GET` | `/api/v1/routes/{id}.gpx` | its GPX unchanged |
 | `PUT` | `/api/v1/routes/{id}/gpx` | new version of the file (`filename`) |

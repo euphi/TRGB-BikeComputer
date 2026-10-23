@@ -30,6 +30,7 @@ from .storage import Storage
 #: Bump when routecheck's findings or stats change -- stored checks are redone on start.
 CHECK_VERSION = 1
 KINDS = {"planned": "Geplant", "regular": "Regelmäßig"}
+TAGS = {"commute": "Pendel/Alltag", "training": "Training"}
 
 _lock = threading.Lock()
 
@@ -40,6 +41,10 @@ class Route:
     id: str = field(default_factory=lambda: uuid.uuid4().hex[:8])
     kind: str = "planned"
     notes: str = ""
+    #: keys of TAGS
+    tags: list[str] = field(default_factory=list)
+    #: done with (a planned route after the ride): in the archive, never marked
+    archived: bool = False
     #: file name below routes/, and its SHA-256
     gpx: str = ""
     sha256: str = ""
@@ -105,8 +110,8 @@ def load(store: Storage) -> list[Route]:
     if not path.exists():
         return []
     routes = [Route.from_dict(r) for r in json.loads(path.read_text(encoding="utf-8"))]
-    # marked first, then by kind and name
-    return sorted(routes, key=lambda r: (r.marked_at is None, r.kind, r.name.lower()))
+    # marked first, then by kind and name; the archive last
+    return sorted(routes, key=lambda r: (r.archived, r.marked_at is None, r.kind, r.name.lower()))
 
 
 def _save(store: Storage, routes: list[Route]) -> None:
@@ -153,12 +158,16 @@ def _set_file(store: Storage, route: Route, data: bytes, fallback_name: str) -> 
     route.check = check
 
 
+def _tags(tags) -> list[str]:
+    return [t for t in TAGS if t in (tags or ())]
+
+
 def add(store: Storage, data: bytes, filename: str = "", kind: str = "planned",
-        name: str = "") -> Route:
+        name: str = "", tags: list[str] | None = None) -> Route:
     """A new route from a GPX. Unusable if TrailBridge cannot read it; a usable one with
     warnings is kept (the page shows them)."""
     fallback = Path(filename).stem if filename else "Route"
-    route = Route(name="", kind=kind if kind in KINDS else "planned")
+    route = Route(name="", kind=kind if kind in KINDS else "planned", tags=_tags(tags))
     with _lock:
         _set_file(store, route, data, fallback)
         route.name = name.strip() or route.check["name"]
@@ -179,7 +188,9 @@ def replace_gpx(store: Storage, route_id: str, data: bytes, filename: str = "") 
 
 
 def update(store: Storage, route_id: str, name: str | None = None, kind: str | None = None,
-           notes: str | None = None) -> Route:
+           notes: str | None = None, tags: list[str] | None = None,
+           archived: bool | None = None) -> Route:
+    """Change what is given (None = keep). Archiving takes the route back from TrailBridge."""
     with _lock:
         routes = load(store)
         route = next((r for r in routes if r.id == route_id), None)
@@ -191,6 +202,12 @@ def update(store: Storage, route_id: str, name: str | None = None, kind: str | N
             route.kind = kind
         if notes is not None:
             route.notes = notes
+        if tags is not None:
+            route.tags = _tags(tags)
+        if archived is not None:
+            route.archived = archived
+            if archived:
+                route.marked_at = None
         _save(store, routes)
     return route
 
@@ -208,8 +225,8 @@ def delete(store: Storage, route_id: str) -> bool:
 
 
 def mark(store: Storage, route_id: str, on: bool = True) -> Route:
-    """Hand this route to TrailBridge (on) or take it back. Marking one unmarks the others.
-    KeyError for an unknown route, Unusable for one TrailBridge cannot use."""
+    """Hand this route to TrailBridge (on) or take it back. Marking one unmarks the others,
+    and takes an archived one out of the archive. KeyError for an unknown route, Unusable for one TrailBridge cannot use."""
     with _lock:
         routes = load(store)
         route = next((r for r in routes if r.id == route_id), None)
@@ -221,6 +238,8 @@ def mark(store: Storage, route_id: str, on: bool = True) -> Route:
             if r is not route and on:
                 r.marked_at = None
         route.marked_at = now_iso() if on else None
+        if on:
+            route.archived = False
         route.mark_count += on
         _save(store, routes)
     return route

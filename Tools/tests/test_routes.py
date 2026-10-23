@@ -49,14 +49,56 @@ def test_unreadable_gpx_is_refused_and_not_kept(client, settings):
     assert client.get(f"{API}/routes").json() == []
 
 
-def test_page_shows_route_findings_and_trailbridge_box(client):
+def test_list_is_short_and_details_are_on_the_route_page(client):
     route = _add(client, gpx([(lat, lon, None) for lat, lon, _ in course()]))
     page = client.get("/routes").text
     assert '<a href="/routes" class=on>Strecken</a>' in page
-    assert f'id="r{route["id"]}"' in page
-    assert "Mit Einschränkungen" in page and "Keine (vollständigen) Höhen" in page
-    assert "Für TrailBridge bereitstellen" in page
+    assert f'<a href="/routes/{route["id"]}"><b>Hausrunde</b></a>' in page
+    assert "Mit Einschränkungen" in page                     # in the list only when not fine
+    assert "Keine (vollständigen) Höhen" not in page and "Für TrailBridge bereitstellen" not in page
     assert "hat TrailBridge nicht gefragt" in page
+    detail = client.get(f"/routes/{route['id']}").text
+    assert "Keine (vollständigen) Höhen" in detail and "Für TrailBridge bereitstellen" in detail
+    assert client.get("/routes/nope").status_code == 404
+
+
+def test_list_sections_and_small_profile(client):
+    current, regular, old = (_add(client, filename=f"{n}.gpx", kind=k)
+                             for n, k in (("a", "planned"), ("b", "regular"), ("c", "planned")))
+    client.post(f"/routes/{old['id']}/archive", data={"on": "1"}, follow_redirects=False)
+    page = client.get("/routes").text
+    i_cur, i_reg, i_arc = (page.index(f'id="r{r["id"]}"') for r in (current, regular, old))
+    assert page.index("<h2>Aktuell</h2>") < i_cur < page.index("Regelmäßig <span") < i_reg \
+        < page.index("Archiv <span") < i_arc
+    assert '<details class="sec" open><summary>Regelmäßig' in page
+    assert '<details class="sec"><summary>Archiv' in page        # closed
+    assert page.count('class="spark"') == 3
+
+
+def test_archive_takes_the_route_back_from_trailbridge(client):
+    route = _add(client)
+    client.post(f"{API}/routes/{route['id']}/trailbridge")
+    r = client.post(f"/routes/{route['id']}/archive", data={"on": "1"}, follow_redirects=False)
+    assert r.headers["location"].startswith(f"/routes/{route['id']}?")
+    got = client.get(f"{API}/routes/{route['id']}").json()
+    assert got["archived"] and not got["marked_at"]
+    assert client.get(FEED).status_code == 204
+    # marking it again brings it back from the archive
+    assert not client.post(f"{API}/routes/{route['id']}/trailbridge").json()["archived"]
+
+
+def test_tags(client):
+    route = _add(client)
+    assert route["tags"] == []
+    tagged = client.put(f"{API}/routes", params={"tags": "training,bogus", "filename": "t.gpx"},
+                        content=gpx(course())).json()
+    assert tagged["tags"] == ["training"]
+    client.post(f"/routes/{route['id']}", data={"name": "Arbeit", "tags": "1", "tag_commute": "on"})
+    assert client.get(f"{API}/routes/{route['id']}").json()["tags"] == ["commute"]
+    assert "Pendel/Alltag" in client.get("/routes").text
+    # a form without the tag boxes leaves them alone
+    client.post(f"/routes/{route['id']}", data={"name": "Arbeit"})
+    assert client.get(f"{API}/routes/{route['id']}").json()["tags"] == ["commute"]
 
 
 def test_edit_and_delete(client, settings):
@@ -95,7 +137,7 @@ def test_feed_round_trip(client):
     ack = client.post(FEED + "/fetched", params={"revision": body["revision"]})
     assert ack.status_code == 200
     assert client.get(f"{API}/routes/{route['id']}").json()["on_phone"]
-    assert "Von TrailBridge geladen" in client.get("/routes").text
+    assert "Von TrailBridge geladen" in client.get(f"/routes/{route['id']}").text
 
 
 def test_marking_again_or_a_new_file_is_a_new_revision(client):

@@ -577,7 +577,8 @@ def create_app(settings: Settings | None = None, puller: Puller | None = None) -
         return route
 
     def _back_routes(text: str, route_id: str | None = None) -> RedirectResponse:
-        return RedirectResponse("/routes?" + urlencode({"msg": text}) + (f"#r{route_id}" if route_id else ""),
+        """To the route's page, or the list without one."""
+        return RedirectResponse((f"/routes/{route_id}?" if route_id else "/routes?") + urlencode({"msg": text}),
                                 status_code=status.HTTP_303_SEE_OTHER)
 
     async def _route_upload(request: Request) -> bytes:
@@ -604,12 +605,20 @@ def create_app(settings: Settings | None = None, puller: Puller | None = None) -
         return webui.routes_page(routes.load(store), app.state.trailbridge_seen,
                                  base_url=settings.public_url, message=msg)
 
+    @app.get("/routes/{route_id}", response_class=HTMLResponse, include_in_schema=False)
+    def route_page(route_id: str, msg: str | None = Query(default=None, max_length=500),
+                   principal: Principal = AuthDep, store: Storage = Depends(storage)):
+        return webui.route_page(_require_route(store, route_id), message=msg)
+
     @app.post("/routes/{route_id}", include_in_schema=False)
     async def ui_route_edit(route_id: str, request: Request, principal: Principal = AuthDep,
                             store: Storage = Depends(storage)):
         form = await _form(request)
+        # the form's tag checkboxes: only the ticked ones are sent ("tags" says they were there)
+        tags = [t for t in routes.TAGS if form.get(f"tag_{t}")] if "tags" in form else None
         try:
-            route = routes.update(store, route_id, form.get("name"), form.get("kind"), form.get("notes"))
+            route = routes.update(store, route_id, form.get("name"), form.get("kind"), form.get("notes"),
+                                  tags)
         except KeyError:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown route")
         return _back_routes(f"{route.name} gespeichert.", route.id)
@@ -619,6 +628,17 @@ def create_app(settings: Settings | None = None, puller: Puller | None = None) -
         route = _require_route(store, route_id)
         routes.delete(store, route_id)
         return _back_routes(f"{route.name} gelöscht.")
+
+    @app.post("/routes/{route_id}/archive", include_in_schema=False)
+    async def ui_route_archive(route_id: str, request: Request, principal: Principal = AuthDep,
+                               store: Storage = Depends(storage)):
+        on = (await _form(request)).get("on") == "1"
+        try:
+            route = routes.update(store, route_id, archived=on)
+        except KeyError:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown route")
+        return _back_routes(f"{route.name} archiviert." if on else f"{route.name} ist zurück aus dem Archiv.",
+                            route.id)
 
     @app.post("/routes/{route_id}/trailbridge", include_in_schema=False)
     async def ui_route_mark(route_id: str, request: Request, principal: Principal = AuthDep,
@@ -642,6 +662,8 @@ def create_app(settings: Settings | None = None, puller: Puller | None = None) -
     async def add_route(request: Request,
                         kind: str = Query(default="planned", pattern="^(planned|regular)$"),
                         name: str = Query(default="", max_length=200, description="default: from the GPX"),
+                        tags: str = Query(default="", max_length=200,
+                                          description="comma-separated: " + ", ".join(routes.TAGS)),
                         filename: str = Query(default="", max_length=300,
                                               description="the uploaded file's name (fallback for the name)"),
                         principal: Principal = AuthDep, store: Storage = Depends(storage)):
@@ -649,7 +671,7 @@ def create_app(settings: Settings | None = None, puller: Puller | None = None) -
         one usable with limits is stored, its findings say which."""
         payload = await _route_upload(request)
         try:
-            return routes.add(store, payload, filename, kind, name).as_dict()
+            return routes.add(store, payload, filename, kind, name, tags.split(",")).as_dict()
         except routes.Unusable as exc:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, f"GPX unbrauchbar: {exc}")
 
