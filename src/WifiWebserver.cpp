@@ -821,6 +821,7 @@ void WifiWebserver::setupOta() {
 				otaRebootAt = millis() + 1500;			// let the response drain first
 			} else {
 				bclog.logf(BCLogger::Log_Error, TAG, "OTA failed: %s", Update.errorString());
+				ui.otaAbort();
 			}
 		},
 		// Body chunks, in order, on the async_tcp task.
@@ -839,11 +840,13 @@ void WifiWebserver::setupOta() {
 				ui.otaStart();
 				if (!Update.begin(UPDATE_SIZE_UNKNOWN, partition)) {
 					bclog.logf(BCLogger::Log_Error, TAG, "OTA begin failed: %s", Update.errorString());
+					ui.otaAbort();
 					return;
 				}
 			}
 			if (Update.isRunning() && len && Update.write(data, len) != len) {
 				bclog.logf(BCLogger::Log_Error, TAG, "OTA write failed: %s", Update.errorString());
+				ui.otaAbort();
 				return;
 			}
 			if (Update.isRunning() && otaTotal) {
@@ -856,6 +859,7 @@ void WifiWebserver::setupOta() {
 			}
 			if (final && Update.isRunning() && !Update.end(true)) {
 				bclog.logf(BCLogger::Log_Error, TAG, "OTA end failed: %s", Update.errorString());
+				ui.otaAbort();
 			}
 		});
 }

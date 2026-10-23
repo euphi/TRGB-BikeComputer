@@ -910,14 +910,64 @@ void UIFacade::msgCBFct(bool ok) {
 	}
 }
 
+// OTA progress: a fill level rising from the bottom of the screen, brass on anthracite.
+//
+// Deliberately made of full-width rows and without any text. While the flash is erased or
+// written, the bus over which the panel reads its framebuffer from PSRAM stands still and the
+// picture is shifted sideways, irregularly (doc/PITFALLS.md "PSRAM and display flicker"). A
+// picture that is the same along every row cannot show a horizontal shift; a bar growing from
+// the left or a percent number would wobble visibly. Built at run time on the top layer, so the
+// screen below stays untouched and comes back when the update fails.
+static lv_obj_t* otaOverlay = nullptr;
+static lv_obj_t* otaFill = nullptr;
+static const uint32_t OTA_COLOR_BACKGROUND = 0x161B1F;
+static const uint32_t OTA_COLOR_BRASS = 0xCBA36B;
+
+// Caller holds xUIDrawMutex.
+static void otaCreateOverlay() {
+	if (otaOverlay) return;
+	otaOverlay = lv_obj_create(lv_layer_top());			// opaque and clickable: swallows touches
+	lv_obj_remove_style_all(otaOverlay);
+	lv_obj_set_size(otaOverlay, LV_PCT(100), LV_PCT(100));
+	lv_obj_set_style_bg_color(otaOverlay, lv_color_hex(OTA_COLOR_BACKGROUND), LV_PART_MAIN | LV_STATE_DEFAULT);
+	lv_obj_set_style_bg_opa(otaOverlay, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
+	lv_obj_clear_flag(otaOverlay, LV_OBJ_FLAG_SCROLLABLE);
+	lv_obj_add_flag(otaOverlay, LV_OBJ_FLAG_CLICKABLE);
+
+	otaFill = lv_obj_create(otaOverlay);
+	lv_obj_remove_style_all(otaFill);
+	lv_obj_set_size(otaFill, LV_PCT(100), 0);
+	lv_obj_set_style_bg_color(otaFill, lv_color_hex(OTA_COLOR_BRASS), LV_PART_MAIN | LV_STATE_DEFAULT);
+	lv_obj_set_style_bg_opa(otaFill, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
+	lv_obj_clear_flag(otaFill, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+	lv_obj_align(otaFill, LV_ALIGN_BOTTOM_MID, 0, 0);
+}
+
 void UIFacade::otaStart() {
-	// SOTA screen removed 2026-09-26 (was already disabled since 2026-09-18)
-	// - RimRidge stays visible during an OTA update, no on-device progress
-	// feedback. The web-based OTA flow (WifiWebserver.cpp, replaced
-	// ElegantOTA) has its own progress UI in the browser; a RimRidge screen
-	// for this would need building fresh, not restoring the old SOTA code.
+	// Called from the async_tcp task, never from the UI task.
+	if (xSemaphoreTake(xUIDrawMutex, 250 / portTICK_PERIOD_MS) == pdTRUE) {
+		otaCreateOverlay();
+		xSemaphoreGive(xUIDrawMutex);
+	} else {
+		bclog.log(BCLogger::Log_Warn, BCLogger::TAG_UI, "OTA progress screen blocked by mutex");
+	}
 }
 
 void UIFacade::otaProgress(uint8_t perc) {
-	(void) perc; // no on-device widget - see otaStart()'s comment
+	if (perc > 100) perc = 100;
+	if (xSemaphoreTake(xUIDrawMutex, 250 / portTICK_PERIOD_MS) == pdTRUE) {
+		otaCreateOverlay();										// if otaStart() missed the mutex
+		lv_obj_set_height(otaFill, LV_PCT(perc));
+		lv_obj_align(otaFill, LV_ALIGN_BOTTOM_MID, 0, 0);
+		xSemaphoreGive(xUIDrawMutex);
+	}
+}
+
+void UIFacade::otaAbort() {
+	if (xSemaphoreTake(xUIDrawMutex, 250 / portTICK_PERIOD_MS) == pdTRUE) {
+		if (otaOverlay) lv_obj_del(otaOverlay);				// takes the fill with it
+		otaOverlay = nullptr;
+		otaFill = nullptr;
+		xSemaphoreGive(xUIDrawMutex);
+	}
 }

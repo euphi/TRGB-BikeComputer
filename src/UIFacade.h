@@ -167,6 +167,7 @@ public:
 
 	void otaStart();
 	void otaProgress(uint8_t perc);
+	void otaAbort();					// update failed: remove the progress screen again
 
 private:
 	void updateData();
