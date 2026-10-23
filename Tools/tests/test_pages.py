@@ -1,13 +1,15 @@
 """The Rim & Ridge pages of the log service: ride report, training, goals, climbs, rider."""
 
 import datetime
+import shutil
+import subprocess
 
 import pytest
 from fastapi.testclient import TestClient
 
 from bikelog import fixtures
 from bikelog.record import write_records
-from bikelogservice import analysis
+from bikelogservice import analysis, webui
 from bikelogservice.app import create_app
 from bikelogservice.config import Settings
 
@@ -147,3 +149,13 @@ def test_climbs_page_lists_recurring_climbs(client, monkeypatch):
     monkeypatch.setattr(analysis, "rides", lambda store: rides)
     html = client.get("/climbs").text
     assert "6:20" in html and "+0:20" in html
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="needs node for the syntax check")
+def test_page_script_is_valid_javascript(tmp_path):
+    """One syntax error kills every script of every page (tooltips, uploads) -- e.g. a "\\n"
+    in SCRIPT that Python turns into a real line break inside a JS string."""
+    path = tmp_path / "page.js"
+    path.write_text(webui.SCRIPT)
+    result = subprocess.run(["node", "--check", str(path)], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr

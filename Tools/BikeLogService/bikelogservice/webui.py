@@ -157,14 +157,14 @@ async function importGpx(){const files=document.getElementById('imp-files').file
  for(const f of files){st.textContent=`Importiere ${f.name} …`;
   const r=await fetch('/api/v1/import/gpx?'+q,{method:'PUT',body:f});
   if(r.ok)n++;else{const j=await r.json().catch(()=>({detail:r.statusText}));errs.push(f.name+': '+j.detail)}}
- if(errs.length)alert(errs.join('\n'));st.textContent=`${n} importiert.`;if(n)location.reload()}
+ if(errs.length)alert(errs.join('\\n'));st.textContent=`${n} importiert.`;if(n)location.reload()}
 async function uploadRoutes(){const files=document.getElementById('rt-files').files;
  const st=document.getElementById('rt-status');if(!files.length){st.textContent='Keine Datei gewählt.';return}
  const kind=document.getElementById('rt-kind').value;const errs=[];let n=0;
  for(const f of files){st.textContent=`Prüfe ${f.name} …`;
   const r=await fetch('/api/v1/routes?'+new URLSearchParams({kind,filename:f.name}),{method:'PUT',body:f});
   if(r.ok)n++;else{const j=await r.json().catch(()=>({detail:r.statusText}));errs.push(f.name+': '+j.detail)}}
- if(errs.length)alert(errs.join('\n'));st.textContent=`${n} hochgeladen.`;if(n)location.reload()}
+ if(errs.length)alert(errs.join('\\n'));st.textContent=`${n} hochgeladen.`;if(n)location.reload()}
 async function replaceRoute(input,id){const f=input.files[0];if(!f)return;
  const r=await fetch('/api/v1/routes/'+id+'/gpx?'+new URLSearchParams({filename:f.name}),{method:'PUT',body:f});
  if(r.ok){location.hash='r'+id;location.reload()}else{const j=await r.json().catch(()=>({detail:r.statusText}));alert(j.detail)}}
