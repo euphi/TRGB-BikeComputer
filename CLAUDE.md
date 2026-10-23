@@ -186,6 +186,12 @@ Mobilfunk); danach das Netz mit `cmd wifi forget-network <id>` wieder vergessen.
   `WifiWebserver::setHostname()`, mDNS neu aus `checkLoop()`). Räder und Zuordnung Gerät → Rad ab Datum:
   `bikelog/bikes.py`, `<data>/bikes.json`, Seite `/bikes`; Sitzungs-Override `sessions.bike_id`.
   Der Bericht rechnet mit Fahrer + Rad (`bikes.effective_athlete()`, im Cache-Schlüssel).
+- Strecken (`/routes`, geplant/regelmäßig): Prüfung wie TrailBridges `GpxParser` in
+  `bikelog/routecheck.py` (rein, `tests/test_routecheck.py`; ändert sich der Parser der App,
+  hier mitziehen und `routes.CHECK_VERSION` erhöhen), Ablage `bikelogservice/routes.py`
+  (`<data>/routes.json` + `routes/`). Genau eine Strecke ist für TrailBridge markiert; die App
+  pollt `/api/v1/trailbridge/route` (ETag = Revision, eigenes Token
+  `BIKELOG_TRAILBRIDGE_TOKEN`), Vertrag in `doc/LOGSERVICE.md` „Strecken für TrailBridge".
 - GPX-Import (`bikelog/gpximport.py`, `importer.py`): Sitzungen des Geräts `import`, nie
   exportiert; optional als frühere Teilnahme eines Ziels (`Event.participations`).
 

@@ -105,6 +105,10 @@ form.filter input{width:5em}
 .prose p.mut{margin:6px 0 0}
 .find .w::marker{content:"⚠  ";color:var(--z4)}
 .find .i::marker{content:"ℹ  ";color:var(--muted)}
+.find .e::marker{content:"✕  ";color:var(--z5)}
+.chip.ok{background:var(--z2);color:var(--bg);border-color:var(--z2)}
+.chip.warn{background:var(--z3);color:var(--bg);border-color:var(--z3)}
+.chip.err{background:var(--z5);color:var(--bg);border-color:var(--z5)}
 .tip{position:fixed;z-index:9;pointer-events:none;display:none;background:var(--panel);color:var(--parch-b);
  border:1.5px solid var(--brass);border-radius:8px;padding:4px 9px;font:400 12px var(--mono);white-space:nowrap}
 details summary{cursor:pointer;color:var(--brass);font:500 12px var(--mono);margin:6px 0}
@@ -154,12 +158,22 @@ async function importGpx(){const files=document.getElementById('imp-files').file
   const r=await fetch('/api/v1/import/gpx?'+q,{method:'PUT',body:f});
   if(r.ok)n++;else{const j=await r.json().catch(()=>({detail:r.statusText}));errs.push(f.name+': '+j.detail)}}
  if(errs.length)alert(errs.join('\n'));st.textContent=`${n} importiert.`;if(n)location.reload()}
+async function uploadRoutes(){const files=document.getElementById('rt-files').files;
+ const st=document.getElementById('rt-status');if(!files.length){st.textContent='Keine Datei gewählt.';return}
+ const kind=document.getElementById('rt-kind').value;const errs=[];let n=0;
+ for(const f of files){st.textContent=`Prüfe ${f.name} …`;
+  const r=await fetch('/api/v1/routes?'+new URLSearchParams({kind,filename:f.name}),{method:'PUT',body:f});
+  if(r.ok)n++;else{const j=await r.json().catch(()=>({detail:r.statusText}));errs.push(f.name+': '+j.detail)}}
+ if(errs.length)alert(errs.join('\n'));st.textContent=`${n} hochgeladen.`;if(n)location.reload()}
+async function replaceRoute(input,id){const f=input.files[0];if(!f)return;
+ const r=await fetch('/api/v1/routes/'+id+'/gpx?'+new URLSearchParams({filename:f.name}),{method:'PUT',body:f});
+ if(r.ok){location.hash='r'+id;location.reload()}else{const j=await r.json().catch(()=>({detail:r.statusText}));alert(j.detail)}}
 async function uploadGpx(input,id){const f=input.files[0];if(!f)return;
  const r=await fetch('/api/v1/events/'+id+'/gpx',{method:'PUT',body:f});
  if(r.ok)location.reload();else{const j=await r.json().catch(()=>({detail:r.statusText}));alert(j.detail)}}
 """
 
-NAV = (("/", "Fahrten"), ("/training", "Training"), ("/goals", "Ziele"), ("/bikes", "Räder"),
+NAV = (("/", "Fahrten"), ("/training", "Training"), ("/goals", "Ziele"), ("/routes", "Strecken"), ("/bikes", "Räder"),
        ("/climbs", "Anstiege"), ("/athlete", "Fahrer"), ("/archive", "Archiv"))
 
 
@@ -945,6 +959,151 @@ def goals_page(items: list[tuple], today: datetime.date) -> str:
                    "</details></div>")
     out.append("<h2>Neues Ziel</h2><div class='panel'>" + _event_form() + "</div>")
     return page("Ziele", "/goals", "\n".join(out))
+
+
+# --- planned and regular routes ----------------------------------------------------------
+
+ROUTE_KINDS = {"planned": "Geplant", "regular": "Regelmäßig"}
+VERDICT_CHIPS = {"ok": ("ok", "Navigierbar"), "warn": ("warn", "Mit Einschränkungen"),
+                 "error": ("err", "Nicht nutzbar")}
+FINDING_CLASS = {"error": "e", "warn": "w", "info": "i"}
+TURN_SOURCES = {"osmand": "OsmAnd", "rtept": "Routenpunkte", "geometry": "aus der Geometrie"}
+
+
+def _local_time(iso: str | None) -> str:
+    if not iso:
+        return "–"
+    try:
+        return datetime.datetime.fromisoformat(iso).astimezone().strftime("%d.%m.%Y %H:%M")
+    except ValueError:
+        return escape(iso)
+
+
+def _route_form(r=None) -> str:
+    kind = r.kind if r else "planned"
+    opts = "".join(f'<option value="{k}"{" selected" if k == kind else ""}>{v}</option>'
+                   for k, v in ROUTE_KINDS.items())
+    return (f'<form method="post" action="/routes/{escape(r.id)}">'
+            f'<label class="f"><span>Name</span><input name="name" required value="{escape(r.name)}" '
+            'style="width:min(30em,100%)"></label>'
+            f'<label class="f"><span>Art</span><select name="kind">{opts}</select></label>'
+            f'<label class="f"><span>Notiz</span><input name="notes" style="width:min(30em,100%)" '
+            f'value="{escape(r.notes)}"></label>'
+            '<button class="pri" type="submit">Speichern</button></form>')
+
+
+def _trailbridge_state(r) -> str:
+    if not r.marked_at:
+        return ""
+    if r.on_phone:
+        return (f'<p>📱 Von TrailBridge geladen am {_local_time(r.fetched_at)}'
+                + (f' <span class="mut">({escape(r.fetched_by)})</span>' if r.fetched_by else "") + ".</p>")
+    return (f'<p>📱 Für TrailBridge bereit seit {_local_time(r.marked_at)} – die App holt sie beim '
+            'Start und dann alle 15 min, solange weder Navigation noch Testfahrt läuft.</p>')
+
+
+def _route_panel(r) -> str:
+    st = r.stats
+    cls, label = VERDICT_CHIPS.get(r.verdict, VERDICT_CHIPS["error"])
+    out = [f'<div class="panel" id="r{escape(r.id)}">'
+           '<div style="display:flex;flex-wrap:wrap;gap:6px 14px;align-items:baseline">'
+           f'<h1 style="margin:0">{escape(r.name)}</h1>'
+           f'<span class="chip tour">{escape(ROUTE_KINDS.get(r.kind, r.kind))}</span>'
+           f'<span class="chip {cls}">{label}</span>'
+           + ('<span class="chip a">TrailBridge</span>' if r.marked_at else "")
+           + f'<span class="mut">hochgeladen {_local_time(r.uploaded_at)}</span></div>']
+    if r.notes:
+        out.append(f'<p class="mut">{escape(r.notes)}</p>')
+    tiles = [tile("Strecke", num(st.get("distance_km"), 1), "km", "Rundkurs" if st.get("loop") else "", hero=True)]
+    if st.get("ascent_m") is not None:
+        tiles.append(tile("Höhenmeter", f'{st["ascent_m"]:.0f}', "m",
+                          f'{st["min_ele_m"]}–{st["max_ele_m"]} m ü. NN'))
+    if st.get("climbs") is not None:
+        tiles.append(tile("Anstiege", str(len(st["climbs"])), "", "mit Kategorie"))
+    if st.get("duration_s"):
+        tiles.append(tile("Geplante Zeit", hm(st["duration_s"]), "h",
+                          f'{num(st["distance_km"] / st["duration_s"] * 3600)} km/h'))
+    if st.get("turn_source"):
+        tiles.append(tile("Abbiegehinweise", escape(TURN_SOURCES.get(st["turn_source"], st["turn_source"])),
+                          "", f'{st["turns"]} in der Datei' if st.get("turns") is not None else "", text=True))
+    tiles.append(tile("Punkte", f'{st.get("points", 0):,}'.replace(",", " "), "",
+                      f'Abstand typ. {num(st.get("median_spacing_m"), 0)} / max. {st.get("max_spacing_m", "–")} m'))
+    out.append('<div class="tiles">' + "".join(tiles) + "</div>")
+    findings = r.check.get("findings", [])
+    if findings:
+        out.append('<ul class="find">' + "".join(
+            f'<li class="{FINDING_CLASS.get(f["level"], "i")}">{escape(f["text"])}</li>' for f in findings)
+            + "</ul>")
+    if st.get("profile"):
+        out.append(charts.profile(st["profile"], "Höhenprofil " + r.name, st.get("climbs")))
+    if st.get("climbs"):
+        out.append("<table><thead><tr><th>Kat.</th><th class=num>ab km</th><th class=num>Länge</th>"
+                   "<th class=num>Höhe</th><th class=num>Ø %</th></tr></thead><tbody>"
+                   + "".join(f'<tr><td><span class="chip">{escape(c["category"])}</span></td>'
+                             f'<td class=num>{num(c["start_km"])}</td><td class=num>{num(c["length_m"] / 1000, 1)} km</td>'
+                             f'<td class=num>{c["gain_m"]} m</td><td class=num>{num(c["avg_grade_pct"])}</td></tr>'
+                             for c in st["climbs"]) + "</tbody></table>")
+    out.append(_trailbridge_state(r))
+    if r.marked_at:
+        mark = ('<form class="inline" method="post" action="/routes/%s/trailbridge"><input type="hidden" '
+                'name="on" value="0"><button type="submit">Nicht mehr bereitstellen</button></form>' % escape(r.id))
+    elif r.verdict != "error":
+        mark = ('<form class="inline" method="post" action="/routes/%s/trailbridge"><input type="hidden" '
+                'name="on" value="1"><button class="pri" type="submit">Für TrailBridge bereitstellen</button>'
+                '</form>' % escape(r.id))
+    else:
+        mark = ""
+    out.append('<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px">' + mark
+               + f'<a class="btn" href="{API}/routes/{escape(r.id)}.gpx">GPX herunterladen</a>'
+               f'<label class="btn" style="display:inline-block">Neue Version (GPX)<input type="file" '
+               f'accept=".gpx,application/gpx+xml" style="display:none" '
+               f'onchange="replaceRoute(this,\'{escape(r.id)}\')"></label></div>')
+    out.append(f'<details><summary>Bearbeiten</summary>{_route_form(r)}'
+               f'<form method="post" action="/routes/{escape(r.id)}/delete" '
+               'onsubmit="return confirm(\'Strecke löschen?\')"><button type="submit">Löschen</button></form>'
+               "</details></div>")
+    return "\n".join(out)
+
+
+def routes_page(routes: list, seen: dict | None, base_url: str | None = None, token: bool = False,
+                message: str | None = None) -> str:
+    out = ["<h1>Strecken</h1>",
+           '<p class="mut">Geplante und regelmäßige Strecken als GPX: geprüft, ob TrailBridge danach '
+           'navigieren kann, mit Höhenprofil und Anstiegen. Eine davon lässt sich für TrailBridge '
+           'bereitstellen – die App lädt sie dann von selbst.</p>']
+    if message:
+        out.append(f'<div class="msg">{escape(message)}</div>')
+    marked = next((r for r in routes if r.marked_at), None)
+    tb = ['<div class="banner"><h2>TrailBridge</h2>']
+    if marked:
+        tb.append(f'<p>Bereitgestellt: <a href="#r{escape(marked.id)}"><b>{escape(marked.name)}</b></a> – '
+                  + ("auf dem Handy." if marked.on_phone else "noch nicht abgeholt.") + "</p>")
+    else:
+        tb.append("<p>Keine Strecke bereitgestellt.</p>")
+    tb.append('<p class="mut">' + (f'Letzte Abfrage der App: {_local_time(seen["at"])} ({escape(seen["by"])}).'
+                                   if seen else "Seit dem Start des Dienstes hat TrailBridge nicht gefragt.")
+              + "</p>")
+    tb.append('<details><summary>Einrichten in TrailBridge</summary><p>Adresse des Dienstes: <code>'
+              + escape(base_url or "http://<dieser Rechner>:8080") + "</code>"
+              + ("" if base_url else ' <span class="mut">(BIKELOG_PUBLIC_URL nicht gesetzt)</span>')
+              + "<br>Token: " + ("gesetzt (BIKELOG_TRAILBRIDGE_TOKEN) – in der App als Bearer-Token eintragen."
+                                 if token else '<span class="warn">keiner</span> – der Abruf ist offen; '
+                                 "für den Zugriff von unterwegs BIKELOG_TRAILBRIDGE_TOKEN setzen.")
+              + "</p></details></div>")
+    out.append("".join(tb))
+    opts = "".join(f'<option value="{k}">{v}</option>' for k, v in ROUTE_KINDS.items())
+    out.append('<h2>GPX hochladen</h2><div class="panel">'
+               '<input type="file" id="rt-files" multiple accept=".gpx,application/gpx+xml"> '
+               f'<select id="rt-kind">{opts}</select> '
+               '<button class="pri" type="button" onclick="uploadRoutes()">Hochladen und prüfen</button> '
+               '<span id="rt-status" class="mut"></span></div>')
+    if not routes:
+        out.append('<p class="mut">Noch keine Strecke.</p>')
+    for kind, label in ROUTE_KINDS.items():
+        group = [r for r in routes if r.kind == kind]
+        if group:
+            out.append(f"<h2>{label}</h2>" + "".join(_route_panel(r) for r in group))
+    return page("Strecken", "/routes", "\n".join(out))
 
 
 # --- recurring climbs ---------------------------------------------------------------------

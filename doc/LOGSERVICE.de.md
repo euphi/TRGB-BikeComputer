@@ -331,6 +331,62 @@ Ziel zeigt dann „Deine bisherigen Teilnahmen" mit Zeit, Tempo, Puls, Leistung 
 Datei noch einmal ersetzt die Sitzung. API: `PUT /api/v1/import/gpx` (`bike_id`, `event_id`,
 Body = die Datei).
 
+## Geplante und regelmäßige Strecken
+
+Die Seite **Strecken** (`/routes`) hält Strecken zum Fahren: **geplante** (eine anstehende
+Tour) und **regelmäßige** (Pendelstrecke, Feierabendrunde). Eine oder mehrere GPX-Dateien
+hochladen; jede wird darauf geprüft, was die Navigation von TrailBridge daraus macht, und zwar
+so gelesen wie der `GpxParser` der App
+([`bikelog/routecheck.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/bikelog/routecheck.py)):
+
+| Prüfung | Was sie sagt |
+|---|---|
+| Geometrie | Track (`trk`) oder nur Routenpunkte (`rte`: dazwischen kennt TrailBridge den Weg nicht, Warnung); Punkte ohne gültige Koordinate, weniger als zwei Punkte, unter 100 m, kein XML/GPX, ein `DOCTYPE` oder über 20 MB = **nicht nutzbar** |
+| Abbiegehinweise | aus OsmAnds Routensegmenten, aus den Routenpunkten (`rtept` mit Abbiegen) oder -- keine in der Datei oder nur Start/Zwischenziel/Ziel wie bei bikerouter.de -- von der App aus den Winkeln des Tracks abgeleitet (ohne Straßennamen) |
+| Höhen | ohne `<ele>` an (fast) jedem Punkt kein Höhenprofil und keine Anstiege auf dem Fahrradcomputer (Warnung) |
+| Lücken | Punkte mehr als 2 km auseinander (vereinfachter Track) oder Löcher über 200 m zwischen Track-Segmenten (Warnung) |
+| Zeiten | Zeitstempel in der Datei: Die Restzeit kommt aus der geplanten Fahrzeit |
+| Wegpunkte | `wpt` bis 100 m neben der Strecke erscheinen in der Streckenübersicht, die anderen werden gezählt |
+
+Je Strecke zeigt die Seite Distanz, Höhenmeter (mit Min./Max.), die Anstiege mit Kategorie
+(dieselben Kriterien wie im Fahrtbericht), geplante Zeit und Geschwindigkeit, wenn die Datei
+Zeiten hat, die Befunde und das Höhenprofil; eine Strecke lässt sich umbenennen, anders
+einsortieren, durch eine neue Version ihrer GPX ersetzen, herunterladen und löschen. Eine
+Datei, die TrailBridge gar nicht lesen kann, wird abgelehnt und nicht aufbewahrt. Ablage in
+`<data>/routes.json`, die Dateien unverändert in `<data>/routes/`
+([`routes.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/BikeLogService/bikelogservice/routes.py)); ändert sich die Prüfung selbst,
+wird `CHECK_VERSION` erhöht, und der Dienst prüft die gespeicherten Strecken beim Start neu.
+
+### Strecken für TrailBridge
+
+„Für TrailBridge bereitstellen" markiert **eine** Strecke (eine andere zu markieren nimmt die
+Markierung weg). Die App holt sie sich selbst. Vertrag zwischen Dienst und App:
+
+- **Einrichten in der App:** die Adresse des Dienstes (`BIKELOG_PUBLIC_URL`, z. B.
+  `https://bikelog.example.org`) und, falls gesetzt, das Token `BIKELOG_TRAILBRIDGE_TOKEN`,
+  gesendet als `Authorization: Bearer <token>`. Mit Token brauchen es nur die drei Pfade
+  unten (die Seiten bleiben im Heimnetz offen); solange `BIKELOG_REQUIRE_AUTH` an ist, gelten
+  auch die Tokens aus `BIKELOG_TOKENS`. Ohne Token folgt der Abruf `BIKELOG_REQUIRE_AUTH` wie
+  jeder andere Pfad -- für den Zugriff aus dem Mobilfunknetz eins setzen.
+- **Wann die App fragt:** beim Start, danach alle 15 Minuten -- aber nur, solange sie weder
+  navigiert noch eine Testfahrt abspielt (eine geladene Route beendet beides).
+- `GET /api/v1/trailbridge/route` -- `204` keine Strecke markiert; `200` JSON
+  `{id, name, kind, revision, marked_at, sha256, size_bytes, distance_km, ascent_m, verdict,
+  gpx_url}` mit `ETag: "<revision>"`; mit `If-None-Match: "<revision>"` `304`.
+  `gpx_url` ist ein Pfad relativ zum Dienst.
+- **Neu = andere Revision.** Die Revision ändert sich mit der Datei (neue Version
+  hochgeladen) und mit jeder Markierung -- dieselbe Strecke noch einmal zu markieren schickt
+  sie noch einmal. Die App merkt sich die zuletzt geladene Revision und tut nichts, solange
+  sie gleich bleibt.
+- `GET /api/v1/trailbridge/routes/{id}.gpx` -- die Datei unverändert
+  (`X-Bikelog-Revision`). Die App lädt sie wie eine von Hand geöffnete GPX (startet die
+  Navigation nicht).
+- `POST /api/v1/trailbridge/route/fetched?revision=<revision>` -- nachdem die App sie
+  fehlerfrei gelesen hat. Die Seite zeigt dann „Von TrailBridge geladen" mit Uhrzeit; `409`,
+  wenn die Revision nicht mehr aktuell ist (die nächste Abfrage bringt die neue).
+
+Die Seite zeigt außerdem, wann die App zuletzt gefragt hat (seit dem Start des Dienstes).
+
 ## Sitzungsbericht
 
 `/ride/{id}` (Klick auf eine Fahrt in der Liste) zeigt den Bericht einer Sitzung: Kennzahlen,
@@ -502,6 +558,7 @@ Umgebungsvariablen (im Dienst: `~/bikelog/bikelog.env`):
 | `BIKELOG_PUBLIC_URL` | -- | z. B. `http://server:8080`, für den Link im GPX |
 | `BIKELOG_REQUIRE_AUTH` | `0` | Auth an/aus |
 | `BIKELOG_TOKENS` | -- | `token:name`, kommagetrennt |
+| `BIKELOG_TRAILBRIDGE_TOKEN` | -- | Token von TrailBridge für den [Strecken-Abruf](#strecken-fur-trailbridge); leer = wie jeder andere Pfad |
 | `BIKELOG_MAX_UPLOAD_BYTES` | 64 MiB | Obergrenze pro `PUT` |
 | `BIKELOG_KOMOOT_EMAIL` / `BIKELOG_KOMOOT_PASSWORD` | -- | Komoot-Login; ohne beide ist der Upload aus |
 | `BIKELOG_KOMOOT_ACTIVITY` | `touringbicycle` | eine `SupportedActivities`-Konstante aus kompy |
@@ -545,6 +602,15 @@ eines bestehenden Ziels beibehalten, die gespeicherten Sitzungen liegen darunter
 | `GET` | `/api/v1/training` | Tageslast (TRIMP, CTL, ATL, TSB), Wochen, wiederkehrende Anstiege (`days`, `weeks`) |
 | `GET` | `/api/v1/events` | Zielrennen mit Stand der Vorbereitung |
 | `PUT` | `/api/v1/events/{id}/gpx` | Strecken-GPX eines Zielrennens (Body = Datei) |
+| `GET` | `/routes` | geplante und regelmäßige Strecken (HTML) |
+| `GET`/`PUT` | `/api/v1/routes` | Strecken mit Prüfung und Kennzahlen / eine hochladen (`kind=planned|regular`, `name`, `filename`; Body = GPX) |
+| `GET`/`DELETE` | `/api/v1/routes/{id}` | eine Strecke / löschen |
+| `GET` | `/api/v1/routes/{id}.gpx` | ihre GPX unverändert |
+| `PUT` | `/api/v1/routes/{id}/gpx` | neue Version der Datei (`filename`) |
+| `POST` | `/api/v1/routes/{id}/trailbridge` | TrailBridge anbieten (`on=false`: zurücknehmen) |
+| `GET` | `/api/v1/trailbridge/route` | die für TrailBridge markierte Strecke, siehe [oben](#strecken-fur-trailbridge) |
+| `GET` | `/api/v1/trailbridge/routes/{id}.gpx` | ihre Datei, für die App |
+| `POST` | `/api/v1/trailbridge/route/fetched` | die App bestätigt eine Revision (`revision`) |
 | `DELETE` | `/api/v1/sessions/{id}` | Dateien löschen, Grabstein behalten |
 | `POST` | `/api/v1/sessions/{id}/komoot` | zur zusammengehörigen Tour hochladen (`force`), siehe unten |
 | `POST` | `/api/v1/sessions/{id}/komoot/ignore` | die Frage der Seite mit „nein“ beantworten (`ask_again=true`: wieder fragen) |

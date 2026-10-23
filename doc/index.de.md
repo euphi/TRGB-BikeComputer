@@ -108,6 +108,10 @@ vergessen), Höhenkalibrierung, IMU-Kalibrierung, Neustart und Ausschalten.
 - Räder mit Gewicht und Aerodynamik, den Fahrradcomputern nach Datum zugeordnet (mehrere
   Fahrradcomputer im selben Netz: `TRGB-BC`, `TRGB-FL`); anderswo aufgezeichnete Fahrten als
   GPX importieren, auch als frühere Teilnahmen an einem Ziel
+- Geplante und regelmäßige Strecken als GPX im Log-Dienst: geprüft, was die Navigation von
+  TrailBridge daraus macht (Abbiegehinweise, Höhen, Lücken, Wegpunkte), mit Distanz,
+  Höhenprofil und Anstiegen; eine Strecke lässt sich TrailBridge zum Herunterladen anbieten
+  (das automatische Abholen in der App ist noch zu bauen)
 
 **Web-Oberfläche** (im WLAN)
 

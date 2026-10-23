@@ -321,6 +321,59 @@ goal then lists "Deine bisherigen Teilnahmen" with time, speed, heart rate, powe
 Importing the same file again replaces the session. API: `PUT /api/v1/import/gpx`
 (`bike_id`, `event_id`, body = the file).
 
+## Planned and regular routes
+
+The page **Strecken** (`/routes`) keeps routes to ride: **planned** (a tour coming up) and
+**regular** (the commute, the evening loop). Upload one or several GPX files; each is
+checked for what TrailBridge's navigation will make of it, read the way the app's
+`GpxParser` reads it
+([`bikelog/routecheck.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/bikelog/routecheck.py)):
+
+| Check | What it says |
+|---|---|
+| geometry | track (`trk`) or only route points (`rte`: TrailBridge knows nothing between them, warning); points without a valid coordinate, fewer than two points, under 100 m, no XML/GPX, a `DOCTYPE` or over 20 MB = **not usable** |
+| turn hints | from OsmAnd's route segments, from the route points (`rtept` with a turn), or -- none in the file, or only start/via/destination as bikerouter.de writes them -- derived from the track's angles by the app (no street names) |
+| heights | without `<ele>` on (nearly) every point no elevation profile and no climbs on the bike computer (warning) |
+| gaps | points more than 2 km apart (simplified track) or holes over 200 m between track segments (warning) |
+| times | time stamps in the file: the remaining time comes from the planned riding time |
+| waypoints | `wpt` within 100 m of the route appear in the route overview, the others are counted |
+
+Per route the page shows distance, elevation (with min/max), the climbs with category
+(same criteria as the ride report), planned time and speed if the file has times, the
+findings and the elevation profile; a route can be renamed, re-filed, replaced by a new
+version of its GPX, downloaded and deleted. A file TrailBridge cannot read at all is
+refused and not kept. Stored in `<data>/routes.json`, the files unchanged in
+`<data>/routes/` ([`routes.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/BikeLogService/bikelogservice/routes.py)); when the check
+itself changes, `CHECK_VERSION` is bumped and the service redoes the stored checks on start.
+
+### Routes for TrailBridge
+
+"Für TrailBridge bereitstellen" marks **one** route (marking another one unmarks it). The
+app picks it up by itself. Contract between service and app:
+
+- **Setup in the app:** the service's address (`BIKELOG_PUBLIC_URL`, e.g.
+  `https://bikelog.example.org`) and, if set, the token `BIKELOG_TRAILBRIDGE_TOKEN`, sent as
+  `Authorization: Bearer <token>`. With a token only the three feed paths below need it
+  (the pages stay open on the home network); while `BIKELOG_REQUIRE_AUTH` is on, the tokens
+  of `BIKELOG_TOKENS` work as well. Without a token the feed follows `BIKELOG_REQUIRE_AUTH`
+  like every other path -- for access from the mobile network set one.
+- **When the app asks:** when it starts, then every 15 minutes -- but only while it neither
+  navigates nor plays a route back (loading a route ends both).
+- `GET /api/v1/trailbridge/route` -- `204` no route marked; `200` JSON
+  `{id, name, kind, revision, marked_at, sha256, size_bytes, distance_km, ascent_m, verdict,
+  gpx_url}` with `ETag: "<revision>"`; with `If-None-Match: "<revision>"` `304`.
+  `gpx_url` is a path relative to the service.
+- **New = another revision.** The revision changes with the file (new version uploaded)
+  and with every marking -- marking the same route again sends it once more. The app keeps
+  the last revision it loaded and does nothing while it is the same.
+- `GET /api/v1/trailbridge/routes/{id}.gpx` -- the file unchanged (`X-Bikelog-Revision`).
+  The app loads it like a GPX opened by hand (it does not start the navigation).
+- `POST /api/v1/trailbridge/route/fetched?revision=<revision>` -- after the app parsed it
+  fine. The page then shows "Von TrailBridge geladen" with the time; `409` if the revision is
+  no longer current (the next poll brings the new one).
+
+The page also shows when the app asked last (since the service started).
+
 ## Session report
 
 `/ride/{id}` (click on a ride in the list) shows the report of a session: key figures,
@@ -490,6 +543,7 @@ Environment variables (in the service: `~/bikelog/bikelog.env`):
 | `BIKELOG_PUBLIC_URL` | -- | e.g. `http://server:8080`, for the link in the GPX |
 | `BIKELOG_REQUIRE_AUTH` | `0` | auth on/off |
 | `BIKELOG_TOKENS` | -- | `token:name`, comma-separated |
+| `BIKELOG_TRAILBRIDGE_TOKEN` | -- | token of TrailBridge for the [route feed](#routes-for-trailbridge); unset = like every other path |
 | `BIKELOG_MAX_UPLOAD_BYTES` | 64 MiB | upper limit per `PUT` |
 | `BIKELOG_KOMOOT_EMAIL` / `BIKELOG_KOMOOT_PASSWORD` | -- | Komoot login; without both the upload is off |
 | `BIKELOG_KOMOOT_ACTIVITY` | `touringbicycle` | a `SupportedActivities` constant from kompy |
@@ -533,6 +587,15 @@ name of an existing target, the stored sessions are filed under it.
 | `GET` | `/api/v1/training` | daily load (TRIMP, CTL, ATL, TSB), weeks, recurring climbs (`days`, `weeks`) |
 | `GET` | `/api/v1/events` | target events with readiness |
 | `PUT` | `/api/v1/events/{id}/gpx` | course GPX of a target event (body = file) |
+| `GET` | `/routes` | planned and regular routes (HTML) |
+| `GET`/`PUT` | `/api/v1/routes` | routes with check and figures / upload one (`kind=planned|regular`, `name`, `filename`; body = GPX) |
+| `GET`/`DELETE` | `/api/v1/routes/{id}` | one route / delete it |
+| `GET` | `/api/v1/routes/{id}.gpx` | its GPX unchanged |
+| `PUT` | `/api/v1/routes/{id}/gpx` | new version of the file (`filename`) |
+| `POST` | `/api/v1/routes/{id}/trailbridge` | offer it to TrailBridge (`on=false`: take it back) |
+| `GET` | `/api/v1/trailbridge/route` | the route marked for TrailBridge, see [above](#routes-for-trailbridge) |
+| `GET` | `/api/v1/trailbridge/routes/{id}.gpx` | its file, for the app |
+| `POST` | `/api/v1/trailbridge/route/fetched` | the app confirms a revision (`revision`) |
 | `DELETE` | `/api/v1/sessions/{id}` | delete the files, keep the tombstone |
 | `POST` | `/api/v1/sessions/{id}/komoot` | upload as part of its tour (`force`), see above |
 | `POST` | `/api/v1/sessions/{id}/komoot/ignore` | answer the page's question with "no" (`ask_again=true`: ask again) |

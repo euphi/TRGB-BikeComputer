@@ -504,6 +504,20 @@ def test_every_route_requires_a_token_once_auth_is_on(tmp_path, ride_bytes):
             ("POST", f"{API}/pull"),
             ("GET", f"{API}/inbox"),
             ("POST", f"{API}/inbox"),
+            ("GET", "/routes"),
+            ("POST", "/routes/x"),
+            ("POST", "/routes/x/delete"),
+            ("POST", "/routes/x/trailbridge"),
+            ("GET", f"{API}/routes"),
+            ("PUT", f"{API}/routes"),
+            ("GET", f"{API}/routes/x.gpx"),
+            ("GET", f"{API}/routes/x"),
+            ("DELETE", f"{API}/routes/x"),
+            ("PUT", f"{API}/routes/x/gpx"),
+            ("POST", f"{API}/routes/x/trailbridge"),
+            ("GET", f"{API}/trailbridge/route"),
+            ("GET", f"{API}/trailbridge/routes/x.gpx"),
+            ("POST", f"{API}/trailbridge/route/fetched?revision=0123456789abcdef"),
         ]
         routes = {r.path for r in client.app.routes if hasattr(r, "methods")} - {
             "/openapi.json", "/docs", "/docs/oauth2-redirect", "/redoc"}

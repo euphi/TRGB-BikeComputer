@@ -16,10 +16,11 @@ from __future__ import annotations
 import asyncio
 import datetime
 import io
+import json
 import re
 import threading
 from contextlib import asynccontextmanager
-from urllib.parse import parse_qs, urlencode
+from urllib.parse import parse_qs, quote, urlencode
 
 from fastapi import Depends, FastAPI, HTTPException, Path, Query, Request, Response, status
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
@@ -28,8 +29,8 @@ from fastapi.concurrency import run_in_threadpool
 from bikelog import bikes, csvexport, gpximport, report, training
 from bikelog.record import ReadStats
 
-from . import analysis, archive, exporter, importer, inbox, llm, tours, komoot, nextcloud, sdlayout, webui
-from .auth import AuthDep, Principal
+from . import analysis, archive, exporter, importer, inbox, llm, routes, tours, komoot, nextcloud, sdlayout, webui
+from .auth import AuthDep, Principal, TrailBridgeDep
 from .config import Settings
 from .puller import DeviceUnavailable, Puller
 from .storage import Session, Storage
@@ -65,6 +66,7 @@ def create_app(settings: Settings | None = None, puller: Puller | None = None) -
         # export was off) and Nextcloud sync, without holding up the start.
         threading.Thread(target=_export_and_sync, args=(store,),
                          name="bikelog-export", daemon=True).start()
+        routes.recheck(store)
         if puller:
             puller.start()
         if inbox_poller:
@@ -87,6 +89,8 @@ def create_app(settings: Settings | None = None, puller: Puller | None = None) -
     app.state.settings = settings
     app.state.storage = store
     app.state.puller = puller
+    #: TrailBridge's last poll of the route feed (in memory: only for the page)
+    app.state.trailbridge_seen = None
 
     def storage(request: Request) -> Storage:
         return request.app.state.storage
@@ -563,6 +567,172 @@ def create_app(settings: Settings | None = None, puller: Puller | None = None) -
         except Exception as exc:                    # ET.ParseError, no elevations, ...
             raise HTTPException(status.HTTP_400_BAD_REQUEST, f"GPX unbrauchbar: {exc}")
         return event.as_dict()
+
+    # --- planned and regular routes, the one for TrailBridge ---
+
+    def _require_route(store: Storage, route_id: str) -> routes.Route:
+        route = routes.get(store, route_id)
+        if route is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown route")
+        return route
+
+    def _back_routes(text: str, route_id: str | None = None) -> RedirectResponse:
+        return RedirectResponse("/routes?" + urlencode({"msg": text}) + (f"#r{route_id}" if route_id else ""),
+                                status_code=status.HTTP_303_SEE_OTHER)
+
+    async def _route_upload(request: Request) -> bytes:
+        payload = await request.body()
+        if not payload:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "empty body")
+        if len(payload) > settings.max_upload_bytes:
+            raise HTTPException(413, "upload exceeds %d bytes" % settings.max_upload_bytes)
+        return payload
+
+    def _gpx_response(store: Storage, route: routes.Route) -> Response:
+        path = routes.gpx_path(store, route)
+        if not path.exists():
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "route file missing")
+        name = (re.sub(r'[^A-Za-z0-9_.-]', "_", route.name) or route.id) + ".gpx"
+        return Response(content=path.read_bytes(), media_type="application/gpx+xml", headers={
+            "Content-Disposition": "attachment; filename=\"%s\"; filename*=UTF-8''%s"
+                                   % (name, quote(route.name + ".gpx")),
+            "X-Bikelog-Revision": route.revision})
+
+    @app.get("/routes", response_class=HTMLResponse, include_in_schema=False)
+    def routes_page(msg: str | None = Query(default=None, max_length=500),
+                    principal: Principal = AuthDep, store: Storage = Depends(storage)):
+        return webui.routes_page(routes.load(store), app.state.trailbridge_seen,
+                                 base_url=settings.public_url, token=bool(settings.trailbridge_token),
+                                 message=msg)
+
+    @app.post("/routes/{route_id}", include_in_schema=False)
+    async def ui_route_edit(route_id: str, request: Request, principal: Principal = AuthDep,
+                            store: Storage = Depends(storage)):
+        form = await _form(request)
+        try:
+            route = routes.update(store, route_id, form.get("name"), form.get("kind"), form.get("notes"))
+        except KeyError:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown route")
+        return _back_routes(f"{route.name} gespeichert.", route.id)
+
+    @app.post("/routes/{route_id}/delete", include_in_schema=False)
+    def ui_route_delete(route_id: str, principal: Principal = AuthDep, store: Storage = Depends(storage)):
+        route = _require_route(store, route_id)
+        routes.delete(store, route_id)
+        return _back_routes(f"{route.name} gelöscht.")
+
+    @app.post("/routes/{route_id}/trailbridge", include_in_schema=False)
+    async def ui_route_mark(route_id: str, request: Request, principal: Principal = AuthDep,
+                            store: Storage = Depends(storage)):
+        on = (await _form(request)).get("on") == "1"
+        try:
+            route = routes.mark(store, route_id, on)
+        except KeyError:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown route")
+        except routes.Unusable as exc:
+            return _back_routes(f"Nicht bereitgestellt: {exc}", route_id)
+        return _back_routes(f"{route.name} liegt für TrailBridge bereit." if on
+                            else f"{route.name} wird TrailBridge nicht mehr angeboten.", route.id)
+
+    @app.get(API + "/routes", tags=["routes"])
+    def list_routes(principal: Principal = AuthDep, store: Storage = Depends(storage)):
+        """Planned and regular routes with their check (navigable by TrailBridge?) and figures."""
+        return [r.as_dict() for r in routes.load(store)]
+
+    @app.put(API + "/routes", tags=["routes"])
+    async def add_route(request: Request,
+                        kind: str = Query(default="planned", pattern="^(planned|regular)$"),
+                        name: str = Query(default="", max_length=200, description="default: from the GPX"),
+                        filename: str = Query(default="", max_length=300,
+                                              description="the uploaded file's name (fallback for the name)"),
+                        principal: Principal = AuthDep, store: Storage = Depends(storage)):
+        """A new route (request body = the GPX). 400 if TrailBridge could not read it at all;
+        one usable with limits is stored, its findings say which."""
+        payload = await _route_upload(request)
+        try:
+            return routes.add(store, payload, filename, kind, name).as_dict()
+        except routes.Unusable as exc:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"GPX unbrauchbar: {exc}")
+
+    @app.get(API + "/routes/{route_id}.gpx", tags=["routes"])
+    def route_gpx(route_id: str, principal: Principal = AuthDep, store: Storage = Depends(storage)):
+        return _gpx_response(store, _require_route(store, route_id))
+
+    @app.get(API + "/routes/{route_id}", tags=["routes"])
+    def get_route(route_id: str, principal: Principal = AuthDep, store: Storage = Depends(storage)):
+        return _require_route(store, route_id).as_dict()
+
+    @app.put(API + "/routes/{route_id}/gpx", tags=["routes"])
+    async def replace_route_gpx(route_id: str, request: Request,
+                                filename: str = Query(default="", max_length=300),
+                                principal: Principal = AuthDep, store: Storage = Depends(storage)):
+        """A new version of the route's file. A marked route stays marked; its revision changes,
+        so TrailBridge loads the new file."""
+        payload = await _route_upload(request)
+        try:
+            return routes.replace_gpx(store, route_id, payload, filename).as_dict()
+        except KeyError:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown route")
+        except routes.Unusable as exc:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"GPX unbrauchbar: {exc}")
+
+    @app.post(API + "/routes/{route_id}/trailbridge", tags=["routes"])
+    def mark_route(route_id: str, on: bool = Query(default=True),
+                   principal: Principal = AuthDep, store: Storage = Depends(storage)):
+        """Offer this route to TrailBridge (unmarks any other), or with on=false take it back."""
+        try:
+            return routes.mark(store, route_id, on).as_dict()
+        except KeyError:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown route")
+        except routes.Unusable as exc:
+            raise HTTPException(status.HTTP_409_CONFLICT, f"TrailBridge kann sie nicht nutzen: {exc}")
+
+    @app.delete(API + "/routes/{route_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["routes"])
+    def delete_route(route_id: str, principal: Principal = AuthDep, store: Storage = Depends(storage)):
+        if not routes.delete(store, route_id):
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown route")
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    # --- route feed for TrailBridge (doc/LOGSERVICE.md "Routes for TrailBridge") ---
+
+    @app.get(API + "/trailbridge/route", tags=["trailbridge"],
+             responses={204: {"description": "no route marked"},
+                        304: {"description": "revision unchanged (If-None-Match)"}})
+    def trailbridge_route(request: Request, principal: Principal = TrailBridgeDep,
+                          store: Storage = Depends(storage)):
+        """The route marked for TrailBridge, if any. The app polls this and loads the GPX
+        (``gpx_url``, relative to the service) when ``revision`` is new to it."""
+        app.state.trailbridge_seen = {"at": routes.now_iso(), "by": principal.name}
+        route = routes.marked(store)
+        if route is None:
+            return Response(status_code=status.HTTP_204_NO_CONTENT)
+        etag = f'"{route.revision}"'
+        if etag in [t.strip() for t in request.headers.get("if-none-match", "").split(",")]:
+            return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers={"ETag": etag})
+        stats = route.stats
+        body = {"id": route.id, "name": route.name, "kind": route.kind, "revision": route.revision,
+                "marked_at": route.marked_at, "sha256": route.sha256, "size_bytes": route.size_bytes,
+                "distance_km": stats.get("distance_km"), "ascent_m": stats.get("ascent_m"),
+                "verdict": route.verdict,
+                "gpx_url": f"{API}/trailbridge/routes/{route.id}.gpx"}
+        return Response(content=json.dumps(body, ensure_ascii=False),
+                        media_type="application/json", headers={"ETag": etag})
+
+    @app.get(API + "/trailbridge/routes/{route_id}.gpx", tags=["trailbridge"])
+    def trailbridge_gpx(route_id: str, principal: Principal = TrailBridgeDep,
+                        store: Storage = Depends(storage)):
+        """The route's GPX file, unchanged (header X-Bikelog-Revision)."""
+        return _gpx_response(store, _require_route(store, route_id))
+
+    @app.post(API + "/trailbridge/route/fetched", tags=["trailbridge"])
+    def trailbridge_fetched(revision: str = Query(pattern="^[0-9a-f]{16}$"),
+                            principal: Principal = TrailBridgeDep, store: Storage = Depends(storage)):
+        """The app loaded this revision (parsed it fine). 409 if it is no longer the marked
+        route's current one -- the next poll brings the new one."""
+        route = routes.fetched(store, revision, principal.name)
+        if route is None:
+            raise HTTPException(status.HTTP_409_CONFLICT, "not the current revision")
+        return {"id": route.id, "revision": route.revision, "fetched_at": route.fetched_at}
 
     @app.get(API + "/health", tags=["service"])
     def health(principal: Principal = AuthDep, store: Storage = Depends(storage)):
