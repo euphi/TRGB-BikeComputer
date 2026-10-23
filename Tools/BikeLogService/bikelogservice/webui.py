@@ -996,9 +996,9 @@ def _trailbridge_state(r) -> str:
     if not r.marked_at:
         return ""
     if r.on_phone:
-        return (f'<p>📱 Von TrailBridge geladen am {_local_time(r.fetched_at)}'
+        return (f'<p>Von TrailBridge geladen am {_local_time(r.fetched_at)}'
                 + (f' <span class="mut">({escape(r.fetched_by)})</span>' if r.fetched_by else "") + ".</p>")
-    return (f'<p>📱 Für TrailBridge bereit seit {_local_time(r.marked_at)} – die App holt sie beim '
+    return (f'<p>Für TrailBridge bereit seit {_local_time(r.marked_at)} – die App holt sie beim '
             'Start und dann alle 15 min, solange weder Navigation noch Testfahrt läuft.</p>')
 
 
