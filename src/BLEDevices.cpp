@@ -1189,7 +1189,13 @@ void BLEDevices::checkBatteries() {
 int8_t BLEDevices::readBatLevel(const EDevType dt) {
 	if (!clients[dt]) return batLevel[dt];
 	bclog.logf(BCLogger::Log_Debug, BCLogger::TAG_BLE, "Read %s battery level", DEV_EMOJI[dt]);
-	String valStr = clients[dt]->getValue(serviceUUIDBat, charUUIDBat);
+	// Not BLEClient::getValue(): it chains getService()->getCharacteristic()->readValue() without a null check, and
+	// getCharacteristic() returns nullptr (no exception) -- a sensor that drops the link while connectToServer() is still
+	// running, or has no 0x2A19, took the BLEScanConnect task down with a LoadProhibited at 0x1c (coredump from 2026-10-15, CSC2 flapping).
+	String valStr;
+	BLERemoteService* batService = clients[dt]->isConnected() ? clients[dt]->getService(serviceUUIDBat) : nullptr;
+	BLERemoteCharacteristic* batChar = batService ? batService->getCharacteristic(charUUIDBat) : nullptr;
+	if (batChar) valStr = batChar->readValue();
 	if (!valStr.isEmpty()) {
 		batLevel[dt] = static_cast<int8_t>(valStr[0]);  // Convert first byte to int8
 		bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "%s battery level %d %%", DEV_EMOJI[dt], batLevel[dt]);
