@@ -190,8 +190,8 @@ Mobilfunk); danach das Netz mit `cmd wifi forget-network <id>` wieder vergessen.
   `bikelog/routecheck.py` (rein, `tests/test_routecheck.py`; ändert sich der Parser der App,
   hier mitziehen und `routes.CHECK_VERSION` erhöhen), Ablage `bikelogservice/routes.py`
   (`<data>/routes.json` + `routes/`). Genau eine Strecke ist für TrailBridge markiert; die App
-  pollt `/api/v1/trailbridge/route` (ETag = Revision, eigenes Token
-  `BIKELOG_TRAILBRIDGE_TOKEN`), Vertrag in `doc/LOGSERVICE.md` „Strecken für TrailBridge".
+  pollt `/api/v1/trailbridge/route` (ETag = Revision, kein eigenes Passwort: Zugriff nur
+  aus LAN/VPN), Vertrag in `doc/LOGSERVICE.md` „Strecken für TrailBridge".
 - GPX-Import (`bikelog/gpximport.py`, `importer.py`): Sitzungen des Geräts `import`, nie
   exportiert; optional als frühere Teilnahme eines Ziels (`Event.participations`).
 

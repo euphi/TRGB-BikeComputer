@@ -132,24 +132,10 @@ def test_stale_checks_are_redone_on_start(settings, monkeypatch):
         assert client.get(f"{API}/routes/{rid}").json()["check"]["version"] == routes.CHECK_VERSION
 
 
-def test_trailbridge_token_guards_only_the_feed(tmp_path):
-    settings = Settings(data_dir=tmp_path / "state", trailbridge_token="s3cret")
+def test_feed_follows_the_service_auth(tmp_path):
+    """No password of its own: the network (LAN/VPN) limits access, like for the pages.
+    Only if the service's auth is switched on, the feed needs one of its tokens too."""
+    settings = Settings(data_dir=tmp_path / "state", require_auth=True, tokens=["dev:phone"])
     with TestClient(create_app(settings)) as client:
-        route = _add(client)                                # the pages stay open on the home network
-        client.post(f"{API}/routes/{route['id']}/trailbridge")
         assert client.get(FEED).status_code == 401
-        assert client.get(FEED, headers={"Authorization": "Bearer wrong"}).status_code == 401
-        ok = client.get(FEED, headers={"Authorization": "Bearer s3cret"})
-        assert ok.status_code == 200
-        assert client.get(ok.json()["gpx_url"]).status_code == 401
-        assert client.get(ok.json()["gpx_url"], headers={"Authorization": "Bearer s3cret"}).status_code == 200
-        assert "Letzte Abfrage der App" in client.get("/routes").text
-        assert "s3cret" not in client.get("/routes").text
-
-
-def test_service_tokens_count_for_the_feed_while_auth_is_on(tmp_path):
-    settings = Settings(data_dir=tmp_path / "state", trailbridge_token="s3cret",
-                        require_auth=True, tokens=["dev:laptop"])
-    with TestClient(create_app(settings)) as client:
         assert client.get(FEED, headers={"Authorization": "Bearer dev"}).status_code == 204
-        assert client.get(FEED, headers={"Authorization": "Bearer s3cret"}).status_code == 204

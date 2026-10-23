@@ -362,12 +362,11 @@ wird `CHECK_VERSION` erhöht, und der Dienst prüft die gespeicherten Strecken b
 „Für TrailBridge bereitstellen" markiert **eine** Strecke (eine andere zu markieren nimmt die
 Markierung weg). Die App holt sie sich selbst. Vertrag zwischen Dienst und App:
 
-- **Einrichten in der App:** die Adresse des Dienstes (`BIKELOG_PUBLIC_URL`, z. B.
-  `https://bikelog.example.org`) und, falls gesetzt, das Token `BIKELOG_TRAILBRIDGE_TOKEN`,
-  gesendet als `Authorization: Bearer <token>`. Mit Token brauchen es nur die drei Pfade
-  unten (die Seiten bleiben im Heimnetz offen); solange `BIKELOG_REQUIRE_AUTH` an ist, gelten
-  auch die Tokens aus `BIKELOG_TOKENS`. Ohne Token folgt der Abruf `BIKELOG_REQUIRE_AUTH` wie
-  jeder andere Pfad -- für den Zugriff aus dem Mobilfunknetz eins setzen.
+- **Einrichten in der App:** nur die Adresse des Dienstes (`BIKELOG_PUBLIC_URL`, z. B.
+  `https://bikelog.example.org`). Kein Passwort: Wie die Seiten begrenzt den Abruf das Netz --
+  der Dienst ist nur aus dem Heimnetz und dem VPN erreichbar (Reverse Proxy mit
+  `allow`/`deny`). Wird `BIKELOG_REQUIRE_AUTH` eingeschaltet, braucht der Abruf wie jeder
+  andere Pfad ein Token.
 - **Wann die App fragt:** beim Start, danach alle 15 Minuten -- aber nur, solange sie weder
   navigiert noch eine Testfahrt abspielt (eine geladene Route beendet beides).
 - `GET /api/v1/trailbridge/route` -- `204` keine Strecke markiert; `200` JSON
@@ -558,7 +557,6 @@ Umgebungsvariablen (im Dienst: `~/bikelog/bikelog.env`):
 | `BIKELOG_PUBLIC_URL` | -- | z. B. `http://server:8080`, für den Link im GPX |
 | `BIKELOG_REQUIRE_AUTH` | `0` | Auth an/aus |
 | `BIKELOG_TOKENS` | -- | `token:name`, kommagetrennt |
-| `BIKELOG_TRAILBRIDGE_TOKEN` | -- | Token von TrailBridge für den [Strecken-Abruf](#strecken-fur-trailbridge); leer = wie jeder andere Pfad |
 | `BIKELOG_MAX_UPLOAD_BYTES` | 64 MiB | Obergrenze pro `PUT` |
 | `BIKELOG_KOMOOT_EMAIL` / `BIKELOG_KOMOOT_PASSWORD` | -- | Komoot-Login; ohne beide ist der Upload aus |
 | `BIKELOG_KOMOOT_ACTIVITY` | `touringbicycle` | eine `SupportedActivities`-Konstante aus kompy |

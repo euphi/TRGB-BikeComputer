@@ -62,25 +62,5 @@ def require_principal(
     return principal
 
 
-def require_trailbridge(
-    request: Request,
-    authorization: str | None = Header(default=None),
-) -> Principal:
-    """The route feed for TrailBridge: its own token (BIKELOG_TRAILBRIDGE_TOKEN) if one is
-    set -- the service's tokens count too while auth is on --, else the same as every route."""
-    settings: Settings = request.app.state.settings
-    if not settings.trailbridge_token:
-        return require_principal(request, authorization)
-    token = authorization[7:].strip() if authorization and authorization.lower().startswith("bearer ") else ""
-    if token and _constant_time_eq(settings.trailbridge_token, token):
-        return Principal(name="trailbridge")
-    principal = _lookup(settings, token) if token and settings.require_auth else None
-    if principal is None:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "TrailBridge token required",
-                            headers={"WWW-Authenticate": "Bearer"})
-    return principal
-
-
 #: Convenience alias so routes read as ``principal: Principal = AuthDep``.
 AuthDep = Depends(require_principal)
-TrailBridgeDep = Depends(require_trailbridge)

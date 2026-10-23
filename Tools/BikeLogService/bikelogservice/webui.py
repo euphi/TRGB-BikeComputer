@@ -1065,7 +1065,7 @@ def _route_panel(r) -> str:
     return "\n".join(out)
 
 
-def routes_page(routes: list, seen: dict | None, base_url: str | None = None, token: bool = False,
+def routes_page(routes: list, seen: dict | None, base_url: str | None = None,
                 message: str | None = None) -> str:
     out = ["<h1>Strecken</h1>",
            '<p class="mut">Geplante und regelmäßige Strecken als GPX: geprüft, ob TrailBridge danach '
@@ -1086,9 +1086,7 @@ def routes_page(routes: list, seen: dict | None, base_url: str | None = None, to
     tb.append('<details><summary>Einrichten in TrailBridge</summary><p>Adresse des Dienstes: <code>'
               + escape(base_url or "http://<dieser Rechner>:8080") + "</code>"
               + ("" if base_url else ' <span class="mut">(BIKELOG_PUBLIC_URL nicht gesetzt)</span>')
-              + "<br>Token: " + ("gesetzt (BIKELOG_TRAILBRIDGE_TOKEN) – in der App als Bearer-Token eintragen."
-                                 if token else '<span class="warn">keiner</span> – der Abruf ist offen; '
-                                 "für den Zugriff von unterwegs BIKELOG_TRAILBRIDGE_TOKEN setzen.")
+              + '<br><span class="mut">Kein Passwort: Den Zugriff begrenzt das Netz (nur LAN und VPN).</span>'
               + "</p></details></div>")
     out.append("".join(tb))
     opts = "".join(f'<option value="{k}">{v}</option>' for k, v in ROUTE_KINDS.items())

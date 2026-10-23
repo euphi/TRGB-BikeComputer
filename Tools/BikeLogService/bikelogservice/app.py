@@ -30,7 +30,7 @@ from bikelog import bikes, csvexport, gpximport, report, training
 from bikelog.record import ReadStats
 
 from . import analysis, archive, exporter, importer, inbox, llm, routes, tours, komoot, nextcloud, sdlayout, webui
-from .auth import AuthDep, Principal, TrailBridgeDep
+from .auth import AuthDep, Principal
 from .config import Settings
 from .puller import DeviceUnavailable, Puller
 from .storage import Session, Storage
@@ -602,8 +602,7 @@ def create_app(settings: Settings | None = None, puller: Puller | None = None) -
     def routes_page(msg: str | None = Query(default=None, max_length=500),
                     principal: Principal = AuthDep, store: Storage = Depends(storage)):
         return webui.routes_page(routes.load(store), app.state.trailbridge_seen,
-                                 base_url=settings.public_url, token=bool(settings.trailbridge_token),
-                                 message=msg)
+                                 base_url=settings.public_url, message=msg)
 
     @app.post("/routes/{route_id}", include_in_schema=False)
     async def ui_route_edit(route_id: str, request: Request, principal: Principal = AuthDep,
@@ -698,7 +697,7 @@ def create_app(settings: Settings | None = None, puller: Puller | None = None) -
     @app.get(API + "/trailbridge/route", tags=["trailbridge"],
              responses={204: {"description": "no route marked"},
                         304: {"description": "revision unchanged (If-None-Match)"}})
-    def trailbridge_route(request: Request, principal: Principal = TrailBridgeDep,
+    def trailbridge_route(request: Request, principal: Principal = AuthDep,
                           store: Storage = Depends(storage)):
         """The route marked for TrailBridge, if any. The app polls this and loads the GPX
         (``gpx_url``, relative to the service) when ``revision`` is new to it."""
@@ -719,14 +718,14 @@ def create_app(settings: Settings | None = None, puller: Puller | None = None) -
                         media_type="application/json", headers={"ETag": etag})
 
     @app.get(API + "/trailbridge/routes/{route_id}.gpx", tags=["trailbridge"])
-    def trailbridge_gpx(route_id: str, principal: Principal = TrailBridgeDep,
+    def trailbridge_gpx(route_id: str, principal: Principal = AuthDep,
                         store: Storage = Depends(storage)):
         """The route's GPX file, unchanged (header X-Bikelog-Revision)."""
         return _gpx_response(store, _require_route(store, route_id))
 
     @app.post(API + "/trailbridge/route/fetched", tags=["trailbridge"])
     def trailbridge_fetched(revision: str = Query(pattern="^[0-9a-f]{16}$"),
-                            principal: Principal = TrailBridgeDep, store: Storage = Depends(storage)):
+                            principal: Principal = AuthDep, store: Storage = Depends(storage)):
         """The app loaded this revision (parsed it fine). 409 if it is no longer the marked
         route's current one -- the next poll brings the new one."""
         route = routes.fetched(store, revision, principal.name)

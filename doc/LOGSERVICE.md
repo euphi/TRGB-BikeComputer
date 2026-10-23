@@ -351,12 +351,11 @@ itself changes, `CHECK_VERSION` is bumped and the service redoes the stored chec
 "Für TrailBridge bereitstellen" marks **one** route (marking another one unmarks it). The
 app picks it up by itself. Contract between service and app:
 
-- **Setup in the app:** the service's address (`BIKELOG_PUBLIC_URL`, e.g.
-  `https://bikelog.example.org`) and, if set, the token `BIKELOG_TRAILBRIDGE_TOKEN`, sent as
-  `Authorization: Bearer <token>`. With a token only the three feed paths below need it
-  (the pages stay open on the home network); while `BIKELOG_REQUIRE_AUTH` is on, the tokens
-  of `BIKELOG_TOKENS` work as well. Without a token the feed follows `BIKELOG_REQUIRE_AUTH`
-  like every other path -- for access from the mobile network set one.
+- **Setup in the app:** only the service's address (`BIKELOG_PUBLIC_URL`, e.g.
+  `https://bikelog.example.org`). No password: like the pages, the feed is limited by the
+  network -- the service is reachable from the home network and the VPN only (reverse proxy
+  with `allow`/`deny`). Should `BIKELOG_REQUIRE_AUTH` be switched on, the feed needs a token
+  like every other path.
 - **When the app asks:** when it starts, then every 15 minutes -- but only while it neither
   navigates nor plays a route back (loading a route ends both).
 - `GET /api/v1/trailbridge/route` -- `204` no route marked; `200` JSON
@@ -543,7 +542,6 @@ Environment variables (in the service: `~/bikelog/bikelog.env`):
 | `BIKELOG_PUBLIC_URL` | -- | e.g. `http://server:8080`, for the link in the GPX |
 | `BIKELOG_REQUIRE_AUTH` | `0` | auth on/off |
 | `BIKELOG_TOKENS` | -- | `token:name`, comma-separated |
-| `BIKELOG_TRAILBRIDGE_TOKEN` | -- | token of TrailBridge for the [route feed](#routes-for-trailbridge); unset = like every other path |
 | `BIKELOG_MAX_UPLOAD_BYTES` | 64 MiB | upper limit per `PUT` |
 | `BIKELOG_KOMOOT_EMAIL` / `BIKELOG_KOMOOT_PASSWORD` | -- | Komoot login; without both the upload is off |
 | `BIKELOG_KOMOOT_ACTIVITY` | `touringbicycle` | a `SupportedActivities` constant from kompy |

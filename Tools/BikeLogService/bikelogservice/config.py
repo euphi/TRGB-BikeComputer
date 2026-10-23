@@ -40,10 +40,6 @@ class Settings:
     require_auth: bool = False
     #: token[:name] entries, comma separated. The name only shows up in logs.
     tokens: list[str] = field(default_factory=list)
-    #: Token of TrailBridge for the route feed (/api/v1/trailbridge/...), on its own because
-    #: the phone may ask from outside the home network while the pages stay open there.
-    #: Unset = the feed follows require_auth like every other route.
-    trailbridge_token: str | None = None
 
     max_upload_bytes: int = 64 * 1024 * 1024
 
@@ -150,7 +146,6 @@ class Settings:
             data_dir=Path(data_dir) if data_dir else _default_data_dir(),
             require_auth=_flag(env.get("BIKELOG_REQUIRE_AUTH", "0")),
             tokens=_split(env.get("BIKELOG_TOKENS")),
-            trailbridge_token=(env.get("BIKELOG_TRAILBRIDGE_TOKEN") or "").strip() or None,
             max_upload_bytes=int(env.get("BIKELOG_MAX_UPLOAD_BYTES", 64 * 1024 * 1024)),
             pull=_flag(env.get("BIKELOG_PULL", "0")),
             pull_targets=_split(env.get("BIKELOG_PULL_TARGETS")) or ["trgb=TRGB-BC"],
