@@ -52,9 +52,10 @@ def test_idle_detection():
 class FakeBC:
     """The device for the puller: a listing, the files, and /del/."""
 
-    def __init__(self, files: dict[str, bytes], refuse=()):
+    def __init__(self, files: dict[str, bytes], refuse=(), old_firmware=False):
         self.files = dict(files)
         self.refuse = set(refuse)
+        self.old_firmware = old_firmware        # 403 instead of 404 for a missing file
         self.deleted: list[str] = []
 
     def get(self, url: str) -> bytes:
@@ -65,8 +66,10 @@ class FakeBC:
             return self.files[path[4:]]
         if path.startswith("del/"):
             rel = path[4:]
-            if rel in self.refuse or rel not in self.files:
+            if rel in self.refuse:
                 raise HttpError(url, 403, "Forbidden")
+            if rel not in self.files:
+                raise HttpError(url, 403 if self.old_firmware else 404, "gone")
             del self.files[rel]
             self.deleted.append(rel)
             return b"<p>OK</p>"
@@ -156,6 +159,47 @@ def test_delete_on_device_refused_or_offline(setup):
     offline = Puller(store, Settings(data_dir=settings.data_dir), http=bc, resolver=lambda host: None)
     with pytest.raises(DeviceUnavailable):
         archive.delete_on_device(store, offline, store.idle_sessions())
+
+
+@pytest.mark.parametrize("old_firmware", [False, True])
+def test_delete_on_device_files_already_gone(setup, old_firmware):
+    """Deleted on the device itself in between: 404 (or 403 from older firmware, with the
+    file missing from the listing) counts as deleted, the session leaves the index."""
+    settings, store, bc = setup
+    sync(store, "trgb", "http://bc", bc, pause_s=0)
+    bc.old_firmware = old_firmware
+    del bc.files["20260920/D_110000.log"]
+    p = Puller(store, Settings(data_dir=settings.data_dir, pull_targets=["trgb=TRGB-BC"]), http=bc,
+               resolver=lambda host: "10.0.0.9")
+    done, errors = archive.delete_on_device(store, p, store.idle_sessions())
+    assert done == 2 and not errors
+    assert store.idle_sessions() == []
+
+
+def test_old_firmware_refusal_of_a_listed_file_stays_an_error(setup):
+    settings, store, bc = setup
+    sync(store, "trgb", "http://bc", bc, pause_s=0)
+    bc.old_firmware = True
+    bc.refuse.add("20260920/D_110000.log")
+    p = Puller(store, Settings(data_dir=settings.data_dir), http=bc, resolver=lambda host: "10.0.0.9")
+    done, errors = archive.delete_on_device(store, p, store.idle_sessions())
+    assert done == 1 and "D_110000.log" in errors[0]
+
+
+def test_pull_archives_idle_sessions_deleted_on_the_device(setup):
+    settings, store, bc = setup
+    sync(store, "trgb", "http://bc", bc, pause_s=0)
+    sid = _sid(store, "_110000")
+    del bc.files["20260920/D_110000.log"]                  # the device's own cleanup
+    del bc.files["20260920/L_090000.bin"]                  # a ride gone from the card stays
+    result = sync(store, "trgb", "http://bc", bc, pause_s=0)
+    assert result.archived_gone == 1 and not bc.deleted
+    assert store.get(sid) is None and sid not in {s.id for s in store.archived_sessions()}
+    assert (settings.archive_dir / "trgb" / "20260920" / "D_110000.log").exists()
+    assert [s.stem for s in store.idle_sessions()] == ["_100000"]
+    assert [s.stem for s in store.list(idle=False)] == ["_090000"]
+    bc.files.clear()                                       # empty listing: card problem, nothing
+    assert sync(store, "trgb", "http://bc", bc, pause_s=0).archived_gone == 0
 
 
 def test_pages(tmp_path):

@@ -47,7 +47,7 @@ import urllib.request
 from dataclasses import asdict, dataclass, field
 from typing import Callable
 
-from . import analysis, exporter, nextcloud, sdlayout
+from . import analysis, archive, exporter, nextcloud, sdlayout
 from .sdlayout import SdFile
 
 log = logging.getLogger("bikelog.pull")
@@ -175,11 +175,15 @@ class SyncResult:
     workdir_sessions: int = 0
     #: index rows of deleted/archived sessions dropped: their files left the card
     purged: int = 0
+    #: idle sessions archived because they were deleted on the device itself
+    archived_gone: int = 0
 
     def summary(self) -> str:
         return (f"{self.listed} listed, {self.fetched} fetched ({self.bytes} byte), "
                 f"{self.replaced} replaced, {self.failed} failed"
-                + (f", {self.purged} tombstone(s) dropped (gone from the card)" if self.purged else ""))
+                + (f", {self.purged} tombstone(s) dropped (gone from the card)" if self.purged else "")
+                + (f", {self.archived_gone} idle session(s) archived (deleted on the device)"
+                   if self.archived_gone else ""))
 
 
 Progress = Callable[..., None]
@@ -210,7 +214,12 @@ def sync(storage, device: str, base_url: str, http: Http | None = None,
     if listing:
         # Tombstones of sessions that are gone from the card are not needed any more.
         # (An empty listing is more likely a card problem than an empty card.)
-        result.purged = storage.purge_gone(device, {e.file.path for e in listing})
+        on_card = {e.file.path for e in listing}
+        result.purged = storage.purge_gone(device, on_card)
+        # Idle sessions removed on the device itself (its cleanup): archived without a
+        # delete request, which would only fail. Rides gone from the card stay -- keeping
+        # them is what the service is for.
+        result.archived_gone = archive.archive_gone_idle(storage, device, on_card)
     known = storage.known_files(device)
     result.workdir_sessions = len({e.file.stem for e in listing
                                    if e.file.day == sdlayout.WORKDIR})
@@ -558,8 +567,9 @@ class Puller:
     def delete_files(self, device: str, paths: list[str]) -> list[tuple[str, bool, str]]:
         """Delete files on the device now (firmware: GET /del/<path below /BIKECOMP/>).
         Raises DeviceUnavailable unless the device answers at this moment -- nothing is
-        queued. Returns (path, ok, message) per file; the firmware refuses (403) the
-        running session's files and files that do not exist."""
+        queued. Returns (path, ok, message) per file. A file that is not on the card any
+        more counts as deleted: the firmware answers 404 for it, older firmware 403 like
+        for the running session's files -- then the device's listing decides."""
         target = next((t for t in self.targets if t.device == device), None)
         if target is None:
             raise DeviceUnavailable(f"{device}: no pull target for this device")
@@ -571,6 +581,7 @@ class Puller:
             raise DeviceUnavailable(f"{device} ({target.host}.local) is not reachable")
         base = f"http://{address}"
         out = []
+        listed: set[str] | None = None          # fetched on the first 403 only
         for path in paths:
             try:
                 self.http.get(f"{base}/del/{urllib.parse.quote(path)}")
@@ -578,6 +589,17 @@ class Puller:
             except HttpError as exc:
                 if exc.status is None:          # connection lost: the rest will fail too
                     raise DeviceUnavailable(str(exc)) from exc
+                if exc.status == 404:
+                    out.append((path, True, "already gone"))
+                    continue
+                if exc.status == 403 and listed is None:
+                    try:
+                        listed = {e.file.path for e in fetch_listing(self.http, base)}
+                    except HttpError:
+                        listed = set()
+                if exc.status == 403 and listed and path not in listed:
+                    out.append((path, True, "already gone"))
+                    continue
                 out.append((path, False, str(exc)))
         log.info("%s: deleted %d of %d file(s) on the device", device,
                  sum(1 for _, ok, _ in out if ok), len(out))

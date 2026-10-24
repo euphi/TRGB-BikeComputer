@@ -923,12 +923,24 @@ void WifiWebserver::setupWebserver() {
 		// Normally fetched by the listing's JavaScript, which only looks at the status --
 		// this page is what you get when the URL is opened directly.
 		WebPage::begin(html_resp, "Delete");
-		if (bclog.deleteFile(dUri)) {
+		// 404 = already gone, which the log service counts as deleted; 403 = refused.
+		switch (bclog.deleteFile(dUri)) {
+		case BCLogger::DeleteResult::Deleted:
 			http_code = 200;
 			html_resp += F("<p>OK - file deleted.</p>\n");
-		} else {
+			break;
+		case BCLogger::DeleteResult::NotFound:
+			http_code = 404;
+			html_resp += F("<p class=\"badge badge-error\">Not found - the file does not exist.</p>\n");
+			break;
+		case BCLogger::DeleteResult::Busy:
 			http_code = 403;
-			html_resp += F("<p class=\"badge badge-error\">Forbidden - file can't be deleted (probably because it does not exist).</p>\n");
+			html_resp += F("<p class=\"badge badge-error\">Forbidden - the file belongs to the running session or is being uploaded.</p>\n");
+			break;
+		case BCLogger::DeleteResult::Failed:
+			http_code = 500;
+			html_resp += F("<p class=\"badge badge-error\">Error - the SD card refused to delete the file.</p>\n");
+			break;
 		}
 		WebPage::end(html_resp);
 		request->send(http_code, "text/html", html_resp.c_str());

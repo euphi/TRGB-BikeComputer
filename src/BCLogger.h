@@ -194,7 +194,10 @@ public:
 	static const String LOGDIR;
 
 	uint16_t getAllFileLinks(String &rc);
-	bool deleteFile(const String& path);
+	// NotFound is its own result: the log service treats it as "already gone" (HTTP 404),
+	// Busy (running session, push upload) as a refusal (403).
+	enum class DeleteResult { Deleted, NotFound, Busy, Failed };
+	DeleteResult deleteFile(const String& path);
 	void autoCleanUp(const char* root_name);
 
 	bool replayFile(const String& path);

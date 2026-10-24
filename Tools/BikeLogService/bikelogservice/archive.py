@@ -12,7 +12,9 @@ for as long as the files are on the SD card -- without it the next pull would
 fetch them again. The pull drops the row once they are gone from the card
 (Storage.purge_gone), and ``delete_on_device()`` removes them from the card
 right away while the bike computer is reachable (firmware: ``GET /del/<path>``),
-then the row too. Nothing is queued: offline means "not now". An explicit upload
+then the row too. Nothing is queued: offline means "not now". Idle sessions deleted
+on the device itself (its cleanup) are archived by the pull the same way
+(``archive_gone_idle()``), without a delete request. An explicit upload
 of one of its files revives the session, same as for a deleted one.
 """
 
@@ -64,6 +66,28 @@ def delete_on_device(store: Storage, puller, sessions) -> tuple[int, list[str]]:
     if done:
         log.info("%d session(s) deleted on the device and archived", done)
     return done, errors
+
+
+def archive_gone_idle(store: Storage, device: str, listed: set[str]) -> int:
+    """Idle sessions of this device none of whose files is in its listing any more (removed
+    on the bike computer itself): archived and forgotten by the index, as delete_on_device
+    would. Rides are left alone. The caller makes sure the listing is not empty."""
+    done = 0
+    for session in store.idle_sessions():
+        if session.device != device or not session.files:
+            continue
+        if any(SdFile(session.day, f.name).path in listed for f in session.files):
+            continue
+        try:
+            move_files(store, session)
+        except OSError as exc:
+            log.warning("archiving session %d failed: %s", session.id, exc)
+            continue
+        store.remove_index(session.id)
+        done += 1
+    if done:
+        log.info("%s: %d idle session(s) gone from the card, archived", device, done)
+    return done
 
 
 def archive_idle(store: Storage, now: datetime.datetime | None = None) -> int:

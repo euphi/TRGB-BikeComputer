@@ -294,7 +294,12 @@ The page **Archiv** (`/archive`) lists idle sessions not yet archived and archiv
 still on the card. "Auf dem BC löschen" (one session, or all) deletes their files on the
 bike computer right away through the firmware's `/del/` endpoint -- only while it is
 reachable; nothing is queued. A session whose files are all gone from the card is moved
-to the archive and dropped from the index. API: `POST /api/v1/archive/device-delete`
+to the archive and dropped from the index. A file that is no longer on the card counts as
+deleted: the firmware answers `404` for it, `403` only for the running session's files or
+one being pushed (older firmware also answers `403` for a missing file -- then the
+device's listing decides). Idle sessions deleted on the bike computer itself (e.g. its
+*Cleanup*) are archived by the next pull without a delete request; rides that left the
+card stay in the service. API: `POST /api/v1/archive/device-delete`
 (`session_id`, all if omitted; 409 when the device is not reachable).
 
 ## Bikes

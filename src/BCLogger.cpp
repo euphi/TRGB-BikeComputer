@@ -1185,25 +1185,29 @@ uint16_t BCLogger::getAllFileLinks(String &rc) {
 		"function cleanup(){req('/cleanup','Cleanup done');}\n"
 		"function replay(p){req('/replay/'+p,'Replay started');}\n"
 		"async function del(el,ps){for(const p of ps){const r=await fetch('/del/'+p).catch(()=>null);"
-		"if(!r||!r.ok){toast('Delete failed',true);return;}}\n"
+		"if(!r||(!r.ok&&r.status!=404)){toast('Delete failed',true);return;}}\n"
 		"const r=el.closest('tr');if(r)r.remove();toast('Deleted');}\n");
 	return 200;
 }
 
-bool BCLogger::deleteFile(const String& path){
+BCLogger::DeleteResult BCLogger::deleteFile(const String& path){
   // The running session's files are open, and the finalizer is moving the earlier ones.
   // And the log push may have it open for an upload.
   if (isActiveSessionFile(path) || (LogSessions::busy() && path.startsWith(LogSessions::WORKDIR + "/"))
       || logPush.isBusyWith(path)) {
 	  logf(Log_Warn, TAG_SD, "File %s belongs to the running session or is being finished - not deleted.", path.c_str());
-	  return false;
+	  return DeleteResult::Busy;
+  }
+  if (!SD_MMC.exists(path.c_str())) {
+	  logf(Log_Info, TAG_SD, "File %s does not exist - nothing to delete.", path.c_str());
+	  return DeleteResult::NotFound;
   }
   if (SD_MMC.remove(path.c_str())) {
 	  logf(Log_Info, TAG_SD, "File %s deleted.", path.c_str());
-	  return true;
+	  return DeleteResult::Deleted;
   } else {
 	  logf(Log_Warn, TAG_SD, "Deletion of file %s failed.", path.c_str());
-	  return false;
+	  return DeleteResult::Failed;
   }
 }
 

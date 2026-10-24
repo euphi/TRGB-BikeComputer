@@ -303,7 +303,13 @@ Die Seite **Archiv** (`/archive`) zeigt die noch nicht archivierten Leerlauf-Sit
 die archivierten, die noch auf der Karte liegen. „Auf dem BC löschen" (eine Sitzung oder alle)
 löscht ihre Dateien sofort auf dem Fahrradcomputer über den `/del/`-Endpunkt der Firmware --
 nur solange er erreichbar ist, es wird nichts vorgemerkt. Eine Sitzung, deren Dateien alle von
-der Karte sind, wandert ins Archiv und verschwindet aus dem Index. API:
+der Karte sind, wandert ins Archiv und verschwindet aus dem Index. Eine Datei, die nicht mehr
+auf der Karte liegt, gilt als gelöscht: Die Firmware antwortet dafür mit `404`, mit `403` nur
+für Dateien der laufenden Sitzung oder eine gerade hochgeladene (ältere Firmware antwortet
+auch für eine fehlende Datei mit `403` -- dann entscheidet die Dateiliste des Geräts).
+Leerlauf-Sitzungen, die am Fahrradcomputer selbst gelöscht wurden (etwa mit *Cleanup*),
+archiviert der nächste Abruf ohne Löschanfrage; Fahrten, die von der Karte verschwunden sind,
+bleiben im Dienst. API:
 `POST /api/v1/archive/device-delete` (`session_id`, ohne = alle; 409, wenn das Gerät nicht
 erreichbar ist).
 
