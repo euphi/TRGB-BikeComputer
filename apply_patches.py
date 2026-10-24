@@ -37,3 +37,12 @@ patchflag_path = join(lib_dir, ".patching-done")
 if not isfile(join(lib_dir, ".patching-done")):
     env.Execute("patch \"%s\" < %s" % (original_file, patch_file))
 
+
+
+# TRGBArduinoSupport: setLogoDrawer() -- the boot logo is decompressed straight into the panel's
+# frame buffer (src/BootLogoRimRidge.h), no 460 KB raw image in flash and no PSRAM buffer before
+# trgb.init(). Applied once; the marker is the new method in the header.
+lib_dir = join(env.subst("$PROJECT_LIBDEPS_DIR"), env["PIOENV"], "TRGBArduinoSupport")
+header = join(lib_dir, "src/TRGBSuppport.h")
+if isfile(header) and "setLogoDrawer" not in open(header).read():
+    env.Execute("patch -p1 -N -d \"%s\" < patches/TRGBArduinoSupport-logo-drawer.patch" % lib_dir)

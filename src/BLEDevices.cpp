@@ -75,6 +75,13 @@ BLEDevices::BLEDevices()
 
 void BLEDevices::setup() {
 	  BLEDevice::init("TRGB_BTTacho BLE");
+	  // Without a running stack getScan() returns nullptr and the scan task crashed in startBLEScan(),
+	  // a few seconds after every boot and before WiFi was up, so not even an OTA could fix it
+	  // (2026-10-24: controller library mismatch, doc/PITFALLS.md). Run on without BLE instead.
+	  if (!BLEDevice::getInitialized()) {
+		  bclog.log(BCLogger::Log_Error, BCLogger::TAG_BLE, "❌ BLE stack did not start -- running without sensors and navigation");
+		  return;
+	  }
 	  // Task names must stay under configMAX_TASK_NAME_LEN (16), i.e. 15 chars max.
 	  // xTaskCreate() silently truncates past that, but xTaskGetHandle() asserts on an
 	  // over-long query string and aborts -- which is how the old 21-char
@@ -83,7 +90,10 @@ void BLEDevices::setup() {
 	  // was connected -- its connect runs the service discovery for both services (nav + GPS)
 	  // in this task.
 	  xTaskCreate(+[](void* thisInstance){((BLEDevices*)thisInstance)->scanAndConnectTask();}, "BLEScanConnect", 4096, this, 5, &scanTaskHandle);
-	  xTaskCreate(+[](void* thisInstance){((BLEDevices*)thisInstance)->overviewReaderTask();}, "BLEOverview", 4096, this, 4, &overviewTaskHandle);
+	  // Stack in PSRAM: the internal heap is the scarce resource (doc/PITFALLS.md), and this task
+	  // wakes up rarely (a new overview revision) and never writes to flash (NVS, OTA), which a task
+	  // with a PSRAM stack must not do. The TCB stays internal.
+	  xTaskCreateWithCaps(+[](void* thisInstance){((BLEDevices*)thisInstance)->overviewReaderTask();}, "BLEOverview", 4096, this, 4, &overviewTaskHandle, MALLOC_CAP_SPIRAM);
 
 //	  scanCB = [this](BLEScanResults result) {
 //		  bclog.logf(BCLogger::Log_Info, BCLogger::TAG_BLE, "🔵 ✔️ BLE scan completed: %d devices found.", result.getCount());

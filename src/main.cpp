@@ -10,6 +10,7 @@
 #include <WiFi.h>
 #include <Battery.h>
 #include <esp_system.h>
+#include <esp_ota_ops.h>
 
 #include "BatteryGauge.h"
 
@@ -90,7 +91,7 @@ void batCheck() {
 }
 
 void setup() {
-	trgb.setLogo(bootLogoRimRidge);
+	trgb.setLogoDrawer(drawBootLogo);	// decompresses into the frame buffer, no PSRAM before init()
 	trgb.init();
 	if (!I2CBus::guardTouch()) Serial.println("No touch device found to put the I2C lock around");
 	console.setup();
@@ -147,6 +148,26 @@ void setup() {
 	webserver.enableWebserver();
 }
 
+// OTA rollback: Arduino marks a new image valid at the very start of initArduino() unless this
+// returns true -- a firmware that crashes a few seconds later then loops for ever, and without
+// WiFi there is no second OTA (2026-10-24, doc/PITFALLS.md). So the image stays "pending" and is
+// confirmed in loop() after a minute without a reset; any reset before that makes the bootloader
+// go back to the previous firmware.
+extern "C" bool verifyRollbackLater() { return true; }	// C linkage: overrides the weak one in esp32-hal-misc.c
+
+static void confirmImageWhenStable() {
+	static bool done = false;
+	if (done || millis() < 60 * 1000) return;
+	done = true;
+	esp_ota_img_states_t state;
+	if (esp_ota_get_state_partition(esp_ota_get_running_partition(), &state) == ESP_OK && state == ESP_OTA_IMG_PENDING_VERIFY) {
+		const esp_err_t err = esp_ota_mark_app_valid_cancel_rollback();
+		bclog.logf(err == ESP_OK ? BCLogger::Log_Info : BCLogger::Log_Error, BCLogger::TAG_WIFI,
+		           "OTA: new firmware confirmed after 60 s (%s)", esp_err_to_name(err));
+	}
+}
+
 void loop() {
 	console.poll();		// command line
+	confirmImageWhenStable();
 }

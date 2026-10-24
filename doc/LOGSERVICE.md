@@ -108,8 +108,8 @@ press shows up without a reconnect), 5 min after a failure. Only finished sessio
 `CUR/`. What has been uploaded is listed in `/bcpush.txt` on the SD card (`<path> <size>`); a
 file goes up again only if its size changes (new summary format). Delete the file to upload
 everything again. HTTPS is checked against the common root CAs (Let's Encrypt and the large
-CAs, [`certs/`](https://github.com/euphi/TRGB-BikeComputer/tree/main/certs), refresh with
-`Tools/make_cert_bundle.sh`); a self-signed certificate does not work. Serial console:
+CAs: ESP-IDF's own "common CAs" bundle, `CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_CMN`, renewed
+with every IDF update); a self-signed certificate does not work. Serial console:
 `push [status|now|test|mark|on|off]`.
 
 The WiFi itself follows its own rules ([WiFi](WIFI.md)): it must know the network, and it switches

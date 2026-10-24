@@ -147,8 +147,6 @@ On the back burner:
 - Better / more 3D-printable mounts, also for other handlebars.
 - Animations on the display (driving state, heart rate).
 - More use of the logged road quality, e.g. surface maps / heatmaps from many rides.
-- Smaller flash footprint of the boot logo (stored raw, 460 KB; would compress to
-  about 11 KB, needs a change in TRGBArduinoSupport).
 
 ## Known limitations
 

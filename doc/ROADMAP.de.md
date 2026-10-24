@@ -153,8 +153,6 @@ Auf der langen Bank:
 - Animationen auf dem Display (Fahrzustand, Puls).
 - Mehr aus der aufgezeichneten Wegequalität machen, z. B. Karten des Untergrunds oder
   Heatmaps aus vielen Fahrten.
-- Kleineres Boot-Logo im Flash (liegt roh vor, 460 KB; komprimiert wären es etwa 11 KB,
-  braucht eine Änderung in TRGBArduinoSupport).
 
 ## Bekannte Grenzen
 

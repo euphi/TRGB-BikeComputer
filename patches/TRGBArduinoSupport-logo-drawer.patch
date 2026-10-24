@@ -1,0 +1,50 @@
+--- a/src/TRGBSuppport.h
++++ b/src/TRGBSuppport.h
+@@ -108,6 +108,7 @@
+ 	lv_disp_drv_t disp_drv;      // contains callback functions
+ 	lv_indev_drv_t indev_drv;
+ 	const unsigned char *customLogoImg = nullptr; // overrides the built-in logo_img when set, see setLogo()
++	void (*customLogoDrawer)(uint16_t* fb) = nullptr; // takes precedence over customLogoImg, see setLogoDrawer()
+ 	void tft_init(void);
+ 	void lcd_cmd(const uint8_t cmd);
+ 	void lcd_data(const uint8_t *data, int len);
+@@ -131,6 +132,12 @@
+ 	// draw call has no way to detect a format mismatch by itself).
+ 	// Pass nullptr to go back to the built-in default logo_img.
+ 	void setLogo(const unsigned char *img) { customLogoImg = img; }
++	// Alternative to setLogo() for a compressed logo: init() calls drawer with the panel's frame
++	// buffer (480x480 pixels, same format as for setLogo()) right after the panel is registered,
++	// and drawer fills it, e.g. by decompressing into it. No second 460 KB buffer is needed --
++	// which matters because allocating PSRAM before init() shifts LVGL's draw buffers.
++	// Takes precedence over setLogo(). Pass nullptr to switch it off again.
++	void setLogoDrawer(void (*drawer)(uint16_t* fb)) { customLogoDrawer = drawer; }
+ 	void SD_init(); //could be static, but I guess it is too confusing.
+ 
+ 	float getBatVoltage() const {return (analogRead(BAT_VOLT_PIN) * 2 * 3.3) / 4096;}
+--- a/src/TRGBSuppport.cpp
++++ b/src/TRGBSuppport.cpp
+@@ -123,13 +123,21 @@
+ 	esp_lcd_panel_handle_t panel_handle = register_tft();
+ 
+ 	// Draw a start logo (before init of LVGL) - defaults to the built-in
+-	// logo_img unless overridden via setLogo() beforehand.
++	// logo_img unless overridden via setLogo() or setLogoDrawer() beforehand.
++	void* fb = nullptr;
++	if (customLogoDrawer && esp_lcd_rgb_panel_get_frame_buffer(panel_handle, 1, &fb) == ESP_OK && fb) {
++		customLogoDrawer(static_cast<uint16_t*>(fb));
++		// The source is the frame buffer itself: the driver skips the copy and only writes back the cache.
++		esp_lcd_panel_draw_bitmap(panel_handle, 0, 0, 480, 480, fb);
++	} else
+ #ifdef TRGB_SKIP_DEFAULT_LOGO
+ 	// logo_img doesn't exist in this build (see img.h) - there is no
+ 	// fallback, so a missing setLogo() call is a caller bug, not something
+ 	// to silently paper over with a blank/garbage draw.
+-	assert(customLogoImg != nullptr && "TRGB_SKIP_DEFAULT_LOGO is set but setLogo() was never called before init()");
+-	esp_lcd_panel_draw_bitmap(panel_handle, 0, 0, 480, 480, customLogoImg);
++	{
++		assert(customLogoImg != nullptr && "TRGB_SKIP_DEFAULT_LOGO is set but neither setLogo() nor setLogoDrawer() was called before init()");
++		esp_lcd_panel_draw_bitmap(panel_handle, 0, 0, 480, 480, customLogoImg);
++	}
+ #else
+ 	esp_lcd_panel_draw_bitmap(panel_handle, 0, 0, 480, 480,
+ 			customLogoImg ? customLogoImg : logo_img);

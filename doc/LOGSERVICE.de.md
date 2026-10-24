@@ -112,9 +112,9 @@ Druck beendete Fahrt erscheint ohne Reconnect), nach einem Fehler nach 5 min. Nu
 Sitzungen, nie `CUR/`. Was hochgeladen ist, steht in `/bcpush.txt` auf der SD-Karte
 (`<pfad> <größe>`); eine Datei geht nur dann noch einmal hoch, wenn sich ihre Größe ändert (neues
 Format der Kurzstatistik). Die Datei löschen lädt alles neu hoch. HTTPS wird gegen die gängigen
-Stamm-Zertifizierungsstellen geprüft (Let's Encrypt und die großen CAs,
-[`certs/`](https://github.com/euphi/TRGB-BikeComputer/tree/main/certs), erneuern mit
-`Tools/make_cert_bundle.sh`); ein selbst signiertes Zertifikat geht nicht. Serielle Konsole:
+Stamm-Zertifizierungsstellen geprüft (Let's Encrypt und die großen CAs: ESP-IDFs eigenes
+Bundle der gängigen CAs, `CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_CMN`, erneuert sich mit jedem
+IDF-Update); ein selbst signiertes Zertifikat geht nicht. Serielle Konsole:
 `push [status|now|test|mark|on|off]`.
 
 Das WLAN selbst folgt seinen eigenen Regeln ([WLAN](WIFI.md)): Das Netz muss eingetragen sein,

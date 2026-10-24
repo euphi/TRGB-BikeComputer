@@ -39,9 +39,11 @@ static constexpr size_t MAX_DAYS = 512;
 // at 20 KB, WifiWebserver.cpp).
 static constexpr size_t ABORT_FREE_INTERNAL = 24 * 1024;
 
-// certs/x509_crt_bundle.bin (Tools/make_cert_bundle.sh), embedded by board_build.embed_files.
-extern const uint8_t caBundleStart[] asm("_binary_certs_x509_crt_bundle_bin_start");
-extern const uint8_t caBundleEnd[] asm("_binary_certs_x509_crt_bundle_bin_end");
+// ESP-IDF's own root CA bundle in the framework libraries, the "common CAs" list (Mozilla's store
+// filtered to the CAs that cover nearly all public servers, Let's Encrypt included):
+// CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_CMN in custom_sdkconfig. Refreshed with every IDF update.
+extern const uint8_t caBundleStart[] asm("_binary_x509_crt_bundle_start");
+extern const uint8_t caBundleEnd[] asm("_binary_x509_crt_bundle_end");
 
 namespace {
 
@@ -326,7 +328,9 @@ bool LogPush::start(Mode m, bool manual) {
 		return false;
 	}
 	TaskArg* arg = new (std::nothrow) TaskArg{this, m, manual};
-	if (!arg || xTaskCreate(taskMain, "LogPush", TASK_STACK, arg, 1, nullptr) != pdPASS) {
+	// Stack in PSRAM (TCB internal): a run never writes to flash -- the settings go to NVS from the
+	// web handler and the CLI, not from here -- which a task with a PSRAM stack must not do.
+	if (!arg || xTaskCreateWithCaps(taskMain, "LogPush", TASK_STACK, arg, 1, nullptr, MALLOC_CAP_SPIRAM) != pdPASS) {
 		delete arg;
 		running = false;
 		nextDue = millis() + MEMORY_RETRY_MS;
@@ -342,7 +346,7 @@ void LogPush::taskMain(void* p) {
 	a.self->run(a.mode, a.manual);
 	bclog.logf(BCLogger::Log_Debug, TAG, "Log push task: %u byte stack left", (unsigned) uxTaskGetStackHighWaterMark(nullptr));
 	a.self->running = false;
-	vTaskDelete(nullptr);
+	vTaskDeleteWithCaps(nullptr);		// frees the PSRAM stack (via a short clean-up task)
 }
 
 // ---------------------------------------------------------------------------

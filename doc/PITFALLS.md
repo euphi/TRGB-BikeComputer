@@ -392,10 +392,39 @@ accepted.
 plus the handshake state per connection, and this build allocates all of it internally
 (`CONFIG_MBEDTLS_INTERNAL_MEM_ALLOC`). `LogPush` therefore switches mbedTLS to PSRAM with
 `mbedtls_platform_set_calloc_free()` for the duration of a run and back afterwards -- at runtime,
-not in `custom_sdkconfig`, so no IDF rebuild. The task stack (9 KB) stays internal and exists only
-during a run; a run starts only with 36 KB free and stops between two files below 24 KB. The
+not in `custom_sdkconfig`, so no IDF rebuild. The task stack (9 KB) is in PSRAM as well (see below)
+and exists only during a run; a run starts only with 28 KB free and stops between two files below
+24 KB. The
 task logs its stack reserve at the end (`Log push task: ... byte stack left`, debug level).
 Anything else that wants HTTPS needs the same switch.
+
+**Task stacks in PSRAM** (`xTaskCreateWithCaps(..., MALLOC_CAP_SPIRAM)`, delete with
+`vTaskDeleteWithCaps()`; the TCB stays internal): `BLEOverview` and `LogPush` since 2026-10-24.
+Allowed only for a task that never writes to the internal flash -- NVS, OTA, LittleFS disable the
+cache, and IDF aborts if the running task's stack is in PSRAM -- and that is not on a hot path
+(display flicker, first section). Therefore not: `FlusherTask` (NVS session counter in
+`startSession()`), `ImuTask` (400 Hz), `BLEScanConnect` (stores addresses in NVS), the UI and loop
+tasks.
+
+**IRAM is internal RAM too.** On the S3, IRAM that holds no code becomes heap (104 KB of code
+sit there). `CONFIG_BT_CTRL_RUN_IN_FLASH_ONLY` (BLE controller, ~20 KB) does **not** work with
+pioarduino: IDF links `libbtdm_app_flash.a` for it, the Arduino link line hard-codes
+`-lbtdm_app`, and the controller refuses to start ("Controller lib error, need flash lib",
+`esp_bt_controller_init -11`). `BLEDevice::init()` then fails, `getScan()` returns null, and
+`BLEDevices::startBLEScan()` crashed -- an endless boot loop after the OTA of 2026-10-24, before
+WiFi was up, so only USB helped. Since then `BLEDevices::setup()` checks
+`BLEDevice::getInitialized()` and runs on without BLE. `CONFIG_HEAP_PLACE_FUNCTION_INTO_FLASH`
+(~6.5 KB) is set; it requires that no IRAM ISR allocates or frees while the cache is off.
+
+**OTA rollback:** Arduino marks a new image valid at the start of `initArduino()` unless
+`verifyRollbackLater()` returns true. `src/main.cpp` therefore overrides it (C linkage) and
+confirms the image only after 60 s without a reset (log line `OTA: new firmware confirmed`); a
+crash before that makes the bootloader return to the previous firmware.
+
+**What a BLE peer costs** (measured from the logs of 2026-10-23/24, WiFi on): no peer ~42 KB free,
+TrailBridge -7.5 KB, heart rate -7.5 KB, a CSC sensor -11 KB. The Arduino BLE layer creates an
+object for every service of the peer and every characteristic of a used service, each with up to
+three FreeRTOS semaphores (always internal), map nodes and UUID strings.
 
 ## SD card: don't delete or rename open files
 

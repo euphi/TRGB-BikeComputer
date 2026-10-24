@@ -17,8 +17,8 @@
  * The work happens in a task of its own that exists only while it runs.
  *
  * Memory: TLS needs ~40 KB, more than the internal heap has to spare (doc/PITFALLS.md). While
- * a run is going, mbedTLS allocates from PSRAM (setTlsPsram()); the task stack is internal, and
- * a run only starts with MIN_FREE_INTERNAL free.
+ * a run is going, mbedTLS allocates from PSRAM (setTlsPsram()), the task stack (9 KB) is in PSRAM
+ * as well, and a run only starts with MIN_FREE_INTERNAL free.
  *
  * Secrets: the password/token only comes in through the POST body of /push/config, never goes
  * back out (the page shows "set") and is never logged.
@@ -55,7 +55,7 @@ public:
 	static constexpr uint32_t PERIOD_MS = 10 * 60 * 1000;
 	static constexpr uint32_t RETRY_MS = 5 * 60 * 1000;
 	static constexpr uint32_t MEMORY_RETRY_MS = 60 * 1000;
-	static constexpr size_t MIN_FREE_INTERNAL = 36 * 1024;
+	static constexpr size_t MIN_FREE_INTERNAL = 28 * 1024;	// was 36 with the stack internal
 	static constexpr size_t MANIFEST_CAP = 4096;	// files on the card that can be remembered
 	static constexpr size_t TODO_CAP = 1024;		// files per run, the rest goes in the next one
 
