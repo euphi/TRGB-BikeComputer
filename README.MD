@@ -97,7 +97,9 @@ sensor), height calibration, IMU calibration, restart and power off.
   GPX, also as earlier editions of a goal
 - Planned and regular routes as GPX in the log service: checked for what TrailBridge's
   navigation makes of them (turn hints, heights, gaps, waypoints), with distance, elevation
-  profile and climbs; one route can be offered to TrailBridge, which fetches it by itself
+  profile and climbs, named waypoints on a map and in the profile (with distance from the
+  start and to the destination); one route can be offered to TrailBridge, which fetches it by
+  itself
 
 **Web interface** (when on WiFi)
 - Download, replay and delete log files; live log with adjustable log levels

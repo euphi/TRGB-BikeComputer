@@ -110,3 +110,73 @@ def test_what_trailbridge_cannot_read_is_an_error():
                  b'<?xml version="1.0"?><!DOCTYPE gpx [<!ENTITY a "b">]><gpx/>',
                  gpx(course()[:3])):                       # 50 m long
         assert routecheck.check(data)["verdict"] == "error", data[:80]
+
+
+# --- waypoints for the page ---------------------------------------------------------------
+
+def _with_wpts(wpts: str) -> bytes:
+    """The 6 km course (north along 8.6 E) with wpt in front of the track, as BRouter-Web writes it."""
+    body = "<trk><trkseg>" + _trkpts(course()) + "</trkseg></trk>"
+    return _doc(wpts + body)
+
+
+def _north(m: float, east_m: float = 0.0) -> str:
+    return f'lat="{50.0 + m / 111320.0:.6f}" lon="{8.6 + east_m / 71700.0:.6f}"'
+
+
+def test_named_via_poi_and_machine_names_are_told_apart():
+    data = _with_wpts(
+        f'<wpt {_north(0)}><name>from</name><type>from</type></wpt>'
+        f'<wpt {_north(2000)}><name>via1</name><type>via</type></wpt>'
+        f'<wpt {_north(3000)}><name>Kaffeepause</name><type>via</type></wpt>'
+        f'<wpt {_north(4000, 300)}><name>Brunnen</name></wpt>'
+        f'<wpt {_north(6000)}><name>to</name><type>to</type></wpt>')
+    w = routecheck.check(data)["stats"]["wpts"]
+    assert [(x["name"], x["kind"]) for x in w] == [
+        ("from", "auto"), ("via1", "auto"), ("Kaffeepause", "named"), ("Brunnen", "poi"), ("to", "auto")]
+    assert abs(w[2]["km"] - 3.0) < 0.02
+    assert abs(w[2]["km"] + w[2]["to_end_km"] - 5.975) < 0.01      # the course is 239 x 25 m
+    assert abs(w[3]["km"] - 4.0) < 0.02                      # projected onto the track
+    assert 290 <= w[3]["off_m"] <= 310                       # a place beside the route
+    assert w[0]["km"] == 0 and w[4]["to_end_km"] == 0
+
+
+def test_a_real_name_on_a_from_point_is_a_name():
+    w = routecheck.check(_with_wpts(f'<wpt {_north(0)}><name>Zuhause</name><type>from</type></wpt>'))
+    assert w["stats"]["wpts"][0]["kind"] == "named"
+
+
+def test_destination_of_a_loop_is_at_the_end_not_the_start():
+    pts = [(50.0, 8.6, 100.0), (50.01, 8.6, 100.0), (50.01, 8.61, 100.0), (50.0, 8.61, 100.0), (50.0, 8.6, 100.0)]
+    data = _doc(f'<wpt lat="50.0" lon="8.6"><name>to</name><type>to</type></wpt>'
+                f'<wpt lat="50.0" lon="8.6"><name>from</name><type>from</type></wpt>'
+                "<trk><trkseg>" + _trkpts(pts) + "</trkseg></trk>")
+    first, last = sorted(routecheck.check(data)["stats"]["wpts"], key=lambda x: x["type"])
+    assert first["type"] == "from" and first["km"] == 0
+    assert last["type"] == "to" and last["to_end_km"] == 0 and last["km"] > 3
+
+
+def test_a_wpt_far_from_the_route_is_counted_not_listed():
+    data = _with_wpts(f'<wpt {_north(3000, 5000)}><name>Anderswo</name></wpt>'
+                      f'<wpt {_north(3000)}><name>Hier</name></wpt>')
+    st = routecheck.check(data)["stats"]
+    assert [w["name"] for w in st["wpts"]] == ["Hier"] and st["waypoints_far"] == 1
+
+
+def test_special_characters_stay_as_they_are():
+    name = "Café | 10% ; a&b=c <b>x</b>"
+    data = _with_wpts(f'<wpt {_north(1000)}><name>Caf&#233; | 10% ; a&amp;b=c &lt;b&gt;x&lt;/b&gt;</name></wpt>')
+    assert routecheck.check(data)["stats"]["wpts"][0]["name"] == name
+
+
+def test_osmand_turn_hints_are_no_waypoints():
+    rte = '<rte><rtept lat="50.0" lon="8.6"><desc>left</desc></rtept></rte>'
+    data = _doc(rte + "<trk><trkseg>" + _trkpts(course()) + "</trkseg></trk>")
+    assert "wpts" not in routecheck.check(data)["stats"]
+
+
+def test_no_wpt_no_list_and_the_map_track_is_short():
+    st = routecheck.check(gpx(course()))["stats"]
+    assert "wpts" not in st
+    assert 2 <= len(st["track"]) <= routecheck.MAP_POINTS + 1
+    assert st["track"][0] == [50.0, 8.6] and st["track"][-1][0] > 50.05

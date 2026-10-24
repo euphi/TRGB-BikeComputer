@@ -366,6 +366,18 @@ Datei, die TrailBridge gar nicht lesen kann, wird abgelehnt und nicht aufbewahrt
 ([`routes.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/BikeLogService/bikelogservice/routes.py)); ändert sich die Prüfung selbst,
 wird `CHECK_VERSION` erhöht, und der Dienst prüft die gespeicherten Strecken beim Start neu.
 
+**Wegpunkte** (`<wpt>` in der GPX, z. B. in BRouter-Web per Rechtsklick benannt): Die Liste zeigt
+die benannten nur als schmale senkrechte Striche im kleinen Höhenprofil, an ihrer Distanz ab
+Start. Die Seite der Strecke zeigt eine Karte (die Strecke als Linie, ohne Kartenkacheln) und das
+Höhenprofil mit jedem Wegpunkt markiert und benannt, darunter eine Tabelle mit Name, Distanz ab
+Start und bis zum Ziel. Ein `wpt` mit `type` (`from`, `via`, `to`) liegt auf einem Routenpunkt;
+einer ohne (ein Ort von Interesse) kann neben der Strecke liegen, seine Distanz ist deshalb die
+seiner Projektion auf den Track (ein Hinweis nennt den Abstand; weiter als 1 km entfernt wird er
+weggelassen). Die Maschinennamen von BRouter-Web (`from`, `via1`, `to`) sind Start, Ziel und
+unbenannte Zwischenpunkte: in der Tabelle ausgegraut, ohne Strich in der Liste, ohne Namen in den
+Diagrammen. Die OsmAnd-Abbiegehinweise im `<rte>` sind keine Wegpunkte. Namen werden für HTML
+maskiert.
+
 ### Strecken für TrailBridge
 
 „Für TrailBridge bereitstellen" markiert **eine** Strecke (eine andere zu markieren nimmt die

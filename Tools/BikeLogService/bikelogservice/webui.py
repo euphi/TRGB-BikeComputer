@@ -1038,7 +1038,9 @@ def _route_row(r) -> str:
     st = r.stats
     ascent = st.get("ascent_m")
     href = f"/routes/{escape(r.id)}"
-    spark = (charts.sparkline(st["profile"], f'Höhenprofil {r.name}: {st["min_ele_m"]}–{st["max_ele_m"]} m')
+    marks = [w["km"] for w in st.get("wpts", []) if w["kind"] != "auto"]    # named only, no from/via1/to
+    spark = (charts.sparkline(st["profile"], f'Höhenprofil {r.name}: {st["min_ele_m"]}–{st["max_ele_m"]} m'
+                              + (f', {len(marks)} Wegpunkte' if marks else ""), marks=marks)
              if st.get("profile") else "")
     return (f'<tr id="r{escape(r.id)}"><td><a href="{href}"><b>{escape(r.name)}</b></a> '
             f'<span class="chips">{_route_chips(r, verdict_ok=False, trailbridge=False)}</span>'
@@ -1109,6 +1111,30 @@ def routes_page(routes: list, seen: dict | None, base_url: str | None = None,
     return page("Strecken", "/routes", "\n".join(out))
 
 
+def _waypoint_table(wpts: list[dict], far: int = 0) -> str:
+    """Name, distance from the start and to the destination. Start, destination and unnamed
+    via points (BRouter-Web's from/via1/to) are greyed; a place beside the route says how far."""
+    auto = {"from": "Start", "to": "Ziel", "via": "Zwischenpunkt"}
+    rows = []
+    for w in wpts:
+        if w["kind"] == "auto":
+            name = auto.get(w["type"], "Wegpunkt")
+            note = ""
+        else:
+            name = w["name"]
+            note = "Ort" if w["kind"] == "poi" else "Wegpunkt"
+        if w["off_m"] >= 25:
+            note += f'{" · " if note else ""}{w["off_m"]} m neben der Strecke'
+        rows.append(f'<tr{" class=mut" if w["kind"] == "auto" else ""}><td>'
+                    + (f'<b>{escape(name)}</b>' if w["kind"] != "auto" else escape(name))
+                    + (f' <span class="mut">{escape(note)}</span>' if note else "") + "</td>"
+                    f'<td class="num">{num(w["km"])} km</td><td class="num">{num(w["to_end_km"])} km</td></tr>')
+    return ('<div class="panel"><table><thead><tr><th>Name</th><th class="num">ab Start</th>'
+            '<th class="num">bis Ziel</th></tr></thead><tbody>' + "".join(rows) + "</tbody></table>"
+            + (f'<p class="mut">{far} weitere Wegpunkt(e) liegen mehr als 1 km von der Strecke entfernt '
+               "und sind nicht gezeigt.</p>" if far else "") + "</div>")
+
+
 def route_page(r, message: str | None = None) -> str:
     st = r.stats
     rid = escape(r.id)
@@ -1135,9 +1161,16 @@ def route_page(r, message: str | None = None) -> str:
     tiles.append(tile("Punkte", f'{st.get("points", 0):,}'.replace(",", " "), "",
                       f'Abstand typ. {num(st.get("median_spacing_m"), 0)} / max. {st.get("max_spacing_m", "–")} m'))
     out.append('<div class="tiles">' + "".join(tiles) + "</div>")
+    wpts = st.get("wpts", [])
+    if st.get("track"):
+        out.append('<h2>Karte</h2><div class="panel">'
+                   + charts.route_map(st["track"], wpts, "Verlauf der Strecke " + r.name) + "</div>")
     if st.get("profile"):
         out.append('<h2>Höhenprofil</h2><div class="panel">'
-                   + charts.profile(st["profile"], "Höhenprofil " + r.name, st.get("climbs")) + "</div>")
+                   + charts.profile(st["profile"], "Höhenprofil " + r.name, st.get("climbs"), waypoints=wpts)
+                   + "</div>")
+    if wpts:
+        out.append("<h2>Wegpunkte</h2>" + _waypoint_table(wpts, st.get("waypoints_far", 0)))
     if st.get("climbs"):
         out.append('<h2>Anstiege</h2><div class="panel">'
                    "<table><thead><tr><th>Kat.</th><th class=num>ab km</th><th class=num>Länge</th>"

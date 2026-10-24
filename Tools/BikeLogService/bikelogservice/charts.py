@@ -13,6 +13,7 @@ and the tooltips.
 
 from __future__ import annotations
 
+import math
 from html import escape
 
 BG = "#161B1F"
@@ -215,9 +216,27 @@ MIN_PROFILE_SPAN_M = 200.0
 SPARK_SPAN_M = 300.0
 
 
+def short(text: str, n: int = 24) -> str:
+    return text if len(text) <= n else text[:n - 1].rstrip() + "…"
+
+
+def _wpt_tip(w: dict) -> str:
+    what = {"poi": "Ort", "auto": "Zwischenpunkt" if w.get("type") == "via" else "Start/Ziel"}.get(w["kind"], "Wegpunkt")
+    return (f'{w["name"] or what} · km {_fmt(w["km"])} · noch {_fmt(w["to_end_km"])} km'
+            + (f' · {w["off_m"]} m neben der Strecke' if w["off_m"] >= 25 else ""))
+
+
+def _wlabel(x: float, y: float, text: str, tip: str, left: bool) -> str:
+    return (f'<text x="{x:.1f}" y="{y:.1f}" text-anchor="{"end" if left else "start"}" '
+            f'style="font:500 11px var(--mono)" fill="{PARCH}" stroke="{BG}" stroke-width="3" '
+            f'paint-order="stroke" data-tip="{escape(tip)}">{escape(short(text))}</text>')
+
+
 def profile(points: list[list[float]], label: str, climbs: list[dict] | None = None,
-            h: int = 200, min_span: float = MIN_PROFILE_SPAN_M) -> str:
-    """Elevation over distance: sage line with a 10 % wash, climbs as brass bands."""
+            h: int = 200, min_span: float = MIN_PROFILE_SPAN_M,
+            waypoints: list[dict] | None = None) -> str:
+    """Elevation over distance: sage line with a 10 % wash, climbs as brass bands, named
+    waypoints as a line with their name (unnamed via points only as a faint tick)."""
     if len(points) < 2:
         return ""
     kms = [p[0] for p in points]
@@ -259,13 +278,28 @@ def profile(points: list[list[float]], label: str, climbs: list[dict] | None = N
         body.append(f'<rect class="hit" x="{x - step / 2:.1f}" y="{PAD_T}" width="{step:.1f}" '
                     f'height="{h - PAD_T - PAD_B}" fill="transparent" data-x="{x:.1f}" '
                     f'data-tip="km {_fmt(k)} · {v:.0f} m"/>')
+    shown = 0
+    for w in waypoints or []:
+        if w["kind"] == "auto" and w.get("type") != "via":
+            continue                                    # start and destination are the chart's ends
+        x = xk(min(w["km"], km_max))
+        named = w["kind"] != "auto"
+        body.append(f'<line x1="{x:.1f}" x2="{x:.1f}" y1="{PAD_T}" y2="{h - PAD_B}" '
+                    f'stroke="{BRASS if named else MUTED}" stroke-width="{1.5 if named else 1}" '
+                    f'stroke-opacity="{0.9 if named else 0.5}" vector-effect="non-scaling-stroke" '
+                    f'data-tip="{escape(_wpt_tip(w))}"/>')
+        if named:
+            body.append(_wlabel(x + (-5 if x > W * 0.6 else 5), PAD_T + 25 + shown % 3 * 13,
+                                w["name"], _wpt_tip(w), x > W * 0.6))
+            shown += 1
     return _svg("".join(body), label, h)
 
 
 def sparkline(points: list[list[float]], label: str, w: int = 120, h: int = 28,
-              min_span: float = SPARK_SPAN_M) -> str:
+              min_span: float = SPARK_SPAN_M, marks: list[float] | None = None) -> str:
     """A small elevation profile (distance, height) for a list row: no axes, fixed scale
-    (min_span) so rows compare -- the label says the range in words."""
+    (min_span) so rows compare -- the label says the range in words. ``marks``: distances
+    (km) of named waypoints, thin vertical strokes."""
     if len(points) < 2:
         return ""
     step = max(1, len(points) // w)
@@ -274,10 +308,65 @@ def sparkline(points: list[list[float]], label: str, w: int = 120, h: int = 28,
     span = max(min_span, max(p[1] for p in pts) - lo)
     km_max = pts[-1][0] or 1
     xy = " ".join(f"{p[0] / km_max * w:.1f},{h - 2 - (p[1] - lo) / span * (h - 4):.1f}" for p in pts)
+    strokes = "".join(f'<line x1="{x:.1f}" x2="{x:.1f}" y1="0" y2="{h}" stroke="{BRASS}" stroke-width="1" '
+                      'vector-effect="non-scaling-stroke"/>'
+                      for x in (min(1.0, m / km_max) * w for m in marks or []))
     return (f'<svg class="spark" viewBox="0 0 {w} {h}" preserveAspectRatio="none" role="img" '
             f'aria-label="{escape(label)}"><polygon points="0,{h} {xy} {w},{h}" fill="{SAGE}" '
             f'fill-opacity="0.18"/><polyline points="{xy}" fill="none" stroke="{SAGE}" stroke-width="1.5" '
-            'stroke-linejoin="round" vector-effect="non-scaling-stroke"/></svg>')
+            f'stroke-linejoin="round" vector-effect="non-scaling-stroke"/>{strokes}</svg>')
+
+
+MAP_MAX_H = 440
+
+
+def route_map(track: list[list[float]], waypoints: list[dict], label: str) -> str:
+    """The route as a line (no map tiles: the page works offline), start as a ring, destination
+    filled, named waypoints as brass dots with their name, places beside the route as diamonds."""
+    if len(track) < 2:
+        return ""
+    lats = [p[0] for p in track] + [w["lat"] for w in waypoints]
+    lons = [p[1] for p in track] + [w["lon"] for w in waypoints]
+    k = math.cos(math.radians(sum(lats) / len(lats)))
+    x0, x1 = min(lons) * k, max(lons) * k
+    y0, y1 = min(lats), max(lats)
+    pad = 24
+    scale = min((W - 2 * pad) / max(x1 - x0, 1e-9), (MAP_MAX_H - 2 * pad) / max(y1 - y0, 1e-9))
+    h = int((y1 - y0) * scale + 2 * pad)
+    ox = (W - (x1 - x0) * scale) / 2
+
+    def xy(lat: float, lon: float) -> tuple[float, float]:
+        return ox + (lon * k - x0) * scale, pad + (y1 - lat) * scale
+
+    pts = " ".join("%.1f,%.1f" % xy(la, lo) for la, lo in track)
+    body = [f'<rect x="0" y="0" width="{W}" height="{h}" rx="6" fill="{BG}"/>',
+            f'<polyline points="{pts}" fill="none" stroke="{SAGE}" stroke-width="3" stroke-linejoin="round" '
+            'stroke-linecap="round" vector-effect="non-scaling-stroke"/>']
+    sx, sy = xy(*track[0])
+    ex, ey = xy(*track[-1])
+    body.append(f'<circle cx="{sx:.1f}" cy="{sy:.1f}" r="6" fill="{BG}" stroke="{PARCH_BRIGHT}" stroke-width="2.5" '
+                'data-tip="Start"/>')
+    body.append(f'<circle cx="{ex:.1f}" cy="{ey:.1f}" r="6" fill="{PARCH_BRIGHT}" data-tip="Ziel"/>')
+    shown = 0
+    for w in waypoints:
+        if w["kind"] == "auto" and w.get("type") != "via":
+            continue
+        x, y = xy(w["lat"], w["lon"])
+        tip = escape(_wpt_tip(w))
+        if w["kind"] == "auto":
+            body.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="3.5" fill="{MUTED}" data-tip="{tip}"/>')
+            continue
+        if w["kind"] == "poi":
+            body.append(f'<path d="M{x:.1f},{y - 7:.1f}L{x + 7:.1f},{y:.1f}L{x:.1f},{y + 7:.1f}L{x - 7:.1f},{y:.1f}Z" '
+                        f'fill="{BRASS}" stroke="{BG}" stroke-width="1.5" data-tip="{tip}"/>')
+        else:
+            body.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="6" fill="{BRASS}" stroke="{BG}" stroke-width="1.5" '
+                        f'data-tip="{tip}"/>')
+        left = x > W * 0.6
+        body.append(_wlabel(x + (-11 if left else 11), y + (4 if shown % 2 == 0 else -9), w["name"],
+                            _wpt_tip(w), left))
+        shown += 1
+    return _svg("".join(body), label, h)
 
 
 def zone_band(zones_s: dict) -> str:

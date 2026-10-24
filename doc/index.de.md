@@ -110,7 +110,8 @@ vergessen), Höhenkalibrierung, IMU-Kalibrierung, Neustart und Ausschalten.
   GPX importieren, auch als frühere Teilnahmen an einem Ziel
 - Geplante und regelmäßige Strecken als GPX im Log-Dienst: geprüft, was die Navigation von
   TrailBridge daraus macht (Abbiegehinweise, Höhen, Lücken, Wegpunkte), mit Distanz,
-  Höhenprofil und Anstiegen; eine Strecke lässt sich TrailBridge anbieten, die App holt sie
+  Höhenprofil und Anstiegen, benannten Wegpunkten auf Karte und im Profil (mit Distanz ab
+  Start und bis zum Ziel); eine Strecke lässt sich TrailBridge anbieten, die App holt sie
   selbst ab
 
 **Web-Oberfläche** (im WLAN)

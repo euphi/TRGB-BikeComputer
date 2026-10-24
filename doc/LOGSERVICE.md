@@ -355,6 +355,17 @@ refused and not kept. Stored in `<data>/routes.json`, the files unchanged in
 `<data>/routes/` ([`routes.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/BikeLogService/bikelogservice/routes.py)); when the check
 itself changes, `CHECK_VERSION` is bumped and the service redoes the stored checks on start.
 
+**Waypoints** (`<wpt>` in the GPX, e.g. named by BRouter-Web with a right click): the list shows
+the named ones only as thin vertical strokes in the small elevation profile, at their distance
+from the start. The route's page shows a map (the route as a line, no map tiles) and the
+elevation profile with each waypoint marked and named, and below them a table with the name,
+the distance from the start and to the destination. A `wpt` with a `type` (`from`, `via`, `to`)
+sits on a route point; one without (a point of interest) may lie beside the route, so its
+distance is that of its projection onto the track (a note says how far off it is; further than
+1 km it is left out). BRouter-Web's machine names (`from`, `via1`, `to`) are start, destination
+and unnamed via points: greyed in the table, no stroke in the list, no name in the charts. The
+OsmAnd turn hints in `<rte>` are not waypoints. Names are escaped for HTML.
+
 ### Routes for TrailBridge
 
 "Für TrailBridge bereitstellen" marks **one** route (marking another one unmarks it). The

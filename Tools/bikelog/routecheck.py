@@ -11,7 +11,9 @@ the phone will do with it:
                     (TurnDetector: angles only, no street names)
                  A track whose rtept only name the way points (bikerouter.de: start, vias,
                  destination) counts as 3, like in the app.
-    waypoints    wpt within WAYPOINT_MAX_OFF_ROUTE_M of the route, for the route overview
+    waypoints    wpt within WAYPOINT_MAX_OFF_ROUTE_M of the route, for the route overview;
+                 for the page all wpt up to WPT_LIST_MAX_OFF_M, with distance from start
+                 (projected onto the track) -- stats["wpts"], and stats["track"] for the map
 
 check() returns verdict + findings (German, for the page) + stats; the climbs and the
 elevation profile come from training.event_profile(), the same as a goal's course.
@@ -22,6 +24,7 @@ from __future__ import annotations
 
 import datetime
 import math
+import re
 import xml.etree.ElementTree as ET
 
 from . import training
@@ -41,6 +44,13 @@ SIMPLIFIED_M = 2000.0
 SEGMENT_GAP_M = 200.0
 #: Less than this share of points with <ele>: no usable height profile.
 MIN_ELE_SHARE = 0.9
+
+#: Page only: a wpt further away than this is not shown on the route (a place elsewhere).
+WPT_LIST_MAX_OFF_M = 1000.0
+#: Points of the track kept for the map (every n-th, plus the last).
+MAP_POINTS = 400
+#: Same distance to the route within this: the later one wins for the destination.
+_TIE_M = 1.0
 
 VERDICTS = ("ok", "warn", "error")
 
@@ -137,6 +147,83 @@ def _off_route_m(pts: list[_Pt], lat: float, lon: float) -> float:
     return best
 
 
+def _project(pts: list[_Pt], cum: list[float], lat: float, lon: float,
+             prefer_last: bool = False) -> tuple[float, float]:
+    """(distance from the start along the route, distance off it) of the nearest point on the
+    polyline (flat projection). On a tie -- a loop passes its start again -- the first match,
+    or the last one for the destination."""
+    k = 111320.0 * math.cos(math.radians(lat))
+    best_off, best_at = math.inf, 0.0
+    for i, (a, b) in enumerate(zip(pts, pts[1:])):
+        ax, ay = (a.lon - lon) * k, (a.lat - lat) * 110540.0
+        bx, by = (b.lon - lon) * k, (b.lat - lat) * 110540.0
+        dx, dy = bx - ax, by - ay
+        len2 = dx * dx + dy * dy
+        t = 0.0 if len2 == 0 else max(0.0, min(1.0, -(ax * dx + ay * dy) / len2))
+        off = math.hypot(ax + t * dx, ay + t * dy)
+        at = cum[i] + t * (cum[i + 1] - cum[i])
+        if off < best_off - _TIE_M:
+            best_off, best_at = off, at
+        elif off <= best_off + _TIE_M:
+            best_off = min(best_off, off)
+            if prefer_last:
+                best_at = at
+    return best_at, best_off
+
+
+def _wpt_info(el: ET.Element) -> dict | None:
+    """name and type of a <wpt> (None without a valid coordinate)."""
+    lat, lon = _float(el.get("lat")), _float(el.get("lon"))
+    if lat is None or lon is None or not (-90 <= lat <= 90 and -180 <= lon <= 180):
+        return None
+    name = kind = ""
+    for c in el:
+        tag = _local(c.tag)
+        if tag == "name":
+            name = (c.text or "").strip()
+        elif tag == "type":
+            kind = (c.text or "").strip().lower()
+    return {"lat": lat, "lon": lon, "name": name, "type": kind}
+
+
+def _is_auto_name(name: str, kind: str) -> bool:
+    """BRouter-Web's "Waypoints" option names the route points from, via1, via2, ..., to."""
+    n = name.lower()
+    return not n or n == kind or (kind == "via" and re.fullmatch(r"via\d+", n) is not None)
+
+
+def waypoints(geometry: list[_Pt], cum: list[float], infos: list[dict]) -> tuple[list[dict], int]:
+    """The wpt for the page, nearest the start first, and how many lie too far from the route.
+    Each: name, kind ("poi": a place without type; "named": a named route point; "auto": from/via/to
+    with a machine name -- start, destination or an unnamed via), type, lat, lon, km (from the
+    start), to_end_km, off_m."""
+    total = cum[-1]
+    out, far = [], 0
+    for w in infos:
+        km_m, off = _project(geometry, cum, w["lat"], w["lon"], prefer_last=w["type"] == "to")
+        if off > WPT_LIST_MAX_OFF_M:
+            far += 1
+            continue
+        if not w["type"]:
+            kind = "poi"
+        elif _is_auto_name(w["name"], w["type"]):
+            kind = "auto"
+        else:
+            kind = "named"
+        out.append({"name": w["name"], "kind": kind, "type": w["type"],
+                    "lat": round(w["lat"], 6), "lon": round(w["lon"], 6),
+                    "km": round(km_m / 1000, 3), "to_end_km": round(max(0.0, total - km_m) / 1000, 3),
+                    "off_m": round(off)})
+    out.sort(key=lambda w: (w["km"], w["name"]))
+    return out, far
+
+
+def _map_track(geometry: list[_Pt]) -> list[list[float]]:
+    step = max(1, len(geometry) // MAP_POINTS)
+    pts = geometry[::step] + ([geometry[-1]] if (len(geometry) - 1) % step else [])
+    return [[round(p.lat, 5), round(p.lon, 5)] for p in pts]
+
+
 def check(data: bytes, fallback_name: str = "Route") -> dict:
     """Verdict ("ok", "warn": usable with limits, "error": TrailBridge cannot use it),
     findings [{"level": "error"|"warn"|"info", "text"}] and stats of a GPX."""
@@ -170,6 +257,7 @@ def check(data: bytes, fallback_name: str = "Route") -> dict:
     trk: list[_Pt] = []
     rte: list[_Pt] = []
     wpt: list[_Pt] = []
+    wpt_infos: list[dict] = []
     osmand_turns = 0
     seg = 0
     for el in root.iter():
@@ -181,6 +269,9 @@ def check(data: bytes, fallback_name: str = "Route") -> dict:
             rte.append(_Pt(el))
         elif tag == "wpt":
             wpt.append(_Pt(el))
+            info = _wpt_info(el)
+            if info:
+                wpt_infos.append(info)
         elif tag == "segment" and el.get("turnType") and el.get("startTrkptIdx") \
                 and (el.get("skipTurn") or "").lower() != "true" and el.get("turnType").strip() != "C":
             osmand_turns += 1               # trk/extensions/route/segment: OsmAnd's own turns
@@ -286,4 +377,9 @@ def check(data: bytes, fallback_name: str = "Route") -> dict:
             text += (f", {len(wpt) - len(on)} weiter als {WAYPOINT_MAX_OFF_ROUTE_M:.0f} m entfernt "
                      "(zeigt TrailBridge nicht)")
         say("info", text + ".")
+    if wpt_infos:
+        stats["wpts"], far = waypoints(geometry, cum, wpt_infos)
+        if far:
+            stats["waypoints_far"] = far
+    stats["track"] = _map_track(geometry)
     return result(stats, name)
