@@ -322,6 +322,19 @@ static void testHill() {
 	CHECK(t3.status().rank == RANK_CAT6, "325 m: rank %u", t3.status().rank);
 }
 
+static void testSteepCore() {
+	printf("Steep core: bump, 2.5 km at 1 %%, 1.2 km at 4.5 %% -- too flat as a whole, the core is category 5\n");
+	Route r(200);
+	r.add(500, 0).add(100, 5).add(2500, 1).add(1200, 4.5f).add(1000, 0);
+	Tracker t;
+	std::vector<uint8_t> f = r.slice(400, 5400);
+	t.feedFrame(f.data(), f.size());
+	t.setRemaining(r.totalM() - 400);
+	const Status& s = t.status();
+	CHECK(s.active && s.avgGradePct < 3.0f, "whole climb found: active %d, %.1f %%", s.active, s.avgGradePct);
+	CHECK(s.rank == RANK_CAT5, "rank %u (core 1200 m x 4.5 %% = 5400)", s.rank);
+}
+
 static void testStep(float flatM, bool expectOne) {
 	printf("Step: 1 km at 6 %%, %.0f m flat, 1 km at 6 %% -> %s\n", flatM, expectOne ? "one climb" : "two climbs");
 	Route r(300);
@@ -596,6 +609,7 @@ int main() {
 	testRolling();
 	testSingleClimb();
 	testHill();
+	testSteepCore();
 	testStep(300, true);
 	testStep(1500, true);
 	testStep(2500, false);

@@ -394,9 +394,7 @@ void Tracker::findClimb(float posM) {
 	cur = seg;
 }
 
-uint8_t Tracker::rate(const Segment& seg) const {
-	const float lengthM = static_cast<float>(seg.footRem - seg.summitRem);
-	const float gainM = (seg.summitAltDm - seg.footAltDm) / 10.0f;
+uint8_t Tracker::rateSpan(float lengthM, float gainM) const {
 	if (lengthM <= 0 || lengthM < cfg.minLengthM) return RANK_NONE;
 	const float avgPct = gainM / lengthM * 100.0f;
 	if (avgPct < cfg.minAvgGradePct) return RANK_NONE;
@@ -406,6 +404,28 @@ uint8_t Tracker::rate(const Segment& seg) const {
 		if (score >= cfg.catScore[k]) rank = k + 1;
 	}
 	return rank;
+}
+
+// A climb with flat stretches in it (or two hills joined across a short flat) can be too
+// flat on average as a whole, although its steep part alone would be rated -- the whole then
+// lost its category, and the steep part with it (Gravelballer route, 2026-10-24: 4.6 km at
+// 1.8 % around 1.7 km at 3 %). So the best stretch inside the climb that passes counts, as far
+// as the profile holds it. The whole wins whenever it passes itself (its score is the gain).
+uint8_t Tracker::rate(const Segment& seg) const {
+	const uint8_t whole = rateSpan(static_cast<float>(seg.footRem - seg.summitRem), (seg.summitAltDm - seg.footAltDm) / 10.0f);
+	if (whole != RANK_NONE) return whole;
+	int32_t f = indexOfRem(seg.footRem), s = indexOfRem(seg.summitRem);
+	if (f < 0) f = 0;
+	if (s > static_cast<int32_t>(count) - 1) s = count - 1;
+	const int32_t minSteps = (cfg.minLengthM + step - 1) / step;
+	uint8_t best = RANK_NONE;
+	for (int32_t i = f; i + minSteps <= s; i++) {
+		for (int32_t j = i + minSteps; j <= s; j++) {
+			const uint8_t r = rateSpan(static_cast<float>(j - i) * step, (alt[j] - alt[i]) / 10.0f);
+			if (r > best) best = r;
+		}
+	}
+	return best;
 }
 
 void Tracker::update() {

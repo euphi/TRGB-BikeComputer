@@ -272,9 +272,9 @@ def event_profile(gpx: bytes) -> dict:
             ref = h
     climbs = []
     for foot, summit in report.find_climbs(grid):
+        foot, summit, cat = report.rated_span(grid, foot, summit)
         length = grid[summit][0] - grid[foot][0]
         gain = grid[summit][1] - grid[foot][1]
-        cat = report.climb_category(length, gain)
         if cat:
             climbs.append({"category": cat, "start_km": round(grid[foot][0] / 1000, 2),
                            "length_m": round(length), "gain_m": round(gain),

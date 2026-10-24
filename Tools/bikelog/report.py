@@ -45,7 +45,7 @@ from .record import (IF_CLIPPED, IF_DATA_GAP, IF_NO_SPEED, IF_TOO_SLOW, IF_UNCAL
 
 #: Bump when a field changes its meaning or moves -- consumers (the service's
 #: cache, a prompt) key on it.
-REPORT_VERSION = 3
+REPORT_VERSION = 4
 
 #: Records before this are from an unset ESP32 clock (see gpx.MIN_PLAUSIBLE_YEAR).
 MIN_PLAUSIBLE_TIMESTAMP = int(datetime.datetime(2020, 1, 1, tzinfo=datetime.timezone.utc).timestamp())
@@ -353,6 +353,27 @@ def find_climbs(grid: list[tuple[float, float, float]]) -> list[tuple[int, int]]
     return climbs
 
 
+def rated_span(grid: list[tuple[float, float, float]], foot: int, summit: int) -> tuple[int, int, str | None]:
+    """The stretch of a found climb that gets rated, with its category: the whole climb if it
+    passes, else its best part that does (highest score) -- a long climb with flat stretches
+    in it is too flat on average although its steep core alone is rated (ClimbProfile.cpp
+    Tracker::rate(), same rule). (foot, summit, None) when no part passes."""
+    cat = climb_category(grid[summit][0] - grid[foot][0], grid[summit][1] - grid[foot][1])
+    if cat:
+        return foot, summit, cat
+    min_steps = math.ceil(CLIMB_MIN_LENGTH_M / CLIMB_GRID_M)
+    best = None
+    for i in range(foot, summit - min_steps + 1):
+        for j in range(i + min_steps, summit + 1):
+            gain = grid[j][1] - grid[i][1]
+            if gain <= 0:
+                continue
+            c = climb_category(grid[j][0] - grid[i][0], gain)
+            if c and (best is None or gain > best[0]):
+                best = (gain, i, j, c)
+    return (best[1], best[2], best[3]) if best else (foot, summit, None)
+
+
 def climb_category(length_m: float, gain_m: float) -> str | None:
     """None for a hill that is not rated (too short, too flat, below category 6)."""
     if length_m < CLIMB_MIN_LENGTH_M or gain_m / length_m * 100 < CLIMB_MIN_AVG_GRADE:
@@ -383,10 +404,10 @@ def _climbs(records: list[Record], steps: list[_Step], with_hills: bool) -> list
     grid = _profile_grid(records)
     out = []
     for foot, summit in find_climbs(grid):
+        foot, summit, cat = rated_span(grid, foot, summit)
         d1, h1, t1 = grid[foot]
         d2, h2, t2 = grid[summit]
         length, gain = d2 - d1, h2 - h1
-        cat = climb_category(length, gain)
         if cat is None and not with_hills:
             continue
         inside = [s for s in steps if t1 < s.t <= t2]

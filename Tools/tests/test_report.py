@@ -70,6 +70,22 @@ def test_climb_categories():
     assert report.climb_category(2000, 40) is None         # 2 % -- too flat
 
 
+def test_rated_span_finds_the_steep_core():
+    # bump, 2.5 km at 1 %, 1.2 km at 4.5 %: 2.2 % as a whole -- not rated, its core is (Cat 5)
+    heights, h = [], 0.0
+    for length, pct in ((100, 5), (2500, 1), (1200, 4.5)):
+        for _ in range(int(length / report.CLIMB_GRID_M)):
+            h += report.CLIMB_GRID_M * pct / 100
+            heights.append(h)
+    grid = [(0.0, 0.0, 0.0)] + [((k + 1) * report.CLIMB_GRID_M, x, 0.0) for k, x in enumerate(heights)]
+    assert report.climb_category(grid[-1][0], grid[-1][1]) is None
+    foot, summit, cat = report.rated_span(grid, 0, len(grid) - 1)
+    assert cat == "5"
+    # as much gain as keeps 3 % on average: 900 m of the 1 % stretch come along (63 m on 2.1 km)
+    assert grid[foot][0] == 1700 and summit == len(grid) - 1
+    assert report.rated_span(grid, 0, 4) == (0, 4, None)        # 100 m: nothing passes
+
+
 def test_zones_and_trimp_need_hr_max():
     records = ride([(1200, 25.0, 0.0)], hr=150)
     plain = report.compute(records)["heart"]

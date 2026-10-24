@@ -194,6 +194,7 @@ private:
 	void findClimb(float posM);
 	void scanSummit(Segment& seg, int32_t fromIndex);
 	uint8_t rate(const Segment& seg) const;
+	uint8_t rateSpan(float lengthM, float gainM) const;
 };
 
 }	// namespace Climb
