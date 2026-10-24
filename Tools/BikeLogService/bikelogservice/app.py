@@ -379,7 +379,7 @@ def create_app(settings: Settings | None = None, puller: Puller | None = None) -
             for name, kind in (("hr_max", int), ("hr_rest", int), ("rider_kg", float)):
                 if name in form:
                     setattr(rider, name, _num(form[name], kind))
-            for name in ("mass_kg", "cda", "crr"):
+            for name in ("mass_kg", "cda", "crr", "wind_factor"):
                 if form.get(name):
                     setattr(rider, name, _num(form[name]))
             if form.get("zones_pct"):

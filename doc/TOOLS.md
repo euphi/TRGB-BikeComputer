@@ -120,20 +120,59 @@ tests: `tests/test_report.py`.
 
 | Section | Content |
 |---|---|
-| `meta` | time span, format, record counts, clock; `test`: test session (simulator flag or GPS playback suspected, see the [log service](LOGSERVICE.md#test-sessions)) |
-| `ride` | distance, moving time, speeds, elevation, stops (a logging gap counts as a stop: the device sleeps), temperature, cadence and share of pedalling |
+| `meta` | time span of the ride proper, format, record counts, clock; `idle`: seconds cut at the start and end (see below); `test`: test session (simulator flag or GPS playback suspected, see the [log service](LOGSERVICE.md#test-sessions)) |
+| `ride` | distance, moving time, speeds, elevation (height changes while standing do not count, see below), stops (a logging gap counts as a stop: the device sleeps), temperature, cadence and share of pedalling |
 | `climbs` | climbs in the barometric profile with the firmware's criteria and categories ([climbs](CLIMB.md)): length, height, mean/max. gradient, time, VAM, heart rate, power, position of foot and summit; `--hills` also lists hills below category 6 |
 | `profile` | barometric elevation profile (`[km, m]`, at most 300 points) for charts |
-| `heart` | mean/max., coverage, time in zones, TRIMP (Banister with `hr_rest`, else Edwards), aerobic decoupling (power/heart rate, first against second half, from 40 min), efficiency W/bpm |
-| `power` | **estimated** from speed, gradient, mass, CdA and Crr, without wind: mean, normalised power, work, best 1/5/20/60 min, W/kg with `rider_kg` -- for comparing rides, not a measurement |
+| `heart` | mean/max., coverage, time in zones, TRIMP (Banister with `hr_rest`, else Edwards), aerobic decoupling (power/heart rate, first against second half, from 40 min; `decoupling_basis` says whether wind was included or the figure was suppressed because of it, see below), efficiency W/bpm |
+| `power` | **estimated** from speed, gradient, mass, CdA and Crr and, with weather data, wind: mean, normalised power, work, best 1/5/20/60 min, W/kg with `rider_kg`; `no_wind` repeats mean/NP/work without wind -- for comparing rides, not a measurement |
+| `wind` | the weather behind it ([Open-Meteo](https://open-meteo.com/), see below): mean wind and direction, gusts, mean headwind component at rider height, share of time with head- and tailwind; or `available: false` with a `reason` |
 | `road` | road classes, manual labels against the automatic class, shocks by severity, the five hardest with position |
 | `health` | heart-rate dropouts, wheel sensor against GPS (dropouts, wheel circumference), GPS freshness and accuracy, baro against GPS altitude (offset, drift), lost records (gaps in the numbering), cut-off file, unset clock, simulator, IMU flags; plus `findings`, a list of everything that stood out |
 
 `--athlete` takes a JSON file with rider data, all optional: `hr_max`, `hr_rest`,
 `mass_kg` (rider + bike, default 85), `rider_kg`, `cda` (0.40), `crr` (0.006),
-`drivetrain` (0.97), `zones_pct` (upper bounds of zones 1-4 in % of `hr_max`, default
+`drivetrain` (0.97), `wind_factor` (0.55), `zones_pct` (upper bounds of zones 1-4 in % of `hr_max`, default
 60/70/80/90), `trimp_b` (1.92). Times within the ride are seconds since its start (`t_s`),
 positions trip kilometres (`km`).
+
+**Idle and standing.** The device is often switched on long before the ride and still
+running after it (indoors, heart-rate strap off, GPS poor). That is not a stop: the report
+starts at the first record from which the wheel really moves on (50 m within a minute) and
+ends at the last one it came from (`trim_idle()`); duration, stops, temperature, GPS
+accuracy, road quality and shocks only cover that stretch, `meta.idle` says how much was cut.
+Stops in the middle stay stops. Height changes while standing (the wheel below 2 km/h) are
+not climbing -- a lift ride with the bike, or weather drift: ascent, descent, the profile and
+the climb detection use heights with those jumps taken out (`ridestats.corrected_heights()`,
+as the firmware does for the gradient), min/max only look at heights while riding.
+
+**Wind.** `bikelog report --wind` fetches the hourly wind (10 m speed, direction, gusts,
+temperature, pressure) of the ride's day from Open-Meteo (archive API; the "historical
+forecast" API for days the archive does not have yet) and puts it into the power estimate
+(`--wind-cache DIR`, default `~/.cache/bikelog/weather`; the log service does the same
+automatically, see its [session report](LOGSERVICE.md#session-report)). Only the 0.1 degree
+cell of the ride and the date go over the line, never the track. The report itself
+(`report.compute(..., weather=)`) does no network I/O; the fetch and the cache are
+[`bikelog/weather.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/bikelog/weather.py).
+
+- The headwind component per step comes from the GPS bearing (else from the fixes around the
+  record); the wind blows *from* the given direction, so riding west into a wind from 250 degrees
+  is a headwind. Air flows past the rider at speed + headwind; crosswind is ignored.
+- Wind at rider height = `wind_factor` x 10 m wind (default 0.55): the 10 m value is for open
+  terrain, close to the ground (rider at ~1 m) the wind is weaker (logarithmic wind profile,
+  roughly 0.5-0.65 of the 10 m value over fields, less in forest and built-up areas).
+- Air density from temperature and pressure of the weather data; the `no_wind` figures use
+  1.2 kg/m3.
+- Not modelled: shelter (forest, buildings -- there the constant factor overestimates the
+  headwind), gusts, crosswind.
+- **Decoupling and wind.** Power is estimated from speed, so a wind that differs between the
+  two halves (out against it, back with it) puts a number into the decoupling that has
+  nothing to do with the heart. With weather data the decoupling is computed again with the
+  wind factor 40 % lower and higher; if the two results differ by more than 8 percentage
+  points, `decoupling_pct` is `null` and `decoupling_basis` is `suppressed` (`decoupling_nowind_pct`,
+  `decoupling_wind_pct`, `decoupling_spread_pts` and `halves_headwind_kmh` stay in the data).
+  A calm day, or wind from the side, keeps the figure (`wind`); without weather data it is the
+  old no-wind figure (`no_wind`).
 
 ### Raw data of the accelerometer
 

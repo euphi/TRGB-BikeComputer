@@ -165,6 +165,12 @@ Mobilfunk); danach das Netz mit `cmd wifi forget-network <id>` wieder vergessen.
   Hintergrundberechnung `analysis.py`, Seiten im Rim-&-Ridge-Design `webui.py` + `charts.py`
   (SVG auf dem Server). Ändert sich ein Feld des Bericht-JSON, `REPORT_VERSION` erhöhen --
   das berechnet alle gespeicherten Berichte neu.
+- Wind im Bericht: `bikelog/weather.py` (einzige Stelle mit Netzzugriff: Open-Meteo, nur 0,1°-Zelle
+  und Datum, Tagesdateien in `<data>/weather/`), `report.compute(..., weather=)` rechnet Gegenwind
+  aus GPS-Kurs x `Athlete.wind_factor` in die Leistung; Entkopplung wird unterdrückt, wenn sie vom
+  Faktor abhängt. Service: `analysis.compute_report()`, `wind.retry_after` im Bericht löst Neuberechnung
+  aus. Leerlauf vorn/hinten schneidet `report.trim_idle()`, Höhensprünge im Stand
+  `ridestats.corrected_heights()`. Tests `tests/test_wind.py` (Netz gesperrt in `conftest.py`).
 - Fahrt in Worten (lokales LLM, Ollama, `BIKELOG_LLM_URL`): Prompt und Zahlen-Prüfung
   `bikelog/narrate.py` (beschriftete Fakten mit ausgeschriebenen Einheiten, Modell rechnet
   nichts), Hintergrund-Worker `bikelogservice/llm.py`, Tabelle `narratives`. Ändert sich der

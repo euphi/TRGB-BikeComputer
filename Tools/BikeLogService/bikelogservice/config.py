@@ -82,6 +82,12 @@ class Settings:
     #: a missing file just means a report without zones/TRIMP/W/kg.
     athlete_file: Path | None = None
 
+    #: Wind in the ride report (bikelog.weather): ask Open-Meteo for the hourly wind of the
+    #: ride's day and 0.1 degree cell (nothing else leaves the machine) and put it into the
+    #: power estimate. Answers are kept in <data_dir>/weather. Off = reports as before,
+    #: without wind.
+    wind: bool = True
+
     #: Idle sessions (switched on, no ride -- only debug data) move to archive_dir
     #: this many days after they were stored; 0 = never (archive.py).
     idle_archive_days: float = 7.0
@@ -99,6 +105,10 @@ class Settings:
     @property
     def llm_enabled(self) -> bool:
         return bool(self.llm_url)
+
+    @property
+    def weather_dir(self) -> Path:
+        return self.data_dir / "weather"
 
     @property
     def athlete_path(self) -> Path:
@@ -166,6 +176,7 @@ class Settings:
             nextcloud_inbox=(env.get("BIKELOG_NEXTCLOUD_INBOX") or "").strip("/") or None,
             inbox_interval_s=float(env.get("BIKELOG_INBOX_INTERVAL_S", 300)),
             athlete_file=Path(env["BIKELOG_ATHLETE_FILE"]) if env.get("BIKELOG_ATHLETE_FILE") else None,
+            wind=_flag(env.get("BIKELOG_WIND", "1")),
             idle_archive_days=float(env.get("BIKELOG_IDLE_ARCHIVE_DAYS", 7)),
             llm_url=(env.get("BIKELOG_LLM_URL") or "").rstrip("/") or None,
             llm_model=env.get("BIKELOG_LLM_MODEL") or "qwen3:8b",

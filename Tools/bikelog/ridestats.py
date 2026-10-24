@@ -33,6 +33,41 @@ def cadence_valid(cadence: int) -> bool:
     return cadence in CADENCE_VALID
 
 
+def record_height(rec: Record) -> float | None:
+    """Barometric height of a record, None if the sensor delivered nothing usable."""
+    return rec.height if -500 <= rec.height <= 9000 and rec.height != 0.0 else None
+
+
+def corrected_heights(records: list[Record]) -> list[float | None]:
+    """Barometric height per record with every change while standing taken out.
+
+    A bike that stands does not climb: the height jumps in a lift (the bike hangs almost
+    upright in it), or drifts with the weather. The firmware ignores such changes for the
+    gradient too (Statistics::calculateGradient, "elevator case"). Here a stretch of
+    records below MOVING_KMH keeps the level of the last moving record, and what the
+    height did meanwhile (the difference to the first moving record after it) is
+    subtracted from everything that follows -- so ascent, descent and the profile
+    only see height gained by riding. Heights are relative to the start from the first
+    such jump on (absolute only up to there); stretches before the first movement are left
+    as they are, the report cuts them anyway."""
+    out: list[float | None] = []
+    offset = 0.0
+    last: float | None = None           # raw height of the last moving record
+    stood = False
+    for rec in records:
+        ele = record_height(rec)
+        if rec.speed >= MOVING_KMH:
+            if ele is not None:
+                if stood and last is not None:
+                    offset += ele - last
+                last, stood = ele, False
+            out.append(None if ele is None else ele - offset)
+        else:
+            stood = True
+            out.append(None if ele is None else (ele if last is None else last - offset))
+    return out
+
+
 @dataclass
 class RideStats:
     start: int | None = None                # epoch s
@@ -114,7 +149,9 @@ def compute(records: list[Record], road: list[RoadQualityRecord] | None = None,
     moving_dist = 0.0
     ele_ref: float | None = None
     prev: Record | None = None
-    for rec in records:
+    heights = corrected_heights(records)
+    any_moving = any(r.speed >= MOVING_KMH for r in records)
+    for rec, level in zip(records, heights):
         if rec.speed > st.max_speed_kmh and rec.speed < 150:
             st.max_speed_kmh = rec.speed
         if hr_valid(rec.hr):
@@ -131,10 +168,12 @@ def compute(records: list[Record], road: list[RoadQualityRecord] | None = None,
         if -40 <= grade <= 40 and grade != 0.0:
             st.max_grade = grade if st.max_grade is None else max(st.max_grade, grade)
             st.min_grade = grade if st.min_grade is None else min(st.min_grade, grade)
-        ele = rec.height if -500 <= rec.height <= 9000 and rec.height != 0.0 else None
+        raw = record_height(rec)
+        if raw is not None and (rec.speed >= MOVING_KMH or not any_moving):
+            st.min_ele_m = raw if st.min_ele_m is None else min(st.min_ele_m, raw)
+            st.max_ele_m = raw if st.max_ele_m is None else max(st.max_ele_m, raw)
+        ele = level
         if ele is not None:
-            st.min_ele_m = ele if st.min_ele_m is None else min(st.min_ele_m, ele)
-            st.max_ele_m = ele if st.max_ele_m is None else max(st.max_ele_m, ele)
             if ele_ref is None:
                 ele_ref = ele
             elif ele - ele_ref >= ELEVATION_HYSTERESIS_M:

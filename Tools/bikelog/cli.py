@@ -11,8 +11,9 @@ import datetime
 import json
 import sys
 import time
+from pathlib import Path
 
-from . import csvexport, fixtures, gpx, raw, replay, report, ridestats, sim
+from . import csvexport, fixtures, gpx, raw, replay, report, ridestats, sim, weather
 from .record import (CURRENT_VERSION, IF_NO_SPEED, IF_TOO_SLOW, IF_UNCALIBRATED,
                      ROAD_CLASS_NAMES, SURFACE_NAMES, ReadStats, UnknownLogFormat, label_at,
                      labels_of, read_file, split)
@@ -179,7 +180,19 @@ def cmd_report(opts) -> int:
         athlete = report.Athlete.load(opts.athlete) if opts.athlete else report.Athlete()
     except (OSError, ValueError, TypeError) as exc:
         raise SystemExit("Athletendatei %s: %s" % (opts.athlete, exc))
-    rep = report.compute(everything, athlete, stats, with_hills=opts.hills)
+    wx = None
+    note = None
+    if opts.wind:
+        request = report.weather_request(everything)
+        if request is None:
+            note = "no_gps"
+        else:
+            cache = Path(opts.wind_cache) if opts.wind_cache else Path.home() / ".cache" / "bikelog" / "weather"
+            loaded = weather.load(cache, *request)
+            wx, note = loaded.weather, loaded.error
+    rep = report.compute(everything, athlete, stats, with_hills=opts.hills, weather=wx)
+    if note and rep.get("wind") and not rep["wind"]["available"]:
+        rep["wind"]["reason"] = note
     text = (json.dumps(rep, ensure_ascii=False, indent=2) if opts.json
             else report.to_markdown(rep))
     if opts.outfile:
@@ -487,6 +500,11 @@ def build_parser() -> argparse.ArgumentParser:
                        help="JSON mit hr_max, hr_rest, mass_kg, cda, crr, zones_pct (alles optional)")
     p_rep.add_argument("--hills", action="store_true",
                        help="auch Hügel unterhalb Kategorie 6 auflisten")
+    p_rep.add_argument("--wind", action="store_true",
+                       help="Wind aus Open-Meteo holen (nur die 0,1°-Zelle und das Datum gehen "
+                            "raus) und in die Leistungsschätzung einrechnen")
+    p_rep.add_argument("--wind-cache", metavar="DIR",
+                       help="Ablage der Wetterdaten [Standard: ~/.cache/bikelog/weather]")
     p_rep.set_defaults(func=cmd_report)
 
     p_raw = sub.add_parser("raw", help="Rohdaten des Beschleunigungssensors (R_*.bin, S_*.bin)")

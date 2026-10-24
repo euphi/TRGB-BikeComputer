@@ -125,20 +125,61 @@ Tests: `tests/test_report.py`.
 
 | Abschnitt | Inhalt |
 |---|---|
-| `meta` | Zeitraum, Format, Satzzahlen, Uhr; `test`: Testfahrt (Sim-Flag oder GPS-Wiedergabe vermutet, siehe [Log-Dienst](LOGSERVICE.md#testfahrten)) |
-| `ride` | Strecke, Fahrzeit, Geschwindigkeiten, Höhenmeter, Stopps (eine Aufzeichnungslücke zählt als Stopp: das Gerät schläft), Temperatur, Trittfrequenz und Anteil getreten |
+| `meta` | Zeitraum der eigentlichen Fahrt, Format, Satzzahlen, Uhr; `idle`: vorne und hinten abgeschnittene Sekunden (siehe unten); `test`: Testfahrt (Sim-Flag oder GPS-Wiedergabe vermutet, siehe [Log-Dienst](LOGSERVICE.md#testfahrten)) |
+| `ride` | Strecke, Fahrzeit, Geschwindigkeiten, Höhenmeter (Höhenänderungen im Stand zählen nicht, siehe unten), Stopps (eine Aufzeichnungslücke zählt als Stopp: das Gerät schläft), Temperatur, Trittfrequenz und Anteil getreten |
 | `climbs` | Anstiege im Baro-Profil mit den Kriterien und Kategorien der Firmware ([Anstiege](CLIMB.md)): Länge, Höhe, mittlere/max. Steigung, Zeit, VAM, Puls, Leistung, Position von Fuß und Gipfel; `--hills` listet auch Hügel unterhalb Kategorie 6 |
 | `profile` | Baro-Höhenprofil (`[km, m]`, höchstens 300 Punkte) für Diagramme |
-| `heart` | Ø/max., Abdeckung, Zeit in den Zonen, TRIMP (Banister mit `hr_rest`, sonst Edwards), aerobe Entkopplung (Leistung/Puls, erste gegen zweite Hälfte, ab 40 min), Effizienz W/bpm |
-| `power` | **geschätzt** aus Tempo, Steigung, Masse, CdA und Crr, ohne Wind: Ø, normalisierte Leistung, Arbeit, beste 1/5/20/60 min, W/kg mit `rider_kg` -- für Vergleiche zwischen Fahrten, kein Messwert |
+| `heart` | Ø/max., Abdeckung, Zeit in den Zonen, TRIMP (Banister mit `hr_rest`, sonst Edwards), aerobe Entkopplung (Leistung/Puls, erste gegen zweite Hälfte, ab 40 min; `decoupling_basis` sagt, ob der Wind eingerechnet ist oder der Wert wegen des Winds unterdrückt wurde, siehe unten), Effizienz W/bpm |
+| `power` | **geschätzt** aus Tempo, Steigung, Masse, CdA und Crr und, mit Wetterdaten, Wind: Ø, normalisierte Leistung, Arbeit, beste 1/5/20/60 min, W/kg mit `rider_kg`; `no_wind` wiederholt Ø/NP/Arbeit ohne Wind -- für Vergleiche zwischen Fahrten, kein Messwert |
+| `wind` | das Wetter dahinter ([Open-Meteo](https://open-meteo.com/), siehe unten): Ø Wind und Richtung, Böen, mittlere Gegenwind-Komponente in Fahrerhöhe, Zeitanteil mit Gegen- und Rückenwind; oder `available: false` mit `reason` |
 | `road` | Wegeklassen, manuelle Labels gegen die automatische Klasse, Stöße nach Schwere, die fünf stärksten mit Position |
 | `health` | Puls-Aussetzer, Radsensor gegen GPS (Aussetzer, Radumfang), GPS-Frische und -Genauigkeit, Baro- gegen GPS-Höhe (Versatz, Drift), verlorene Datensätze (Lücken in der Nummerierung), abgeschnittene Datei, ungesetzte Uhr, Simulator, IMU-Flags; dazu `findings`, eine Liste aller Auffälligkeiten |
 
 `--athlete` nimmt eine JSON-Datei mit Fahrerdaten, alles optional: `hr_max`, `hr_rest`,
 `mass_kg` (Fahrer + Rad, Standard 85), `rider_kg`, `cda` (0,40), `crr` (0,006),
-`drivetrain` (0,97), `zones_pct` (Obergrenzen der Zonen 1-4 in % von `hr_max`, Standard
+`drivetrain` (0,97), `wind_factor` (0,55), `zones_pct` (Obergrenzen der Zonen 1-4 in % von `hr_max`, Standard
 60/70/80/90), `trimp_b` (1,92). Zeiten innerhalb der Fahrt sind Sekunden seit dem Start
 (`t_s`), Positionen Trip-Kilometer (`km`).
+
+**Leerlauf und Stand.** Das Gerät ist oft lange vor der Fahrt an und läuft danach weiter
+(drinnen, Pulsgurt ab, GPS schlecht). Das ist kein Stopp: Der Bericht beginnt beim ersten
+Datensatz, ab dem das Rad wirklich weiterrollt (50 m innerhalb einer Minute), und endet beim
+letzten, zu dem es herkam (`trim_idle()`); Dauer, Stopps, Temperatur, GPS-Genauigkeit,
+Wegequalität und Stöße gelten nur für diesen Abschnitt, `meta.idle` nennt die abgeschnittene
+Zeit. Stopps mitten in der Fahrt bleiben Stopps. Höhenänderungen im Stand (Rad unter 2 km/h)
+sind kein Steigen -- Fahrstuhlfahrt mit dem Rad oder Wetterdrift: Höhenmeter, Profil und
+Anstiegserkennung rechnen mit Höhen, aus denen diese Sprünge herausgenommen sind
+(`ridestats.corrected_heights()`, wie die Firmware es bei der Steigung macht), Min/Max
+betrachten nur Höhen während der Fahrt.
+
+**Wind.** `bikelog report --wind` holt den Stundenwind (Wind in 10 m, Richtung, Böen,
+Temperatur, Druck) des Fahrtags von Open-Meteo (Archiv-API; für Tage, die das Archiv noch
+nicht hat, die „Historical Forecast“-API) und rechnet ihn in die Leistungsschätzung ein
+(`--wind-cache DIR`, Standard `~/.cache/bikelog/weather`; der Log-Dienst macht das
+automatisch, siehe [Sitzungsbericht](LOGSERVICE.md#sitzungsbericht)). Nur die 0,1°-Zelle der
+Fahrt und das Datum gehen ins Netz, nie die Spur. Der Bericht selbst
+(`report.compute(..., weather=)`) macht keine Netzzugriffe; Abruf und Ablage sind in
+[`bikelog/weather.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/bikelog/weather.py).
+
+- Die Gegenwind-Komponente je Schritt kommt aus dem GPS-Kurs (sonst aus den Fixes um den
+  Datensatz); der Wind weht *aus* der angegebenen Richtung, wer nach Westen in einen Wind aus
+  250° fährt, hat Gegenwind. Die Luft strömt mit Tempo + Gegenwind am Fahrer vorbei;
+  Seitenwind bleibt außen vor.
+- Wind in Fahrerhöhe = `wind_factor` x 10-m-Wind (Standard 0,55): Der 10-m-Wert gilt für
+  offenes Gelände, nahe am Boden (Fahrer bei ~1 m) weht es schwächer (logarithmisches
+  Windprofil, über Feldern grob 0,5-0,65 des 10-m-Werts, in Wald und Ortschaften weniger).
+- Luftdichte aus Temperatur und Druck der Wetterdaten; die `no_wind`-Werte rechnen mit
+  1,2 kg/m3.
+- Nicht modelliert: Abschattung (Wald, Bebauung -- dort überschätzt der konstante Faktor den
+  Gegenwind), Böen, Seitenwind.
+- **Entkopplung und Wind.** Die Leistung ist aus dem Tempo geschätzt; ein Wind, der in den
+  beiden Hälften verschieden weht (hin dagegen, zurück damit), bringt eine Zahl in die
+  Entkopplung, die mit dem Herzen nichts zu tun hat. Mit Wetterdaten wird die Entkopplung
+  noch einmal mit um 40 % kleinerem und größerem Windfaktor gerechnet; weichen beide um mehr
+  als 8 Prozentpunkte voneinander ab, ist `decoupling_pct` `null` und `decoupling_basis`
+  `suppressed` (`decoupling_nowind_pct`, `decoupling_wind_pct`, `decoupling_spread_pts` und
+  `halves_headwind_kmh` bleiben in den Daten). Ein windstiller Tag oder Seitenwind behält den
+  Wert (`wind`); ohne Wetterdaten ist es der bisherige Wert ohne Wind (`no_wind`).
 
 ### Rohdaten des Beschleunigungssensors
 

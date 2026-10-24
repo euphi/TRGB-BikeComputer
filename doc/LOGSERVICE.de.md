@@ -422,6 +422,25 @@ berechnet der Dienst, was fehlt oder veraltet ist, mit niedrigster CPU-Prioritä
 ([`analysis.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/BikeLogService/bikelogservice/analysis.py)).
 Eine neue Berichtsversion oder geänderte Fahrerdaten erreichen so von selbst alle alten Fahrten.
 
+**Wind.** Leistungsschätzung und aerobe Entkopplung rechnen den Wind der Fahrt ein
+([Details](TOOLS.md#sitzungsbericht)). Der Dienst fragt bei Open-Meteo den Stundenwind für den
+Fahrtag und die 0,1°-Zelle ab -- nichts sonst verlässt den Rechner, die Spur nie -- und hebt
+jede Antwort unter `<data>/weather/` auf (`2026-10-24_49.4_10.9.json`); ein neu gerechneter
+Bericht braucht so kein Netz und liefert dasselbe Ergebnis. Die Fahrtseite zeigt Ø Wind, Böen,
+den Anteil von Gegen- und Rückenwind und neben der Leistung den Wert ohne Wind. Wo die
+Entkopplung nur den Wind widerspiegeln würde (hin dagegen, zurück damit), steht das da statt
+einer Zahl. Ist Open-Meteo nicht erreichbar oder hat noch keine Daten, wird der Bericht ohne
+Wind gerechnet (die Seite sagt warum) und eine Stunde später neu versucht; Tage aus der
+„Historical Forecast“-API oder jünger als eine Woche werden erneut aus dem Archiv geholt,
+sobald es endgültig ist (`wind.retry_after` im Berichts-JSON). `BIKELOG_WIND=0` schaltet die
+Abfrage ab; der Faktor vom 10-m-Wind zum Wind am Fahrer (Standard 0,55) ist `wind_factor` auf
+der Seite **Fahrer**. Abschattung (Wald, Bebauung) wird nicht modelliert.
+
+**Leerlauf.** Zeit vor der ersten und nach der letzten wirklichen Bewegung (Gerät in der Garage
+eingeschaltet, zu Hause weitergelaufen) ist kein Stopp und zählt weder zur Dauer noch zu
+Temperatur oder GPS-Statistik; Stopps mitten in der Fahrt bleiben. Höhenänderungen im Stand
+(Fahrstuhlfahrt mit dem Rad) zählen nicht als Steigen.
+
 Fahrerdaten für Pulszonen, TRIMP und W/kg werden auf der Seite **Fahrer** (`/athlete`)
 eingetragen und landen in `<data>/athlete.json` (anderer Pfad: `BIKELOG_ATHLETE_FILE`).
 Jeder Schlüssel ist optional; ohne die Datei hat der Bericht einfach keine Zonen:
@@ -588,6 +607,7 @@ Umgebungsvariablen (im Dienst: `~/bikelog/bikelog.env`):
 | `BIKELOG_NEXTCLOUD_INBOX` | -- | Ordner, in den die Fahrradcomputer [hochladen](#hochladen-vom-fahrradcomputer-push) (WebDAV-Pfad); leer = wird nicht abgeholt |
 | `BIKELOG_INBOX_INTERVAL_S` | `300` | wie oft der Eingang angeschaut wird |
 | `BIKELOG_ATHLETE_FILE` | `<data>/athlete.json` | Fahrerdaten für den Sitzungsbericht |
+| `BIKELOG_WIND` | `1` | Wind von Open-Meteo im Fahrtbericht; `0` = Berichte ohne Wind, kein Netzzugriff |
 | `BIKELOG_IDLE_ARCHIVE_DAYS` | `7` | Leerlauf-Sitzungen nach so vielen Tagen nach `archive/`, 0 = nie |
 | `BIKELOG_LLM_URL` | -- | Ollama-Server für die Fahrt in Worten; leer = aus |
 | `BIKELOG_LLM_MODEL` | `qwen3:8b` | Ollama-Modell |

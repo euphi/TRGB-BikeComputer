@@ -14,7 +14,7 @@ from __future__ import annotations
 import datetime
 from html import escape
 
-from bikelog import testride
+from bikelog import report, testride
 
 from . import charts
 from .routes import KINDS as ROUTE_KINDS, TAGS as ROUTE_TAGS
@@ -645,6 +645,53 @@ def _narrative(s: Session, n: dict | None) -> str:
     return f'<h2>In Worten</h2><div class="panel prose">{paras}<p class="mut">{meta}</p></div>'
 
 
+WIND_ARROWS = "↓↙←↖↑↗→↘"      # where the wind blows to, for the direction it comes from (N, NE, ...)
+WIND_REASON = {
+    "no_gps": "kein GPS-Fix aufgezeichnet",
+    "no_weather": "keine Wetterdaten",
+    "network": "Wetterdienst nicht erreichbar — wird später erneut versucht",
+    "no_data": "der Wetterdienst hat für den Tag noch keine Daten — wird später erneut versucht",
+    "disabled": "Windabfrage abgeschaltet",
+}
+
+
+def _wind_panel(wind: dict | None, power: dict) -> str:
+    """Wind of the ride (bikelog.weather) and what it did to the power estimate."""
+    if not wind:
+        return ""
+    if not wind.get("available"):
+        return ('<h2>Wind</h2><div class="panel mut">Keine Winddaten ('
+                + escape(WIND_REASON.get(wind.get("reason"), wind.get("reason") or "?"))
+                + ') — die Leistung ist ohne Wind gerechnet.</div>')
+    arrow = WIND_ARROWS[int(((wind["dir_deg"] or 0) % 360) / 45 + 0.5) % 8]
+    tiles = [tile("Wind", num(wind["mean_kmh"], 0), "km/h",
+                  f'{arrow} aus {escape(wind["dir_name"] or "–")} ({num(wind["dir_deg"], 0)}°)'),
+             tile("Böen", num(wind["gust_max_kmh"], 0), "km/h", f'Ø {num(wind["gust_mean_kmh"], 0)} km/h')]
+    if wind.get("avg_headwind_kmh") is not None:
+        tiles.append(tile("Auf dem Rad", num(wind["avg_headwind_kmh"]), "km/h",
+                          "Ø Gegenwind (− = Rückenwind)"))
+    out = ['<h2>Wind</h2><div class="tiles">' + "".join(tiles) + "</div>"]
+    if wind.get("headwind_share") is not None:
+        head, tail = wind["headwind_share"], wind["tailwind_share"]
+        side = max(0.0, 1 - head - tail)
+        parts = [("Gegenwind", head, charts.ZONES[3]), ("kaum Wind", side, charts.TRACK),
+                 ("Rückenwind", tail, charts.ZONES[1])]
+        cells = "".join(f'<span style="flex:{share:.4f};background:{colour}" '
+                        f'data-tip="{name}: {share * 100:.0f} %"></span>'
+                        for name, share, colour in parts if share > 0)
+        out.append('<div class="panel"><div class="mut">Anteil der Fahrzeit (Windkomponente auf dem Rad, '
+                   f'Schwelle {num(report.WIND_SHARE_MS * 3.6, 0)} km/h)</div><div class="zband">{cells}</div>'
+                   + charts.legend([(f"{n} {s * 100:.0f} %", c) for n, s, c in parts]) + "</div>")
+    plain = power.get("no_wind")
+    note = (f'Leistung* Ø {power["avg_moving_w"]} W mit Wind, {plain["avg_moving_w"]} W ohne. '
+            if plain and power.get("avg_moving_w") is not None else "")
+    out.append(f'<p class="mut">{note}Wetterdaten: Open-Meteo ({escape(wind["source"])}), 10-m-Wind, auf '
+               f'Fahrerhöhe mit Faktor {num(wind["factor"], 2)}; {num(wind["temp_c"], 0)} °C, Luftdichte '
+               f'{num(wind["air_density"], 2)} kg/m³. Nicht berücksichtigt: Abschattung durch Wald und '
+               'Bebauung (dort wird der Gegenwind überschätzt), Böen, Seitenwind.</p>')
+    return "".join(out)
+
+
 def ride_page(s: Session, rep: dict, group: list[Session] | None = None, tour: bool = False,
               registry=None, bike=None, narrative: dict | None = None) -> str:
     """One session's report -- or, with ``tour``, the report of the whole ride ``group``."""
@@ -678,6 +725,12 @@ def ride_page(s: Session, rep: dict, group: list[Session] | None = None, tour: b
     if ride["stops"]["count"]:
         tiles.append(tile("Stopps", str(ride["stops"]["count"]), "", hm(ride["stops"]["total_s"]) + " h"))
     out.append('<div class="tiles">' + "".join(tiles) + "</div>")
+    idle = rep["meta"].get("idle") or {}
+    if (idle.get("leading_s") or 0) + (idle.get("trailing_s") or 0) >= 60:
+        out.append('<p class="mut">Nicht mitgezählt (Gerät lief, ohne dass gefahren wurde): '
+                   + " und ".join(f'{hm(idle[k])} h {w} der Fahrt' for k, w in
+                                  (("leading_s", "vor"), ("trailing_s", "nach")) if (idle.get(k) or 0) >= 60)
+                   + ".</p>")
     out.append(_narrative(s, narrative))
 
     if rep.get("profile"):
@@ -688,6 +741,7 @@ def ride_page(s: Session, rep: dict, group: list[Session] | None = None, tour: b
     if rep["climbs"]:
         out.append("<h2>Anstiege</h2>" + '<div class="panel">' + _climb_rows(rep["climbs"]) + "</div>")
 
+    out.append(_wind_panel(rep.get("wind"), power))
     out.append("<h2>Puls und Belastung</h2>")
     parts = []
     if heart["zones_s"]:
@@ -702,7 +756,15 @@ def ride_page(s: Session, rep: dict, group: list[Session] | None = None, tour: b
         facts.append(f'Puls-Abdeckung: {num((heart["coverage_moving"] or 0) * 100, 0)} % der Fahrzeit')
     if heart["decoupling_pct"] is not None:
         facts.append(f'Aerobe Entkopplung: {num(heart["decoupling_pct"])} % '
-                     '<span class="mut">(Leistung/Puls, 1. gegen 2. Hälfte; unter 5 % gilt als gute Grundlage)</span>')
+                     '<span class="mut">(Leistung/Puls, 1. gegen 2. Hälfte; unter 5 % gilt als gute Grundlage'
+                     + ("; mit Wind gerechnet" if heart.get("decoupling_basis") == "wind" else "") + ')</span>')
+    elif heart.get("decoupling_basis") == "suppressed":
+        h = heart.get("halves_headwind_kmh") or [None, None]
+        facts.append('Aerobe Entkopplung: <b>nicht angegeben</b> <span class="mut">(der Wind entscheidet das '
+                     f'Ergebnis: Gegenwind {num(h[0])} km/h in der 1., {num(h[1])} km/h in der 2. Hälfte; '
+                     f'ohne Wind {num(heart.get("decoupling_nowind_pct"))} %, mit Wind '
+                     f'{num(heart.get("decoupling_wind_pct"))} %, je nach Windfaktor '
+                     f'±{num((heart.get("decoupling_spread_pts") or 0) / 2, 0)} Punkte)</span>')
     if heart["efficiency_w_per_bpm"]:
         facts.append(f'Effizienz: {num(heart["efficiency_w_per_bpm"], 2)} W/bpm')
     if power.get("best_w"):
@@ -718,7 +780,8 @@ def ride_page(s: Session, rep: dict, group: list[Session] | None = None, tour: b
     if power.get("avg_moving_w") is not None:
         m = power["model"]
         out.append(f'<p class="mut">* Leistung geschätzt aus Tempo, Steigung und {num(m["mass_kg"], 0)} kg '
-                   f'Systemgewicht (CdA {num(m["cda"], 2)}, Crr {num(m["crr"], 3)}), ohne Wind — für '
+                   f'Systemgewicht (CdA {num(m["cda"], 2)}, Crr {num(m["crr"], 3)}), '
+                   + ("mit Wind (s. o.)" if power.get("wind_corrected") else "ohne Wind") + ' — für '
                    'Vergleiche zwischen Fahrten, kein Messwert.</p>')
 
     if road["intervals"]:
@@ -1258,6 +1321,9 @@ ATHLETE_FIELDS = (
     ("mass_kg", "Systemgewicht ohne Rad", "kg", "0.1", "Fahrer + Rad, nur für Fahrten ohne zugeordnetes Rad"),
     ("cda", "Luftwiderstand CdA ohne Rad", "m²", "0.01", "nur für Fahrten ohne zugeordnetes Rad"),
     ("crr", "Rollwiderstand Crr ohne Rad", "", "0.001", "nur für Fahrten ohne zugeordnetes Rad"),
+    ("wind_factor", "Windfaktor am Fahrer", "", "0.05",
+     "Wind in Fahrerhöhe geteilt durch den 10-m-Wind der Wetterdaten; offenes Land ≈ 0,55, "
+     "Wald und Ortschaften weniger"),
 )
 
 

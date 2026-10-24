@@ -14,6 +14,13 @@ bikelog.bikes) and target events (events.json, course GPX files in events/) live
 files in the data directory, editable on the web pages and by hand. A report is
 computed with the rider on the session's bike (weight, CdA, Crr), so the cache key
 includes those.
+
+Wind: the report's power estimate includes the wind of the ride's day (bikelog.weather,
+Open-Meteo, answers kept in <data>/weather). The weather is not part of the cache key -- the
+stored answer for a day does not change, so recomputing gives the same report. What can
+change is whether there was an answer at all: if not (offline, the service has no data for
+the day yet) or if it is provisional, the report says when to try again
+(``wind.retry_after``) and report_for()/refresh() compute it again from then on.
 """
 
 from __future__ import annotations
@@ -25,9 +32,10 @@ import logging
 import os
 import sqlite3
 import threading
+import time
 from dataclasses import asdict
 
-from bikelog import bikes, report, training
+from bikelog import bikes, report, training, weather
 from bikelog.record import ReadStats
 
 from . import tours
@@ -95,9 +103,37 @@ def _with_bike(rep: dict, bike: bikes.Bike | None) -> dict:
     return rep
 
 
+def compute_report(store: Storage, everything: list, rider: report.Athlete,
+                   stats: ReadStats | None = None) -> dict:
+    """bikelog.report.compute() with the wind of the ride: from the weather cache or, if the
+    day is not in it yet, from Open-Meteo (a short timeout; any failure is a report without
+    wind that says why and when to retry)."""
+    if not store.settings.wind:
+        rep = report.compute(everything, rider, stats)
+        if rep.get("wind") and not rep["wind"]["available"]:
+            rep["wind"]["reason"] = "disabled"
+        return rep
+    request = report.weather_request(everything)
+    loaded = weather.load(store.settings.weather_dir, *request) if request else None
+    rep = report.compute(everything, rider, stats, weather=loaded.weather if loaded else None)
+    wind = rep.get("wind")
+    if loaded and wind is not None:
+        if not wind["available"]:
+            wind["reason"] = loaded.error or wind["reason"]
+        if loaded.retry_after:
+            wind["retry_after"] = loaded.retry_after
+    return rep
+
+
+def retry_due(rep: dict | None, now: float | None = None) -> bool:
+    """Did this report ask to be computed again (wind data missing/provisional) and is it time?"""
+    when = ((rep or {}).get("wind") or {}).get("retry_after")
+    return when is not None and when <= (time.time() if now is None else now)
+
+
 def compute(store: Storage, session: Session, rider: report.Athlete | None = None) -> dict:
     stats = ReadStats()
-    return report.compute(list(store.records(session, stats, types=None)),
+    return compute_report(store, list(store.records(session, stats, types=None)),
                           rider or rider_for(store, session), stats)
 
 
@@ -108,7 +144,7 @@ def report_for(store: Storage, session: Session) -> dict:
     rider = bikes.effective_athlete(athlete(store), bike)
     key = cache_key(session, _rider_key(rider))
     cached = store.cached_report(session.id)
-    if cached and cached[0] == key:
+    if cached and cached[0] == key and not retry_due(cached[1]):
         return cached[1]
     rep = _with_bike(compute(store, session, rider), bike)
     store.store_report(session.id, key, rep)
@@ -133,10 +169,10 @@ def tour_report_for(store: Storage, group: list[Session], base: report.Athlete |
     base, reg = base or athlete(store), reg or registry(store)
     key = tour_key(store, group, base, reg)
     cached = store.cached_tour_report(key)
-    if cached is not None:
+    if cached is not None and not retry_due(cached):
         return cached
     bike = bike_for(store, group[0], reg)
-    rep = _with_bike(report.compute(tours.rebased_records(store, group),
+    rep = _with_bike(compute_report(store, tours.rebased_records(store, group),
                                     bikes.effective_athlete(base, bike)), bike)
     rep["meta"]["sessions"] = [s.id for s in group]
     store.store_tour_report(key, rep)
@@ -179,6 +215,7 @@ def _refresh(store: Storage, background: bool) -> int:
             log.warning("athlete/bikes file unusable, reports not refreshed: %s", exc)
             return 0
         have = store.cache_keys()
+        due = store.reports_due(time.time())
         done = 0
         for session in store.sessions_with_log():
             if session.log_error:               # known unreadable (the list says so): don't retry
@@ -186,7 +223,7 @@ def _refresh(store: Storage, background: bool) -> int:
             bike = bike_for(store, session, reg)
             rider = bikes.effective_athlete(base, bike)
             key = cache_key(session, _rider_key(rider))
-            if have.get(session.id) == key:
+            if have.get(session.id) == key and session.id not in due:
                 continue
             try:
                 store.store_report(session.id, key, _with_bike(compute(store, session, rider), bike))
@@ -198,7 +235,8 @@ def _refresh(store: Storage, background: bool) -> int:
         for group in tours_of(store):
             if len(group) > 1:
                 try:
-                    if store.cached_tour_report(tour_key(store, group, base, reg)) is None:
+                    cached = store.cached_tour_report(tour_key(store, group, base, reg))
+                    if cached is None or retry_due(cached):
                         tour_report_for(store, group, base, reg)
                         done += 1
                 except sqlite3.ProgrammingError:

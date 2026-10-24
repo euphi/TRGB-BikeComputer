@@ -707,6 +707,18 @@ class Storage:
             return {r["session_id"]: r["cache_key"] for r in
                     self._db.execute("SELECT session_id, cache_key FROM reports").fetchall()}
 
+    def reports_due(self, now: float) -> set[int]:
+        """Sessions whose report asked to be computed again from some time on (wind data was
+        missing or provisional: ``wind.retry_after``, see analysis.py) and that time has come."""
+        try:
+            with self._lock:
+                rows = self._db.execute(
+                    "SELECT session_id FROM reports WHERE json_extract(report, '$.wind.retry_after') <= ?",
+                    (now,)).fetchall()
+        except sqlite3.OperationalError:        # SQLite without JSON functions: no retries
+            return set()
+        return {r["session_id"] for r in rows}
+
     def store_report(self, session_id: int, cache_key: str, report: dict) -> None:
         with self._lock:
             self._db.execute(

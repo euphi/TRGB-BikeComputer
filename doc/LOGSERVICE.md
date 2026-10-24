@@ -408,6 +408,25 @@ service computes whatever is missing or stale, at the lowest CPU priority
 ([`analysis.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/BikeLogService/bikelogservice/analysis.py)).
 A new report version or changed rider data therefore reach every past ride by themselves.
 
+**Wind.** The power estimate and the aerobic decoupling include the wind of the ride
+([details](TOOLS.md#session-report)). The service asks Open-Meteo for the hourly wind of the
+ride's day and 0.1 degree cell -- nothing else leaves the machine, the track never does -- and
+keeps every answer under `<data>/weather/` (`2026-10-24_49.4_10.9.json`), so recomputing a
+report needs no network and gives the same result. The ride page shows mean wind, gusts, the
+share of head- and tailwind and, next to the power, the figure without wind. Where the
+decoupling would only reflect the wind (out against it, back with it), it says so instead of
+showing a number. If Open-Meteo is unreachable or has no data yet, the report is computed
+without wind (the page says why) and tried again an hour later; days that came from the
+"historical forecast" API or are less than a week old are fetched again from the archive once
+that is final (`wind.retry_after` in the report JSON). `BIKELOG_WIND=0` switches the
+lookup off; the factor from the 10 m wind to the wind at the rider (default 0.55) is
+`wind_factor` on the page **Fahrer**. Shelter (forest, buildings) is not modelled.
+
+**Idle time.** Time before the first and after the last real movement (device switched on in
+the garage, still running at home) is neither a stop nor part of the duration, the
+temperature or the GPS statistics; stops in the middle of the ride stay. Height changes while
+standing (a lift ride with the bike) are not counted as climbing.
+
 Rider data for heart-rate zones, TRIMP and W/kg are entered on the page **Fahrer**
 (`/athlete`) and end up in `<data>/athlete.json` (other path: `BIKELOG_ATHLETE_FILE`).
 Every key is optional; without the file the report simply has no zones:
@@ -572,6 +591,7 @@ Environment variables (in the service: `~/bikelog/bikelog.env`):
 | `BIKELOG_NEXTCLOUD_INBOX` | -- | folder the bike computers [push](#uploading-from-the-bike-computer-push) to (WebDAV path); empty = not looked at |
 | `BIKELOG_INBOX_INTERVAL_S` | `300` | how often the inbox is looked at |
 | `BIKELOG_ATHLETE_FILE` | `<data>/athlete.json` | rider data for the session report |
+| `BIKELOG_WIND` | `1` | wind from Open-Meteo in the ride report; `0` = reports without wind, no network access |
 | `BIKELOG_IDLE_ARCHIVE_DAYS` | `7` | idle sessions to `archive/` after this many days, 0 = never |
 | `BIKELOG_LLM_URL` | -- | Ollama server for the ride in words; unset = off |
 | `BIKELOG_LLM_MODEL` | `qwen3:8b` | Ollama model |

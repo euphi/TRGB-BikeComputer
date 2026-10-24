@@ -33,7 +33,7 @@ import statistics
 from . import training
 
 #: Bump when the prompt changes in a way that should rewrite the stored texts.
-PROMPT_VERSION = 1
+PROMPT_VERSION = 2
 
 #: Recent rides the ride is compared with (days before it).
 RECENT_DAYS = 42
@@ -49,7 +49,8 @@ Du bist ein erfahrener Radsport-Trainer. Du schreibst die Auswertung einer Radfa
 Regeln:
 - Verwende nur Zahlen, die in den Fakten stehen, mit genau der Einheit von dort. \
 Rechne nichts aus und erfinde keine Werte.
-- Leistung ist aus Tempo und Steigung geschätzt, nicht gemessen; erwähne sie höchstens am Rande.
+- Leistung ist aus Tempo, Steigung und Wind geschätzt, nicht gemessen; erwähne sie höchstens am Rande.
+- Steht unter den Fakten ein kräftiger Wind, nenne ihn kurz als Grund für Tempo und Belastung.
 - Zwei bis drei kurze Absätze, zusammen höchstens 150 Wörter. Keine Überschriften, \
 keine Aufzählungen, kein Markdown.
 - Absatz 1: was für eine Fahrt das war (Länge, Gelände, Anstiege, Tempo).
@@ -144,6 +145,14 @@ def facts(rep: dict, ctx: dict | None = None) -> str:
                    f"längste {_mmss(stops['longest_s'])}")
     if ride.get("temp_c"):
         out.append(f"- Temperatur: {_n(ride['temp_c']['min'], 0)} bis {_n(ride['temp_c']['max'], 0)} °C")
+    wind = rep.get("wind") or {}
+    if wind.get("available"):
+        line = (f"- Wind: im Schnitt {_n(wind['mean_kmh'], 0)} km/h aus {wind['dir_name']}, "
+                f"Böen bis {_n(wind['gust_max_kmh'], 0)} km/h")
+        if wind.get("headwind_share") is not None:
+            line += (f"; auf dem Rad Gegenwind in {_n(wind['headwind_share'] * 100, 0)} % und "
+                     f"Rückenwind in {_n(wind['tailwind_share'] * 100, 0)} % der Fahrzeit")
+        out.append(line)
     if ride.get("avg_cadence"):
         out.append(f"- Trittfrequenz: im Schnitt {ride['avg_cadence']} Umdrehungen pro Minute, "
                    f"getreten in {_n((ride['pedalling_share'] or 0) * 100, 0)} % der Fahrzeit")
@@ -181,6 +190,8 @@ def facts(rep: dict, ctx: dict | None = None) -> str:
         if heart.get("decoupling_pct") is not None:
             out.append(f"- Aerobe Entkopplung zwischen erster und zweiter Hälfte: "
                        f"{_n(heart['decoupling_pct'])} % (unter 5 % = gute Grundlagenausdauer)")
+        elif heart.get("decoupling_basis") == "suppressed":
+            out.append("- Aerobe Entkopplung: wegen des Winds nicht auswertbar (nicht erwähnen)")
     else:
         out.append("- kein Puls aufgezeichnet")
     if power.get("normalized_w"):
