@@ -20,6 +20,7 @@ Help is welcome, especially where marked.
 | Planned and regular routes in the log service, offered to TrailBridge ([doc](LOGSERVICE.md#planned-and-regular-routes)) | new: service side with tests, checked against the BRouter test files; the app side (TrailBridge: address setting, polling every 15 min, loading) is built and tested on the JVM, not yet on the phone |
 | [Route overview](ROUTE.md) (destination, waypoints, climbs of the GPX route) | new, not run on the device: host test, simulator build and a host rendering of the screen exist; the long read of the 512-byte frame over a real BLE link is untried |
 | Height calibration ([doc](HEIGHT.md)) | presets, manual entry and web page tested on the device; the GPS button shows the phone's GPS height; calibrating with it has not been tried yet |
+| Progress display during a firmware update (fill level rising from the bottom) | shown on the device; the picture still shifts and drops out while the flash is written, a property of the hardware ([pitfalls](PITFALLS.md)) |
 | Forumslader variant | builds, rarely tested; its screen is the last one from the old SquareLine UI |
 
 ## Known bugs
@@ -46,7 +47,6 @@ ride needs must work on the display. Details: [usability backlog](USABILITY-TODO
 - Configuration on the device (wheel circumference, sensor pairing) -- today only in
   the web interface.
 - BLE sensor battery levels on the display (they are read already).
-- Progress display during a firmware update.
 
 ## Planned features
 
@@ -107,6 +107,9 @@ It lists the app's side of the features on this page and what concerns only the 
 - Binary log replay on the device (only the Forumslader text log can be replayed).
 - New case for the Canyon CP0007 gravel cockpit -- parametric model in [`cad/`](https://github.com/euphi/TRGB-BikeComputer/tree/main/cad),
   measurements from photos still to be checked with a caliper.
+- Case for the Forumslader build on the Diamant Nhoma (oval display, ESP32 gateway, sits on
+  stem and drop bar): first draft in [`cad/fl/`](https://github.com/euphi/TRGB-BikeComputer/tree/main/cad/fl),
+  nothing printed yet, open measurements are listed in its `FL_GEHAEUSE.md`.
 
 Low priority:
 

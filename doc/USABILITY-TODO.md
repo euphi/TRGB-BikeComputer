@@ -83,4 +83,3 @@ or on the web page `/wifi`: several networks in priority order, a hotspot of its
 - Wheel circumference and sensor pairing (today only on the web).
 - Battery level of the BLE sensors (is read, not shown).
 - Remaining distance and time of the navigation (are received, not shown).
-- Progress during a firmware update.

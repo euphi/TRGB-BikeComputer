@@ -84,4 +84,3 @@ ein eigener Hotspot. Siehe [WLAN](WIFI.md). Offen:
 - Radumfang und Sensor-Kopplung (heute nur im Web).
 - Batteriestand der BLE-Sensoren (wird gelesen, nicht angezeigt).
 - Restdistanz und Restzeit der Navigation (werden empfangen, nicht angezeigt).
-- Fortschritt beim Firmware-Update.

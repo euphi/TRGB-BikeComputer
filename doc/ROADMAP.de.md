@@ -20,6 +20,7 @@ kommt. Hilfe ist willkommen, besonders an den markierten Stellen.
 | Geplante und regelmäßige Strecken im Log-Dienst, für TrailBridge bereitgestellt ([Doku](LOGSERVICE.md#geplante-und-regelmaige-strecken)) | neu: Dienst-Seite mit Tests, gegen die BRouter-Testdateien geprüft; die App-Seite (TrailBridge: Einstellung für die Adresse, Abfrage alle 15 min, Laden) ist gebaut und auf der JVM getestet, am Handy noch nicht |
 | [Streckenübersicht](ROUTE.md) (Ziel, Wegpunkte, Anstiege der GPX-Route) | neu, am Gerät nicht gelaufen: Host-Test, Simulator-Build und ein Rendering des Screens auf dem Rechner gibt es; der Long Read des 512-Byte-Frames über eine echte BLE-Verbindung ist unerprobt |
 | Höhenkalibrierung ([Doku](HEIGHT.md)) | Presets, manuelle Eingabe und Webseite am Gerät getestet; die GPS-Taste zeigt die GPS-Höhe des Handys an; das Kalibrieren damit wurde noch nicht ausprobiert |
+| Fortschrittsanzeige beim Firmware-Update (Füllstand von unten) | am Gerät zu sehen; das Bild verschiebt sich und fällt aus, solange der Flash geschrieben wird -- eine Eigenschaft der Hardware ([Fallstricke](PITFALLS.md)) |
 | Forumslader-Variante | baut, selten getestet; ihr Screen ist der letzte aus der alten SquareLine-Oberfläche |
 
 ## Bekannte Fehler
@@ -45,7 +46,6 @@ einer Fahrt braucht, muss am Display gehen. Details: [Bedienung unterwegs](USABI
   [Streckenscreen](ROUTE.md) stehen sie jetzt, einmal nach links wischen).
 - Konfiguration am Gerät (Radumfang, Sensoren koppeln) -- heute nur in der Web-Oberfläche.
 - Batteriestand der BLE-Sensoren auf dem Display (wird schon gelesen).
-- Fortschrittsanzeige beim Firmware-Update.
 
 ## Geplante Funktionen
 
@@ -111,6 +111,10 @@ Dort stehen die App-Seite der Funktionen auf dieser Seite und alles, was nur die
 - Neues Gehäuse für das Canyon CP0007 Gravel-Cockpit -- parametrisches Modell in
   [`cad/`](https://github.com/euphi/TRGB-BikeComputer/tree/main/cad), die Maße aus Fotos
   sind noch mit dem Messschieber zu prüfen.
+- Gehäuse für den Forumslader-Aufbau am Diamant Nhoma (ovales Display, ESP32-Gateway, sitzt
+  auf Vorbau und Rennlenker): erster Entwurf in
+  [`cad/fl/`](https://github.com/euphi/TRGB-BikeComputer/tree/main/cad/fl), noch nichts
+  gedruckt, offene Maße stehen in `FL_GEHAEUSE.md` dort.
 
 Niedrige Priorität:
 
