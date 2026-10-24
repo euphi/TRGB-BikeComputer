@@ -980,7 +980,7 @@ ROUTE_SECTIONS = {"planned": ("Aktuell", True), "regular": ("Regelmäßig", True
 VERDICT_CHIPS = {"ok": ("ok", "Navigierbar"), "warn": ("warn", "Mit Einschränkungen"),
                  "error": ("err", "Nicht nutzbar")}
 FINDING_CLASS = {"error": "e", "warn": "w", "info": "i"}
-TURN_SOURCES = {"osmand": "OsmAnd", "rtept": "Routenpunkte", "geometry": "aus der Geometrie"}
+TURN_SOURCES = {"osmand": "OsmAnd", "rtept": "Routenpunkte", "geometry": "Geo-Navi (aus den Winkeln)"}
 
 
 def _local_time(iso: str | None) -> str:
@@ -1020,14 +1020,15 @@ def _trailbridge_state(r) -> str:
 
 
 def _route_chips(r, verdict_ok: bool = True, trailbridge: bool = True) -> str:
-    """Kind/archive, tags, TrailBridge (the list has a column for it) and -- in the list only
-    if not fine -- the verdict."""
+    """Kind/archive, tags, TrailBridge (the list has a column for it) and the verdict: green
+    "Navigierbar" if the file carries the turns, yellow "Geo-Navi" if TrailBridge derives them."""
     cls, label = VERDICT_CHIPS.get(r.verdict, VERDICT_CHIPS["error"])
+    if r.verdict == "ok" and r.stats.get("turn_source") == "geometry":
+        cls, label = "warn", "Geo-Navi"  # no turns in the file: TrailBridge derives them from the angles
     chips = [f'<span class="chip tour">{"Archiv" if r.archived else escape(ROUTE_KINDS.get(r.kind, r.kind))}'
              '</span>'] if verdict_ok else []
     chips += [f'<span class="chip">{escape(ROUTE_TAGS[t])}</span>' for t in r.tags if t in ROUTE_TAGS]
-    if verdict_ok or r.verdict != "ok":
-        chips.append(f'<span class="chip {cls}">{label}</span>')
+    chips.append(f'<span class="chip {cls}">{label}</span>')
     if r.marked_at and trailbridge:
         chips.append('<span class="chip a">' + ("TrailBridge ✓" if r.on_phone else "TrailBridge") + "</span>")
     return "".join(chips)
