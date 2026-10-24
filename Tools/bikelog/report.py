@@ -53,7 +53,7 @@ from .record import (IF_CLIPPED, IF_DATA_GAP, IF_NO_SPEED, IF_TOO_SLOW, IF_UNCAL
 
 #: Bump when a field changes its meaning or moves -- consumers (the service's
 #: cache, a prompt) key on it.
-REPORT_VERSION = 4
+REPORT_VERSION = 5
 
 #: Records before this are from an unset ESP32 clock (see gpx.MIN_PLAUSIBLE_YEAR).
 MIN_PLAUSIBLE_TIMESTAMP = int(datetime.datetime(2020, 1, 1, tzinfo=datetime.timezone.utc).timestamp())
