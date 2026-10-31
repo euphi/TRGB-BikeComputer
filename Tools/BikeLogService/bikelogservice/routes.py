@@ -28,7 +28,7 @@ from bikelog import routecheck
 from .storage import Storage
 
 #: Bump when routecheck's findings or stats change -- stored checks are redone on start.
-CHECK_VERSION = 3
+CHECK_VERSION = 4
 KINDS = {"planned": "Geplant", "regular": "Regelmäßig"}
 TAGS = {"commute": "Pendel/Alltag", "training": "Training"}
 

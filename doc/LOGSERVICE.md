@@ -371,6 +371,12 @@ distance is that of its projection onto the track (a note says how far off it is
 and unnamed via points: greyed in the table, no stroke in the list, no name in the charts. The
 OsmAnd turn hints in `<rte>` are not waypoints. Names are escaped for HTML.
 
+**Back to the planner:** the URL BRouter-Web or bikerouter.de writes into the GPX (`trk/link` with
+`lonlats=` in the fragment, `http(s)` only) becomes a button **In BRouter bearbeiten** (edit in BRouter) on
+the route's page. It adds `?bikelog=<id>&bikelogname=<name>`: a BRouter-Web patched for it then offers to update this route in its export
+dialog (`PUT /api/v1/routes/{id}/gpx`; name, tags and id stay, the old file is overwritten, and a route offered to TrailBridge is loaded again).
+A bikerouter.de link just opens there (**In bikerouter.de öffnen**).
+
 ### Routes for TrailBridge
 
 "Für TrailBridge bereitstellen" marks **one** route (marking another one unmarks it). The

@@ -12,6 +12,7 @@ carries meaning (heart-rate zones, road classes, form).
 from __future__ import annotations
 
 import datetime
+import urllib.parse
 from html import escape
 
 from bikelog import report, testride
@@ -1198,6 +1199,22 @@ def _waypoint_table(wpts: list[dict], far: int = 0) -> str:
                "und sind nicht gezeigt.</p>" if far else "") + "</div>")
 
 
+def _planner_button(r) -> str:
+    """Back to the planner the file came from. Our BRouter-Web saves back to this route
+    when it gets the id; on bikerouter.de the link just opens the route."""
+    url = urllib.parse.urlsplit(r.stats["planner_url"])
+    if (url.hostname or "").endswith("bikerouter.de"):
+        label = "In bikerouter.de öffnen"
+    else:
+        label = "In BRouter bearbeiten"
+        # a file saved while editing has the query of its route, maybe another one
+        query = [q for q in urllib.parse.parse_qsl(url.query) if q[0] not in ("bikelog", "bikelogname")]
+        query += [("bikelog", r.id), ("bikelogname", r.name)]
+        url = url._replace(query=urllib.parse.urlencode(query))
+    return (f'<a class="btn" href="{escape(urllib.parse.urlunsplit(url))}" target="_blank" '
+            f'rel="noopener">{label}</a>')
+
+
 def route_page(r, message: str | None = None) -> str:
     st = r.stats
     rid = escape(r.id)
@@ -1262,6 +1279,8 @@ def route_page(r, message: str | None = None) -> str:
         buttons = []
     buttons.append(post("archive", "on", "0", "Aus dem Archiv holen") if r.archived
                    else post("archive", "on", "1", "Archivieren"))
+    if st.get("planner_url"):
+        buttons.append(_planner_button(r))
     buttons.append(f'<a class="btn" href="{API}/routes/{rid}.gpx">GPX herunterladen</a>'
                    f'<label class="btn" style="display:inline-block">Neue Version (GPX)<input type="file" '
                    f'accept=".gpx,application/gpx+xml" style="display:none" '

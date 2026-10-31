@@ -69,3 +69,56 @@ def test_stored_checks_of_an_older_version_are_redone(client, settings):
     store = Storage(settings)
     assert routes.recheck(store) == 1
     assert routes.get(store, route["id"]).stats["wpts"][0]["name"] == "Kaffeepause"
+
+
+def _linked_gpx(href: str) -> bytes:
+    return gpx(course()).decode().replace("<trk>", f'<trk><link href="{href}"><text>x</text></link>', 1).encode()
+
+
+def test_planner_link_on_the_route_page(client):
+    route = _add(client, _linked_gpx("http://brouter.ia216.internal/#map=14/50/8/x&amp;lonlats=8.6,50;8.6,50.1"
+                                     "&amp;profile=gravel-schnell&amp;profileparams=hills:1"))
+    url = "http://brouter.ia216.internal/#map=14/50/8/x&lonlats=8.6,50;8.6,50.1&profile=gravel-schnell&profileparams=hills:1"
+    assert route["check"]["stats"]["planner_url"] == url
+    page = client.get(f"/routes/{route['id']}").text
+    edit = ("http://brouter.ia216.internal/?bikelog=" + route["id"] + "&bikelogname=TEST+Wegpunkte"
+            "#map=14/50/8/x&lonlats=8.6,50;8.6,50.1&profile=gravel-schnell&profileparams=hills:1")
+    assert "In BRouter bearbeiten" in page and edit.replace("&", "&amp;") in page
+
+
+def test_planner_link_replaces_the_route_of_an_earlier_edit(client):
+    route = _add(client, _linked_gpx("http://b.internal/?bikelog=abc&amp;bikelogname=Alt&amp;x=1#lonlats=8.6,50"))
+    page = client.get(f"/routes/{route['id']}").text
+    assert f"http://b.internal/?x=1&amp;bikelog={route['id']}&amp;bikelogname=TEST+Wegpunkte#lonlats=8.6,50" in page
+
+
+def test_planner_link_of_bikerouter_only_opens(client):
+    route = _add(client, _linked_gpx("https://bikerouter.de/#lonlats=8.6,50"))
+    page = client.get(f"/routes/{route['id']}").text
+    assert "In bikerouter.de öffnen" in page and "bikelog=" not in page
+
+
+@pytest.mark.parametrize("href", [
+    "javascript:alert(1)//#lonlats=1,2",            # never a link on the page
+    "https://example.org/some/tour",                # a link, but not to a planned route
+    'http://x.org/#lonlats=1,2&quot; onclick=&quot;alert(1)',
+])
+def test_planner_link_only_a_harmless_route_url(client, href):
+    route = _add(client, _linked_gpx(href))
+    page = client.get(f"/routes/{route['id']}").text
+    if "quot" in href:                              # a route URL: the page must escape it
+        assert 'onclick="' not in page
+    else:
+        assert "planner_url" not in route["check"]["stats"] and "In BRouter bearbeiten" not in page
+
+
+def test_recheck_finds_the_link_in_stored_routes_and_keeps_the_revision(client, settings):
+    route = _add(client, _linked_gpx("https://bikerouter.de/#lonlats=8.6,50;8.6,50.1"))
+    store = Storage(settings)
+    stored = routes.load(store)
+    stored[0].check = {"verdict": "ok", "stats": {}, "findings": [], "version": routes.CHECK_VERSION - 1}
+    routes._save(store, stored)
+    assert routes.recheck(store) == 1
+    after = routes.get(store, route["id"])
+    assert after.stats["planner_url"] == "https://bikerouter.de/#lonlats=8.6,50;8.6,50.1"
+    assert after.revision == route["revision"]      # TrailBridge does not load it again

@@ -14,6 +14,7 @@ the phone will do with it:
     waypoints    wpt within WAYPOINT_MAX_OFF_ROUTE_M of the route, for the route overview;
                  for the page all wpt up to WPT_LIST_MAX_OFF_M, with distance from start
                  (projected onto the track) -- stats["wpts"], and stats["track"] for the map
+    planner      the link back to the route planner in the file, if any -- stats["planner_url"]
 
 check() returns verdict + findings (German, for the page) + stats; the climbs and the
 elevation profile come from training.event_profile(), the same as a goal's course.
@@ -25,6 +26,7 @@ from __future__ import annotations
 import datetime
 import math
 import re
+import urllib.parse
 import xml.etree.ElementTree as ET
 
 from . import training
@@ -123,6 +125,22 @@ def _name(root: ET.Element) -> str | None:
             for c in el:
                 if _local(c.tag) == "name" and (c.text or "").strip():
                     return c.text.strip()
+    return None
+
+
+def _planner_url(root: ET.Element) -> str | None:
+    """BRouter-Web (and bikerouter.de) writes the URL of the route as trk/link, with the route
+    points in the fragment. Only such a link: it ends up on the page, the file could hold anything."""
+    for el in root.iter():
+        if _local(el.tag) != "link":
+            continue
+        href = (el.get("href") or "").strip()
+        try:
+            url = urllib.parse.urlsplit(href)
+        except ValueError:
+            continue
+        if url.scheme in ("http", "https") and url.netloc and "lonlats=" in url.fragment:
+            return href
     return None
 
 
@@ -382,4 +400,7 @@ def check(data: bytes, fallback_name: str = "Route") -> dict:
         if far:
             stats["waypoints_far"] = far
     stats["track"] = _map_track(geometry)
+    planner_url = _planner_url(root)
+    if planner_url:
+        stats["planner_url"] = planner_url
     return result(stats, name)

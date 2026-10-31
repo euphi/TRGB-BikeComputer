@@ -384,6 +384,13 @@ unbenannte Zwischenpunkte: in der Tabelle ausgegraut, ohne Strich in der Liste, 
 Diagrammen. Die OsmAnd-Abbiegehinweise im `<rte>` sind keine Wegpunkte. Namen werden für HTML
 maskiert.
 
+**Zurück zum Planer:** Die URL, die BRouter-Web oder bikerouter.de in die GPX schreibt (`trk/link` mit
+`lonlats=` im Fragment, nur `http(s)`), wird auf der Seite der Strecke zum Knopf **In BRouter bearbeiten**.
+Er hängt `?bikelog=<id>&bikelogname=<name>` an: Ein entsprechend angepasstes BRouter-Web bietet dann im
+Export-Dialog an, diese Strecke zu aktualisieren (`PUT /api/v1/routes/{id}/gpx`; Name, Tags und ID
+bleiben, die alte Datei wird überschrieben, eine für TrailBridge bereitgestellte Strecke lädt die App neu).
+Ein bikerouter.de-Link öffnet nur dort (**In bikerouter.de öffnen**).
+
 ### Strecken für TrailBridge
 
 „Für TrailBridge bereitstellen" markiert **eine** Strecke (eine andere zu markieren nimmt die
