@@ -26,10 +26,10 @@ from fastapi import Depends, FastAPI, HTTPException, Path, Query, Request, Respo
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.concurrency import run_in_threadpool
 
-from bikelog import bikes, csvexport, gpximport, report, training
+from bikelog import bikes, csvexport, explorer, gpximport, report, training
 from bikelog.record import ReadStats
 
-from . import analysis, archive, exporter, importer, inbox, llm, routes, tours, komoot, nextcloud, sdlayout, webui
+from . import analysis, archive, exporter, importer, inbox, llm, maptracks, routes, tours, komoot, nextcloud, sdlayout, webui
 from .auth import AuthDep, Principal
 from .config import Settings
 from .puller import DeviceUnavailable, Puller
@@ -45,10 +45,19 @@ def create_app(settings: Settings | None = None, puller: Puller | None = None) -
     if puller is None and settings.pull:
         puller = Puller(store, settings)
     inbox_poller = inbox.InboxPoller(store) if settings.inbox_enabled else None
+    map_store = maptracks.MapStore(settings)
+
+    def _sync_map(store: Storage) -> None:
+        try:
+            map_store.sync_rides(store)
+            map_store.state()               # draw-ready before the first tile is asked for
+        except Exception:                   # the map must never stop the analysis
+            maptracks.log.exception("map: sync failed")
 
     def _analyse(store: Storage) -> None:
-        # reports first (the pages need them), then the texts (minutes each)
+        # reports first (the pages need them), then the map (seconds), then the texts (minutes each)
         analysis.refresh(store)
+        _sync_map(store)
         llm.refresh(store)
 
     def _export_and_sync(store: Storage) -> None:
@@ -89,6 +98,7 @@ def create_app(settings: Settings | None = None, puller: Puller | None = None) -
     app.state.settings = settings
     app.state.storage = store
     app.state.puller = puller
+    app.state.map = map_store
     #: TrailBridge's last poll of the route feed (in memory: only for the page)
     app.state.trailbridge_seen = None
 
@@ -608,7 +618,13 @@ def create_app(settings: Settings | None = None, puller: Puller | None = None) -
     @app.get("/routes/{route_id}", response_class=HTMLResponse, include_in_schema=False)
     def route_page(route_id: str, msg: str | None = Query(default=None, max_length=500),
                    principal: Principal = AuthDep, store: Storage = Depends(storage)):
-        return webui.route_page(_require_route(store, route_id), message=msg)
+        route = _require_route(store, route_id)
+        fresh = None
+        try:
+            fresh = map_store.new_tiles(explorer.read_gpx(routes.gpx_path(store, route).read_bytes()).points)
+        except (OSError, ValueError):
+            pass
+        return webui.route_page(route, message=msg, new_tiles=fresh)
 
     @app.post("/routes/{route_id}", include_in_schema=False)
     async def ui_route_edit(route_id: str, request: Request, principal: Principal = AuthDep,
@@ -990,6 +1006,109 @@ def create_app(settings: Settings | None = None, puller: Puller | None = None) -
         return {"triggered": True}
 
     # --- pull ---
+
+    # --- map: visited tiles, heatmap (maptracks.py) ---
+
+    TILE_RE = r"^(visited|squadrats|heat)$"
+
+    @app.get(API + "/map/tiles/{layer}/{z}/{x}/{y}.png", tags=["map"])
+    def map_tile(request: Request, layer: str = Path(pattern=TILE_RE), z: int = Path(ge=0, le=maptracks.MAX_ZOOM),
+                 x: int = Path(ge=0), y: int = Path(ge=0), principal: Principal = AuthDep):
+        """One 256 px overlay tile (XYZ, like OSM): visited = explorer tiles (zoom 14),
+        squadrats = zoom 17 tiles, heat = all tracks summed up. For BRouter-Web's
+        BR.conf.overlays and the /map page."""
+        png, revision = map_store.tile(layer, z, x, y)
+        etag = f'"{revision}"'
+        headers = {"ETag": etag, "Cache-Control": "no-cache", "Access-Control-Allow-Origin": "*"}
+        if request.headers.get("if-none-match") == etag:
+            return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers=headers)
+        return Response(content=png, media_type="image/png", headers=headers)
+
+    @app.get(API + "/map", tags=["map"])
+    def map_summary(principal: Principal = AuthDep):
+        """Tiles, max square/cluster, tracks per source, the Komoot import's progress."""
+        return map_store.summary()
+
+    @app.get(API + "/map/tracks", tags=["map"])
+    def map_tracks(principal: Principal = AuthDep):
+        dups = map_store.state().duplicates
+        return [dict(t.as_dict(), duplicate_of=dups.get(t.id)) for t in map_store.tracks()]
+
+    @app.put(API + "/map/tracks", tags=["map"])
+    async def map_upload(request: Request,
+                         filename: str = Query(default="", max_length=300),
+                         mixed: bool = Query(default=False, description="an all-day recording (phone): "
+                                             "keep only the trips that were cycling"),
+                         track: str = Query(default="", max_length=100,
+                                            description="mixed: only <trk> whose name starts with this"),
+                         name: str = Query(default="Handy", max_length=100),
+                         principal: Principal = AuthDep):
+        """GPX for the map only (no ride report): a .gpx, .gpx.gz or a .zip of them. With
+        mixed=true the files are merged, cut into trips and only cycling is kept (bikelog/
+        tripmode.py); the page sends several files then as JSON [{"name", "data"}]."""
+        payload = await request.body()
+        if not payload or len(payload) > settings.max_upload_bytes:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "empty or too large")
+        if mixed:
+            if request.headers.get("content-type", "").startswith("application/json"):
+                try:
+                    uploads = [(f["data"].encode(), f.get("name", "")) for f in json.loads(payload)]
+                except (ValueError, TypeError, KeyError, AttributeError):
+                    raise HTTPException(status.HTTP_400_BAD_REQUEST, 'JSON: [{"name", "data"}]')
+            else:
+                uploads = [(payload, filename)]
+            result = await run_in_threadpool(map_store.add_mixed, uploads, track or None, name or "Handy")
+        else:
+            result = await run_in_threadpool(map_store.add_upload, payload, filename)
+            if all(r["status"] == "error" for r in result):
+                raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                                    "; ".join(f'{r["file"]}: {r["error"]}' for r in result))
+        await run_in_threadpool(map_store.state)
+        return result
+
+    @app.delete(API + "/map/tracks/{track_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["map"])
+    def map_delete(track_id: str, principal: Principal = AuthDep):
+        """An uploaded or imported track. BikeLog rides follow their session (409)."""
+        if not map_store.delete(track_id):
+            raise HTTPException(status.HTTP_409_CONFLICT if any(t.id == track_id for t in map_store.tracks())
+                                else status.HTTP_404_NOT_FOUND, "not deletable")
+
+    def _start_komoot(all_sports: bool) -> bool:
+        if map_store.komoot.get("running"):
+            return False
+        threading.Thread(target=map_store.komoot_import, args=(all_sports,), name="bikelog-komoot-import",
+                         daemon=True).start()
+        return True
+
+    @app.post(API + "/map/komoot", status_code=status.HTTP_202_ACCEPTED, tags=["map"])
+    def map_komoot(all_sports: bool = Query(default=False, description="also hiking, running, ..."),
+                   principal: Principal = AuthDep):
+        """Fetch every recorded Komoot tour not on the map yet (in the background; progress:
+        GET /api/v1/map, "komoot")."""
+        if not settings.komoot_enabled:
+            raise HTTPException(status.HTTP_409_CONFLICT, "Komoot not configured")
+        _start_komoot(all_sports)
+        return map_store.komoot
+
+    @app.get("/map", response_class=HTMLResponse, include_in_schema=False)
+    def map_page(msg: str | None = Query(default=None, max_length=300), principal: Principal = AuthDep):
+        return webui.map_page(map_store.summary(), map_store.tracks(), map_store.state().duplicates,
+                              planner_url=settings.planner_url, message=msg)
+
+    @app.post("/ui/map/komoot", include_in_schema=False)
+    async def map_komoot_form(request: Request, principal: Principal = AuthDep):
+        form = parse_qs((await request.body()).decode())
+        if not settings.komoot_enabled:
+            return RedirectResponse("/map?" + urlencode({"msg": "Komoot ist nicht eingerichtet."}), 303)
+        started = _start_komoot(form.get("all_sports", [""])[0] == "1")
+        return RedirectResponse("/map?" + urlencode({"msg": "Komoot-Import läuft." if started
+                                                     else "Der Komoot-Import läuft schon."}), 303)
+
+    @app.post("/ui/map/tracks/{track_id}/delete", include_in_schema=False)
+    def map_delete_form(track_id: str, principal: Principal = AuthDep):
+        ok = map_store.delete(track_id)
+        return RedirectResponse("/map?" + urlencode({"msg": "Track gelöscht." if ok
+                                                     else "Dieser Track lässt sich nicht löschen."}), 303)
 
     @app.get(API + "/pull", tags=["service"])
     def pull_status(principal: Principal = AuthDep):

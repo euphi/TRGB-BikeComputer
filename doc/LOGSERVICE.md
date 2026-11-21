@@ -326,6 +326,67 @@ goal then lists "Deine bisherigen Teilnahmen" with time, speed, heart rate, powe
 Importing the same file again replaces the session. API: `PUT /api/v1/import/gpx`
 (`bike_id`, `event_id`, body = the file).
 
+## Map: visited tiles and heatmap
+
+The **Map** page (`/map`) shows where you have ridden, for planning new tours. Three layers over
+OpenStreetMap, the same ones as overlays in BRouter-Web:
+
+- **Tiles**: the OSM tiles at zoom 14 (≈ 1.6 km, VeloViewer's and StatsHunters' "explorer
+  tiles") a ride went through (red). **Cluster** tiles (purple) are visited tiles whose four
+  neighbours are visited too, the **max cluster** is the largest connected group of them (dark
+  purple), the **max square** the largest square of visited tiles (yellow frame). From zoom 11
+  the tile grid is drawn on top.
+- **Squadrats**: the same at zoom 17 (≈ 200 m).
+- **Heatmap**: all rides summed up, in cyan like the camper's heatmap. It counts rides per pixel,
+  not points; the more often a way was ridden, the stronger.
+
+A tile counts when the line between two points crosses it. A stretch of more than 2 km without
+a point (tunnel, train, GPS lost) does not count. The page shows the figures; "In BRouter
+planen" opens BRouter-Web at the same spot with the same layers (`BIKELOG_PLANNER_URL`). A
+planned route's page says how many **new tiles** and squadrats it would add.
+
+Sources, all under `<data>/map/`
+([`maptracks.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/BikeLogService/bikelogservice/maptracks.py), drawing and figures in
+[`bikelog/explorer.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/bikelog/explorer.py)):
+
+- **BikeLog rides** come by themselves (after every pull, from the exported GPX). Not test
+  rides or idle sessions.
+- **Upload GPX** on the page: GPX, `.gpx.gz` or a ZIP (e.g. Strava's or Garmin's export), for the
+  map only, without report or training. Uploaded tracks can be deleted there.
+- **Mixed recording** (tick when uploading): an all-day recording from a phone
+  (PhoneTrack/OsmAnd, OwnTracks) with cycling, walking, car and train. All files are merged
+  (day files and overlapping exports do no harm), optionally only one `<trk>`/device (`track`,
+  e.g. `IanMobil`), cut at stops of 5 min and gaps of 10 min, and judged by speed
+  ([`bikelog/tripmode.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/bikelog/tripmode.py)): walking below 8 km/h median; car/train
+  with a median above 32 km/h, a fastest tenth above 45 km/h, a minute above 55 km/h, a mean
+  above 30 km/h, or stop-and-go (fastest tenth above 38 km/h and more than twice the median);
+  bike from a 10 km/h median; whatever lies between is "unclear" and left out. The page lists
+  every trip found with its verdict and the reason. Tuned on 229 trips of one phone; all four
+  the bike computer recorded at the same time were recognised as cycling.
+- **Komoot** (one-off, "Von Komoot importieren"): every recorded tour of the account in
+  `BIKELOG_KOMOOT_EMAIL`, bike sports only by default. Running it again fetches only new ones.
+
+**Duplicate rides** count once: a track recorded at the same time as one from a better source
+(BikeLog before upload before Komoot) is hidden, e.g. a BikeLog ride uploaded to Komoot that
+comes back with the import.
+
+**Overlay in BRouter-Web** (`~/brouter/web/config.js`, `BR.conf.overlays`; keep the names, the
+link from `/map` names them in the `#map=` hash):
+
+```js
+var bikelogTiles = 'https://bikelog.example.org/api/v1/map/tiles/';
+BR.conf.overlays = {
+    'BikeLog Kacheln': bikelogTiles + 'visited/{z}/{x}/{y}.png',
+    'BikeLog Squadrats': bikelogTiles + 'squadrats/{z}/{x}/{y}.png',
+    'BikeLog Heatmap': bikelogTiles + 'heat/{z}/{x}/{y}.png',
+};
+```
+
+The service draws the tiles (256 px, palette PNG) on demand in plain Python, typically 20–90 ms
+a tile, and keeps the last 4000 in memory. The ETag is the state of the track collection, so it
+changes with every new ride. When how tracks are read or thinned changes, raise `MAP_VERSION`:
+the service then reads every track again on start.
+
 ## Planned and regular routes
 
 The page **Strecken** (`/routes`) keeps routes to ride: **planned** (a tour coming up) and
@@ -590,6 +651,7 @@ Environment variables (in the service: `~/bikelog/bikelog.env`):
 | `BIKELOG_EXPORT_GPX` | `1` | GPX export on/off |
 | `BIKELOG_EXPORT_DIR` | `<data>/export/gpx` | target directory (must be writable in the unit: `ReadWritePaths=`) |
 | `BIKELOG_PUBLIC_URL` | -- | e.g. `http://server:8080`, for the link in the GPX |
+| `BIKELOG_PLANNER_URL` | -- | BRouter-Web, e.g. `http://brouter.ia216.internal`, for "In BRouter planen" on `/map` |
 | `BIKELOG_REQUIRE_AUTH` | `0` | auth on/off |
 | `BIKELOG_TOKENS` | -- | `token:name`, comma-separated |
 | `BIKELOG_MAX_UPLOAD_BYTES` | 64 MiB | upper limit per `PUT` |
@@ -645,6 +707,12 @@ name of an existing target, the stored sessions are filed under it.
 | `POST` | `/api/v1/routes/{id}/trailbridge` | offer it to TrailBridge (`on=false`: take it back) |
 | `GET` | `/api/v1/trailbridge/route` | the route marked for TrailBridge, see [above](#routes-for-trailbridge) |
 | `GET` | `/api/v1/trailbridge/routes/{id}.gpx` | its file, for the app |
+| `GET` | `/map` | map with visited tiles and heatmap (HTML) |
+| `GET` | `/api/v1/map` | figures (tiles, cluster, max square, squadrats), tracks per source, the Komoot import's progress |
+| `GET` | `/api/v1/map/tiles/{visited\|squadrats\|heat}/{z}/{x}/{y}.png` | overlay tile (XYZ like OSM) |
+| `GET`/`PUT` | `/api/v1/map/tracks` | the map's tracks (with `duplicate_of`) / upload GPX, `.gpx.gz` or ZIP (`filename`; `mixed=true` with `track`, `name`: mixed recording, cycling only) |
+| `DELETE` | `/api/v1/map/tracks/{id}` | delete an uploaded or imported track (BikeLog rides: 409) |
+| `POST` | `/api/v1/map/komoot` | start the Komoot import (`all_sports=true`: hiking etc. too) |
 | `POST` | `/api/v1/trailbridge/route/fetched` | the app confirms a revision (`revision`) |
 | `DELETE` | `/api/v1/sessions/{id}` | delete the files, keep the tombstone |
 | `POST` | `/api/v1/sessions/{id}/komoot` | upload as part of its tour (`force`), see above |

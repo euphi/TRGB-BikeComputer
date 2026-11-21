@@ -100,6 +100,10 @@ sensor), height calibration, IMU calibration, restart and power off.
   profile and climbs, named waypoints on a map and in the profile (with distance from the
   start and to the destination); one route can be offered to TrailBridge, which fetches it by
   itself
+- A map of where you have ridden, for planning (also as overlays in BRouter-Web): visited
+  zoom-14 tiles with cluster and max square, zoom-17 squadrats, and a heatmap of all rides;
+  from the bike computer's rides, uploaded GPX, a one-off Komoot import, and a phone's
+  all-day recording, of which only the cycling is kept
 
 **Web interface** (when on WiFi)
 - Download, replay and delete log files; live log with adjustable log levels

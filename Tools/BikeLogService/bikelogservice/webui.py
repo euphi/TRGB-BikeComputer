@@ -181,12 +181,39 @@ async function uploadRoutes(){const files=document.getElementById('rt-files').fi
 async function replaceRoute(input,id){const f=input.files[0];if(!f)return;
  const r=await fetch('/api/v1/routes/'+id+'/gpx?'+new URLSearchParams({filename:f.name}),{method:'PUT',body:f});
  if(r.ok)location.reload();else{const j=await r.json().catch(()=>({detail:r.statusText}));alert(j.detail)}}
+async function uploadMap(){const files=[...document.getElementById('mp-files').files];
+ const st=document.getElementById('mp-status');if(!files.length){st.textContent='Keine Datei gewählt.';return}
+ const mixed=document.getElementById('mp-mixed').checked;const out=document.getElementById('mp-result');
+ if(mixed){st.textContent=`Lese ${files.length} Datei(en) …`;
+  const q=new URLSearchParams({mixed:'true',track:document.getElementById('mp-track').value,
+   name:document.getElementById('mp-name').value||'Handy'});
+  const zip=files.length==1&&/\\.zip$/i.test(files[0].name);let r;
+  if(zip)r=await fetch('/api/v1/map/tracks?'+q+'&filename='+encodeURIComponent(files[0].name),{method:'PUT',body:files[0]});
+  else{const body=[];for(const f of files)body.push({name:f.name,data:await f.text()});
+   st.textContent='Prüfe die Fahrten …';
+   r=await fetch('/api/v1/map/tracks?'+q,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})}
+  if(!r.ok){const j=await r.json().catch(()=>({detail:r.statusText}));st.textContent='';alert(j.detail);return}
+  const j=await r.json();const c=j.counts;
+  st.textContent=`${c.bike} Radfahrten übernommen; verworfen: ${c.motor} Auto/Bahn, ${c.walk} zu Fuß, ${c.unclear} unklar, ${c.short} kurz.`;
+  const kinds={bike:'Rad',motor:'Auto/Bahn',walk:'zu Fuß',unclear:'unklar'};
+  out.innerHTML='<table><thead><tr><th>Beginn</th><th class=num>km</th><th class=num>min</th><th>Urteil</th><th>Grund</th></tr></thead><tbody>'+
+   j.trips.map(t=>`<tr><td>${new Date(t.start).toLocaleString('de-DE',{dateStyle:'short',timeStyle:'short'})}</td><td class=num>${t.distance_km}</td>`+
+   `<td class=num>${Math.round(t.duration_min)}</td><td>${kinds[t.kind]||t.kind}${t.status=='known'?' (schon da)':''}</td><td class=mut>${t.reason}</td></tr>`).join('')+'</tbody></table>'+
+   (j.errors.length?'<p class=warn>'+j.errors.join('<br>')+'</p>':'');
+  return}
+ const errs=[];let n=0;
+ for(const f of files){st.textContent=`Lade ${f.name} …`;
+  const r=await fetch('/api/v1/map/tracks?'+new URLSearchParams({filename:f.name}),{method:'PUT',body:f});
+  if(r.ok){const j=await r.json();n+=j.filter(x=>x.status=='new').length;
+   j.filter(x=>x.status=='error').forEach(x=>errs.push(x.file+': '+x.error))}
+  else{const j=await r.json().catch(()=>({detail:r.statusText}));errs.push(f.name+': '+j.detail)}}
+ if(errs.length)alert(errs.join('\\n'));st.textContent=`${n} neu.`;if(n)location.reload()}
 async function uploadGpx(input,id){const f=input.files[0];if(!f)return;
  const r=await fetch('/api/v1/events/'+id+'/gpx',{method:'PUT',body:f});
  if(r.ok)location.reload();else{const j=await r.json().catch(()=>({detail:r.statusText}));alert(j.detail)}}
 """
 
-NAV = (("/", "Fahrten"), ("/training", "Training"), ("/goals", "Ziele"), ("/routes", "Strecken"), ("/bikes", "Räder"),
+NAV = (("/", "Fahrten"), ("/training", "Training"), ("/goals", "Ziele"), ("/routes", "Strecken"), ("/map", "Karte"), ("/bikes", "Räder"),
        ("/climbs", "Anstiege"), ("/athlete", "Fahrer"), ("/archive", "Archiv"))
 
 
@@ -1215,7 +1242,7 @@ def _planner_button(r) -> str:
             f'rel="noopener">{label}</a>')
 
 
-def route_page(r, message: str | None = None) -> str:
+def route_page(r, message: str | None = None, new_tiles: dict | None = None) -> str:
     st = r.stats
     rid = escape(r.id)
     out = ['<p><a href="/routes">← Strecken</a></p>']
@@ -1240,6 +1267,9 @@ def route_page(r, message: str | None = None) -> str:
                           "", f'{st["turns"]} in der Datei' if st.get("turns") is not None else "", text=True))
     tiles.append(tile("Punkte", f'{st.get("points", 0):,}'.replace(",", " "), "",
                       f'Abstand typ. {num(st.get("median_spacing_m"), 0)} / max. {st.get("max_spacing_m", "–")} m'))
+    if new_tiles is not None:
+        tiles.append(tile("Neue Kacheln", str(new_tiles["explorer"]), "",
+                          f'{new_tiles["squadrats"]} neue Squadrats · <a href="/map">Karte</a>'))
     out.append('<div class="tiles">' + "".join(tiles) + "</div>")
     wpts = st.get("wpts", [])
     if st.get("track"):
@@ -1505,3 +1535,165 @@ def bikes_page(registry, devices: list[str], per_bike: dict, today: datetime.dat
                    '<span class="mut">erste Fahrt mit dieser Zuordnung; beim Umbau ein neues Datum</span></label>'
                    '<button class="pri" type="submit">Zuordnen</button></form></div>')
     return page("Räder", "/bikes", "\n".join(out))
+
+
+# --- map: visited tiles and heatmap --------------------------------------------------------------
+
+LEAFLET = "https://unpkg.com/leaflet@1.9.4/dist/"
+#: overlay names, the same as in BRouter-Web's config.js (its #map= hash names layers by them)
+MAP_LAYERS = (("visited", "BikeLog Kacheln"), ("squadrats", "BikeLog Squadrats"), ("heat", "BikeLog Heatmap"))
+
+MAP_SCRIPT = """
+(()=>{const el=document.getElementById('map');const cfg=JSON.parse(el.dataset.cfg);
+const map=L.map(el,{zoomControl:true});
+const osm=L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,
+ attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'}).addTo(map);
+const topo=L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',{maxZoom:17,
+ attribution:'&copy; OpenStreetMap, SRTM | &copy; <a href="https://opentopomap.org">OpenTopoMap</a>'});
+const over={};const keep=JSON.parse(localStorage.getItem('bikelog.map.layers')||'["BikeLog Kacheln","BikeLog Heatmap"]');
+for(const [id,name] of cfg.layers){over[name]=L.tileLayer('/api/v1/map/tiles/'+id+'/{z}/{x}/{y}.png?r='+cfg.revision,
+ {maxZoom:20,zIndex:id=='heat'?3:id=='visited'?1:2});if(keep.includes(name))over[name].addTo(map)}
+L.control.layers({'OpenStreetMap':osm,'OpenTopoMap':topo},over,{collapsed:false}).addTo(map);
+L.control.scale({imperial:false}).addTo(map);
+const save=()=>localStorage.setItem('bikelog.map.layers',JSON.stringify(Object.keys(over).filter(n=>map.hasLayer(over[n]))));
+map.on('overlayadd overlayremove',save);
+const v=JSON.parse(localStorage.getItem('bikelog.map.view')||'null');
+if(location.hash.startsWith('#map=')){const [z,la,lo]=location.hash.slice(5).split('/');map.setView([+la,+lo],+z)}
+else if(v)map.setView(v.c,v.z);else if(cfg.bounds)map.fitBounds([[cfg.bounds[0],cfg.bounds[1]],[cfg.bounds[2],cfg.bounds[3]]]);
+else map.setView([50.99,9.86],6);
+const sq=cfg.square;let sqLayer=null;
+document.querySelectorAll('[data-fly]').forEach(a=>a.addEventListener('click',e=>{e.preventDefault();
+ const b=JSON.parse(a.dataset.fly);map.fitBounds([[b[0],b[1]],[b[2],b[3]]])}));
+const plan=document.getElementById('plan');
+function upd(){const c=map.getCenter(),z=map.getZoom();
+ localStorage.setItem('bikelog.map.view',JSON.stringify({c:[c.lat,c.lng],z}));
+ if(plan){const names=['standard'].concat(Object.keys(over).filter(n=>map.hasLayer(over[n])));
+  plan.href=cfg.planner+'/#map='+z+'/'+c.lat.toFixed(5)+'/'+c.lng.toFixed(5)+'/'+names.map(encodeURIComponent).join(',')}}
+map.on('moveend overlayadd overlayremove',upd);upd();
+})();
+"""
+
+
+def _map_tiles(summary: dict) -> str:
+    e, q = summary["explorer"], summary["squadrats"]
+
+    def fly(stats: dict) -> str:
+        b = stats.get("max_square_bounds")
+        return (f' <a href="#" data-fly="{escape(str(b))}">zeigen</a>' if b else "")
+
+    return ('<div class="tiles">'
+            + tile("Kacheln", f'{e["tiles"]:,}'.replace(",", "."), sub="Zoom 14, je ≈ 1,6 km")
+            + tile("Max Square", str(e["max_square"]), "×" + str(e["max_square"]) if e["max_square"] else "",
+                   sub="größtes Quadrat" + fly(e))
+            + tile("Max Cluster", f'{e["max_cluster"]:,}'.replace(",", "."),
+                   sub=f'{e["cluster"]} Cluster-Kacheln')
+            + tile("Squadrats", f'{q["tiles"]:,}'.replace(",", "."), sub="Zoom 17, je ≈ 200 m")
+            + tile("Squadrat-Quadrat", str(q["max_square"]), "×" + str(q["max_square"]) if q["max_square"] else "",
+                   sub="größtes Quadrat" + fly(q))
+            + tile("Tracks", str(summary["tracks"]), sub=" · ".join(
+                f'{v["tracks"]} {SOURCE_NAMES[k]}' for k, v in summary["sources"].items() if v["tracks"]) or "–")
+            + "</div>")
+
+
+SOURCE_NAMES = {"ride": "BikeLog", "upload": "hochgeladen", "komoot": "Komoot"}
+
+
+def _komoot_panel(summary: dict) -> str:
+    k = summary["komoot"]
+    if not summary["komoot_enabled"]:
+        return ('<p class="mut">Komoot ist nicht eingerichtet (<code>BIKELOG_KOMOOT_EMAIL</code>/'
+                '<code>BIKELOG_KOMOOT_PASSWORD</code>).</p>')
+    if k.get("running"):
+        share = k["done"] / k["total"] if k.get("total") else None
+        return (f'<p>Import läuft: {k["done"]} von {k.get("total") or "?"} Touren, {k["new"]} neu, '
+                f'{k["known"]} schon da, {k["skipped"]} andere Sportart.</p>'
+                + (f'<progress value="{share:.3f}"></progress>' if share is not None else ""))
+    out = []
+    if k.get("finished_at"):
+        out.append(f'<p class="mut">Letzter Import {_local_time(k["finished_at"])}: {k.get("new", 0)} neu, '
+                   f'{k.get("known", 0)} schon da, {k.get("skipped", 0)} andere Sportart'
+                   + (f', {len(k["errors"])} Fehler' if k.get("errors") else "") + ".</p>")
+        if k.get("errors"):
+            out.append('<ul class="find">' + "".join(f'<li class="e">{escape(e)}</li>' for e in k["errors"][:10])
+                       + "</ul>")
+    out.append('<form method="post" action="/ui/map/komoot" class="inline">'
+               '<label style="margin-right:12px"><input type="checkbox" name="all_sports" value="1"> '
+               'auch Wandern, Laufen &amp; Co.</label>'
+               '<button class="pri" type="submit">Von Komoot importieren</button></form>'
+               '<p class="mut">Holt alle aufgezeichneten Touren, die noch nicht hier sind (geplante nicht). '
+               'Fahrten, die BikeLog selbst zu Komoot hochgeladen hat, zählen nur einmal.</p>')
+    return "".join(out)
+
+
+def _map_track_rows(tracks: list, dups: dict) -> str:
+    rows = []
+    for t in reversed(tracks):
+        if t.source == "ride":
+            continue
+        when = (datetime.datetime.fromtimestamp(t.start).strftime("%d.%m.%Y %H:%M") if t.start else "ohne Zeit")
+        dup = '<span class="chip">doppelt</span>' if t.id in dups else ""
+        rows.append(f'<tr><td>{escape(t.name)} {dup}<div class="mut">{SOURCE_NAMES[t.source]}'
+                    f'{" · " + escape(t.sport) if t.sport else ""}</div></td><td>{when}</td>'
+                    f'<td class="num">{num(t.distance_m / 1000)} km</td>'
+                    f'<td><form method="post" action="/ui/map/tracks/{escape(t.id)}/delete" class="inline" '
+                    f'onsubmit="return confirm(\'Track löschen?\')"><button class="sm" type="submit">Löschen'
+                    f'</button></form></td></tr>')
+    return "".join(rows)
+
+
+def map_page(summary: dict, tracks: list, dups: dict, planner_url: str | None = None,
+             message: str | None = None) -> str:
+    import json as _json
+    cfg = {"revision": summary["revision"], "layers": MAP_LAYERS, "bounds": summary["bounds"],
+           "planner": planner_url}
+    running = summary["komoot"].get("running")
+    head = (f'<link rel="stylesheet" href="{LEAFLET}leaflet.css">'
+            + ('<meta http-equiv="refresh" content="5">' if running else ""))
+    style = ("<style>#map{height:68vh;min-height:380px;border:1.5px solid var(--rim);border-radius:14px;"
+             "margin:10px 0}.leaflet-container{background:var(--panel);font:13px var(--sans)}"
+             ".leaflet-control-layers{color:#222}</style>")
+    note = f'<div class="msg">{escape(message)}</div>' if message else ""
+    plan = (f'<a class="btn pri" id="plan" href="{escape(planner_url)}" target="_blank" rel="noopener">'
+            'In BRouter planen</a> ' if planner_url else "")
+    legend = ('<div class="legend"><span><i style="background:rgb(214,64,40)"></i>besucht</span>'
+              '<span><i style="background:rgb(150,70,200)"></i>Cluster (alle vier Nachbarn besucht)</span>'
+              '<span><i style="background:rgb(100,30,160)"></i>Max Cluster</span>'
+              '<span><i style="background:rgb(255,204,0)"></i>Max Square</span>'
+              '<span><i style="background:linear-gradient(90deg,rgb(0,200,235),rgb(0,105,200),rgb(20,45,160))">'
+              '</i>Heatmap: 1 → 20+ Fahrten</span></div>')
+    rows = _map_track_rows(tracks, dups)
+    body = f"""<h1>Karte</h1>
+<p class="mut">Wo du schon warst: besuchte Kacheln (Zoom 14 wie VeloViewer/StatsHunters, Squadrats auf Zoom 17)
+und die Heatmap aller Fahrten. Dieselben Ebenen gibt es als Overlay in BRouter-Web.</p>
+{note}
+{_map_tiles(summary)}
+<p>{plan}<span class="mut">Ebenen oben rechts in der Karte.</span></p>
+<div id="map" data-cfg="{escape(_json.dumps(cfg))}"></div>
+{legend}
+<h2>GPX hochladen</h2>
+<div class="panel">
+<p class="mut">Nur für die Karte (ohne Bericht und Training): einzelne GPX, .gpx.gz oder ein ZIP, z. B. der
+Export von Strava oder Garmin. Fahrten, die schon als BikeLog-Fahrt da sind, zählen nur einmal.</p>
+<input type="file" id="mp-files" multiple accept=".gpx,.gz,.zip,application/gpx+xml,application/zip">
+<label class="f"><span>Gemischte Aufzeichnung</span><input type="checkbox" id="mp-mixed"
+ onchange="document.getElementById('mp-mixopts').hidden=!this.checked"> Handy mit Rad, zu Fuß, Auto und Bahn:
+ nur die Radfahrten übernehmen</label>
+<div id="mp-mixopts" hidden>
+<label class="f"><span>Nur Track (Gerät)</span><input id="mp-track" value="IanMobil" size="16">
+ <span class="mut">Name des &lt;trk&gt;, z. B. das Gerät in PhoneTrack; leer = alle</span></label>
+<label class="f"><span>Name der Fahrten</span><input id="mp-name" value="Handy" size="16"></label>
+<p class="mut">Alle gewählten Dateien werden zu einer Aufzeichnung zusammengelegt (Tagesdateien und
+überlappende Exporte schaden nicht), an Pausen ab 5 min geteilt und nach Geschwindigkeit beurteilt.</p>
+</div>
+<button class="pri" type="button" onclick="uploadMap()">Hochladen</button> <span id="mp-status" class="mut"></span>
+<div id="mp-result"></div>
+</div>
+<h2>Komoot</h2>
+<div class="panel">{_komoot_panel(summary)}</div>
+<details class="sec"><summary>Hochgeladen und importiert <span class="mut">({sum(1 for t in tracks if t.source != "ride")})</span></summary>
+<table><thead><tr><th>Track</th><th>Zeit</th><th class="num">Strecke</th><th></th></tr></thead>
+<tbody>{rows or '<tr><td colspan="4" class="mut">Noch nichts.</td></tr>'}</tbody></table></details>
+{style}
+<script src="{LEAFLET}leaflet.js"></script>
+<script>{MAP_SCRIPT}</script>"""
+    return page("Karte", "/map", body, head=head)

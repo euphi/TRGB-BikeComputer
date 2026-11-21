@@ -337,6 +337,70 @@ Ziel zeigt dann „Deine bisherigen Teilnahmen" mit Zeit, Tempo, Puls, Leistung 
 Datei noch einmal ersetzt die Sitzung. API: `PUT /api/v1/import/gpx` (`bike_id`, `event_id`,
 Body = die Datei).
 
+## Karte: besuchte Kacheln und Heatmap
+
+Die Seite **Karte** (`/map`) zeigt, wo du schon gefahren bist, zum Planen neuer Touren. Drei
+Ebenen über OpenStreetMap, dieselben als Overlay in BRouter-Web:
+
+- **Kacheln**: die OSM-Kacheln auf Zoom 14 (≈ 1,6 km, die „Explorer-Kacheln“ von VeloViewer und
+  StatsHunters), durch die eine Fahrt geführt hat (rot). **Cluster** (violett) sind besuchte
+  Kacheln, deren vier Nachbarn ebenfalls besucht sind, der **Max Cluster** die größte
+  zusammenhängende Gruppe davon (dunkelviolett), das **Max Square** das größte Quadrat
+  besuchter Kacheln (gelber Rahmen). Ab Zoom 11 liegt das Kachelgitter darüber.
+- **Squadrats**: dasselbe auf Zoom 17 (≈ 200 m).
+- **Heatmap**: alle Fahrten aufsummiert, in Cyan wie die Heatmap des Campers. Gezählt werden
+  Fahrten pro Pixel, nicht Punkte; je öfter ein Weg gefahren wurde, desto kräftiger.
+
+Eine Kachel zählt, wenn eine Strecke zwischen zwei Punkten sie kreuzt. Ein Abschnitt über
+2 km ohne Punkt (Tunnel, Zug, GPS weg) zählt nicht. Die Seite zeigt die Kennzahlen, „In BRouter
+planen“ öffnet BRouter-Web an derselben Stelle mit denselben Ebenen (`BIKELOG_PLANNER_URL`). Die
+Seite einer geplanten Strecke nennt, wie viele **neue Kacheln** und Squadrats sie bringen würde.
+
+Quellen, alle unter `<data>/map/`
+([`maptracks.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/BikeLogService/bikelogservice/maptracks.py), Zeichnen und Kennzahlen in
+[`bikelog/explorer.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/bikelog/explorer.py)):
+
+- **BikeLog-Fahrten** kommen von selbst (nach jedem Abruf, aus der exportierten GPX).
+  Testfahrten und Leerlauf-Sitzungen nicht.
+- **GPX hochladen** auf der Seite: GPX, `.gpx.gz` oder ein ZIP (z. B. der Export von Strava
+  oder Garmin), nur für die Karte, ohne Bericht und Training. Hochgeladene Tracks lassen sich
+  dort wieder löschen.
+- **Gemischte Aufzeichnung** (Haken beim Hochladen): eine ganztägige Aufzeichnung vom Handy
+  (PhoneTrack/OsmAnd, OwnTracks) mit Rad, zu Fuß, Auto und Bahn. Alle Dateien werden
+  zusammengelegt (Tagesdateien und überlappende Exporte schaden nicht), optional nur ein
+  `<trk>`/Gerät (`track`, z. B. `IanMobil`), an Pausen ab 5 min und Lücken ab 10 min geteilt
+  und nach Geschwindigkeit beurteilt
+  ([`bikelog/tripmode.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/bikelog/tripmode.py)): zu Fuß unter 8 km/h im Median; Auto/Bahn
+  bei Median über 32 km/h, schnellstem Zehntel über 45 km/h, einer Minute über 55 km/h, einem
+  Schnitt über 30 km/h oder Stop-and-go (schnellstes Zehntel über 38 km/h und mehr als das
+  Doppelte des Medians); Rad ab 10 km/h Median; was dazwischen liegt, gilt als „unklar“ und
+  wird nicht übernommen. Die Seite listet jede erkannte Fahrt mit Urteil und Grund. Gemessen an
+  229 Fahrten eines Handys; alle vier, die der Fahrradcomputer zugleich aufgezeichnet hat,
+  wurden als Rad erkannt.
+- **Komoot** (einmalig, „Von Komoot importieren“): alle aufgezeichneten Touren des Kontos aus
+  `BIKELOG_KOMOOT_EMAIL`, standardmäßig nur Radsportarten. Noch einmal geholt werden nur neue.
+
+**Doppelte Fahrten** zählen einmal: Ein Track, der zur selben Zeit aufgezeichnet wurde wie einer
+aus einer besseren Quelle (BikeLog vor Hochgeladen vor Komoot), wird ausgeblendet, etwa eine
+BikeLog-Fahrt, die nach Komoot hochgeladen war und mit dem Import zurückkommt.
+
+**Overlay in BRouter-Web** (`~/brouter/web/config.js`, `BR.conf.overlays`; die Namen müssen so
+bleiben, weil der Link von `/map` sie im `#map=`-Hash nennt):
+
+```js
+var bikelogTiles = 'https://bikelog.example.org/api/v1/map/tiles/';
+BR.conf.overlays = {
+    'BikeLog Kacheln': bikelogTiles + 'visited/{z}/{x}/{y}.png',
+    'BikeLog Squadrats': bikelogTiles + 'squadrats/{z}/{x}/{y}.png',
+    'BikeLog Heatmap': bikelogTiles + 'heat/{z}/{x}/{y}.png',
+};
+```
+
+Die Kacheln (256 px, PNG mit Palette) zeichnet der Dienst bei Bedarf in reinem Python, typisch
+20–90 ms je Kachel, und hält die letzten 4000 im Speicher. Der ETag ist der Stand der
+Track-Sammlung, ändert sich also mit jeder neuen Fahrt. Ändert sich, wie Tracks gelesen oder
+ausgedünnt werden, `MAP_VERSION` erhöhen: Der Dienst liest dann alle Tracks beim Start neu.
+
 ## Geplante und regelmäßige Strecken
 
 Die Seite **Strecken** (`/routes`) hält Strecken zum Fahren: **geplante** (eine anstehende
@@ -608,6 +672,7 @@ Umgebungsvariablen (im Dienst: `~/bikelog/bikelog.env`):
 | `BIKELOG_EXPORT_GPX` | `1` | GPX-Export an/aus |
 | `BIKELOG_EXPORT_DIR` | `<data>/export/gpx` | Zielverzeichnis (muss in der Unit beschreibbar sein: `ReadWritePaths=`) |
 | `BIKELOG_PUBLIC_URL` | -- | z. B. `http://server:8080`, für den Link im GPX |
+| `BIKELOG_PLANNER_URL` | -- | BRouter-Web, z. B. `http://brouter.ia216.internal`, für „In BRouter planen“ auf `/map` |
 | `BIKELOG_REQUIRE_AUTH` | `0` | Auth an/aus |
 | `BIKELOG_TOKENS` | -- | `token:name`, kommagetrennt |
 | `BIKELOG_MAX_UPLOAD_BYTES` | 64 MiB | Obergrenze pro `PUT` |
@@ -663,6 +728,12 @@ eines bestehenden Ziels beibehalten, die gespeicherten Sitzungen liegen darunter
 | `POST` | `/api/v1/routes/{id}/trailbridge` | TrailBridge anbieten (`on=false`: zurücknehmen) |
 | `GET` | `/api/v1/trailbridge/route` | die für TrailBridge markierte Strecke, siehe [oben](#strecken-fur-trailbridge) |
 | `GET` | `/api/v1/trailbridge/routes/{id}.gpx` | ihre Datei, für die App |
+| `GET` | `/map` | Karte mit besuchten Kacheln und Heatmap (HTML) |
+| `GET` | `/api/v1/map` | Kennzahlen (Kacheln, Cluster, Max Square, Squadrats), Tracks je Quelle, Stand des Komoot-Imports |
+| `GET` | `/api/v1/map/tiles/{visited\|squadrats\|heat}/{z}/{x}/{y}.png` | Overlay-Kachel (XYZ wie OSM) |
+| `GET`/`PUT` | `/api/v1/map/tracks` | Tracks der Karte (mit `duplicate_of`) / GPX, `.gpx.gz` oder ZIP hochladen (`filename`; `mixed=true` mit `track`, `name`: gemischte Aufzeichnung, nur Radfahrten) |
+| `DELETE` | `/api/v1/map/tracks/{id}` | hochgeladenen oder importierten Track löschen (BikeLog-Fahrten: 409) |
+| `POST` | `/api/v1/map/komoot` | Komoot-Import starten (`all_sports=true`: auch Wandern usw.) |
 | `POST` | `/api/v1/trailbridge/route/fetched` | die App bestätigt eine Revision (`revision`) |
 | `DELETE` | `/api/v1/sessions/{id}` | Dateien löschen, Grabstein behalten |
 | `POST` | `/api/v1/sessions/{id}/komoot` | zur zusammengehörigen Tour hochladen (`force`), siehe unten |

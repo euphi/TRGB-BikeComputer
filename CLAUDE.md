@@ -198,6 +198,11 @@ Mobilfunk); danach das Netz mit `cmd wifi forget-network <id>` wieder vergessen.
   (`<data>/routes.json` + `routes/`). Genau eine Strecke ist für TrailBridge markiert; die App
   pollt `/api/v1/trailbridge/route` (ETag = Revision, kein eigenes Passwort: Zugriff nur
   aus LAN/VPN), Vertrag in `doc/LOGSERVICE.md` „Strecken für TrailBridge".
+- Karte (`/map`, Overlays für BRouter-Web in `~/brouter/web/config.js`): besuchte Kacheln z14/z17,
+  Max Square/Cluster und Heatmap, reiner Teil `bikelog/explorer.py` (Kacheln als Paletten-PNG ohne
+  Pillow), Speicher `bikelogservice/maptracks.py` (`<data>/map/`, Quellen Fahrt/Upload/Komoot,
+  Doppelte über die Zeit, `MAP_VERSION`). Handy-Aufzeichnungen: `bikelog/tripmode.py` trennt Rad
+  von zu Fuß/Auto/Bahn. Tests `tests/test_explorer.py`, `test_tripmode.py`, `test_map.py`.
 - GPX-Import (`bikelog/gpximport.py`, `importer.py`): Sitzungen des Geräts `import`, nie
   exportiert; optional als frühere Teilnahme eines Ziels (`Event.participations`).
 

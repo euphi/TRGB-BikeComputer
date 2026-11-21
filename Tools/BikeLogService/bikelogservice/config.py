@@ -62,6 +62,9 @@ class Settings:
     #: Base URL of this service as seen from outside, e.g. http://ia216:8080 --
     #: goes into the GPX as a link back to the session. Optional.
     public_url: str | None = None
+    #: BRouter-Web (or another planner taking #map=z/lat/lon/layers), e.g.
+    #: http://brouter.ia216.internal -- the /map page opens it at the same spot. Optional.
+    planner_url: str | None = None
 
     #: Komoot upload (komoot.py, needs the optional "kompy" package: pip
     #: install "bikelog[komoot]"). Unset email/password means the feature is
@@ -164,6 +167,7 @@ class Settings:
             export_gpx=_flag(env.get("BIKELOG_EXPORT_GPX", "1")),
             export_dir=Path(env["BIKELOG_EXPORT_DIR"]) if env.get("BIKELOG_EXPORT_DIR") else None,
             public_url=(env.get("BIKELOG_PUBLIC_URL") or "").rstrip("/") or None,
+            planner_url=(env.get("BIKELOG_PLANNER_URL") or "").rstrip("/") or None,
             komoot_email=env.get("BIKELOG_KOMOOT_EMAIL") or None,
             komoot_password=env.get("BIKELOG_KOMOOT_PASSWORD") or None,
             komoot_activity=env.get("BIKELOG_KOMOOT_ACTIVITY", "touringbicycle"),
