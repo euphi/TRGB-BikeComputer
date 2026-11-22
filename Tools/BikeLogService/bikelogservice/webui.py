@@ -1670,7 +1670,7 @@ def map_page(summary: dict, tracks: list, dups: dict, planner_url: str | None = 
     rows = _map_track_rows(tracks, dups)
     body = f"""<h1>Karte</h1>
 <p class="mut">Wo du schon warst: besuchte Kacheln (Zoom 14 wie VeloViewer/StatsHunters, Squadrats auf Zoom 17,
-Zoom-Kacheln in der Größe der gerade angezeigten Kartenkacheln, höchstens so fein wie Squadrats)
+Zoom-Kacheln wachsen beim Herauszoomen mit, höchstens so fein wie Squadrats)
 und die Heatmap aller Fahrten. Dieselben Ebenen gibt es als Overlay in BRouter-Web.</p>
 {note}
 {_map_tiles(summary)}

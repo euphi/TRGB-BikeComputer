@@ -203,7 +203,7 @@ Mobilfunk); danach das Netz mit `cmd wifi forget-network <id>` wieder vergessen.
   pollt `/api/v1/trailbridge/route` (ETag = Revision, kein eigenes Passwort: Zugriff nur
   aus LAN/VPN), Vertrag in `doc/LOGSERVICE.md` „Strecken für TrailBridge".
 - Karte (`/map`, Overlays für BRouter-Web in `~/brouter/web/config.js`): besuchte Kacheln z14/z17 und
-  je angezeigtem Zoom, Max Square/Cluster und Heatmap, reiner Teil `bikelog/explorer.py` (Kacheln als Paletten-PNG ohne
+  zwei Stufen feiner als angezeigt (`ZOOM_TILES_FINER`), Max Square/Cluster und Heatmap, reiner Teil `bikelog/explorer.py` (Kacheln als Paletten-PNG ohne
   Pillow), Speicher `bikelogservice/maptracks.py` (`<data>/map/`, Quellen Fahrt/Upload/Komoot,
   Doppelte über die Zeit, `MAP_VERSION`). Gezeichnet wird über `explorer.HeatIndex` und nur im Thread
   `bikelog-tiles`; Heatmap bis z14 liegt in `heat-cache.sqlite` (andere Pixel: `HEAT_VERSION` erhöhen). Handy-Aufzeichnungen: `bikelog/tripmode.py` trennt Rad

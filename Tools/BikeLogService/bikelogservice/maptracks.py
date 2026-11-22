@@ -68,11 +68,14 @@ log = logging.getLogger("bikelog.map")
 MAP_VERSION = 1
 SOURCES = {"ride": "BikeLog", "upload": "Hochgeladen", "komoot": "Komoot"}
 PRIORITY = {"ride": 0, "upload": 1, "komoot": 2}
-#: layer -> the zoom of the tiles it counts; "zoom": the map tile on screen, see ZOOM_TILES_MAX
+#: layer -> the zoom of the tiles it counts; "zoom": follows the map, see ZOOM_TILES_FINER
 LAYERS = {"visited": explorer.EXPLORER_ZOOM, "squadrats": explorer.SQUADRAT_ZOOM, "zoom": None, "heat": None}
 #: below this zoom the squadrats layer stays empty (a 200 m tile would be under 2 px)
 MIN_ZOOM = {"visited": 5, "squadrats": 10, "zoom": 3, "heat": 3}
 MAX_ZOOM = 20
+#: the "zoom" layer's grid is this many zooms finer than the map: 2 = a quarter of a map
+#: tile's side (64 px), a 16th of its area
+ZOOM_TILES_FINER = 2
 #: the finest grid of the "zoom" layer: closer in (100 m and less a tile) GPS scatter would
 #: decide what counts as visited, so from there on it shows the squadrats
 ZOOM_TILES_MAX = explorer.SQUADRAT_ZOOM
@@ -635,7 +638,9 @@ class MapStore:
                 south, east = explorer.unmercator(maxx, maxy)
                 bounds = (south, west, north, east)
             digest = hashlib.sha1(json.dumps(sorted((i.id, i.sig, i.points) for i in infos)).encode()
-                                  + json.dumps(sorted(dups.items())).encode() + b"all-drawn").hexdigest()[:12]
+                                  + json.dumps(sorted(dups.items())).encode() + b"all-drawn"
+                                  # the revision is the tiles' ETag: other grid = other revision
+                                  + b"|zoom+%d" % ZOOM_TILES_FINER).hexdigest()[:12]
             self._state = MapState(digest, tracks, dups,
                                    {explorer.EXPLORER_ZOOM: explorer.tile_stats(t14, explorer.EXPLORER_ZOOM),
                                     explorer.SQUADRAT_ZOOM: explorer.tile_stats(t17, explorer.SQUADRAT_ZOOM)},
@@ -661,7 +666,7 @@ class MapStore:
 
     def _draw_visited(self, state: MapState, key: tuple) -> bytes:
         layer, z, x, y, _ = key
-        zoom = min(z, ZOOM_TILES_MAX) if layer == "zoom" else LAYERS[layer]
+        zoom = min(z + ZOOM_TILES_FINER, ZOOM_TILES_MAX) if layer == "zoom" else LAYERS[layer]
         png = explorer.visited_tile(state.stats_at(zoom), z, x, y, faint=layer == "zoom") or explorer.EMPTY_PNG
         self._remember(key, png)
         return png

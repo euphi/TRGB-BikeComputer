@@ -1017,7 +1017,7 @@ def create_app(settings: Settings | None = None, puller: Puller | None = None) -
     def map_tile(request: Request, layer: str = Path(pattern=TILE_RE), z: int = Path(ge=0, le=maptracks.MAX_ZOOM),
                  x: int = Path(ge=0), y: int = Path(ge=0), principal: Principal = AuthDep):
         """One 256 px overlay tile (XYZ, like OSM): visited = explorer tiles (zoom 14),
-        squadrats = zoom 17 tiles, zoom = the map tiles of zoom z themselves (17 at most),
+        squadrats = zoom 17 tiles, zoom = the tiles of zoom z + 2 (17 at most),
         heat = all tracks summed up. For BRouter-Web's BR.conf.overlays and the /map page."""
         headers = {"Cache-Control": "no-cache", "Access-Control-Allow-Origin": "*"}
         etag = f'"{map_store.state().revision}"'

@@ -274,7 +274,7 @@ def _tile_at(z, lat=50.01, lon=8.60):
     return z, int(x * 2 ** z), int(y * 2 ** z)
 
 
-def test_zoom_layer_counts_the_tiles_of_the_zoom_shown(settings):
+def test_zoom_layer_tiles_are_a_quarter_map_tile_wide(settings, monkeypatch):
     store = maptracks.MapStore(settings)
     store.add_upload(timed_gpx(), "a.gpx")
     state = store.state()
@@ -282,10 +282,13 @@ def test_zoom_layer_counts_the_tiles_of_the_zoom_shown(settings):
     for z in range(3, 18):
         assert state.stats_at(z).tiles == explorer.tiles_of(runs, z), z
         tile = _tile_at(z)
-        expected = explorer.visited_tile(state.stats_at(z), *tile, faint=True)
+        grid = min(z + 2, 17)                               # 64 px: two zooms finer than the map
+        expected = explorer.visited_tile(state.stats_at(grid), *tile, faint=True)
         assert store.tile("zoom", *tile)[0] == expected, z
     tile = _tile_at(19)                                     # no finer than the squadrats
     assert store.tile("zoom", *tile)[0] == store.tile("squadrats", *tile)[0]
+    monkeypatch.setattr(maptracks, "ZOOM_TILES_FINER", 0)   # other grid: browsers must not get a 304
+    assert maptracks.MapStore(settings).state().revision != state.revision
 
 
 def test_zoom_layer_route_and_page(client):

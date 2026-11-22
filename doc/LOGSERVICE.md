@@ -379,10 +379,11 @@ OpenStreetMap, the same ones as overlays in BRouter-Web:
   purple), the **max square** the largest square of visited tiles (yellow frame). From zoom 11
   the tile grid is drawn on top.
 - **Squadrats**: the same at zoom 17 (≈ 200 m).
-- **Zoom tiles**: the same for the map tiles of the zoom on screen: zoomed out the tiles are
-  large (zoom 10 ≈ 25 km, zoom 8 ≈ 100 km), zoomed in small, down to zoom 17. From there on
-  the layer shows squadrats: at 100 m and less GPS scatter would decide what counts as visited.
-  The fill is paler than in the other layers, a tile here covers a large part of the screen.
+- **Zoom tiles**: the same with a grid that follows the map, always two zooms finer than the one
+  on screen: a tile is 64 px wide, a quarter of a map tile (map zoom 8 ≈ 25 km, zoom 10 ≈ 6 km).
+  From map zoom 15 on the layer stays with the squadrats (zoom 17): at 100 m and less GPS
+  scatter would decide what counts as visited. The fill is paler than in the other layers,
+  zoomed out the layer covers much of the screen.
 - **Heatmap**: all rides summed up, in cyan like the camper's heatmap. It counts rides per pixel,
   not points; the more often a way was ridden, the stronger.
 
