@@ -103,7 +103,7 @@ sensor), height calibration, IMU calibration, restart and power off.
 - A map of where you have ridden, for planning (also as overlays in BRouter-Web): visited
   zoom-14 tiles with cluster and max square, zoom-17 squadrats, tiles that grow as you zoom
   out, and a heatmap of all rides, each also for a period of your choice, the tiles also
-  coloured by how often ridden;
+  coloured by the kilometres ridden in them;
   from the bike computer's rides, uploaded GPX, a one-off Komoot import, and a phone's
   all-day recording, of which only the cycling is kept
 

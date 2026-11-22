@@ -3,15 +3,16 @@
 One script for both maps: the /map page and BRouter-Web, whose config.js loads it from here (so
 brouter-web needs no patch and no rebuild). It puts a control on the map (button, slider for start
 and end in months, two date fields for exact days, presets) and appends from/to to the URL of
-every BikeLog tile. The same box switches the tile layers between cluster and frequency
-(colour=rides, on a dark base map rides-dark) and has their legend.
+every BikeLog tile. The same box switches the tile layers between cluster and kilometres
+(colour=distance, on a dark base map distance-dark) and has their legend: for kilometres one
+scale per layer on, of the grid that layer has at the zoom on the screen.
 
   window.BikeLogPeriod.attach(L, map, options)            the /map page calls it ({always, change,
                                                           position}); in BRouter-Web the script
                                                           finds the map itself
   window.BikeLogPeriod.query()                            "from=...&to=...", "" = all rides
   window.BikeLogPeriod.link()                             query for a link to the other map
-  window.BikeLogPeriod.colour()                           'cluster' or 'rides'
+  window.BikeLogPeriod.colour()                           'cluster' or 'distance'
 
 Period and colouring are kept per origin in localStorage; ?bikelogfrom=&bikelogto= and
 ?bikelogcolour= in the page's URL win once and are then taken out of it.
@@ -27,6 +28,8 @@ import json
 
 from bikelog import explorer
 
+from . import maptracks
+
 _JS = r"""(function () {
 'use strict';
 if (window.BikeLogPeriod) return;
@@ -37,7 +40,8 @@ var DAY = /^\d{4}-\d\d-\d\d$/;
 var range = {from: '', to: ''};         // days, both included; '' = open
 var COLOUR_KEY = 'bikelog.map.colour';
 var LEGEND = __LEGEND__;
-var colour = 'cluster';                 // of the tile layers: 'cluster' | 'rides'
+var SCALE = __SCALE__;                  // km limits per grid, grid per layer
+var colour = 'cluster';                 // of the tile layers: 'cluster' | 'distance'
 var dark = false;                       // a dark base map is on
 
 function valid(day) {
@@ -69,7 +73,7 @@ function load() {
   var coloured = params.has('bikelogcolour');
   try {
     var wanted = coloured ? params.get('bikelogcolour') : localStorage.getItem(COLOUR_KEY);
-    if (wanted === 'rides') colour = wanted;
+    if (wanted === 'distance' || wanted === 'rides') colour = 'distance';   // rides: its forerunner
   } catch (e) { /* no storage */ }
   if (linked || coloured) {
     store();
@@ -90,7 +94,7 @@ function ours(layer) { return typeof layer._url === 'string' && layer._url.index
 function coloured(layer) { return ours(layer) && layer._url.indexOf(TILES + 'heat/') < 0; }
 function tileQuery(layer) {
   var parts = query() ? [query()] : [];
-  if (colour === 'rides' && coloured(layer)) parts.push('colour=' + (dark ? 'rides-dark' : 'rides'));
+  if (colour === 'distance' && coloured(layer)) parts.push('colour=' + (dark ? 'distance-dark' : 'distance'));
   return parts.join('&');
 }
 function darkBase(layer) {
@@ -166,6 +170,11 @@ var CSS = [
   '.blp-legend span{flex:1;font-size:11px;line-height:1.2;text-align:center;color:#E7E2D6}',
   '.blp-legend i{display:block;box-sizing:border-box;height:12px;margin-bottom:3px;border-radius:3px}',
   '.blp-what{margin-top:4px;color:#9BA097;font-size:11px}',
+  '.blp-scale{margin-top:8px}',
+  '.blp-scale em{display:block;margin-bottom:3px;color:#9BA097;font-size:11px;font-style:normal;line-height:1.2}',
+  '.blp-bar{display:flex;gap:2px}.blp-bar i{flex:1;height:12px;border-radius:2px}',
+  '.blp-ticks{position:relative;height:14px}',
+  '.blp-ticks b{position:absolute;top:2px;transform:translateX(-50%);color:#E7E2D6;font-size:11px;font-weight:400}',
   '.blp-slide{position:relative;height:38px;touch-action:none}',
   '.blp-track,.blp-fill{position:absolute;top:17px;height:4px;border-radius:2px;background:#332F28}',
   '.blp-track{left:12px;right:12px}.blp-fill{background:#CBA36B;top:0}',
@@ -219,7 +228,7 @@ function control(L, map, options) {
   list.forEach(function (p, i) { el('option', '', pick, {value: i}).textContent = p[0]; });
   el('option', '', pick, {value: 'own', disabled: ''}).textContent = 'eigener Zeitraum';
   var colours = el('div', 'blp-colour', body), modes = el('div', 'blp-modes', colours);
-  var buttons = [['cluster', 'Cluster'], ['rides', 'Häufigkeit']].map(function (m) {
+  var buttons = [['cluster', 'Cluster'], ['distance', 'Kilometer']].map(function (m) {
     var button = el('button', 'blp-mode', modes, {type: 'button', 'data-colour': m[0]});
     button.textContent = m[1];
     button.addEventListener('click', function () {
@@ -232,25 +241,53 @@ function control(L, map, options) {
     });
     return button;
   });
-  var legend = el('div', 'blp-legend', colours), what = el('div', 'blp-what', colours);
+  var legend = el('div', '', colours), what = el('div', 'blp-what', colours);
 
+  function scales() {                   // [names, km limits] per grid shown
+    var z = map._loaded ? Math.round(map.getZoom()) : null, rows = [];
+    if (z === null) return rows;
+    SCALE.layers.forEach(function (info) {
+      var on = false;
+      map.eachLayer(function (layer) { if (ours(layer) && layer._url.indexOf(TILES + info.id + '/') >= 0) on = true; });
+      if (!on || z < info.min) return;
+      var grid = info.grid === null ? Math.min(z + SCALE.finer, SCALE.max) : info.grid;
+      var same = rows.filter(function (r) { return r.grid === grid; })[0];
+      if (same) same.names.push(info.name); else rows.push({grid: grid, names: [info.name]});
+    });
+    return rows;
+  }
   function showColour() {
-    var rides = colour === 'rides';
-    var key = !rides ? 'cluster' : dark ? 'dark' : 'rides';
+    var byKm = colour === 'distance', rows = byKm ? scales() : [];
+    var key = !byKm ? 'cluster' : JSON.stringify([dark, rows]);
     if (key === shown) return;
     shown = key;
     buttons.forEach(function (b) {
       b.setAttribute('aria-pressed', String(b.getAttribute('data-colour') === colour));
     });
-    colourName.textContent = rides ? 'Häufigkeit' : 'Cluster';
+    colourName.textContent = byKm ? 'Kilometer' : 'Cluster';
     legend.textContent = '';
-    LEGEND[key].forEach(function (step) {
-      var item = el('span', '', legend), swatch = el('i', '', item);
-      swatch.style.background = step[1];
-      if (step[2]) swatch.style.border = '2px solid ' + step[2];
-      item.appendChild(document.createTextNode(step[0]));
+    if (!byKm) {
+      var list = el('div', 'blp-legend', legend);
+      LEGEND.cluster.forEach(function (step) {
+        var item = el('span', '', list), swatch = el('i', '', item);
+        swatch.style.background = step[1];
+        if (step[2]) swatch.style.border = '2px solid ' + step[2];
+        item.appendChild(document.createTextNode(step[0]));
+      });
+    }
+    rows.forEach(function (row) {
+      var scale = el('div', 'blp-scale', legend, {'data-grid': row.grid});
+      el('em', '', scale).textContent = row.names.join(', ') + ' (km)';
+      var bar = el('div', 'blp-bar', scale), ticks = el('div', 'blp-ticks', scale);
+      LEGEND[dark ? 'dark' : 'distance'].forEach(function (shade) { el('i', '', bar).style.background = shade; });
+      SCALE.steps[row.grid].forEach(function (km, i) {
+        var tick = el('b', '', ticks);
+        tick.style.left = 100 * (i + 1) / 6 + '%';
+        tick.textContent = km.toLocaleString('de-DE', {useGrouping: 'always'});
+      });
     });
-    what.textContent = rides ? 'Fahrten durch die Kachel' : 'Cluster: alle vier Nachbarkacheln besucht';
+    what.textContent = byKm ? 'gefahrene Strecke in der Kachel, hin und zurück zählt doppelt'
+                            : 'Cluster: alle vier Nachbarkacheln besucht';
   }
   function redrawTiles() {
     map.eachLayer(function (layer) { if (coloured(layer)) layer.redraw(); });
@@ -342,13 +379,14 @@ function control(L, map, options) {
     var turned = drawnDark !== null && drawnDark !== isDark;
     dark = drawnDark = isDark;
     showColour();
-    if (turned && colour === 'rides') redrawTiles();
+    if (turned && colour === 'distance') redrawTiles();
   }
   show();
   var Control = L.Control.extend({options: {position: options.position || 'bottomright'}, onAdd: function () { return box; }});
   new Control().addTo(map);
   visible();
   var due = null;                       // a route being dragged adds and removes layers all the time
+  map.on('zoomend', showColour);         // the zoom tiles' scale follows the map
   map.on('layeradd layerremove', function () {
     if (due === null) due = setTimeout(function () { due = null; visible(); }, 0);
   });
@@ -399,32 +437,36 @@ if (window.BR) {
 """
 
 
-def step_names() -> list[str]:
-    """1, 2, 3–4, ..., 25+"""
-    steps = explorer.RIDE_STEPS
-    return [str(low) if high - low == 1 else f"{low}–{high - 1}"
-            for low, high in zip(steps, steps[1:])] + [f"{steps[-1]}+"]
-
-
 def _seen(colour: tuple[int, int, int, int], base: tuple[int, int, int]) -> str:
     """An overlay colour as it looks on a base map."""
     share = colour[3] / 255
     return "#%02x%02x%02x" % tuple(round(b + (c - b) * share) for c, b in zip(colour, base))
 
 
-def legends() -> dict[str, list[list[str]]]:
-    """Per colouring: [label, colour, border] of its swatches, from the palettes the tiles have."""
+def legends() -> dict[str, list]:
+    """The swatches from the palettes the tiles have: cluster [label, colour, border],
+    distance (and dark) the six colours."""
     light, dark = (250, 250, 248), (38, 38, 38)
     v = explorer.VISITED_PALETTE
     return {"cluster": [[name, _seen(v[i], light)] for i, name in ((1, "besucht"), (2, "Cluster"),
                                                                    (3, "Max Cluster"))]
             + [["Max Square", _seen(v[0], light), _seen(v[5], light)]],
-            "rides": [[name, _seen(c, light)] for name, c in zip(step_names(), explorer.RIDE_PALETTE[1:])],
-            "dark": [[name, _seen(c, dark)] for name, c in zip(step_names(), explorer.RIDE_PALETTE_DARK[1:])]}
+            "distance": [_seen(c, light) for c in explorer.DISTANCE_PALETTE[1:-1]],
+            "dark": [_seen(c, dark) for c in explorer.DISTANCE_PALETTE_DARK[1:-1]]}
+
+
+def scale() -> dict:
+    """What the legend needs to name a scale: the km limits per grid, the grid per layer."""
+    names = (("visited", "Kacheln"), ("squadrats", "Squadrats"), ("zoom", "Zoom-Kacheln"))
+    return {"finer": maptracks.ZOOM_TILES_FINER, "max": maptracks.ZOOM_TILES_MAX,
+            "steps": [explorer.km_steps(z) for z in range(maptracks.ZOOM_TILES_MAX + 1)],
+            "layers": [{"id": key, "name": name, "grid": maptracks.LAYERS[key], "min": maptracks.MIN_ZOOM[key]}
+                       for key, name in names]}
 
 
 def script(first: datetime.date | None) -> str:
     """The script, its slider beginning at the month of first."""
     # a date from before GPS is a broken clock, not a ride
     month = f"{max(first, datetime.date(2000, 1, 1)):%Y-%m}" if first else None
-    return _JS.replace("__FIRST__", json.dumps(month)).replace("__LEGEND__", json.dumps(legends()))
+    return _JS.replace("__FIRST__", json.dumps(month)).replace("__LEGEND__", json.dumps(legends())).replace(
+        "__SCALE__", json.dumps(scale()))

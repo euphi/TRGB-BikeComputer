@@ -4,10 +4,12 @@ import datetime
 import http.client
 import io
 import json
+import random
 import threading
 import urllib.error
 import zipfile
 import zlib
+from array import array
 
 import pytest
 from fastapi.testclient import TestClient
@@ -486,31 +488,79 @@ def _colours(png):
     return {tuple(plte[i * 3:i * 3 + 3]) + (trns[i],) for i in used}
 
 
-def test_rides_colour_counts_each_ride_once_per_tile(settings):
+def test_distance_counts_each_ride_once(settings):
     store = maptracks.MapStore(settings)
     store.add_upload(timed_gpx(km=6.0), "a.gpx")
     store.add_upload(timed_gpx(km=5.9, name="noch einmal"), "a-again.gpx")     # the same ride
     store.add_upload(timed_gpx(km=2.0, start=START + datetime.timedelta(days=3)), "b.gpx")
     for zoom in (7, 14, 17):
-        at = lambda lat: _tile_at(zoom, lat)[1:]
-        assert store.state().rides_at(zoom)[at(50.005)] == 2
-        assert store.state(*_days(3, 3)).rides_at(zoom)[at(50.005)] == 1        # follows the period
-    assert store.state().rides_at(14)[_tile_at(14, 50.05)[1:]] == 1
-    assert set(store.state().rides_at(14)) == store.state().stats_at(14).tiles
+        whole, part = store.state().metres_at(zoom), store.state(*_days(3, 3)).metres_at(zoom)
+        assert sum(whole.values()) == pytest.approx(8000, rel=0.02), zoom   # not 14 km
+        assert sum(part.values()) == pytest.approx(2000, rel=0.02), zoom    # follows the period
+        assert set(whole) == store.state().stats_at(zoom).tiles
 
 
-def test_rides_colour_steps(settings):
-    steps = explorer.RIDE_STEPS
-    for n, step in ((1, 1), (2, 2), (4, 3), (5, 4), (24, 5), (25, 6), (400, 6)):
-        stats = explorer.tile_stats({(8000, 5000)}, 14)
-        png = explorer.visited_tile(stats, 14, 8000, 5000, rides={(8000, 5000): n})
-        assert explorer.RIDE_PALETTE[step] in _colours(png), (n, step)
-        dark = explorer.visited_tile(stats, 14, 8000, 5000, rides={(8000, 5000): n}, dark=True)
-        assert explorer.RIDE_PALETTE_DARK[step] in _colours(dark), (n, step)
-    assert len(steps) == len(explorer.RIDE_PALETTE) - 2 == len(explorer.RIDE_PALETTE_DARK) - 2
+def test_distance_there_and_back_counts_twice(settings):
+    out = [(50.0 + i * 25 / 111320, 8.6) for i in range(121)]     # 3 km
+    track = explorer.make_track("t", out + out[::-1])
+    assert sum(explorer.tile_lengths(track.runs, 14).values()) == pytest.approx(6000, rel=0.01)
 
 
-def test_rides_colour_has_no_cluster_and_no_square(settings):
+def test_tile_lengths_have_the_tiles_and_the_length_of_the_track():
+    rnd = random.Random(3)
+    for lat0 in (0.0, 41.3, 50.0, 64.0):
+        points = [(lat0, 8.6)]
+        for _ in range(500):
+            lat, lon = points[-1]
+            step = rnd.choice((0.00005, 0.0003, 0.002, 0.008))      # within a tile and across several
+            points.append((lat + rnd.uniform(-step, step), lon + rnd.uniform(-step, step)))
+        runs = explorer.runs_of(points)
+        for zoom in (9, 14, 17):
+            lengths = explorer.tile_lengths(runs, zoom)
+            assert set(lengths) == explorer.tiles_of(runs, zoom), (lat0, zoom)
+            assert min(lengths.values()) >= 0
+            assert sum(lengths.values()) == pytest.approx(explorer.distance_m(points), rel=0.003), (lat0, zoom)
+
+
+def test_tile_lengths_split_a_segment_where_it_crosses():
+    n = 2 ** 17
+    y = 45000.5
+    runs = [(array("d", [70000.25 / n, 70003.5 / n]), array("d", [y / n, y / n]))]
+    lengths = explorer.tile_lengths(runs, 17)
+    width = explorer.metres_per_unit(y / n) / n
+    want = {70000: 0.75, 70001: 1, 70002: 1, 70003: 0.5}
+    assert lengths == pytest.approx({(x, 45000): share * width for x, share in want.items()}, rel=1e-6)
+
+
+def test_km_steps_fit_the_grid():
+    assert explorer.km_steps(17) == (0.5, 1, 2, 5, 10)      # not 0.2: that is a tile's width
+    assert explorer.km_steps(14) == (2, 5, 10, 20, 50)
+    assert explorer.km_steps(7) == (200, 500, 1000, 2000, 5000)
+    for zoom in range(3, 18):
+        steps = explorer.km_steps(zoom)
+        assert len(steps) == 5 and list(steps) == sorted(set(steps)), zoom
+        assert all(f"{v:g}".strip("0.") in ("1", "2", "5") or f"{v:g}" in ("1e+06",) for v in steps), zoom
+
+
+def test_distance_colour_steps():
+    stats = explorer.tile_stats({(8000, 5000)}, 14)
+    for km, step in ((0, 1), (1.9, 1), (2, 2), (9.9, 3), (10, 4), (49, 5), (50, 6), (9000, 6)):
+        metres = {(8000, 5000): km * 1000}
+        png = explorer.visited_tile(stats, 14, 8000, 5000, metres=metres)
+        assert explorer.DISTANCE_PALETTE[step] in _colours(png), km
+        png = explorer.visited_tile(stats, 14, 8000, 5000, metres=metres, dark=True)
+        assert explorer.DISTANCE_PALETTE_DARK[step] in _colours(png), km
+
+
+def test_cluster_and_max_cluster_look_different():
+    for palette in (explorer.VISITED_PALETTE, explorer.VISITED_PALETTE_CLOSE):
+        for base in ((242, 239, 233), (173, 209, 158), (170, 211, 223), (14, 14, 16)):
+            seen = [[b + (c - b) * colour[3] / 255 for b, c in zip(base, colour)] for colour in palette[2:4]]
+            light = [0.2126 * r + 0.7152 * g + 0.0722 * b for r, g, b in seen]
+            assert abs(light[0] - light[1]) > 20, base          # of 255; was under 10 in the faint one
+
+
+def test_distance_colour_has_no_cluster_and_no_square(settings):
     store = maptracks.MapStore(settings)
     for i in range(4):
         store.add_upload(timed_gpx(km=9.0, lon0=8.60 + i * 0.022, start=START + datetime.timedelta(days=i)), f"{i}.gpx")
@@ -518,9 +568,9 @@ def test_rides_colour_has_no_cluster_and_no_square(settings):
     for layer, z in (("visited", 12), ("squadrats", 15), ("zoom", 11)):
         tile = _tile_at(z, 50.03, 8.62)
         assert marks & {c[:3] for c in _colours(store.tile(layer, *tile)[0])}, layer
-        assert not marks & {c[:3] for c in _colours(store.tile(layer, *tile, colour="rides")[0])}, layer
+        assert not marks & {c[:3] for c in _colours(store.tile(layer, *tile, colour="distance")[0])}, layer
     tile = _tile_at(11)
-    assert store.tile("heat", *tile, colour="rides")[0] == store.tile("heat", *tile)[0]
+    assert store.tile("heat", *tile, colour="distance")[0] == store.tile("heat", *tile)[0]
 
 
 def test_colour_route_and_script(client):
@@ -529,10 +579,10 @@ def test_colour_route_and_script(client):
     url = f"{API}/map/tiles/visited/{z}/{x}/{y}.png"
     cluster = client.get(url)
     assert client.get(url, params={"colour": "cluster"}).content == cluster.content
-    rides, dark = (client.get(url, params={"colour": c}) for c in ("rides", "rides-dark"))
-    assert len({cluster.content, rides.content, dark.content}) == 3
+    km, dark = (client.get(url, params={"colour": c}) for c in ("distance", "distance-dark"))
+    assert len({cluster.content, km.content, dark.content}) == 3
     assert client.get(url, params={"colour": "pink"}).status_code == 422
-    assert timefilter.step_names() == ["1", "2", "3–4", "5–9", "10–24", "25+"]
     script = client.get(f"{API}/map/timefilter.js").text
-    assert "__LEGEND__" not in script and timefilter.legends()["rides"][0][1] in script
-    assert 'data-legend="rides"' in client.get("/map").text
+    assert "__LEGEND__" not in script and "__SCALE__" not in script
+    assert timefilter.legends()["distance"][0] in script
+    assert 'data-legend="distance"' in client.get("/map").text

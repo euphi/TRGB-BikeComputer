@@ -1029,8 +1029,8 @@ def create_app(settings: Settings | None = None, puller: Puller | None = None) -
                  principal: Principal = AuthDep):
         """One 256 px overlay tile (XYZ, like OSM): visited = explorer tiles (zoom 14),
         squadrats = zoom 17 tiles, zoom = the tiles of zoom z + 2 (17 at most),
-        heat = all tracks summed up; from/to: of the rides of that period; colour=rides:
-        the tile layers by how often ridden (rides-dark: for a dark map). For BRouter-Web's BR.conf.overlays and the /map page."""
+        heat = all tracks summed up; from/to: of the rides of that period; colour=distance:
+        the tile layers by the distance ridden in them (distance-dark: for a dark map). For BRouter-Web's BR.conf.overlays and the /map page."""
         headers = {"Cache-Control": "no-cache", "Access-Control-Allow-Origin": "*"}
         _check_period(first, last)
         etag = f'"{map_store.state(first, last).revision}"'

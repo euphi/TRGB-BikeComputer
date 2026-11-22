@@ -1696,14 +1696,15 @@ def map_page(summary: dict, tracks: list, dups: dict, planner_url: str | None = 
     note = f'<div class="msg">{escape(message)}</div>' if message else ""
     plan = (f'<a class="btn pri" id="plan" href="{escape(planner_url)}" target="_blank" rel="noopener">'
             'In BRouter planen</a> ' if planner_url else "")
-    often = "".join(f'<span data-legend="rides" hidden><i style="background:{colour}"></i>{name}'
-                    f'{" Fahrt" if name == "1" else " Fahrten"}</span>'
-                    for name, colour in timefilter.legends()["rides"])
-    legend = ('<div class="legend">' + often
-              + '<span data-legend="cluster"><i style="background:rgb(214,64,40)"></i>besucht</span>'
-              '<span data-legend="cluster"><i style="background:rgb(150,70,200)"></i>Cluster (alle vier Nachbarn besucht)</span>'
-              '<span data-legend="cluster"><i style="background:rgb(100,30,160)"></i>Max Cluster</span>'
-              '<span data-legend="cluster"><i style="background:rgb(255,204,0)"></i>Max Square</span>'
+    colours = timefilter.legends()
+    legend = ('<div class="legend"><span data-legend="distance" hidden>'
+              f'<i style="background:linear-gradient(90deg,{",".join(colours["distance"])})"></i>'
+              'wenig → viele km in der Kachel (Zahlen im Feld „Zeitraum“)</span>'
+              + "".join(f'<span data-legend="cluster"><i style="background:{colour}"></i>{name}</span>'
+                        for name, colour in (("besucht", colours["cluster"][0][1]),
+                                             ("Cluster (alle vier Nachbarn besucht)", colours["cluster"][1][1]),
+                                             ("Max Cluster", colours["cluster"][2][1]),
+                                             ("Max Square", colours["cluster"][3][2]))) +
               '<span><i style="background:linear-gradient(90deg,rgb(0,200,235),rgb(0,105,200),rgb(20,45,160))">'
               '</i>Heatmap: 1 → 20+ Fahrten</span></div>')
     rows = _map_track_rows(tracks, dups)
@@ -1711,7 +1712,7 @@ def map_page(summary: dict, tracks: list, dups: dict, planner_url: str | None = 
 <p class="mut">Wo du schon warst: besuchte Kacheln (Zoom 14 wie VeloViewer/StatsHunters, Squadrats auf Zoom 17,
 Zoom-Kacheln wachsen beim Herauszoomen mit, höchstens so fein wie Squadrats)
 und die Heatmap aller Fahrten, auf Wunsch nur aus einem Zeitraum (Knopf „Zeitraum“ in der Karte, dort auch
-die Kachelfarbe: Cluster oder Häufigkeit).
+die Kachelfarbe: Cluster oder Kilometer).
 Dieselben Ebenen gibt es als Overlay in BRouter-Web.</p>
 {note}
 {_map_tiles(summary)}

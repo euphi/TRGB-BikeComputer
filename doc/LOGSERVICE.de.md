@@ -415,11 +415,14 @@ Ebenen über OpenStreetMap, dieselben als Overlay in BRouter-Web:
   Fahrten pro Pixel, nicht Punkte; je öfter ein Weg gefahren wurde, desto kräftiger.
 
 **Kachelfarbe:** Dasselbe Feld schaltet die drei Kachel-Ebenen zwischen **Cluster** (wie oben: sagt
-nichts darüber, wie oft) und **Häufigkeit** um: wie viele Fahrten durch die Kachel führten, in
-sechs Stufen (1, 2, 3–4, 5–9, 10–24, 25+), ohne Cluster und Max Square. Eine Fahrt zählt je Kachel
-einmal, egal wie oft sie durchkommt; eine Zoom-Kachel ist größer und sammelt darum mehr Fahrten.
-Auf heller Karte heißt dunkler öfter, auf CARTO dunkel dreht die Skala um (heller = öfter). Das
-Feld zeigt die Legende der gewählten Färbung.
+nichts darüber, wie oft oder wie weit) und **Kilometer** um: die in der Kachel gefahrene Strecke, in
+sechs Stufen, ohne Cluster und Max Square. Hin und zurück zählt doppelt; Aufzeichnungen einer Fahrt
+zählen einmal (je Kachel die längste). Die Grenzen passen zum Raster, denn eine 200 km breite
+Kachel fasst das Tausendfache einer von 200 m: runde Zahlen ab etwa einer Kachelbreite
+(`explorer.km_steps()`), z. B. 2/5/10/20/50 km für die Kacheln, 0,5/1/2/5/10 km für die Squadrats,
+200/500/1000/2000/5000 km für Zoom-Kacheln mit Europa im Bild. Das Feld zeigt die Skala jeder
+eingeschalteten Ebene; die der Zoom-Kacheln folgt der Karte. Auf heller Karte heißt dunkler mehr,
+auf CARTO dunkel dreht die Skala um (heller = mehr).
 
 **Zeitraum:** Der Knopf „Zeitraum“ in der Karte schränkt alle vier Ebenen (und die Kennzahlen über
 der Karte) auf die Fahrten eines Zeitraums ein: ein Schieber für Beginn und Ende in Monaten, zwei
@@ -830,7 +833,7 @@ eines bestehenden Ziels beibehalten, die gespeicherten Sitzungen liegen darunter
 | `GET` | `/api/v1/trailbridge/routes/{id}.gpx` | ihre Datei, für die App |
 | `GET` | `/map` | Karte mit besuchten Kacheln und Heatmap (HTML) |
 | `GET` | `/api/v1/map` | Kennzahlen (Kacheln, Cluster, Max Square, Squadrats), Tracks je Quelle, Stand des Komoot-Imports; `from`/`to` (`JJJJ-MM-TT`, beide eingeschlossen, jedes optional): aus diesem Zeitraum |
-| `GET` | `/api/v1/map/tiles/{visited\|squadrats\|zoom\|heat}/{z}/{x}/{y}.png` | Overlay-Kachel (XYZ wie OSM); `from`/`to` wie oben; `colour=cluster\|rides\|rides-dark`: Färbung der Kachel-Ebenen |
+| `GET` | `/api/v1/map/tiles/{visited\|squadrats\|zoom\|heat}/{z}/{x}/{y}.png` | Overlay-Kachel (XYZ wie OSM); `from`/`to` wie oben; `colour=cluster\|distance\|distance-dark`: Färbung der Kachel-Ebenen |
 | `GET` | `/api/v1/map/timefilter.js` | der Regler für Zeitraum und Farbe als Skript, für `/map` und BRouter-Web |
 | `GET`/`PUT` | `/api/v1/map/tracks` | Tracks der Karte (mit `duplicate_of`) / GPX, `.gpx.gz` oder ZIP hochladen (`filename`; `mixed=true` mit `track`, `name`: gemischte Aufzeichnung, nur Radfahrten) |
 | `DELETE` | `/api/v1/map/tracks/{id}` | hochgeladenen oder importierten Track löschen (BikeLog-Fahrten: 409) |

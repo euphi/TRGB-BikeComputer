@@ -30,8 +30,8 @@ All drawing happens in one thread: it is pure CPU, so request threads would only
 interpreter from each other, and on big.LITTLE a thread that does a tile now and then is
 kept on a small core at a low clock (measured: a view 5 s instead of under 1 s).
 
-The tile layers have two colourings (tile(colour=), COLOURS): cluster and max square, or how many
-rides went through each tile (MapState.rides_at(): recordings of one ride count once).
+The tile layers have two colourings (tile(colour=), COLOURS): cluster and max square, or the
+distance ridden in each tile (MapState.metres_at(): recordings of one ride count once).
 
 A period (tile(first=, last=), days in local time, both included) is a selection of the rides:
 MapState.period(). A ride belongs to the day it began with all its recordings, a track without a
@@ -91,8 +91,8 @@ ZOOM_TILES_MAX = explorer.SQUADRAT_ZOOM
 TILE_CACHE = 4000
 #: heat tiles up to this zoom are drawn ahead and kept on disk
 STORE_ZOOM = 14
-#: how the tile layers are coloured; rides-dark = rides for a dark base map
-COLOURS = ("cluster", "rides", "rides-dark")
+#: how the tile layers are coloured; distance-dark = distance for a dark base map
+COLOURS = ("cluster", "distance", "distance-dark")
 #: periods kept ready: moving a slider asks for many tiles of few periods
 PERIOD_CACHE = 8
 #: drawing ahead waits until no tile has been asked for this long
@@ -135,15 +135,15 @@ class MapState:
     duplicates: dict[str, str]
     stats: dict[int, explorer.TileStats]
     heat: explorer.HeatIndex
-    #: per track: the day its ride began (None = no time) and its zoom 17 tiles
+    #: per track: the day its ride began (None = no time) and its zoom 17 tiles with the metres in each
     days: list[datetime.date | None]
-    squadrats: list[set]
+    squadrats: list[dict]
     #: (south, west, north, east) of everything, None without tracks
     bounds: tuple[float, float, float, float] | None = None
     #: a period's tracks, as numbers in heat.tracks; None = all of them
     chosen: frozenset[int] | None = None
     periods: OrderedDict = field(default_factory=OrderedDict)
-    counts: dict[int, dict] = field(default_factory=dict)
+    metres: dict[int, dict] = field(default_factory=dict)
 
     def period(self, first: datetime.date | None, last: datetime.date | None) -> MapState:
         """Only the rides that began first..last (each may be open); self if that is all."""
@@ -170,16 +170,16 @@ class MapState:
         pieces = self.heat.pieces(z, x, y)
         return pieces if self.chosen is None else [p for p in pieces if p[0] in self.chosen]
 
-    def rides_at(self, zoom: int) -> dict[tuple[int, int], int]:
-        """How many rides went through each tile at zoom, worked out on first use."""
-        counts = self.counts.get(zoom)
-        if counts is None:
-            rides: dict[str, set] = {}
+    def metres_at(self, zoom: int) -> dict[tuple[int, int], float]:
+        """The distance ridden in each tile at zoom, worked out on first use."""
+        metres = self.metres.get(zoom)
+        if metres is None:
+            rides: dict[str, list[dict]] = {}
             for track, tiles in zip(self.tracks, self.squadrats):
-                rides.setdefault(self.duplicates.get(track.id, track.id), set()).update(tiles)
-            counts = explorer.ride_counts(rides.values(), explorer.SQUADRAT_ZOOM - zoom)
-            self.counts[zoom] = counts
-        return counts
+                rides.setdefault(self.duplicates.get(track.id, track.id), []).append(tiles)
+            metres = explorer.tile_metres(rides.values(), explorer.SQUADRAT_ZOOM - zoom)
+            self.metres[zoom] = metres
+        return metres
 
     def stats_at(self, zoom: int) -> explorer.TileStats:
         """Visited tiles and figures at any zoom up to SQUADRAT_ZOOM, worked out on first use."""
@@ -664,7 +664,7 @@ class MapStore:
     # --- drawing -----------------------------------------------------------------------
 
     def _drawable(self, info: TrackInfo):
-        """(Track, z14 tiles, z17 tiles) of a track, built once per signature."""
+        """(Track, z14 tiles, z17 tiles with their metres) of a track, built once per signature."""
         key = f"{info.sig}|{info.points}|{info.added_at}"
         have = self._drawn.get(info.id)
         if have and have[0] == key:
@@ -674,7 +674,7 @@ class MapStore:
         except OSError:
             points = []
         track = explorer.make_track(info.id, points) if points else None
-        t17 = explorer.tiles_of(track.runs, explorer.SQUADRAT_ZOOM) if track else set()
+        t17 = explorer.tile_lengths(track.runs, explorer.SQUADRAT_ZOOM) if track else {}
         t14 = explorer.parent_tiles(t17, explorer.SQUADRAT_ZOOM - explorer.EXPLORER_ZOOM)
         self._drawn[info.id] = (key, track, t14, t17)
         return track, t14, t17
@@ -705,7 +705,7 @@ class MapStore:
                 days.append(None if start is None else datetime.date.fromtimestamp(start))
                 squadrats.append(b)
                 t14 |= a
-                t17 |= b
+                t17.update(b)
             for gone in set(self._drawn) - {i.id for i in infos}:
                 del self._drawn[gone]
             # a period's revision builds on this one: a ride moved to another day must change it
@@ -713,8 +713,10 @@ class MapStore:
                                   + json.dumps(sorted(dups.items())).encode() + b"all-drawn"
                                   # the revision is the tiles' ETag: other grid = other revision
                                   + b"|zoom+%d|better-on-top" % ZOOM_TILES_FINER
-                                  + repr((explorer.RIDE_STEPS, explorer.RIDE_PALETTE,
-                                          explorer.RIDE_PALETTE_DARK)).encode()).hexdigest()[:12]
+                                  + repr((explorer.VISITED_PALETTE, explorer.VISITED_PALETTE_CLOSE,
+                                          explorer.DISTANCE_PALETTE, explorer.DISTANCE_PALETTE_DARK,
+                                          [explorer.km_steps(z) for z in range(ZOOM_TILES_MAX + 1)]
+                                          )).encode()).hexdigest()[:12]
             self._state = MapState(digest, tracks, dups,
                                    {explorer.EXPLORER_ZOOM: explorer.tile_stats(t14, explorer.EXPLORER_ZOOM),
                                     explorer.SQUADRAT_ZOOM: explorer.tile_stats(t17, explorer.SQUADRAT_ZOOM)},
@@ -743,9 +745,9 @@ class MapStore:
     def _draw_visited(self, state: MapState, key: tuple) -> bytes:
         layer, z, x, y, _, colour = key
         zoom = min(z + ZOOM_TILES_FINER, ZOOM_TILES_MAX) if layer == "zoom" else LAYERS[layer]
-        rides = state.rides_at(zoom) if colour != "cluster" else None
-        png = explorer.visited_tile(state.stats_at(zoom), z, x, y, faint=layer == "zoom", rides=rides,
-                                    dark=colour == "rides-dark") or explorer.EMPTY_PNG
+        metres = state.metres_at(zoom) if colour != "cluster" else None
+        png = explorer.visited_tile(state.stats_at(zoom), z, x, y, faint=layer == "zoom", metres=metres,
+                                    dark=colour == "distance-dark") or explorer.EMPTY_PNG
         self._remember(key, png)
         return png
 

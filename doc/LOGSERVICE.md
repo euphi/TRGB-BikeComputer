@@ -401,11 +401,14 @@ OpenStreetMap, the same ones as overlays in BRouter-Web:
   not points; the more often a way was ridden, the stronger.
 
 **Tile colour:** the same box switches the three tile layers between **Cluster** (as above: says
-nothing about how often) and **Häufigkeit** (frequency): how many rides went through the tile,
-in six steps (1, 2, 3–4, 5–9, 10–24, 25+), without cluster and max square. A ride counts once
-per tile, however often it passes; a tile of the zoom layer is larger and so collects more
-rides. On a light map darker means more often, on CARTO dark the scale turns round (lighter =
-more often). The box shows the legend of the colouring chosen.
+nothing about how often or how far) and **Kilometer**: the distance ridden inside the tile, in six
+steps, without cluster and max square. There and back counts twice; recordings of one ride
+count once (per tile the longest). The limits fit the grid, as a tile 200 km wide holds a
+thousand times what one of 200 m does: round numbers from about one tile's width up
+(`explorer.km_steps()`), e.g. 2/5/10/20/50 km for the tiles, 0.5/1/2/5/10 km for the squadrats,
+200/500/1000/2000/5000 km for zoom tiles with Europe on the screen. The box shows the scale of
+every layer that is on; the zoom tiles' follows the map. On a light map darker means more, on
+CARTO dark the scale turns round (lighter = more).
 
 **Period:** the button "Zeitraum" in the map restricts all four layers (and the figures above
 the map) to the rides of a period: a slider for start and end in months, two date fields for
@@ -805,7 +808,7 @@ name of an existing target, the stored sessions are filed under it.
 | `GET` | `/api/v1/trailbridge/routes/{id}.gpx` | its file, for the app |
 | `GET` | `/map` | map with visited tiles and heatmap (HTML) |
 | `GET` | `/api/v1/map` | figures (tiles, cluster, max square, squadrats), tracks per source, the Komoot import's progress; `from`/`to` (`YYYY-MM-DD`, both included, each optional): of that period |
-| `GET` | `/api/v1/map/tiles/{visited\|squadrats\|zoom\|heat}/{z}/{x}/{y}.png` | overlay tile (XYZ like OSM); `from`/`to` as above; `colour=cluster\|rides\|rides-dark`: colouring of the tile layers |
+| `GET` | `/api/v1/map/tiles/{visited\|squadrats\|zoom\|heat}/{z}/{x}/{y}.png` | overlay tile (XYZ like OSM); `from`/`to` as above; `colour=cluster\|distance\|distance-dark`: colouring of the tile layers |
 | `GET` | `/api/v1/map/timefilter.js` | the period and colour control as a script, for `/map` and BRouter-Web |
 | `GET`/`PUT` | `/api/v1/map/tracks` | the map's tracks (with `duplicate_of`) / upload GPX, `.gpx.gz` or ZIP (`filename`; `mixed=true` with `track`, `name`: mixed recording, cycling only) |
 | `DELETE` | `/api/v1/map/tracks/{id}` | delete an uploaded or imported track (BikeLog rides: 409) |

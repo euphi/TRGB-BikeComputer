@@ -241,6 +241,45 @@ def tiles_of(runs: list[tuple[array, array]], zoom: int) -> set[tuple[int, int]]
     return out
 
 
+def tile_lengths(runs: list[tuple[array, array]], zoom: int) -> dict[tuple[int, int], float]:
+    """The tiles of tiles_of() at ``zoom``, each with the metres of line inside it: a way there
+    and back counts twice, the parts of a segment go to the tiles it crosses."""
+    n = 2 ** zoom
+    per_tile = EARTH_CIRCUMFERENCE_M / n        # at the equator
+    out: dict[tuple[int, int], float] = {}
+    for xs, ys in runs:
+        px, py = xs[0] * n, ys[0] * n
+        out.setdefault((int(px), int(py)), 0.0)
+        for i in range(1, len(xs)):
+            qx, qy = xs[i] * n, ys[i] * n
+            dx, dy = qx - px, qy - py
+            # per segment: a tour may go from 50 N to 41 N
+            metres = math.hypot(dx, dy) * per_tile / math.cosh(math.pi * (1 - 2 * ys[i]))
+            cx, cy = int(px), int(py)
+            ex, ey = int(qx), int(qy)
+            done = 0.0                          # share of the segment given away
+            if cx != ex or cy != ey:            # as _cells()
+                sx = 1 if dx > 0 else -1
+                sy = 1 if dy > 0 else -1
+                tdx = abs(1.0 / dx) if dx else math.inf
+                tdy = abs(1.0 / dy) if dy else math.inf
+                tmx = ((cx + 1 - px) if dx > 0 else (px - cx)) * tdx if dx else math.inf
+                tmy = ((cy + 1 - py) if dy > 0 else (py - cy)) * tdy if dy else math.inf
+                for _ in range(abs(ex - cx) + abs(ey - cy)):
+                    upto = max(done, min(tmx, tmy, 1.0))
+                    out[cx, cy] = out.get((cx, cy), 0.0) + metres * (upto - done)
+                    done = upto
+                    if tmx < tmy:
+                        cx += sx
+                        tmx += tdx
+                    else:
+                        cy += sy
+                        tmy += tdy
+            out[cx, cy] = out.get((cx, cy), 0.0) + metres * (1.0 - done)
+            px, py = qx, qy
+    return out
+
+
 def parent_tiles(tiles: set[tuple[int, int]], levels: int) -> set[tuple[int, int]]:
     """The tiles ``levels`` zooms further out that contain one of tiles."""
     return {(x >> levels, y >> levels) for x, y in tiles}
@@ -343,33 +382,56 @@ EMPTY_PNG = png(bytearray(TILE_PX * TILE_PX), [(0, 0, 0, 0)])
 VISITED_PALETTE = [
     (0, 0, 0, 0),           # 0 nothing
     (214, 64, 40, 84),      # 1 visited
-    (150, 70, 200, 96),     # 2 cluster
-    (100, 30, 160, 128),    # 3 max cluster
+    (205, 120, 250, 120),   # 2 cluster: light ...
+    (40, 0, 105, 150),      # 3 max cluster: ... and dark violet, apart also at half the alpha
     (40, 40, 40, 110),      # 4 grid line
     (255, 204, 0, 255),     # 5 max square border
 ]
-#: zoomed in past the tiles' own zoom the fill would tint the whole map: fainter there
-VISITED_PALETTE_CLOSE = [(r, g, b, a // 2) if i in (1, 2, 3) else (r, g, b, a)
-                         for i, (r, g, b, a) in enumerate(VISITED_PALETTE)]
+#: zoomed in past the tiles' own zoom the fill would tint the whole map: fainter there, but the
+#: clusters less so (halved, cluster and max cluster could not be told apart)
+VISITED_PALETTE_CLOSE = [(*c[:3], {1: 42, 2: 80, 3: 112}.get(i, c[3])) for i, c in enumerate(VISITED_PALETTE)]
 
 
-#: the other colouring of the tiles, by how often ridden: the least rides of each step
-RIDE_STEPS = (1, 2, 3, 5, 10, 25)
-#: one hue, every step clearly apart in lightness: darker = more often on a light map ...
-RIDE_PALETTE = [(0, 0, 0, 0), (255, 165, 90, 130), (244, 120, 40, 150), (222, 84, 14, 172),
-                (186, 52, 0, 190), (140, 26, 0, 208), (92, 6, 0, 226), (40, 40, 40, 110)]
-#: ... and lighter = more often on a dark one (last entry of both: the grid)
-RIDE_PALETTE_DARK = [(0, 0, 0, 0), (205, 80, 20, 110), (225, 92, 20, 148), (240, 108, 28, 185),
-                     (250, 134, 48, 213), (255, 175, 95, 224), (255, 218, 165, 234), (200, 200, 200, 60)]
+#: the other colouring of the tiles, by the distance ridden in them: six steps of one hue, each
+#: clearly apart in lightness: darker = more on a light map ...
+DISTANCE_PALETTE = [(0, 0, 0, 0), (255, 165, 90, 130), (244, 120, 40, 150), (222, 84, 14, 172),
+                    (186, 52, 0, 190), (140, 26, 0, 208), (92, 6, 0, 226), (40, 40, 40, 110)]
+#: ... and lighter = more on a dark one (last entry of both: the grid)
+DISTANCE_PALETTE_DARK = [(0, 0, 0, 0), (205, 80, 20, 110), (225, 92, 20, 148), (240, 108, 28, 185),
+                         (250, 134, 48, 213), (255, 175, 95, 224), (255, 218, 165, 234), (200, 200, 200, 60)]
+_ROUND_KM = tuple(m * 10.0 ** e if e >= 0 else m / 10.0 ** -e for e in range(-3, 6) for m in (1, 2, 5))
 
 
-def ride_counts(rides, levels: int = 0) -> dict[tuple[int, int], int]:
-    """{tile: how many rides went through it} from each ride's tiles, ``levels`` zooms further
-    out (a ride counts once in a tile, however often it passes)."""
-    counts: Counter = Counter()
-    for tiles in rides:
-        counts.update(parent_tiles(tiles, levels) if levels else tiles)
-    return counts
+def km_steps(zoom: int) -> tuple[float, ...]:
+    """The five limits (km) between the six steps at a tile zoom: a tile 200 km wide holds a
+    thousand times what one of 200 m does. Round numbers from about one tile's width (one ride
+    straight through; width at 50 N) up, each 2 to 2.5 times the one before. A fine tile is
+    mostly crossed just once: there the first limit stays clear above a width, or a straight
+    way would flicker between two steps with the latitude and the angle."""
+    width = EARTH_CIRCUMFERENCE_M / 1000 * math.cos(math.radians(50)) / 2 ** zoom
+    i = min(range(len(_ROUND_KM)), key=lambda k: abs(math.log(_ROUND_KM[k] / width)))
+    if zoom >= EXPLORER_ZOOM and _ROUND_KM[i] < 1.2 * width:
+        i += 1
+    return _ROUND_KM[i:i + 5]
+
+
+def tile_metres(rides, levels: int = 0) -> dict[tuple[int, int], float]:
+    """{tile: metres ridden in it} from each ride's recordings (tile_lengths() each), ``levels``
+    zooms further out. Of several recordings of one ride the longest in the tile counts."""
+    total: dict[tuple[int, int], float] = {}
+    for recordings in rides:
+        longest: dict[tuple[int, int], float] = {}
+        for lengths in recordings:
+            here: dict[tuple[int, int], float] = {}
+            for (x, y), metres in lengths.items():
+                tile = x >> levels, y >> levels
+                here[tile] = here.get(tile, 0.0) + metres
+            for tile, metres in here.items():
+                if metres >= longest.get(tile, 0.0):
+                    longest[tile] = metres
+        for tile, metres in longest.items():
+            total[tile] = total.get(tile, 0.0) + metres
+    return total
 
 
 def _fill(px: bytearray, x0: int, y0: int, x1: int, y1: int, value: int) -> None:
@@ -383,11 +445,11 @@ def _fill(px: bytearray, x0: int, y0: int, x1: int, y1: int, value: int) -> None
 
 
 def visited_tile(stats: TileStats, z: int, tx: int, ty: int, faint: bool = False,
-                 rides: dict[tuple[int, int], int] | None = None, dark: bool = False) -> bytes | None:
+                 metres: dict[tuple[int, int], float] | None = None, dark: bool = False) -> bytes | None:
     """The overlay tile (z, tx, ty) showing stats' tiles: visited, cluster and max cluster
     filled, the grid once a tile is 24 px wide, the max square outlined. None = empty.
     faint: the pale fill at every zoom (a layer that covers much of the screen at any zoom).
-    rides (ride_counts()): coloured by how often ridden instead, without cluster and max square;
+    metres (tile_metres()): coloured by the distance ridden instead, without cluster and max square;
     dark: for a dark map."""
     scale = TILE_PX * 2.0 ** (z - stats.zoom)          # pixels per visited tile
     ox, oy = tx * TILE_PX, ty * TILE_PX
@@ -399,8 +461,9 @@ def visited_tile(stats: TileStats, z: int, tx: int, ty: int, faint: bool = False
         for by in range(lo_y >> 5, (hi_y >> 5) + 1):
             candidates.extend(stats.buckets.get((bx, by), ()))
     grid = scale >= 24
-    sx, sy, ss = stats.square if rides is None else (0, 0, 0)
-    line = 4 if rides is None else len(RIDE_STEPS) + 1
+    sx, sy, ss = stats.square if metres is None else (0, 0, 0)
+    line = 4 if metres is None else len(DISTANCE_PALETTE) - 1
+    steps = () if metres is None else km_steps(stats.zoom)
     if not candidates and not grid and not ss:
         return None
     px = bytearray(TILE_PX * TILE_PX)
@@ -413,7 +476,7 @@ def visited_tile(stats: TileStats, z: int, tx: int, ty: int, faint: bool = False
         y1 = int(math.floor((y + 1) * scale - oy))
         return x0, y0, max(x1, x0 + 1), max(y1, y0 + 1)
 
-    shown = [(bisect_right(RIDE_STEPS, rides[t]) if rides is not None
+    shown = [(bisect_right(steps, metres.get(t, 0.0) / 1000) + 1 if metres is not None
               else 3 if t in stats.max_cluster else 2 if t in stats.cluster else 1, t)
              for t in candidates if lo_x <= t[0] <= hi_x and lo_y <= t[1] <= hi_y]
     if scale < 1:                   # tiles share pixels: the better one is drawn last
@@ -447,9 +510,9 @@ def visited_tile(stats: TileStats, z: int, tx: int, ty: int, faint: bool = False
             drawn = True
     if not drawn:
         return None
-    if rides is None:
+    if metres is None:
         return png(px, VISITED_PALETTE_CLOSE if faint or z > stats.zoom else VISITED_PALETTE)
-    palette = RIDE_PALETTE_DARK if dark else RIDE_PALETTE
+    palette = DISTANCE_PALETTE_DARK if dark else DISTANCE_PALETTE
     # the map's names must show through: thinner close in and in a layer that covers much
     share = 0.5 if z > stats.zoom and not faint else 0.65 if faint else 1.0
     return png(px, [(r, g, b, a if i == line else round(a * share)) for i, (r, g, b, a) in enumerate(palette)])
