@@ -252,7 +252,7 @@ def cluster(tiles: set[tuple[int, int]]) -> set[tuple[int, int]]:
 
 
 def max_cluster(tiles: set[tuple[int, int]]) -> set[tuple[int, int]]:
-    """The largest 4-connected group of cluster tiles."""
+    """The largest 4-connected group of cluster tiles, of equally large ones the one furthest west."""
     todo = set(cluster(tiles))
     best: set[tuple[int, int]] = set()
     while todo:
@@ -266,7 +266,7 @@ def max_cluster(tiles: set[tuple[int, int]]) -> set[tuple[int, int]]:
                     todo.discard(nb)
                     group.add(nb)
                     stack.append(nb)
-        if len(group) > len(best):
+        if len(group) > len(best) or (len(group) == len(best) and min(group) < min(best)):
             best = group
     return best
 
@@ -389,10 +389,11 @@ def visited_tile(stats: TileStats, z: int, tx: int, ty: int, faint: bool = False
         y1 = int(math.floor((y + 1) * scale - oy))
         return x0, y0, max(x1, x0 + 1), max(y1, y0 + 1)
 
-    for t in candidates:
-        if not (lo_x <= t[0] <= hi_x and lo_y <= t[1] <= hi_y):
-            continue
-        value = 3 if t in stats.max_cluster else 2 if t in stats.cluster else 1
+    shown = [(3 if t in stats.max_cluster else 2 if t in stats.cluster else 1, t)
+             for t in candidates if lo_x <= t[0] <= hi_x and lo_y <= t[1] <= hi_y]
+    if scale < 1:                   # tiles share pixels: the better one is drawn last
+        shown.sort()
+    for value, t in shown:
         _fill(px, *box(*t), value)
         drawn = True
     if grid:

@@ -353,3 +353,115 @@ def test_revalidation_draws_nothing(client, monkeypatch):
     etag = client.get(url).headers["etag"]
     monkeypatch.setattr(client.app.state.map, "tile", lambda *a: pytest.fail("drawn for a 304"))
     assert client.get(url, headers={"If-None-Match": etag}).status_code == 304
+
+
+def _days(*offsets):
+    return [(START + datetime.timedelta(days=d)).astimezone().date() for d in offsets]
+
+
+def test_period_shows_what_a_map_of_only_those_rides_would(settings, tmp_path):
+    """Every layer and the figures, pixel for pixel, against a store that has only those rides."""
+    old = timed_gpx(km=6.0, start=START)
+    mid = timed_gpx(km=4.0, lat0=50.01, lon0=8.605, start=START + datetime.timedelta(days=40))
+    new = timed_gpx(km=9.0, lat0=49.98, start=START + datetime.timedelta(days=80))
+    store = maptracks.MapStore(settings)
+    for i, gpx in enumerate((old, mid, new)):
+        store.add_upload(gpx, f"{i}.gpx")
+    d0, d40, d80 = _days(0, 40, 80)
+    cases = [((None, d0), [old]), ((d40, d40), [mid]), ((d40, None), [mid, new]), ((d0, d40), [old, mid]),
+             ((d0, d80), [old, mid, new])]
+    for n, (period, rides) in enumerate(cases):
+        only = maptracks.MapStore(Settings(data_dir=tmp_path / f"only{n}"))
+        for i, gpx in enumerate(rides):
+            only.add_upload(gpx, f"{i}.gpx")
+        for layer in maptracks.LAYERS:
+            for z in (6, 10, 12, 14, 17):
+                tile = _tile_at(z)
+                assert store.tile(layer, *tile, *period)[0] == only.tile(layer, *tile)[0], (period, layer, z)
+        got, want = store.summary(*period), only.summary()
+        for key in ("tracks", "explorer", "squadrats", "bounds", "sources"):
+            assert got[key] == want[key], (period, key)
+    assert store.state(d0, d80) is store.state()                    # all of it: the whole's tiles and ETag
+    assert store.state(d40, d40) is not store.state() and store.state(d40, d40).revision != store.state().revision
+
+
+def test_period_without_rides_is_empty(settings):
+    store = maptracks.MapStore(settings)
+    store.add_upload(timed_gpx(), "a.gpx")
+    first, last = _days(5, 9)
+    assert store.tile("heat", *_tile_at(12), first, last)[0] == explorer.EMPTY_PNG
+    assert store.tile("visited", *_tile_at(9), first, last)[0] == explorer.EMPTY_PNG
+    got = store.summary(first, last)
+    assert (got["tracks"], got["explorer"]["tiles"], got["squadrats"]["max_square"], got["bounds"]) == (0, 0, 0, None)
+
+
+def test_period_takes_a_ride_with_all_its_recordings_on_the_day_it_began(settings):
+    night = datetime.datetime.combine(_days(0)[0], datetime.time(23, 50)).astimezone()
+    store = maptracks.MapStore(settings)
+    utc = night.astimezone(datetime.timezone.utc)
+    store.add_upload(timed_gpx(km=8.0, start=utc), "tour.gpx")          # 24 min, past midnight
+    # another device's part of it, begun after midnight
+    store.add_upload(timed_gpx(km=2.0, lat0=50.05, start=utc + datetime.timedelta(minutes=14)), "part.gpx")
+    today, tomorrow = _days(0, 1)
+    assert store.state(today, today) is store.state()
+    assert len(store.state(tomorrow, None).tracks) == 0
+
+
+def test_track_without_time_only_belongs_to_the_whole(settings):
+    store = maptracks.MapStore(settings)
+    store.add_upload(timed_gpx(), "a.gpx")
+    untimed = b'<gpx><trk><trkseg><trkpt lat="51" lon="9"/><trkpt lat="51.01" lon="9"/></trkseg></trk></gpx>'
+    store.add_upload(untimed, "b.gpx")
+    assert store.summary()["tracks"] == 2
+    got = store.summary(_days(-1000)[0], None)
+    assert (got["tracks"], got["undated"]) == (1, 1)
+
+
+def test_period_does_not_push_out_the_stored_heat_tiles(settings, monkeypatch):
+    store = maptracks.MapStore(settings)
+    store.add_upload(timed_gpx(), "a.gpx")
+    store.add_upload(timed_gpx(km=3.0, start=START + datetime.timedelta(days=9)), "b.gpx")
+    store.fill()
+    tile = _tile_at(12)
+    stored = store._heat_cache.keys(12)
+    assert store.tile("heat", *tile, *_days(0, 1))[0] != store.tile("heat", *tile)[0]
+    assert store._heat_cache.keys(12) == stored
+    assert store.fill() == 0
+
+
+def test_only_a_few_periods_are_kept(settings):
+    store = maptracks.MapStore(settings)
+    for d in range(maptracks.PERIOD_CACHE + 3):
+        store.add_upload(timed_gpx(km=1.0, start=START + datetime.timedelta(days=d)), f"{d}.gpx")
+    for day in _days(*range(maptracks.PERIOD_CACHE + 3)):
+        store.state(day, day)
+    assert len(store.state().periods) == maptracks.PERIOD_CACHE
+
+
+def test_period_routes(client):
+    client.put(f"{API}/map/tracks", params={"filename": "a.gpx"}, content=timed_gpx())
+    client.put(f"{API}/map/tracks", params={"filename": "b.gpx"},
+               content=timed_gpx(km=3.0, start=START + datetime.timedelta(days=9)))
+    z, x, y = _tile_at(12)
+    url = f"{API}/map/tiles/heat/{z}/{x}/{y}.png"
+    day = _days(0)[0].isoformat()
+    whole, part = client.get(url), client.get(url, params={"to": day})
+    assert part.status_code == 200 and part.headers["etag"] != whole.headers["etag"]
+    assert part.content != whole.content
+    assert client.get(url, params={"to": day}, headers={"If-None-Match": part.headers["etag"]}).status_code == 304
+    assert client.get(url, params={"to": day}, headers={"If-None-Match": whole.headers["etag"]}).status_code == 200
+    summary = client.get(f"{API}/map", params={"from": day, "to": day}).json()
+    assert (summary["tracks"], summary["from"], summary["to"]) == (1, day, day)
+    assert client.get(f"{API}/map").json()["tracks"] == 2
+    assert client.get(url, params={"from": "2026-13-01"}).status_code == 422
+    assert client.get(url, params={"from": "2026-07-02", "to": "2026-07-01"}).status_code == 400
+
+
+def test_period_script(client):
+    r = client.get(f"{API}/map/timefilter.js")
+    assert r.headers["content-type"].startswith("text/javascript") and "var FIRST = null;" in r.text
+    client.put(f"{API}/map/tracks", params={"filename": "a.gpx"}, content=timed_gpx(name="Geheime Runde"))
+    text = client.get(f"{API}/map/timefilter.js").text
+    assert 'var FIRST = "2026-06";' in text
+    assert "Geheime" not in text and "8.60" not in text     # any site can load a script
+    assert f'src="{API}/map/timefilter.js"' in client.get("/map").text

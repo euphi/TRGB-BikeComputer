@@ -29,7 +29,7 @@ from fastapi.concurrency import run_in_threadpool
 from bikelog import bikes, csvexport, explorer, gpximport, report, training
 from bikelog.record import ReadStats
 
-from . import analysis, archive, exporter, importer, inbox, llm, maptracks, routes, tours, komoot, nextcloud, sdlayout, webui
+from . import analysis, archive, exporter, importer, inbox, llm, maptracks, routes, tours, komoot, nextcloud, sdlayout, timefilter, webui
 from .auth import AuthDep, Principal
 from .config import Settings
 from .puller import DeviceUnavailable, Puller
@@ -1013,24 +1013,42 @@ def create_app(settings: Settings | None = None, puller: Puller | None = None) -
 
     TILE_RE = r"^(visited|squadrats|zoom|heat)$"
 
+    FirstDay = Query(default=None, alias="from", description="only rides that began on this day or later")
+    LastDay = Query(default=None, alias="to", description="only rides that began on this day or earlier")
+
+    def _check_period(first: datetime.date | None, last: datetime.date | None) -> None:
+        if first and last and first > last:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "from is after to")
+
     @app.get(API + "/map/tiles/{layer}/{z}/{x}/{y}.png", tags=["map"])
     def map_tile(request: Request, layer: str = Path(pattern=TILE_RE), z: int = Path(ge=0, le=maptracks.MAX_ZOOM),
-                 x: int = Path(ge=0), y: int = Path(ge=0), principal: Principal = AuthDep):
+                 x: int = Path(ge=0), y: int = Path(ge=0), first: datetime.date | None = FirstDay,
+                 last: datetime.date | None = LastDay, principal: Principal = AuthDep):
         """One 256 px overlay tile (XYZ, like OSM): visited = explorer tiles (zoom 14),
         squadrats = zoom 17 tiles, zoom = the tiles of zoom z + 2 (17 at most),
-        heat = all tracks summed up. For BRouter-Web's BR.conf.overlays and the /map page."""
+        heat = all tracks summed up; from/to: of the rides of that period. For BRouter-Web's BR.conf.overlays and the /map page."""
         headers = {"Cache-Control": "no-cache", "Access-Control-Allow-Origin": "*"}
-        etag = f'"{map_store.state().revision}"'
+        _check_period(first, last)
+        etag = f'"{map_store.state(first, last).revision}"'
         if request.headers.get("if-none-match") == etag:        # before drawing anything
             return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers=dict(headers, ETag=etag))
-        png, revision = map_store.tile(layer, z, x, y)
+        png, revision = map_store.tile(layer, z, x, y, first, last)
         headers["ETag"] = f'"{revision}"'
         return Response(content=png, media_type="image/png", headers=headers)
 
     @app.get(API + "/map", tags=["map"])
-    def map_summary(principal: Principal = AuthDep):
-        """Tiles, max square/cluster, tracks per source, the Komoot import's progress."""
-        return map_store.summary()
+    def map_summary(first: datetime.date | None = FirstDay, last: datetime.date | None = LastDay,
+                    principal: Principal = AuthDep):
+        """Tiles, max square/cluster, tracks per source (with from/to: of that period), the Komoot
+        import's progress."""
+        _check_period(first, last)
+        return map_store.summary(first, last)
+
+    @app.get(API + "/map/timefilter.js", tags=["map"], response_class=Response)
+    def map_timefilter(principal: Principal = AuthDep):
+        """The period control as a script, for the /map page and BRouter-Web (timefilter.py)."""
+        return Response(timefilter.script(map_store.first_day()), media_type="text/javascript",
+                        headers={"Cache-Control": "no-cache"})
 
     @app.get(API + "/map/tracks", tags=["map"])
     def map_tracks(principal: Principal = AuthDep):

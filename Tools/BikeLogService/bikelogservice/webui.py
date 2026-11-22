@@ -1551,6 +1551,8 @@ const osm=L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:
  attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'}).addTo(map);
 const topo=L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',{maxZoom:17,
  attribution:'&copy; OpenStreetMap, SRTM | &copy; <a href="https://opentopomap.org">OpenTopoMap</a>'});
+const period=window.BikeLogPeriod;
+if(period)period.attach(L,map,{always:true,change:()=>{figures();upd()}});
 const over={};const keep=JSON.parse(localStorage.getItem('bikelog.map.layers')||'["BikeLog Kacheln","BikeLog Heatmap"]');
 for(const [id,name] of cfg.layers){over[name]=L.tileLayer('/api/v1/map/tiles/'+id+'/{z}/{x}/{y}.png?r='+cfg.revision,
  {maxZoom:20,zIndex:id=='heat'?3:id=='visited'?1:2});if(keep.includes(name))over[name].addTo(map)}
@@ -1562,14 +1564,32 @@ const v=JSON.parse(localStorage.getItem('bikelog.map.view')||'null');
 if(location.hash.startsWith('#map=')){const [z,la,lo]=location.hash.slice(5).split('/');map.setView([+la,+lo],+z)}
 else if(v)map.setView(v.c,v.z);else if(cfg.bounds)map.fitBounds([[cfg.bounds[0],cfg.bounds[1]],[cfg.bounds[2],cfg.bounds[3]]]);
 else map.setView([50.99,9.86],6);
-const sq=cfg.square;let sqLayer=null;
 document.querySelectorAll('[data-fly]').forEach(a=>a.addEventListener('click',e=>{e.preventDefault();
- const b=JSON.parse(a.dataset.fly);map.fitBounds([[b[0],b[1]],[b[2],b[3]]])}));
+ const b=JSON.parse(a.dataset.fly);if(b)map.fitBounds([[b[0],b[1]],[b[2],b[3]]])}));
+let asked=0;
+async function figures(){const n=++asked,q=period?period.query():'',box=document.getElementById('figures');
+ const note=document.getElementById('period-note');box.style.opacity=.5;
+ try{const r=await fetch('/api/v1/map'+(q?'?'+q:''));if(!r.ok)throw r.status;
+  const j=await r.json();if(n!==asked)return;
+  const e=j.explorer,s=j.squadrats,nr=v=>String(v).replace(/\\B(?=(\\d{3})+$)/g,'.');
+  const set=(k,v)=>{box.querySelector('[data-fig="'+k+'"]').textContent=v};
+  set('tiles',nr(e.tiles));set('max_cluster',nr(e.max_cluster));set('cluster',e.cluster+' Cluster-Kacheln');
+  set('squadrats',nr(s.tiles));set('tracks',j.tracks);
+  set('sources',cfg.sources.filter(([k])=>j.sources[k].tracks).map(([k,t])=>j.sources[k].tracks+' '+t).join(' · ')||'–');
+  for(const [k,st] of [['explorer',e],['squadrats',s]]){
+   set(k+'_square',st.max_square);set(k+'_unit',st.max_square?'×'+st.max_square:'');
+   const a=box.querySelector('[data-square="'+k+'"]'),b=st.max_square_bounds;
+   a.hidden=!b;a.dataset.fly=JSON.stringify(b||null)}
+  note.textContent=q?' Die Zahlen oben gelten für den gewählten Zeitraum.'
+   +(j.undated?' '+j.undated+' Tracks ohne Zeit fehlen darin.':''):'';
+  box.style.opacity=''}
+ catch(err){if(n===asked){box.style.opacity='';note.textContent=' Die Zahlen oben ließen sich nicht aktualisieren.'}}}
+if(period&&period.query())figures();
 const plan=document.getElementById('plan');
 function upd(){const c=map.getCenter(),z=map.getZoom();
  localStorage.setItem('bikelog.map.view',JSON.stringify({c:[c.lat,c.lng],z}));
  if(plan){const names=['standard'].concat(Object.keys(over).filter(n=>map.hasLayer(over[n])));
-  plan.href=cfg.planner+'/#map='+z+'/'+c.lat.toFixed(5)+'/'+c.lng.toFixed(5)+'/'+names.map(encodeURIComponent).join(',')}}
+  plan.href=cfg.planner+'/'+(period?'?'+period.link():'')+'#map='+z+'/'+c.lat.toFixed(5)+'/'+c.lng.toFixed(5)+'/'+names.map(encodeURIComponent).join(',')}}
 map.on('moveend overlayadd overlayremove',upd);upd();
 })();
 """
@@ -1578,21 +1598,32 @@ map.on('moveend overlayadd overlayremove',upd);upd();
 def _map_tiles(summary: dict) -> str:
     e, q = summary["explorer"], summary["squadrats"]
 
-    def fly(stats: dict) -> str:
-        b = stats.get("max_square_bounds")
-        return (f' <a href="#" data-fly="{escape(str(b))}">zeigen</a>' if b else "")
+    def fig(key: str, value) -> str:            # data-fig: the script rewrites it for a period
+        return f'<span data-fig="{key}">{value}</span>'
 
-    return ('<div class="tiles">'
-            + tile("Kacheln", f'{e["tiles"]:,}'.replace(",", "."), sub="Zoom 14, je ≈ 1,6 km")
-            + tile("Max Square", str(e["max_square"]), "×" + str(e["max_square"]) if e["max_square"] else "",
-                   sub="größtes Quadrat" + fly(e))
-            + tile("Max Cluster", f'{e["max_cluster"]:,}'.replace(",", "."),
-                   sub=f'{e["cluster"]} Cluster-Kacheln')
-            + tile("Squadrats", f'{q["tiles"]:,}'.replace(",", "."), sub="Zoom 17, je ≈ 200 m")
-            + tile("Squadrat-Quadrat", str(q["max_square"]), "×" + str(q["max_square"]) if q["max_square"] else "",
-                   sub="größtes Quadrat" + fly(q))
-            + tile("Tracks", str(summary["tracks"]), sub=" · ".join(
-                f'{v["tracks"]} {SOURCE_NAMES[k]}' for k, v in summary["sources"].items() if v["tracks"]) or "–")
+    def square(key: str, stats: dict) -> str:
+        n = stats["max_square"]
+        return (fig(f"{key}_square", n)
+                + f'<span class="u" data-fig="{key}_unit">{f"×{n}" if n else ""}</span>')
+
+    def fly(key: str, stats: dict) -> str:
+        b = stats.get("max_square_bounds")
+        return (f' <a href="#" data-square="{key}" data-fly="{escape(str(b) if b else "null")}"'
+                f'{"" if b else " hidden"}>zeigen</a>')
+
+    def thousands(n: int) -> str:
+        return f"{n:,}".replace(",", ".")
+
+    sources = " · ".join(f'{v["tracks"]} {SOURCE_NAMES[k]}'
+                         for k, v in summary["sources"].items() if v["tracks"]) or "–"
+    return ('<div class="tiles" id="figures">'
+            + tile("Kacheln", fig("tiles", thousands(e["tiles"])), sub="Zoom 14, je ≈ 1,6 km")
+            + tile("Max Square", square("explorer", e), sub="größtes Quadrat" + fly("explorer", e))
+            + tile("Max Cluster", fig("max_cluster", thousands(e["max_cluster"])),
+                   sub=fig("cluster", f'{e["cluster"]} Cluster-Kacheln'))
+            + tile("Squadrats", fig("squadrats", thousands(q["tiles"])), sub="Zoom 17, je ≈ 200 m")
+            + tile("Squadrat-Quadrat", square("squadrats", q), sub="größtes Quadrat" + fly("squadrats", q))
+            + tile("Tracks", fig("tracks", summary["tracks"]), sub=fig("sources", sources))
             + "</div>")
 
 
@@ -1651,7 +1682,7 @@ def map_page(summary: dict, tracks: list, dups: dict, planner_url: str | None = 
              message: str | None = None) -> str:
     import json as _json
     cfg = {"revision": summary["revision"], "layers": MAP_LAYERS, "bounds": summary["bounds"],
-           "planner": planner_url}
+           "planner": planner_url, "sources": list(SOURCE_NAMES.items())}
     running = summary["komoot"].get("running")
     head = (f'<link rel="stylesheet" href="{LEAFLET}leaflet.css">'
             + ('<meta http-equiv="refresh" content="5">' if running else ""))
@@ -1671,10 +1702,11 @@ def map_page(summary: dict, tracks: list, dups: dict, planner_url: str | None = 
     body = f"""<h1>Karte</h1>
 <p class="mut">Wo du schon warst: besuchte Kacheln (Zoom 14 wie VeloViewer/StatsHunters, Squadrats auf Zoom 17,
 Zoom-Kacheln wachsen beim Herauszoomen mit, höchstens so fein wie Squadrats)
-und die Heatmap aller Fahrten. Dieselben Ebenen gibt es als Overlay in BRouter-Web.</p>
+und die Heatmap aller Fahrten, auf Wunsch nur aus einem Zeitraum (unten links in der Karte).
+Dieselben Ebenen gibt es als Overlay in BRouter-Web.</p>
 {note}
 {_map_tiles(summary)}
-<p>{plan}<span class="mut">Ebenen oben rechts in der Karte.</span></p>
+<p>{plan}<span class="mut">Ebenen oben rechts, Zeitraum unten links in der Karte.<span id="period-note"></span></span></p>
 <div id="map" data-cfg="{escape(_json.dumps(cfg))}"></div>
 {legend}
 <h2>GPX hochladen</h2>
@@ -1702,5 +1734,6 @@ Export von Strava oder Garmin. Fahrten, die schon als BikeLog-Fahrt da sind, zä
 <tbody>{rows or '<tr><td colspan="4" class="mut">Noch nichts.</td></tr>'}</tbody></table></details>
 {style}
 <script src="{LEAFLET}leaflet.js"></script>
+<script src="/api/v1/map/timefilter.js"></script>
 <script>{MAP_SCRIPT}</script>"""
     return page("Karte", "/map", body, head=head)

@@ -522,6 +522,7 @@ def test_every_route_requires_a_token_once_auth_is_on(tmp_path, ride_bytes):
             ("POST", f"{API}/trailbridge/route/fetched?revision=0123456789abcdef"),
             ("GET", f"{API}/map/tiles/heat/1/0/0.png"),
             ("GET", f"{API}/map"),
+            ("GET", f"{API}/map/timefilter.js"),
             ("GET", f"{API}/map/tracks"),
             ("PUT", f"{API}/map/tracks"),
             ("DELETE", f"{API}/map/tracks/x"),

@@ -160,3 +160,19 @@ def test_heat_glow_stays_off_the_line_and_the_count_is_capped():
     px = _png_pixels(ex.heat_tile(rides, 14, 8000, 5000))
     assert px[128 * 256 + 128] == ex.HEAT_LEVELS
     assert px[131 * 256 + 128] == ex.HEAT_HALO and px[140 * 256 + 128] == 0
+
+
+def test_drawing_does_not_depend_on_the_order_of_the_tiles():
+    a = {(x, y) for x in range(8000, 8005) for y in range(5000, 5005)}
+    b = {(x + 40, y) for x, y in a}             # as large: a tie
+    tiles = sorted(a | b | {(8021, 5001), (8020, 5001)})
+    one, two = set(), set()
+    for t in tiles:
+        one.add(t)
+    for t in reversed(tiles):
+        two.add(t)
+    assert ex.max_cluster(one) == ex.max_cluster(two) == ex.cluster(a)
+    stats = [ex.tile_stats(s, 14) for s in (one, two)]
+    stats[1].buckets = {k: v[::-1] for k, v in stats[0].buckets.items()}    # half a pixel a tile at zoom 5
+    z5 = (5, 8000 >> 9, 5000 >> 9)
+    assert ex.visited_tile(stats[0], *z5) == ex.visited_tile(stats[1], *z5)
