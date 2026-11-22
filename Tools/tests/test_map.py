@@ -7,12 +7,13 @@ import json
 import threading
 import urllib.error
 import zipfile
+import zlib
 
 import pytest
 from fastapi.testclient import TestClient
 
 from bikelog import explorer
-from bikelogservice import maptracks
+from bikelogservice import maptracks, timefilter
 from bikelogservice.app import create_app
 from bikelogservice.config import Settings
 
@@ -465,3 +466,73 @@ def test_period_script(client):
     assert 'var FIRST = "2026-06";' in text
     assert "Geheime" not in text and "8.60" not in text     # any site can load a script
     assert f'src="{API}/map/timefilter.js"' in client.get("/map").text
+
+
+def _colours(png):
+    """The palette entries (RGBA) a tile really uses."""
+    pos, idat, plte, trns = 8, b"", b"", b""
+    while pos < len(png):
+        n = int.from_bytes(png[pos:pos + 4], "big")
+        kind, data = png[pos + 4:pos + 8], png[pos + 8:pos + 8 + n]
+        if kind == b"IDAT":
+            idat += data
+        elif kind == b"PLTE":
+            plte = data
+        elif kind == b"tRNS":
+            trns = data
+        pos += 12 + n
+    raw = zlib.decompress(idat)
+    used = set(b"".join(raw[r * 257 + 1:(r + 1) * 257] for r in range(256)))
+    return {tuple(plte[i * 3:i * 3 + 3]) + (trns[i],) for i in used}
+
+
+def test_rides_colour_counts_each_ride_once_per_tile(settings):
+    store = maptracks.MapStore(settings)
+    store.add_upload(timed_gpx(km=6.0), "a.gpx")
+    store.add_upload(timed_gpx(km=5.9, name="noch einmal"), "a-again.gpx")     # the same ride
+    store.add_upload(timed_gpx(km=2.0, start=START + datetime.timedelta(days=3)), "b.gpx")
+    for zoom in (7, 14, 17):
+        at = lambda lat: _tile_at(zoom, lat)[1:]
+        assert store.state().rides_at(zoom)[at(50.005)] == 2
+        assert store.state(*_days(3, 3)).rides_at(zoom)[at(50.005)] == 1        # follows the period
+    assert store.state().rides_at(14)[_tile_at(14, 50.05)[1:]] == 1
+    assert set(store.state().rides_at(14)) == store.state().stats_at(14).tiles
+
+
+def test_rides_colour_steps(settings):
+    steps = explorer.RIDE_STEPS
+    for n, step in ((1, 1), (2, 2), (4, 3), (5, 4), (24, 5), (25, 6), (400, 6)):
+        stats = explorer.tile_stats({(8000, 5000)}, 14)
+        png = explorer.visited_tile(stats, 14, 8000, 5000, rides={(8000, 5000): n})
+        assert explorer.RIDE_PALETTE[step] in _colours(png), (n, step)
+        dark = explorer.visited_tile(stats, 14, 8000, 5000, rides={(8000, 5000): n}, dark=True)
+        assert explorer.RIDE_PALETTE_DARK[step] in _colours(dark), (n, step)
+    assert len(steps) == len(explorer.RIDE_PALETTE) - 2 == len(explorer.RIDE_PALETTE_DARK) - 2
+
+
+def test_rides_colour_has_no_cluster_and_no_square(settings):
+    store = maptracks.MapStore(settings)
+    for i in range(4):
+        store.add_upload(timed_gpx(km=9.0, lon0=8.60 + i * 0.022, start=START + datetime.timedelta(days=i)), f"{i}.gpx")
+    marks = {c[:3] for c in (explorer.VISITED_PALETTE[i] for i in (1, 2, 3, 5))}
+    for layer, z in (("visited", 12), ("squadrats", 15), ("zoom", 11)):
+        tile = _tile_at(z, 50.03, 8.62)
+        assert marks & {c[:3] for c in _colours(store.tile(layer, *tile)[0])}, layer
+        assert not marks & {c[:3] for c in _colours(store.tile(layer, *tile, colour="rides")[0])}, layer
+    tile = _tile_at(11)
+    assert store.tile("heat", *tile, colour="rides")[0] == store.tile("heat", *tile)[0]
+
+
+def test_colour_route_and_script(client):
+    client.put(f"{API}/map/tracks", params={"filename": "a.gpx"}, content=timed_gpx())
+    z, x, y = _tile_at(12)
+    url = f"{API}/map/tiles/visited/{z}/{x}/{y}.png"
+    cluster = client.get(url)
+    assert client.get(url, params={"colour": "cluster"}).content == cluster.content
+    rides, dark = (client.get(url, params={"colour": c}) for c in ("rides", "rides-dark"))
+    assert len({cluster.content, rides.content, dark.content}) == 3
+    assert client.get(url, params={"colour": "pink"}).status_code == 422
+    assert timefilter.step_names() == ["1", "2", "3–4", "5–9", "10–24", "25+"]
+    script = client.get(f"{API}/map/timefilter.js").text
+    assert "__LEGEND__" not in script and timefilter.legends()["rides"][0][1] in script
+    assert 'data-legend="rides"' in client.get("/map").text

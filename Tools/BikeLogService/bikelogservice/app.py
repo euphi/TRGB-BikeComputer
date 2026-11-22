@@ -20,6 +20,7 @@ import json
 import re
 import threading
 from contextlib import asynccontextmanager
+from typing import Literal
 from urllib.parse import parse_qs, quote, urlencode
 
 from fastapi import Depends, FastAPI, HTTPException, Path, Query, Request, Response, status
@@ -1023,16 +1024,19 @@ def create_app(settings: Settings | None = None, puller: Puller | None = None) -
     @app.get(API + "/map/tiles/{layer}/{z}/{x}/{y}.png", tags=["map"])
     def map_tile(request: Request, layer: str = Path(pattern=TILE_RE), z: int = Path(ge=0, le=maptracks.MAX_ZOOM),
                  x: int = Path(ge=0), y: int = Path(ge=0), first: datetime.date | None = FirstDay,
-                 last: datetime.date | None = LastDay, principal: Principal = AuthDep):
+                 last: datetime.date | None = LastDay,
+                 colour: Literal[maptracks.COLOURS] = Query(default="cluster"),
+                 principal: Principal = AuthDep):
         """One 256 px overlay tile (XYZ, like OSM): visited = explorer tiles (zoom 14),
         squadrats = zoom 17 tiles, zoom = the tiles of zoom z + 2 (17 at most),
-        heat = all tracks summed up; from/to: of the rides of that period. For BRouter-Web's BR.conf.overlays and the /map page."""
+        heat = all tracks summed up; from/to: of the rides of that period; colour=rides:
+        the tile layers by how often ridden (rides-dark: for a dark map). For BRouter-Web's BR.conf.overlays and the /map page."""
         headers = {"Cache-Control": "no-cache", "Access-Control-Allow-Origin": "*"}
         _check_period(first, last)
         etag = f'"{map_store.state(first, last).revision}"'
         if request.headers.get("if-none-match") == etag:        # before drawing anything
             return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers=dict(headers, ETag=etag))
-        png, revision = map_store.tile(layer, z, x, y, first, last)
+        png, revision = map_store.tile(layer, z, x, y, first, last, colour)
         headers["ETag"] = f'"{revision}"'
         return Response(content=png, media_type="image/png", headers=headers)
 

@@ -30,6 +30,9 @@ All drawing happens in one thread: it is pure CPU, so request threads would only
 interpreter from each other, and on big.LITTLE a thread that does a tile now and then is
 kept on a small core at a low clock (measured: a view 5 s instead of under 1 s).
 
+The tile layers have two colourings (tile(colour=), COLOURS): cluster and max square, or how many
+rides went through each tile (MapState.rides_at(): recordings of one ride count once).
+
 A period (tile(first=, last=), days in local time, both included) is a selection of the rides:
 MapState.period(). A ride belongs to the day it began with all its recordings, a track without a
 time only to the whole. A selection draws from the whole's index and takes the stored heat tiles
@@ -88,6 +91,8 @@ ZOOM_TILES_MAX = explorer.SQUADRAT_ZOOM
 TILE_CACHE = 4000
 #: heat tiles up to this zoom are drawn ahead and kept on disk
 STORE_ZOOM = 14
+#: how the tile layers are coloured; rides-dark = rides for a dark base map
+COLOURS = ("cluster", "rides", "rides-dark")
 #: periods kept ready: moving a slider asks for many tiles of few periods
 PERIOD_CACHE = 8
 #: drawing ahead waits until no tile has been asked for this long
@@ -138,6 +143,7 @@ class MapState:
     #: a period's tracks, as numbers in heat.tracks; None = all of them
     chosen: frozenset[int] | None = None
     periods: OrderedDict = field(default_factory=OrderedDict)
+    counts: dict[int, dict] = field(default_factory=dict)
 
     def period(self, first: datetime.date | None, last: datetime.date | None) -> MapState:
         """Only the rides that began first..last (each may be open); self if that is all."""
@@ -163,6 +169,17 @@ class MapState:
     def pieces(self, z: int, x: int, y: int) -> list:
         pieces = self.heat.pieces(z, x, y)
         return pieces if self.chosen is None else [p for p in pieces if p[0] in self.chosen]
+
+    def rides_at(self, zoom: int) -> dict[tuple[int, int], int]:
+        """How many rides went through each tile at zoom, worked out on first use."""
+        counts = self.counts.get(zoom)
+        if counts is None:
+            rides: dict[str, set] = {}
+            for track, tiles in zip(self.tracks, self.squadrats):
+                rides.setdefault(self.duplicates.get(track.id, track.id), set()).update(tiles)
+            counts = explorer.ride_counts(rides.values(), explorer.SQUADRAT_ZOOM - zoom)
+            self.counts[zoom] = counts
+        return counts
 
     def stats_at(self, zoom: int) -> explorer.TileStats:
         """Visited tiles and figures at any zoom up to SQUADRAT_ZOOM, worked out on first use."""
@@ -695,7 +712,9 @@ class MapStore:
             digest = hashlib.sha1(json.dumps(sorted((i.id, i.sig, i.points, i.start or 0) for i in infos)).encode()
                                   + json.dumps(sorted(dups.items())).encode() + b"all-drawn"
                                   # the revision is the tiles' ETag: other grid = other revision
-                                  + b"|zoom+%d|better-on-top" % ZOOM_TILES_FINER).hexdigest()[:12]
+                                  + b"|zoom+%d|better-on-top" % ZOOM_TILES_FINER
+                                  + repr((explorer.RIDE_STEPS, explorer.RIDE_PALETTE,
+                                          explorer.RIDE_PALETTE_DARK)).encode()).hexdigest()[:12]
             self._state = MapState(digest, tracks, dups,
                                    {explorer.EXPLORER_ZOOM: explorer.tile_stats(t14, explorer.EXPLORER_ZOOM),
                                     explorer.SQUADRAT_ZOOM: explorer.tile_stats(t17, explorer.SQUADRAT_ZOOM)},
@@ -706,7 +725,7 @@ class MapStore:
             return self._state
 
     def tile(self, layer: str, z: int, x: int, y: int, first: datetime.date | None = None,
-             last: datetime.date | None = None) -> tuple[bytes, str]:
+             last: datetime.date | None = None, colour: str = "cluster") -> tuple[bytes, str]:
         """(PNG, revision) of one overlay tile; a transparent tile where there is nothing."""
         self._asked = time.monotonic()
         state = self.state(first, last)
@@ -715,16 +734,18 @@ class MapStore:
             return explorer.EMPTY_PNG, state.revision
         if layer == "heat":
             return self._heat(state, z, x, y), state.revision
-        key = (layer, z, x, y, state.revision)
+        key = (layer, z, x, y, state.revision, colour)
         png = self._cached(key)
         if png is None:
             png = self._drawing.submit(self._draw_visited, state, key).result()
         return png, state.revision
 
     def _draw_visited(self, state: MapState, key: tuple) -> bytes:
-        layer, z, x, y, _ = key
+        layer, z, x, y, _, colour = key
         zoom = min(z + ZOOM_TILES_FINER, ZOOM_TILES_MAX) if layer == "zoom" else LAYERS[layer]
-        png = explorer.visited_tile(state.stats_at(zoom), z, x, y, faint=layer == "zoom") or explorer.EMPTY_PNG
+        rides = state.rides_at(zoom) if colour != "cluster" else None
+        png = explorer.visited_tile(state.stats_at(zoom), z, x, y, faint=layer == "zoom", rides=rides,
+                                    dark=colour == "rides-dark") or explorer.EMPTY_PNG
         self._remember(key, png)
         return png
 

@@ -38,6 +38,7 @@ import struct
 import threading
 import zlib
 from array import array
+from bisect import bisect_right
 from collections import Counter
 from dataclasses import dataclass, field
 
@@ -352,6 +353,25 @@ VISITED_PALETTE_CLOSE = [(r, g, b, a // 2) if i in (1, 2, 3) else (r, g, b, a)
                          for i, (r, g, b, a) in enumerate(VISITED_PALETTE)]
 
 
+#: the other colouring of the tiles, by how often ridden: the least rides of each step
+RIDE_STEPS = (1, 2, 3, 5, 10, 25)
+#: one hue, every step clearly apart in lightness: darker = more often on a light map ...
+RIDE_PALETTE = [(0, 0, 0, 0), (255, 165, 90, 130), (244, 120, 40, 150), (222, 84, 14, 172),
+                (186, 52, 0, 190), (140, 26, 0, 208), (92, 6, 0, 226), (40, 40, 40, 110)]
+#: ... and lighter = more often on a dark one (last entry of both: the grid)
+RIDE_PALETTE_DARK = [(0, 0, 0, 0), (205, 80, 20, 110), (225, 92, 20, 148), (240, 108, 28, 185),
+                     (250, 134, 48, 213), (255, 175, 95, 224), (255, 218, 165, 234), (200, 200, 200, 60)]
+
+
+def ride_counts(rides, levels: int = 0) -> dict[tuple[int, int], int]:
+    """{tile: how many rides went through it} from each ride's tiles, ``levels`` zooms further
+    out (a ride counts once in a tile, however often it passes)."""
+    counts: Counter = Counter()
+    for tiles in rides:
+        counts.update(parent_tiles(tiles, levels) if levels else tiles)
+    return counts
+
+
 def _fill(px: bytearray, x0: int, y0: int, x1: int, y1: int, value: int) -> None:
     x0, y0 = max(0, x0), max(0, y0)
     x1, y1 = min(TILE_PX, x1), min(TILE_PX, y1)
@@ -362,10 +382,13 @@ def _fill(px: bytearray, x0: int, y0: int, x1: int, y1: int, value: int) -> None
         px[y * TILE_PX + x0:y * TILE_PX + x1] = row
 
 
-def visited_tile(stats: TileStats, z: int, tx: int, ty: int, faint: bool = False) -> bytes | None:
+def visited_tile(stats: TileStats, z: int, tx: int, ty: int, faint: bool = False,
+                 rides: dict[tuple[int, int], int] | None = None, dark: bool = False) -> bytes | None:
     """The overlay tile (z, tx, ty) showing stats' tiles: visited, cluster and max cluster
     filled, the grid once a tile is 24 px wide, the max square outlined. None = empty.
-    faint: the pale fill at every zoom (a layer that covers much of the screen at any zoom)."""
+    faint: the pale fill at every zoom (a layer that covers much of the screen at any zoom).
+    rides (ride_counts()): coloured by how often ridden instead, without cluster and max square;
+    dark: for a dark map."""
     scale = TILE_PX * 2.0 ** (z - stats.zoom)          # pixels per visited tile
     ox, oy = tx * TILE_PX, ty * TILE_PX
     # the visited tiles under this map tile
@@ -376,7 +399,8 @@ def visited_tile(stats: TileStats, z: int, tx: int, ty: int, faint: bool = False
         for by in range(lo_y >> 5, (hi_y >> 5) + 1):
             candidates.extend(stats.buckets.get((bx, by), ()))
     grid = scale >= 24
-    sx, sy, ss = stats.square
+    sx, sy, ss = stats.square if rides is None else (0, 0, 0)
+    line = 4 if rides is None else len(RIDE_STEPS) + 1
     if not candidates and not grid and not ss:
         return None
     px = bytearray(TILE_PX * TILE_PX)
@@ -389,7 +413,8 @@ def visited_tile(stats: TileStats, z: int, tx: int, ty: int, faint: bool = False
         y1 = int(math.floor((y + 1) * scale - oy))
         return x0, y0, max(x1, x0 + 1), max(y1, y0 + 1)
 
-    shown = [(3 if t in stats.max_cluster else 2 if t in stats.cluster else 1, t)
+    shown = [(bisect_right(RIDE_STEPS, rides[t]) if rides is not None
+              else 3 if t in stats.max_cluster else 2 if t in stats.cluster else 1, t)
              for t in candidates if lo_x <= t[0] <= hi_x and lo_y <= t[1] <= hi_y]
     if scale < 1:                   # tiles share pixels: the better one is drawn last
         shown.sort()
@@ -401,11 +426,11 @@ def visited_tile(stats: TileStats, z: int, tx: int, ty: int, faint: bool = False
         first = math.ceil(ox / step) * step
         x = first
         while x < ox + TILE_PX:
-            _fill(px, int(x - ox), 0, int(x - ox) + 1, TILE_PX, 4)
+            _fill(px, int(x - ox), 0, int(x - ox) + 1, TILE_PX, line)
             x += step
         y = math.ceil(oy / step) * step
         while y < oy + TILE_PX:
-            _fill(px, 0, int(y - oy), TILE_PX, int(y - oy) + 1, 4)
+            _fill(px, 0, int(y - oy), TILE_PX, int(y - oy) + 1, line)
             y += step
         drawn = True
     if ss:
@@ -420,7 +445,14 @@ def visited_tile(stats: TileStats, z: int, tx: int, ty: int, faint: bool = False
             _fill(px, x0, y0, x0 + w, y1, 5)
             _fill(px, x1 - w, y0, x1, y1, 5)
             drawn = True
-    return png(px, VISITED_PALETTE_CLOSE if faint or z > stats.zoom else VISITED_PALETTE) if drawn else None
+    if not drawn:
+        return None
+    if rides is None:
+        return png(px, VISITED_PALETTE_CLOSE if faint or z > stats.zoom else VISITED_PALETTE)
+    palette = RIDE_PALETTE_DARK if dark else RIDE_PALETTE
+    # the map's names must show through: thinner close in and in a layer that covers much
+    share = 0.5 if z > stats.zoom and not faint else 0.65 if faint else 1.0
+    return png(px, [(r, g, b, a if i == line else round(a * share)) for i, (r, g, b, a) in enumerate(palette)])
 
 
 # --- overlay: heatmap -------------------------------------------------------------------------

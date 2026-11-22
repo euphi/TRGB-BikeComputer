@@ -115,7 +115,8 @@ vergessen), Höhenkalibrierung, IMU-Kalibrierung, Neustart und Ausschalten.
   selbst ab
 - Eine Karte, wo du schon gefahren bist, zum Planen (auch als Overlay in BRouter-Web):
   besuchte Kacheln auf Zoom 14 mit Cluster und Max Square, Squadrats auf Zoom 17, Kacheln,
-  die beim Herauszoomen mitwachsen, und eine Heatmap aller Fahrten, alles auch für einen wählbaren Zeitraum; aus den
+  die beim Herauszoomen mitwachsen, und eine Heatmap aller Fahrten, alles auch für einen wählbaren Zeitraum,
+  die Kacheln auch nach Häufigkeit gefärbt; aus den
   Fahrten des Fahrradcomputers, hochgeladenen GPX, einem
   einmaligen Komoot-Import und der ganztägigen Aufzeichnung eines Handys, von der nur das
   Radfahren übernommen wird

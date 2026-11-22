@@ -1,18 +1,20 @@
-"""The period control of the map, served as GET /api/v1/map/timefilter.js.
+"""The control of the map (period, colouring of the tiles), served as GET /api/v1/map/timefilter.js.
 
 One script for both maps: the /map page and BRouter-Web, whose config.js loads it from here (so
 brouter-web needs no patch and no rebuild). It puts a control on the map (button, slider for start
 and end in months, two date fields for exact days, presets) and appends from/to to the URL of
-every BikeLog tile, nothing else.
+every BikeLog tile. The same box switches the tile layers between cluster and frequency
+(colour=rides, on a dark base map rides-dark) and has their legend.
 
   window.BikeLogPeriod.attach(L, map, options)            the /map page calls it ({always, change,
                                                           position}); in BRouter-Web the script
                                                           finds the map itself
   window.BikeLogPeriod.query()                            "from=...&to=...", "" = all rides
   window.BikeLogPeriod.link()                             query for a link to the other map
+  window.BikeLogPeriod.colour()                           'cluster' or 'rides'
 
-The period is kept per origin in localStorage; ?bikelogfrom=&bikelogto= in the page's URL wins
-once and is then taken out of it.
+Period and colouring are kept per origin in localStorage; ?bikelogfrom=&bikelogto= and
+?bikelogcolour= in the page's URL win once and are then taken out of it.
 
 Other sites can load a script, so the only thing of the rides in it is the month of the first
 one (where the slider begins); the figures stay in GET /api/v1/map, same origin only.
@@ -23,6 +25,8 @@ from __future__ import annotations
 import datetime
 import json
 
+from bikelog import explorer
+
 _JS = r"""(function () {
 'use strict';
 if (window.BikeLogPeriod) return;
@@ -31,6 +35,10 @@ var TILES = '/api/v1/map/tiles/';
 var KEY = 'bikelog.map.period';
 var DAY = /^\d{4}-\d\d-\d\d$/;
 var range = {from: '', to: ''};         // days, both included; '' = open
+var COLOUR_KEY = 'bikelog.map.colour';
+var LEGEND = __LEGEND__;
+var colour = 'cluster';                 // of the tile layers: 'cluster' | 'rides'
+var dark = false;                       // a dark base map is on
 
 function valid(day) {
   if (!DAY.test(day || '')) return '';
@@ -38,7 +46,10 @@ function valid(day) {
   return isFinite(d) && d.toISOString().slice(0, 10) === day && day > '1900' ? day : '';
 }
 function store() {
-  try { localStorage.setItem(KEY, JSON.stringify(range)); } catch (e) { /* private mode */ }
+  try {
+    localStorage.setItem(KEY, JSON.stringify(range));
+    localStorage.setItem(COLOUR_KEY, colour);
+  } catch (e) { /* private mode */ }
 }
 function load() {
   var params = new URLSearchParams(location.search);
@@ -55,9 +66,14 @@ function load() {
   from = valid(from); to = valid(to);
   if (from && to && from > to) from = to = '';
   range = {from: from, to: to};
-  if (linked) {
+  var coloured = params.has('bikelogcolour');
+  try {
+    var wanted = coloured ? params.get('bikelogcolour') : localStorage.getItem(COLOUR_KEY);
+    if (wanted === 'rides') colour = wanted;
+  } catch (e) { /* no storage */ }
+  if (linked || coloured) {
     store();
-    params.delete('bikelogfrom'); params.delete('bikelogto');
+    ['bikelogfrom', 'bikelogto', 'bikelogcolour'].forEach(function (name) { params.delete(name); });
     var rest = params.toString();
     history.replaceState(history.state, '', location.pathname + (rest ? '?' + rest : '') + location.hash);
   }
@@ -71,6 +87,15 @@ function query() {
   return parts.join('&');
 }
 function ours(layer) { return typeof layer._url === 'string' && layer._url.indexOf(TILES) >= 0; }
+function coloured(layer) { return ours(layer) && layer._url.indexOf(TILES + 'heat/') < 0; }
+function tileQuery(layer) {
+  var parts = query() ? [query()] : [];
+  if (colour === 'rides' && coloured(layer)) parts.push('colour=' + (dark ? 'rides-dark' : 'rides'));
+  return parts.join('&');
+}
+function darkBase(layer) {
+  return typeof layer._url === 'string' && /dark_all|dark_nolabels|dark-matter/.test(layer._url);
+}
 
 var patched = false;
 function patch(L) {
@@ -78,7 +103,14 @@ function patch(L) {
   patched = true;
   var original = L.TileLayer.prototype.getTileUrl;
   L.TileLayer.prototype.getTileUrl = function () {
-    var url = original.apply(this, arguments), q = ours(this) ? query() : '';
+    var url = original.apply(this, arguments);
+    if (!ours(this)) return url;
+    if (this._map) {                    // the base map may have changed with this very layer
+      var isDark = false;
+      this._map.eachLayer(function (layer) { if (darkBase(layer)) isDark = true; });
+      dark = isDark;
+    }
+    var q = tileQuery(this);
     return q ? url + (url.indexOf('?') < 0 ? '?' : '&') + q : url;
   };
 }
@@ -123,7 +155,17 @@ var CSS = [
   '.blp-head small{color:#9BA097;font:500 11px "IBM Plex Mono",ui-monospace,monospace;letter-spacing:.08em;',
   ' text-transform:uppercase;margin-right:8px}',
   '.blp.blp-on{border-color:#CBA36B}.blp.blp-on .blp-head b{color:#CBA36B}',
-  '.blp-body{width:340px;max-width:100%;box-sizing:border-box;padding:2px 14px 12px}',
+  '.blp-body{width:340px;max-width:100%;max-height:50vh;overflow:auto;box-sizing:border-box;padding:2px 14px 12px}',
+  '.blp-head span{display:block}',
+  '.blp-colour{border-top:1.5px solid #3A362E;margin-top:10px;padding-top:10px}',
+  '.blp-modes{display:flex;gap:6px}',
+  '.blp button.blp-mode{flex:1;margin:0;padding:4px 8px;border:1.5px solid #3A362E;border-radius:999px;',
+  ' background:#1E252B;color:inherit;font:inherit;cursor:pointer;box-shadow:none}',
+  '.blp button.blp-mode[aria-pressed=true]{background:#CBA36B;border-color:#CBA36B;color:#161B1F}',
+  '.blp-legend{display:flex;gap:4px;margin-top:8px}',
+  '.blp-legend span{flex:1;font-size:11px;line-height:1.2;text-align:center;color:#E7E2D6}',
+  '.blp-legend i{display:block;box-sizing:border-box;height:12px;margin-bottom:3px;border-radius:3px}',
+  '.blp-what{margin-top:4px;color:#9BA097;font-size:11px}',
   '.blp-slide{position:relative;height:38px;touch-action:none}',
   '.blp-track,.blp-fill{position:absolute;top:17px;height:4px;border-radius:2px;background:#332F28}',
   '.blp-track{left:12px;right:12px}.blp-fill{background:#CBA36B;top:0}',
@@ -154,8 +196,12 @@ function el(tag, cls, parent, attrs) {
 function control(L, map, options) {
   var box = el('div', 'blp leaflet-control');
   var head = el('button', 'blp-head', box, {type: 'button', 'aria-expanded': 'false'});
-  el('small', '', head).textContent = 'Zeitraum';
-  var name = el('b', '', head);
+  var periodLine = el('span', '', head), colourLine = el('span', '', head);
+  el('small', '', periodLine).textContent = 'Zeitraum';
+  var name = el('b', '', periodLine);
+  el('small', '', colourLine).textContent = 'Kacheln';
+  var colourName = el('span', '', colourLine);
+  colourName.style.display = 'inline';
   var body = el('div', 'blp-body', box);
   body.hidden = true;
   var slide = el('div', 'blp-slide', body);
@@ -172,7 +218,44 @@ function control(L, map, options) {
   var list = presets();
   list.forEach(function (p, i) { el('option', '', pick, {value: i}).textContent = p[0]; });
   el('option', '', pick, {value: 'own', disabled: ''}).textContent = 'eigener Zeitraum';
+  var colours = el('div', 'blp-colour', body), modes = el('div', 'blp-modes', colours);
+  var buttons = [['cluster', 'Cluster'], ['rides', 'Häufigkeit']].map(function (m) {
+    var button = el('button', 'blp-mode', modes, {type: 'button', 'data-colour': m[0]});
+    button.textContent = m[1];
+    button.addEventListener('click', function () {
+      if (colour === m[0]) return;
+      colour = m[0];
+      store();
+      showColour();
+      redrawTiles();
+      if (options.recolour) options.recolour();
+    });
+    return button;
+  });
+  var legend = el('div', 'blp-legend', colours), what = el('div', 'blp-what', colours);
 
+  function showColour() {
+    var rides = colour === 'rides';
+    var key = !rides ? 'cluster' : dark ? 'dark' : 'rides';
+    if (key === shown) return;
+    shown = key;
+    buttons.forEach(function (b) {
+      b.setAttribute('aria-pressed', String(b.getAttribute('data-colour') === colour));
+    });
+    colourName.textContent = rides ? 'Häufigkeit' : 'Cluster';
+    legend.textContent = '';
+    LEGEND[key].forEach(function (step) {
+      var item = el('span', '', legend), swatch = el('i', '', item);
+      swatch.style.background = step[1];
+      if (step[2]) swatch.style.border = '2px solid ' + step[2];
+      item.appendChild(document.createTextNode(step[0]));
+    });
+    what.textContent = rides ? 'Fahrten durch die Kachel' : 'Cluster: alle vier Nachbarkacheln besucht';
+  }
+  function redrawTiles() {
+    map.eachLayer(function (layer) { if (coloured(layer)) layer.redraw(); });
+  }
+  var drawnDark = null, shown = '';
   function bar() {
     var a = +start.value, b = +end.value;
     fill.style.left = 100 * a / months + '%';
@@ -248,15 +331,27 @@ function control(L, map, options) {
   });
 
   function visible() {                  // in the planner only with a BikeLog layer on
-    var any = !!options.always;
-    map.eachLayer(function (layer) { if (ours(layer)) any = true; });
+    var any = !!options.always, tiled = false, isDark = false;
+    map.eachLayer(function (layer) {
+      if (ours(layer)) any = true;
+      if (coloured(layer)) tiled = true;
+      if (darkBase(layer)) isDark = true;
+    });
     box.hidden = !any;
+    colours.hidden = colourLine.hidden = !tiled;
+    var turned = drawnDark !== null && drawnDark !== isDark;
+    dark = drawnDark = isDark;
+    showColour();
+    if (turned && colour === 'rides') redrawTiles();
   }
   show();
   var Control = L.Control.extend({options: {position: options.position || 'bottomright'}, onAdd: function () { return box; }});
   new Control().addTo(map);
   visible();
-  map.on('layeradd layerremove', function () { setTimeout(visible, 0); });
+  var due = null;                       // a route being dragged adds and removes layers all the time
+  map.on('layeradd layerremove', function () {
+    if (due === null) due = setTimeout(function () { due = null; visible(); }, 0);
+  });
 }
 
 var attached = false;
@@ -271,7 +366,10 @@ function attach(L, map, options) {
 window.BikeLogPeriod = {
   attach: attach,
   query: query,
-  link: function () { return 'bikelogfrom=' + range.from + '&bikelogto=' + range.to; }
+  colour: function () { return colour; },
+  link: function () {
+    return 'bikelogfrom=' + range.from + '&bikelogto=' + range.to + '&bikelogcolour=' + colour;
+  }
 };
 
 // BRouter-Web: loaded by config.js, before or after the app
@@ -287,7 +385,7 @@ if (window.BR) {
     if (!map) return false;
     if (!attached) {
       attach(window.L, map);
-      if (late && query()) map.eachLayer(function (layer) { if (ours(layer)) layer.redraw(); });
+      if (late) map.eachLayer(function (layer) { if (ours(layer) && tileQuery(layer)) layer.redraw(); });
     }
     return true;
   };
@@ -301,8 +399,32 @@ if (window.BR) {
 """
 
 
+def step_names() -> list[str]:
+    """1, 2, 3–4, ..., 25+"""
+    steps = explorer.RIDE_STEPS
+    return [str(low) if high - low == 1 else f"{low}–{high - 1}"
+            for low, high in zip(steps, steps[1:])] + [f"{steps[-1]}+"]
+
+
+def _seen(colour: tuple[int, int, int, int], base: tuple[int, int, int]) -> str:
+    """An overlay colour as it looks on a base map."""
+    share = colour[3] / 255
+    return "#%02x%02x%02x" % tuple(round(b + (c - b) * share) for c, b in zip(colour, base))
+
+
+def legends() -> dict[str, list[list[str]]]:
+    """Per colouring: [label, colour, border] of its swatches, from the palettes the tiles have."""
+    light, dark = (250, 250, 248), (38, 38, 38)
+    v = explorer.VISITED_PALETTE
+    return {"cluster": [[name, _seen(v[i], light)] for i, name in ((1, "besucht"), (2, "Cluster"),
+                                                                   (3, "Max Cluster"))]
+            + [["Max Square", _seen(v[0], light), _seen(v[5], light)]],
+            "rides": [[name, _seen(c, light)] for name, c in zip(step_names(), explorer.RIDE_PALETTE[1:])],
+            "dark": [[name, _seen(c, dark)] for name, c in zip(step_names(), explorer.RIDE_PALETTE_DARK[1:])]}
+
+
 def script(first: datetime.date | None) -> str:
     """The script, its slider beginning at the month of first."""
     # a date from before GPS is a broken clock, not a ride
     month = f"{max(first, datetime.date(2000, 1, 1)):%Y-%m}" if first else None
-    return _JS.replace("__FIRST__", json.dumps(month))
+    return _JS.replace("__FIRST__", json.dumps(month)).replace("__LEGEND__", json.dumps(legends()))

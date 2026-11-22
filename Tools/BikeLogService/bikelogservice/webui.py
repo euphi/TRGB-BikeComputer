@@ -17,7 +17,7 @@ from html import escape
 
 from bikelog import report, testride
 
-from . import charts
+from . import charts, timefilter
 from .routes import KINDS as ROUTE_KINDS, TAGS as ROUTE_TAGS
 from .storage import Session
 
@@ -1553,7 +1553,7 @@ const topo=L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',{maxZo
  attribution:'&copy; OpenStreetMap, SRTM | &copy; <a href="https://opentopomap.org">OpenTopoMap</a>'});
 const period=window.BikeLogPeriod;
 // wide: up by the zoom buttons, in sight without scrolling; narrow: out of the layer list's way
-if(period)period.attach(L,map,{always:true,position:innerWidth<700?'bottomleft':'topleft',change:()=>{figures();upd()}});
+if(period)period.attach(L,map,{always:true,position:innerWidth<700?'bottomleft':'topleft',change:()=>{figures();upd()},recolour:()=>{legend();upd()}});
 const over={};const keep=JSON.parse(localStorage.getItem('bikelog.map.layers')||'["BikeLog Kacheln","BikeLog Heatmap"]');
 for(const [id,name] of cfg.layers){over[name]=L.tileLayer('/api/v1/map/tiles/'+id+'/{z}/{x}/{y}.png?r='+cfg.revision,
  {maxZoom:20,zIndex:id=='heat'?3:id=='visited'?1:2});if(keep.includes(name))over[name].addTo(map)}
@@ -1567,6 +1567,9 @@ else if(v)map.setView(v.c,v.z);else if(cfg.bounds)map.fitBounds([[cfg.bounds[0],
 else map.setView([50.99,9.86],6);
 document.querySelectorAll('[data-fly]').forEach(a=>a.addEventListener('click',e=>{e.preventDefault();
  const b=JSON.parse(a.dataset.fly);if(b)map.fitBounds([[b[0],b[1]],[b[2],b[3]]])}));
+function legend(){const c=period?period.colour():'cluster';
+ document.querySelectorAll('[data-legend]').forEach(e=>{e.hidden=e.dataset.legend!==c})}
+legend();
 let asked=0;
 async function figures(){const n=++asked,q=period?period.query():'',box=document.getElementById('figures');
  const note=document.getElementById('period-note');box.style.opacity=.5;
@@ -1689,21 +1692,26 @@ def map_page(summary: dict, tracks: list, dups: dict, planner_url: str | None = 
             + ('<meta http-equiv="refresh" content="5">' if running else ""))
     style = ("<style>#map{height:68vh;min-height:380px;border:1.5px solid var(--rim);border-radius:14px;"
              "margin:10px 0}.leaflet-container{background:var(--panel);font:13px var(--sans)}"
-             ".leaflet-control-layers{color:#222}</style>")
+             ".leaflet-control-layers{color:#222}.legend [hidden]{display:none}</style>")
     note = f'<div class="msg">{escape(message)}</div>' if message else ""
     plan = (f'<a class="btn pri" id="plan" href="{escape(planner_url)}" target="_blank" rel="noopener">'
             'In BRouter planen</a> ' if planner_url else "")
-    legend = ('<div class="legend"><span><i style="background:rgb(214,64,40)"></i>besucht</span>'
-              '<span><i style="background:rgb(150,70,200)"></i>Cluster (alle vier Nachbarn besucht)</span>'
-              '<span><i style="background:rgb(100,30,160)"></i>Max Cluster</span>'
-              '<span><i style="background:rgb(255,204,0)"></i>Max Square</span>'
+    often = "".join(f'<span data-legend="rides" hidden><i style="background:{colour}"></i>{name}'
+                    f'{" Fahrt" if name == "1" else " Fahrten"}</span>'
+                    for name, colour in timefilter.legends()["rides"])
+    legend = ('<div class="legend">' + often
+              + '<span data-legend="cluster"><i style="background:rgb(214,64,40)"></i>besucht</span>'
+              '<span data-legend="cluster"><i style="background:rgb(150,70,200)"></i>Cluster (alle vier Nachbarn besucht)</span>'
+              '<span data-legend="cluster"><i style="background:rgb(100,30,160)"></i>Max Cluster</span>'
+              '<span data-legend="cluster"><i style="background:rgb(255,204,0)"></i>Max Square</span>'
               '<span><i style="background:linear-gradient(90deg,rgb(0,200,235),rgb(0,105,200),rgb(20,45,160))">'
               '</i>Heatmap: 1 → 20+ Fahrten</span></div>')
     rows = _map_track_rows(tracks, dups)
     body = f"""<h1>Karte</h1>
 <p class="mut">Wo du schon warst: besuchte Kacheln (Zoom 14 wie VeloViewer/StatsHunters, Squadrats auf Zoom 17,
 Zoom-Kacheln wachsen beim Herauszoomen mit, höchstens so fein wie Squadrats)
-und die Heatmap aller Fahrten, auf Wunsch nur aus einem Zeitraum (Knopf „Zeitraum“ in der Karte).
+und die Heatmap aller Fahrten, auf Wunsch nur aus einem Zeitraum (Knopf „Zeitraum“ in der Karte, dort auch
+die Kachelfarbe: Cluster oder Häufigkeit).
 Dieselben Ebenen gibt es als Overlay in BRouter-Web.</p>
 {note}
 {_map_tiles(summary)}
