@@ -361,8 +361,9 @@ Sources, all under `<data>/map/`
   with a median above 32 km/h, a fastest tenth above 45 km/h, a minute above 55 km/h, a mean
   above 30 km/h, or stop-and-go (fastest tenth above 38 km/h and more than twice the median);
   bike from a 10 km/h median; whatever lies between is "unclear" and left out. The page lists
-  every trip found with its verdict and the reason. Tuned on 229 trips of one phone; all four
-  the bike computer recorded at the same time were recognised as cycling.
+  every trip found with its verdict and the reason. The limits were set by eye and err in
+  both directions (long descents and climbs are dropped, slow car trips in town are kept, a change
+  of transport within a trip is not seen): check the list ([known bugs](ROADMAP.md#known-bugs)).
 - **Komoot** (one-off, "Von Komoot importieren"): every recorded tour of the account in
   `BIKELOG_KOMOOT_EMAIL`, bike sports only by default (the page names the ones skipped). Running it again fetches only new ones. Tours of others the account is
   only tagged in are left out; a tour deleted here does not come back.

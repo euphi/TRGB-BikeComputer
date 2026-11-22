@@ -374,9 +374,10 @@ Quellen, alle unter `<data>/map/`
   bei Median über 32 km/h, schnellstem Zehntel über 45 km/h, einer Minute über 55 km/h, einem
   Schnitt über 30 km/h oder Stop-and-go (schnellstes Zehntel über 38 km/h und mehr als das
   Doppelte des Medians); Rad ab 10 km/h Median; was dazwischen liegt, gilt als „unklar“ und
-  wird nicht übernommen. Die Seite listet jede erkannte Fahrt mit Urteil und Grund. Gemessen an
-  229 Fahrten eines Handys; alle vier, die der Fahrradcomputer zugleich aufgezeichnet hat,
-  wurden als Rad erkannt.
+  wird nicht übernommen. Die Seite listet jede erkannte Fahrt mit Urteil und Grund. Die Grenzen
+  sind nach Augenmaß gesetzt und irren in beide Richtungen (lange Abfahrten und Anstiege fallen
+  heraus, langsame Autofahrten in der Stadt bleiben, ein Wechsel des Verkehrsmittels innerhalb
+  einer Fahrt wird nicht erkannt): die Liste prüfen ([bekannte Fehler](ROADMAP.md#bekannte-fehler)).
 - **Komoot** (einmalig, „Von Komoot importieren“): alle aufgezeichneten Touren des Kontos aus
   `BIKELOG_KOMOOT_EMAIL`, standardmäßig nur Radsportarten (die übersprungenen nennt die Seite). Noch einmal geholt werden nur neue. Touren anderer, in denen das Konto nur markiert
   ist, bleiben draußen; eine hier gelöschte Tour kommt nicht zurück.

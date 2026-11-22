@@ -18,7 +18,7 @@ Help is welcome, especially where marked.
 | Settings pages, BLE device page, log service | working |
 | Log upload from the bike computer (push to Nextcloud, [doc](LOGSERVICE.md#uploading-from-the-bike-computer-push)) | new: builds, the service side has tests against a fake WebDAV server; not run on the device yet (TLS memory, real Nextcloud) |
 | Planned and regular routes in the log service, offered to TrailBridge ([doc](LOGSERVICE.md#planned-and-regular-routes)) | new: service side with tests, checked against the BRouter test files; the app side (TrailBridge: address setting, polling every 15 min, loading) is built and tested on the JVM, not yet on the phone |
-| Map of visited tiles and heatmap in the log service, overlays in BRouter-Web ([doc](LOGSERVICE.md#map-visited-tiles-and-heatmap)) | new: tests, run against a copy of the real data with 92 phone rides; the Komoot import is only tested against a stand-in of Komoot's API, not yet against the real one |
+| Map of visited tiles and heatmap in the log service, overlays in BRouter-Web ([doc](LOGSERVICE.md#map-visited-tiles-and-heatmap)) | in use since 2026-11-22: Komoot import run once against the real account (manual button only), phone trips corrected by hand (see known bugs) |
 | [Route overview](ROUTE.md) (destination, waypoints, climbs of the GPX route) | new, not run on the device: host test, simulator build and a host rendering of the screen exist; the long read of the 512-byte frame over a real BLE link is untried |
 | Height calibration ([doc](HEIGHT.md)) | presets, manual entry and web page tested on the device; the GPS button shows the phone's GPS height; calibrating with it has not been tried yet |
 | Progress display during a firmware update (fill level rising from the bottom) | shown on the device; the picture still shifts and drops out while the flash is written, a property of the hardware ([pitfalls](PITFALLS.md)) |
@@ -33,6 +33,11 @@ Open, to be fixed.
   cause is the BLE stack's limit of three connections ([pitfalls](PITFALLS.md)). The
   firmware is now built with five; it runs on the device, but four peers at once have not been
   tried yet.
+- **The map's phone filter misjudges trips** (`Tools/bikelog/tripmode.py`): on the first import it
+  dropped 16 cycling trips or parts (descents over 55 km/h for a minute, climbs under 10 km/h,
+  a change from train or walking to bike within one recording) and kept 5 drives in the camper;
+  corrected by hand. It needs the gradient, judging by segment and time-weighted percentiles.
+  Uploading the same recording again brings deleted trips back (only Komoot tours stay deleted).
 
 ## Next: usable on the road
 

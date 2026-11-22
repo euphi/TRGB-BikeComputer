@@ -16,9 +16,11 @@ into trips at stops and gaps, and every trip is judged by its speeds:
   short     under MIN_TRIP_M or MIN_TRIP_S
 
 Speeds come from the positions (point to point, fixes worse than MAX_ACCURACY_M dropped),
-not from the speed field some apps write: that is missing as often as not. Thresholds are
-from 229 trips of one phone (2026-04..11), checked against the rides known from the bike
-computer.
+not from the speed field some apps write: that is missing as often as not. Thresholds were
+set by eye on 229 trips of one phone and are known to be wrong in both directions
+(doc/ROADMAP.md, known bugs): the percentiles count intervals between fixes (time only if
+those are evenly spaced), and a trip is judged as a whole, blind to gradient and to a
+change of transport inside it.
 """
 
 from __future__ import annotations

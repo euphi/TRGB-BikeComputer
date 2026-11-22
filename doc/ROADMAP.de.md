@@ -18,7 +18,7 @@ kommt. Hilfe ist willkommen, besonders an den markierten Stellen.
 | Einstellungs-Seiten, BLE-Geräteseite, Log-Dienst | funktioniert |
 | Log-Upload vom Fahrradcomputer (Push zur Nextcloud, [Doku](LOGSERVICE.md#hochladen-vom-fahrradcomputer-push)) | neu: baut, die Dienst-Seite hat Tests gegen einen nachgebauten WebDAV-Server; noch nicht auf dem Gerät gelaufen (TLS-Speicher, echte Nextcloud) |
 | Geplante und regelmäßige Strecken im Log-Dienst, für TrailBridge bereitgestellt ([Doku](LOGSERVICE.md#geplante-und-regelmaige-strecken)) | neu: Dienst-Seite mit Tests, gegen die BRouter-Testdateien geprüft; die App-Seite (TrailBridge: Einstellung für die Adresse, Abfrage alle 15 min, Laden) ist gebaut und auf der JVM getestet, am Handy noch nicht |
-| Karte mit besuchten Kacheln und Heatmap im Log-Dienst, Overlays in BRouter-Web ([Doku](LOGSERVICE.md#karte-besuchte-kacheln-und-heatmap)) | neu: Tests, gegen eine Kopie der echten Daten mit 92 Handy-Fahrten gelaufen; der Komoot-Import ist nur gegen einen Nachbau der Komoot-API getestet, nicht gegen die echte |
+| Karte mit besuchten Kacheln und Heatmap im Log-Dienst, Overlays in BRouter-Web ([Doku](LOGSERVICE.md#karte-besuchte-kacheln-und-heatmap)) | in Benutzung seit 2026-11-22: Komoot-Import einmal gegen das echte Konto gelaufen (nur per Knopf), Handy-Fahrten von Hand korrigiert (siehe bekannte Fehler) |
 | [Streckenübersicht](ROUTE.md) (Ziel, Wegpunkte, Anstiege der GPX-Route) | neu, am Gerät nicht gelaufen: Host-Test, Simulator-Build und ein Rendering des Screens auf dem Rechner gibt es; der Long Read des 512-Byte-Frames über eine echte BLE-Verbindung ist unerprobt |
 | Höhenkalibrierung ([Doku](HEIGHT.md)) | Presets, manuelle Eingabe und Webseite am Gerät getestet; die GPS-Taste zeigt die GPS-Höhe des Handys an; das Kalibrieren damit wurde noch nicht ausprobiert |
 | Fortschrittsanzeige beim Firmware-Update (Füllstand von unten) | am Gerät zu sehen; das Bild verschiebt sich und fällt aus, solange der Flash geschrieben wird -- eine Eigenschaft der Hardware ([Fallstricke](PITFALLS.md)) |
@@ -33,6 +33,12 @@ Offen, zu beheben.
   Ursache ist die Grenze des BLE-Stacks von drei Verbindungen
   ([Fallstricke](PITFALLS.md)). Die Firmware wird jetzt mit fünf gebaut; das läuft auf dem
   Gerät, vier Gegenstellen gleichzeitig sind aber noch nicht ausprobiert.
+- **Der Handy-Filter der Karte urteilt falsch** (`Tools/bikelog/tripmode.py`): Beim ersten Import
+  verwarf er 16 Radfahrten oder Radteile (Abfahrten mit einer Minute über 55 km/h, Anstiege unter
+  10 km/h, Wechsel von Zug oder zu Fuß aufs Rad innerhalb einer Aufzeichnung) und übernahm
+  5 Fahrten im Camper; von Hand korrigiert. Er braucht die Steigung, ein Urteil je Abschnitt und
+  zeitgewichtete Perzentile. Erneutes Hochladen derselben Aufzeichnung holt gelöschte Fahrten
+  zurück (nur Komoot-Touren bleiben gelöscht).
 
 ## Als Nächstes: unterwegs bedienbar
 
