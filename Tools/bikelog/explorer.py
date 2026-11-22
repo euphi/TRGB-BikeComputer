@@ -15,17 +15,30 @@ a gap in the recording (tunnel, train, GPS lost) and fills nothing.
   max cluster    the largest 4-connected group of cluster tiles
   max square     the largest square of visited tiles
 
+At a coarser zoom a tile is visited if one of its zoom 17 tiles is (parent_tiles()): the
+layer whose grid is always the map tile on the screen needs nothing else.
+
 The heatmap counts tracks per pixel (a track that passes a pixel twice counts once), so
 a road ridden 30 times glows and a one-off stays dim. Points are in Web Mercator,
 normalised to 0..1 ("world units"); a tile at zoom z is 1/2**z of that.
+
+What keeps the heatmap fast, after the camper's (ia216onTour, heat_tiles.py: the network
+prepared per zoom, and an index of the tiles that have anything at all): HeatIndex lists
+per zoom the tiles with the pieces of track in them, so drawing a tile looks at those only
+and an empty one at nothing. Unlike there no track is merged into another's line: the
+pixels are exactly the rides' own. HeatIndex.key() names what a tile shows, so a drawn
+tile stays valid until a ride in that tile changes.
 """
 
 from __future__ import annotations
 
+import hashlib
 import math
 import struct
+import threading
 import zlib
 from array import array
+from collections import Counter
 from dataclasses import dataclass, field
 
 TILE_PX = 256
@@ -36,7 +49,7 @@ MAX_GAP_M = 2000.0
 #: points closer than this to the previous one are dropped when a track is stored
 THIN_M = 5.0
 #: points per chunk; a chunk's bounding box lets a tile skip most of a long track
-CHUNK = 64
+CHUNK = 24
 #: precomputed coarser versions of each track, for drawing at these zooms and below
 LEVELS = (7, 10, 13)
 MAX_LAT = 85.05112878
@@ -100,6 +113,8 @@ class Track:
     bbox: tuple[float, float, float, float]
     #: zoom level (from LEVELS, or 99 = full detail) -> chunks
     levels: dict[int, list[Chunk]] = field(default_factory=dict)
+    #: hash of the runs: the same digest draws the same pixels
+    digest: str = ""
 
     def chunks(self, zoom: int) -> list[Chunk]:
         for level in LEVELS:
@@ -173,6 +188,10 @@ def make_track(track_id: str, points: list[tuple[float, float]]) -> Track | None
     maxy = max(max(ys) for _, ys in runs)
     track = Track(track_id, runs, (minx, miny, maxx, maxy))
     track.levels[99] = _chunks(runs)
+    h = hashlib.sha1()
+    for xs, ys in runs:
+        h.update(struct.pack("<I", len(xs)) + xs.tobytes() + ys.tobytes())
+    track.digest = h.hexdigest()[:16]
     for level in LEVELS:
         # a bit under one pixel at the coarsest zoom this level is drawn at
         tol = 0.7 / (TILE_PX * 2 ** level)
@@ -219,6 +238,11 @@ def tiles_of(runs: list[tuple[array, array]], zoom: int) -> set[tuple[int, int]]
                 _cells(px, py, qx, qy, out)
             px, py = qx, qy
     return out
+
+
+def parent_tiles(tiles: set[tuple[int, int]], levels: int) -> set[tuple[int, int]]:
+    """The tiles ``levels`` zooms further out that contain one of tiles."""
+    return {(x >> levels, y >> levels) for x, y in tiles}
 
 
 def cluster(tiles: set[tuple[int, int]]) -> set[tuple[int, int]]:
@@ -439,72 +463,167 @@ def _halo(brush) -> tuple[tuple[int, int], ...]:
     return tuple(sorted(grown - set(brush)))
 
 
-def _line(x0: float, y0: float, x1: float, y1: float, brush, out: set) -> None:
-    steps = int(max(abs(x1 - x0), abs(y1 - y0))) + 1
-    dx, dy = (x1 - x0) / steps, (y1 - y0) / steps
-    x, y = x0, y0
-    for _ in range(steps + 1):
-        ix, iy = int(math.floor(x)), int(math.floor(y))
-        for bx, by in brush:
-            px, py = ix + bx, iy + by
-            if 0 <= px < TILE_PX and 0 <= py < TILE_PX:
-                out.add(py * TILE_PX + px)
-        x += dx
-        y += dy
+#: raise it when the pixels of a heat tile change: stored tiles are drawn again
+HEAT_VERSION = 1
+#: HeatIndex lists the tiles down to this zoom; closer in, the parent's list is filtered
+INDEX_ZOOM = 15
+#: a tile is drawn on a grid this much wider on every side, so a brush needs no clipping
+PAD = 4
+GRID = TILE_PX + 2 * PAD
+#: the tile's own bytes of that grid, as an int: spreading a shape is a shift and an OR
+_WINDOW = int.from_bytes(
+    b"".join(bytes(PAD) + b"\xff" * TILE_PX + bytes(PAD) if PAD <= row < PAD + TILE_PX else bytes(GRID)
+             for row in range(GRID)), "little")
+_IS_SET = bytes(1 if i else 0 for i in range(256))
+
+
+def _offsets(shape) -> tuple[int, ...]:
+    return tuple(y * GRID + x for x, y in shape)
+
+
+def _centres(chunk: Chunk, scale: float, ox: float, oy: float, out: set[int]) -> None:
+    """The grid pixels the chunk's lines step on, as far as a brush there reaches the tile:
+    a line is stepped a pixel at a time along its longer axis."""
+    lo, hi = -2.0, TILE_PX + 2.0
+    add = out.add
+    floor = math.floor              # not int(x + PAD): that rounds up just below an edge
+    xs, ys = chunk.xs, chunk.ys
+    px, py = xs[0] * scale - ox, ys[0] * scale - oy
+    if len(xs) == 1:
+        if lo <= px < hi and lo <= py < hi:
+            add((floor(py) + PAD) * GRID + floor(px) + PAD)
+        return
+    for qx, qy in zip(xs[1:], ys[1:]):
+        qx = qx * scale - ox
+        qy = qy * scale - oy
+        dx, dy = qx - px, qy - py
+        if -1 < dx < 1 and -1 < dy < 1:             # under a pixel: just both ends
+            if lo <= px < hi and lo <= py < hi:
+                add((floor(py) + PAD) * GRID + floor(px) + PAD)
+            x, y = px + dx, py + dy
+            if lo <= x < hi and lo <= y < hi:
+                add((floor(y) + PAD) * GRID + floor(x) + PAD)
+        elif not ((px < lo and qx < lo) or (px > hi and qx > hi)
+                  or (py < lo and qy < lo) or (py > hi and qy > hi)):
+            steps = int(max(abs(dx), abs(dy))) + 1
+            dx /= steps
+            dy /= steps
+            x, y = px, py
+            for _ in range(steps + 1):
+                if lo <= x < hi and lo <= y < hi:
+                    add((floor(y) + PAD) * GRID + floor(x) + PAD)
+                x += dx
+                y += dy
+        px, py = qx, qy
+
+
+def _draw_heat(pieces: list[tuple[str, Chunk]], z: int, tx: int, ty: int) -> bytes | None:
+    """The heat tile from its (ride, chunk) pieces. None = empty."""
+    scale = TILE_PX * 2 ** z
+    ox, oy = tx * TILE_PX, ty * TILE_PX
+    centres: dict[str, set[int]] = {}
+    for ride, chunk in pieces:
+        out = centres.get(ride)
+        if out is None:
+            out = centres[ride] = set()
+        _centres(chunk, scale, ox, oy, out)
+    brush = _brush(z)
+    offsets = _offsets(brush)
+    counts: Counter = Counter()
+    for centre in centres.values():
+        if len(offsets) == 1:
+            counts.update(centre)
+        elif centre:
+            pix: set[int] = set()
+            for o in offsets:
+                pix.update(map(o.__add__, centre))      # per ride: a pixel counts once
+            counts.update(pix)
+    grid = bytearray(GRID * GRID)
+    drawn = False
+    end = PAD + TILE_PX
+    for i, n in counts.items():
+        if PAD <= i % GRID < end and PAD <= i // GRID < end:
+            grid[i] = n if n < HEAT_LEVELS else HEAT_LEVELS
+            drawn = True
+    if not drawn:
+        return None
+    if z >= 9:
+        core = int.from_bytes(grid.translate(_IS_SET), "little")
+        glow = 0
+        for o in _offsets(_halo(brush)):
+            glow |= core << 8 * o if o >= 0 else core >> -8 * o
+        glow &= _WINDOW & ~(core * 255)
+        grid = (int.from_bytes(grid, "little") | glow * HEAT_HALO).to_bytes(len(grid), "little")
+    px = b"".join(grid[r * GRID + PAD:r * GRID + end] for r in range(PAD, end))
+    return png(px, HEAT_PALETTE)
+
+
+class HeatIndex:
+    """Which pieces of which tracks each heat tile shows, prepared per zoom on first use."""
+
+    def __init__(self, tracks: list[Track], same_ride: dict[str, str] | None = None):
+        same = same_ride or {}
+        self.tracks = tracks
+        self._rides = [same.get(t.id, t.id) for t in tracks]
+        self._marks = [f"{t.digest}:{ride}".encode() for t, ride in zip(tracks, self._rides)]
+        self._zooms: dict[int, dict[tuple[int, int], list[tuple[int, Chunk]]]] = {}
+        self._building = threading.Lock()
+
+    def tiles(self, z: int) -> dict[tuple[int, int], list[tuple[int, Chunk]]]:
+        """{(x, y): [(track number, chunk)]} of every tile at z (up to INDEX_ZOOM) a piece
+        of track reaches, two pixels around it included."""
+        have = self._zooms.get(z)
+        if have is None:
+            with self._building:        # a view asks for 40 tiles at once: built for all
+                have = self._zooms.get(z)
+                if have is None:
+                    have = self._zooms[z] = self._build(z)
+        return have
+
+    def _build(self, z: int) -> dict[tuple[int, int], list[tuple[int, Chunk]]]:
+        n = 2 ** z
+        margin = 2.0 / TILE_PX
+        out: dict[tuple[int, int], list[tuple[int, Chunk]]] = {}
+        for no, track in enumerate(self.tracks):
+            for c in track.chunks(z):
+                item = (no, c)
+                for x in range(int(c.minx * n - margin), int(c.maxx * n + margin) + 1):
+                    for y in range(int(c.miny * n - margin), int(c.maxy * n + margin) + 1):
+                        out.setdefault((x, y), []).append(item)
+        return out
+
+    def pieces(self, z: int, x: int, y: int) -> list[tuple[int, Chunk]]:
+        """The (track number, chunk) pieces in tile (z, x, y); none = the tile is empty."""
+        if z <= INDEX_ZOOM:
+            return self.tiles(z).get((x, y), [])
+        up = z - INDEX_ZOOM
+        near = self.tiles(INDEX_ZOOM).get((x >> up, y >> up), [])
+        n = 2 ** z
+        margin = 2.0 / (TILE_PX * n)
+        x0, y0 = x / n - margin, y / n - margin
+        x1, y1 = (x + 1) / n + margin, (y + 1) / n + margin
+        return [p for p in near
+                if not (p[1].maxx < x0 or p[1].minx > x1 or p[1].maxy < y0 or p[1].miny > y1)]
+
+    def key(self, pieces: list[tuple[int, Chunk]]) -> str:
+        """What a tile with these pieces shows: changes only if a track in the tile does."""
+        h = hashlib.sha1(b"%d|" % HEAT_VERSION)
+        for mark in sorted(self._marks[no] for no in {no for no, _ in pieces}):
+            h.update(mark + b"|")
+        return h.hexdigest()[:20]
+
+    def draw(self, pieces: list[tuple[int, Chunk]], z: int, x: int, y: int) -> bytes | None:
+        return _draw_heat([(self._rides[no], c) for no, c in pieces], z, x, y)
 
 
 def heat_tile(tracks: list[Track], z: int, tx: int, ty: int,
               same_ride: dict[str, str] | None = None) -> bytes | None:
     """The heatmap tile (z, tx, ty): per pixel the number of rides through it. None = empty.
-    same_ride (duplicates()): recordings of one ride are drawn all, and counted once."""
-    n = 2 ** z
-    scale = TILE_PX * n
-    margin = 2.0 / scale
-    wx0, wy0 = tx / n - margin, ty / n - margin
-    wx1, wy1 = (tx + 1) / n + margin, (ty + 1) / n + margin
-    ox, oy = tx * TILE_PX, ty * TILE_PX
-    brush = _brush(z)
-    halo_brush = _halo(brush) if z >= 9 else ()
-    counts: dict[int, int] = {}
-    halo: set[int] = set()
-    same_ride = same_ride or {}
-    rides: dict[str, set[int]] = {}
-    for track in tracks:
-        minx, miny, maxx, maxy = track.bbox
-        if maxx < wx0 or minx > wx1 or maxy < wy0 or miny > wy1:
-            continue
-        pix = rides.setdefault(same_ride.get(track.id, track.id), set())
-        for c in track.chunks(z):
-            if c.maxx < wx0 or c.minx > wx1 or c.maxy < wy0 or c.miny > wy1:
-                continue
-            xs, ys = c.xs, c.ys
-            px, py = xs[0] * scale - ox, ys[0] * scale - oy
-            if len(xs) == 1:
-                _line(px, py, px, py, brush, pix)
-            for i in range(1, len(xs)):
-                qx, qy = xs[i] * scale - ox, ys[i] * scale - oy
-                if not ((px < -2 and qx < -2) or (px > TILE_PX + 2 and qx > TILE_PX + 2)
-                        or (py < -2 and qy < -2) or (py > TILE_PX + 2 and qy > TILE_PX + 2)):
-                    _line(px, py, qx, qy, brush, pix)
-                px, py = qx, qy
-    for pix in rides.values():
-        for i in pix:
-            counts[i] = counts.get(i, 0) + 1
-    if not counts:
-        return None
-    px = bytearray(TILE_PX * TILE_PX)
-    if halo_brush:
-        for i in counts:
-            y, x = divmod(i, TILE_PX)
-            for bx, by in halo_brush:
-                hx, hy = x + bx, y + by
-                if 0 <= hx < TILE_PX and 0 <= hy < TILE_PX:
-                    halo.add(hy * TILE_PX + hx)
-        for i in halo:
-            px[i] = HEAT_HALO
-    for i, c in counts.items():
-        px[i] = min(c, HEAT_LEVELS)
-    return png(px, HEAT_PALETTE)
+    same_ride (duplicates()): recordings of one ride are drawn all, and counted once.
+    One tile on its own -- for many of the same tracks keep a HeatIndex."""
+    index = HeatIndex(tracks, same_ride)
+    pieces = index.pieces(z, tx, ty)
+    return index.draw(pieces, z, tx, ty) if pieces else None
 
 
 # --- duplicates -----------------------------------------------------------------------------

@@ -109,3 +109,54 @@ def test_read_gpx_name_times_and_route_fallback():
         ex.read_gpx(b"<gpx></gpx>")
     with pytest.raises(ValueError):
         ex.read_gpx(b"no xml")
+
+
+def test_parent_tiles_are_the_tiles_crossed_at_that_zoom():
+    runs = ex.runs_of([(50.0 + i * 0.002, 8.6 + (i * 7 % 11) * 0.003) for i in range(60)])
+    fine = ex.tiles_of(runs, 17)
+    for zoom in range(3, 18):
+        assert ex.parent_tiles(fine, 17 - zoom) == ex.tiles_of(runs, zoom), zoom
+
+
+def test_heat_index_finds_the_same_pieces_at_every_zoom():
+    track = ex.make_track("a", [(50.0 + i * 0.001, 8.6) for i in range(100)])
+    index = ex.HeatIndex([track])
+    x, y = ex.mercator(50.05, 8.6)
+    for z in range(3, 21):                  # also past INDEX_ZOOM, from the parent's list
+        tx, ty = int(x * 2 ** z), int(y * 2 ** z)
+        pieces = index.pieces(z, tx, ty)
+        assert pieces and index.draw(pieces, z, tx, ty) == ex.heat_tile([track], z, tx, ty), z
+        assert index.pieces(z, 0, 0) == []
+
+
+def test_heat_key_follows_only_the_tracks_in_the_tile():
+    here = ex.make_track("a", [(50.0, 8.6), (50.005, 8.6)])
+    also = ex.make_track("b", [(50.0, 8.6), (50.005, 8.6)])
+    far = ex.make_track("c", [(52.0, 10.0), (52.005, 10.0)])
+    x, y = ex.mercator(50.002, 8.6)
+    tile = (13, int(x * 2 ** 13), int(y * 2 ** 13))
+
+    def key(tracks, same=None):
+        index = ex.HeatIndex(tracks, same)
+        return index.key(index.pieces(*tile))
+
+    assert key([here]) == key([here, far])              # a ride elsewhere: tile still valid
+    assert key([here]) != key([here, also])
+    assert key([here, also]) != key([here, also], {"b": "a"})   # one ride or two
+
+
+def test_pixel_just_below_an_edge_is_not_rounded_up():
+    just_below = 1.0 - 2 ** -53             # plus the padding this is 5.0
+    chunk = ex.Chunk(just_below, 7.5, just_below, 7.5, ex.array("d", [just_below]), ex.array("d", [7.5]))
+    out: set = set()
+    ex._centres(chunk, 1.0, 0.0, 0.0, out)
+    assert out == {(7 + ex.PAD) * ex.GRID + ex.PAD}
+
+
+def test_heat_glow_stays_off_the_line_and_the_count_is_capped():
+    n = 2 ** 14
+    ends = [ex.unmercator(8000.1 / n, 5000.5 / n), ex.unmercator(8000.9 / n, 5000.5 / n)]
+    rides = [ex.make_track(str(i), ends) for i in range(ex.HEAT_LEVELS + 5)]
+    px = _png_pixels(ex.heat_tile(rides, 14, 8000, 5000))
+    assert px[128 * 256 + 128] == ex.HEAT_LEVELS
+    assert px[131 * 256 + 128] == ex.HEAT_HALO and px[140 * 256 + 128] == 0

@@ -370,7 +370,7 @@ Importing the same file again replaces the session. API: `PUT /api/v1/import/gpx
 
 ## Map: visited tiles and heatmap
 
-The **Map** page (`/map`) shows where you have ridden, for planning new tours. Three layers over
+The **Map** page (`/map`) shows where you have ridden, for planning new tours. Four layers over
 OpenStreetMap, the same ones as overlays in BRouter-Web:
 
 - **Tiles**: the OSM tiles at zoom 14 (≈ 1.6 km, VeloViewer's and StatsHunters' "explorer
@@ -379,6 +379,9 @@ OpenStreetMap, the same ones as overlays in BRouter-Web:
   purple), the **max square** the largest square of visited tiles (yellow frame). From zoom 11
   the tile grid is drawn on top.
 - **Squadrats**: the same at zoom 17 (≈ 200 m).
+- **Zoom tiles**: the same for the map tiles of the zoom on screen: zoomed out the tiles are
+  large (zoom 10 ≈ 25 km, zoom 8 ≈ 100 km), zoomed in small, down to zoom 17. From there on
+  the layer shows squadrats: at 100 m and less GPS scatter would decide what counts as visited.
 - **Heatmap**: all rides summed up, in cyan like the camper's heatmap. It counts rides per pixel,
   not points; the more often a way was ridden, the stronger.
 
@@ -423,13 +426,19 @@ var bikelogTiles = 'https://bikelog.example.org/api/v1/map/tiles/';
 BR.conf.overlays = {
     'BikeLog Kacheln': bikelogTiles + 'visited/{z}/{x}/{y}.png',
     'BikeLog Squadrats': bikelogTiles + 'squadrats/{z}/{x}/{y}.png',
+    'BikeLog Zoom-Kacheln': bikelogTiles + 'zoom/{z}/{x}/{y}.png',
     'BikeLog Heatmap': bikelogTiles + 'heat/{z}/{x}/{y}.png',
 };
 ```
 
-The service draws the tiles (256 px, palette PNG) on demand in plain Python, typically 20–90 ms
-a tile, and keeps the last 4000 in memory. The ETag is the state of the track collection, so it
-changes with every new ride. When how tracks are read or thinned changes, raise `MAP_VERSION`:
+The service draws the tiles (256 px, palette PNG) in plain Python and in a single thread, and
+keeps the last 4000 in memory. An index per zoom knows which pieces of track lie in which tile,
+so an empty tile costs nothing. Heat tiles up to zoom 14 are also drawn ahead in the background
+and kept in `<data>/map/heat-cache.sqlite` (about 10 MB with 277 rides, may be deleted): the
+first fill takes up to a minute, a new ride only redraws the tiles it runs through. After a
+restart the service needs a few seconds to read the tracks. The ETag is the state of the track
+collection, so it changes with every new ride; a matching one is answered without drawing.
+When the pixels of a heat tile change, raise `explorer.HEAT_VERSION`. When how tracks are read or thinned changes, raise `MAP_VERSION`:
 the service then reads every track again on start.
 
 ## Planned and regular routes

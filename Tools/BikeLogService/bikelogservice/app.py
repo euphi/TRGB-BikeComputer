@@ -80,7 +80,9 @@ def create_app(settings: Settings | None = None, puller: Puller | None = None) -
             puller.start()
         if inbox_poller:
             inbox_poller.start()
+        map_store.start()
         yield
+        await asyncio.to_thread(map_store.stop)
         if inbox_poller:
             await asyncio.to_thread(inbox_poller.stop)
         if puller:
@@ -1009,19 +1011,20 @@ def create_app(settings: Settings | None = None, puller: Puller | None = None) -
 
     # --- map: visited tiles, heatmap (maptracks.py) ---
 
-    TILE_RE = r"^(visited|squadrats|heat)$"
+    TILE_RE = r"^(visited|squadrats|zoom|heat)$"
 
     @app.get(API + "/map/tiles/{layer}/{z}/{x}/{y}.png", tags=["map"])
     def map_tile(request: Request, layer: str = Path(pattern=TILE_RE), z: int = Path(ge=0, le=maptracks.MAX_ZOOM),
                  x: int = Path(ge=0), y: int = Path(ge=0), principal: Principal = AuthDep):
         """One 256 px overlay tile (XYZ, like OSM): visited = explorer tiles (zoom 14),
-        squadrats = zoom 17 tiles, heat = all tracks summed up. For BRouter-Web's
-        BR.conf.overlays and the /map page."""
+        squadrats = zoom 17 tiles, zoom = the map tiles of zoom z themselves (17 at most),
+        heat = all tracks summed up. For BRouter-Web's BR.conf.overlays and the /map page."""
+        headers = {"Cache-Control": "no-cache", "Access-Control-Allow-Origin": "*"}
+        etag = f'"{map_store.state().revision}"'
+        if request.headers.get("if-none-match") == etag:        # before drawing anything
+            return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers=dict(headers, ETag=etag))
         png, revision = map_store.tile(layer, z, x, y)
-        etag = f'"{revision}"'
-        headers = {"ETag": etag, "Cache-Control": "no-cache", "Access-Control-Allow-Origin": "*"}
-        if request.headers.get("if-none-match") == etag:
-            return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers=headers)
+        headers["ETag"] = f'"{revision}"'
         return Response(content=png, media_type="image/png", headers=headers)
 
     @app.get(API + "/map", tags=["map"])

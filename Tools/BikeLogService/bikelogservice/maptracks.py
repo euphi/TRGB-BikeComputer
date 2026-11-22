@@ -22,6 +22,14 @@ better source is a duplicate (a BikeLog ride uploaded to Komoot comes back with 
 and counts once: explorer.duplicates(), ride before upload before komoot. Every recording
 is still drawn: a fragment of a tour must not take the rest of the tour off the map.
 
+Tiles: drawn on demand from explorer.HeatIndex. The heat tiles up to STORE_ZOOM (few, and each
+full of track) are also kept in heat-cache.sqlite and filled in by a background thread
+(start()): after a restart they are there, after a new ride only the tiles it runs through
+are drawn again (HeatIndex.key()). The file is derived data and may be deleted any time.
+All drawing happens in one thread: it is pure CPU, so request threads would only take the
+interpreter from each other, and on big.LITTLE a thread that does a tile now and then is
+kept on a small core at a low clock (measured: a view 5 s instead of under 1 s).
+
 MAP_VERSION: raise it when how a track is read or thinned changes -- the store then reads
 every track again from its source on the next start.
 """
@@ -36,6 +44,7 @@ import http.client
 import io
 import json
 import logging
+import sqlite3
 import threading
 import time
 import urllib.error
@@ -44,6 +53,7 @@ import urllib.request
 import zipfile
 from array import array
 from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
@@ -58,12 +68,20 @@ log = logging.getLogger("bikelog.map")
 MAP_VERSION = 1
 SOURCES = {"ride": "BikeLog", "upload": "Hochgeladen", "komoot": "Komoot"}
 PRIORITY = {"ride": 0, "upload": 1, "komoot": 2}
-LAYERS = {"visited": explorer.EXPLORER_ZOOM, "squadrats": explorer.SQUADRAT_ZOOM, "heat": None}
+#: layer -> the zoom of the tiles it counts; "zoom": the map tile on screen, see ZOOM_TILES_MAX
+LAYERS = {"visited": explorer.EXPLORER_ZOOM, "squadrats": explorer.SQUADRAT_ZOOM, "zoom": None, "heat": None}
 #: below this zoom the squadrats layer stays empty (a 200 m tile would be under 2 px)
-MIN_ZOOM = {"visited": 5, "squadrats": 10, "heat": 3}
+MIN_ZOOM = {"visited": 5, "squadrats": 10, "zoom": 3, "heat": 3}
 MAX_ZOOM = 20
+#: the finest grid of the "zoom" layer: closer in (100 m and less a tile) GPS scatter would
+#: decide what counts as visited, so from there on it shows the squadrats
+ZOOM_TILES_MAX = explorer.SQUADRAT_ZOOM
 #: rendered tiles kept in memory (a few KB each)
 TILE_CACHE = 4000
+#: heat tiles up to this zoom are drawn ahead and kept on disk
+STORE_ZOOM = 14
+#: drawing ahead waits until no tile has been asked for this long
+QUIET_S = 1.0
 
 KOMOOT_API = "https://api.komoot.de"
 #: Komoot's sport keys that are a bicycle (kompy.constants.activities)
@@ -101,8 +119,18 @@ class MapState:
     tracks: list[explorer.Track]
     duplicates: dict[str, str]
     stats: dict[int, explorer.TileStats]
+    heat: explorer.HeatIndex
     #: (south, west, north, east) of everything, None without tracks
     bounds: tuple[float, float, float, float] | None = None
+
+    def stats_at(self, zoom: int) -> explorer.TileStats:
+        """Visited tiles and figures at any zoom up to SQUADRAT_ZOOM, worked out on first use."""
+        stats = self.stats.get(zoom)
+        if stats is None:
+            fine = self.stats[explorer.SQUADRAT_ZOOM]
+            stats = explorer.tile_stats(explorer.parent_tiles(fine.tiles, fine.zoom - zoom), zoom)
+            self.stats[zoom] = stats
+        return stats
 
 
 def _now() -> str:
@@ -121,6 +149,72 @@ def _unpack(data: bytes) -> list[tuple[float, float]]:
     a = array("i")
     a.frombytes(data)
     return [(a[i] / 1e6, a[i + 1] / 1e6) for i in range(0, len(a) - 1, 2)]
+
+
+class HeatCache:
+    """Drawn heat tiles on disk, each with the key of what it shows. Only a cache: when SQLite
+    fails the tiles are simply drawn every time."""
+
+    def __init__(self, path: Path):
+        self.path = path
+        self._lock = threading.Lock()
+        self._db: sqlite3.Connection | None = None
+        self._failed = False
+
+    def _open(self) -> sqlite3.Connection:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        db = sqlite3.connect(self.path, check_same_thread=False, isolation_level=None)
+        try:
+            db.execute("PRAGMA journal_mode=WAL")
+            db.execute("PRAGMA synchronous=NORMAL")
+            db.execute("CREATE TABLE IF NOT EXISTS tiles (z INT, x INT, y INT, key TEXT, png BLOB,"
+                       " PRIMARY KEY (z, x, y))")
+        except sqlite3.Error:
+            db.close()
+            raise
+        return db
+
+    def _run(self, sql: str, args=(), many: bool = False) -> list | None:
+        """The rows, None if the cache is not to be had."""
+        with self._lock:
+            if self._failed:
+                return None
+            try:
+                if self._db is None:
+                    try:
+                        self._db = self._open()
+                    except sqlite3.DatabaseError as exc:    # unreadable: it is only a cache
+                        log.warning("map: heat cache rebuilt (%s)", exc)
+                        self.path.unlink(missing_ok=True)
+                        self._db = self._open()
+                if many:
+                    self._db.executemany(sql, args)
+                    return []
+                return self._db.execute(sql, args).fetchall()
+            except (OSError, sqlite3.Error) as exc:
+                log.warning("map: heat cache off until the next start (%s)", exc)
+                self._failed = True
+                return None
+
+    def get(self, z: int, x: int, y: int, key: str) -> bytes | None:
+        rows = self._run("SELECT png FROM tiles WHERE z=? AND x=? AND y=? AND key=?", (z, x, y, key))
+        return rows[0][0] if rows else None
+
+    def put(self, z: int, x: int, y: int, key: str, png: bytes) -> None:
+        self._run("INSERT OR REPLACE INTO tiles VALUES (?,?,?,?,?)", (z, x, y, key, png))
+
+    def keys(self, z: int) -> dict[tuple[int, int], str] | None:
+        rows = self._run("SELECT x, y, key FROM tiles WHERE z=?", (z,))
+        return None if rows is None else {(x, y): key for x, y, key in rows}
+
+    def drop(self, z: int, tiles) -> None:
+        self._run("DELETE FROM tiles WHERE z=? AND x=? AND y=?", [(z, x, y) for x, y in tiles], many=True)
+
+    def close(self) -> None:
+        with self._lock:
+            if self._db is not None:
+                self._db.close()
+                self._db = None
 
 
 class KomootError(RuntimeError):
@@ -157,6 +251,12 @@ class MapStore:
         self._dirty = True
         self._cache: OrderedDict = OrderedDict()
         self._cache_lock = threading.Lock()
+        self._heat_cache = HeatCache(self.root / "heat-cache.sqlite")
+        self._drawing = ThreadPoolExecutor(max_workers=1, thread_name_prefix="bikelog-tiles")
+        self._asked = float("-inf")     # when the last tile was asked for
+        self._changed = threading.Event()
+        self._stop = threading.Event()
+        self._filler: threading.Thread | None = None
         self.komoot = {"running": False}
         self._load()
 
@@ -504,8 +604,8 @@ class MapStore:
         except OSError:
             points = []
         track = explorer.make_track(info.id, points) if points else None
-        t14 = explorer.tiles_of(track.runs, explorer.EXPLORER_ZOOM) if track else set()
         t17 = explorer.tiles_of(track.runs, explorer.SQUADRAT_ZOOM) if track else set()
+        t14 = explorer.parent_tiles(t17, explorer.SQUADRAT_ZOOM - explorer.EXPLORER_ZOOM)
         self._drawn[info.id] = (key, track, t14, t17)
         return track, t14, t17
 
@@ -539,32 +639,147 @@ class MapStore:
             self._state = MapState(digest, tracks, dups,
                                    {explorer.EXPLORER_ZOOM: explorer.tile_stats(t14, explorer.EXPLORER_ZOOM),
                                     explorer.SQUADRAT_ZOOM: explorer.tile_stats(t17, explorer.SQUADRAT_ZOOM)},
-                                   bounds)
+                                   explorer.HeatIndex(tracks, dups), bounds)
             self._dirty = False
+            self._changed.set()         # the background thread has tiles to catch up on
             return self._state
 
     def tile(self, layer: str, z: int, x: int, y: int) -> tuple[bytes, str]:
         """(PNG, revision) of one overlay tile; a transparent tile where there is nothing."""
+        self._asked = time.monotonic()
         state = self.state()
-        key = (state.revision, layer, z, x, y)
-        with self._cache_lock:
-            hit = self._cache.get(key)
-            if hit is not None:
-                self._cache.move_to_end(key)
-                return hit, state.revision
         n = 2 ** z
-        png = None
-        if z >= MIN_ZOOM[layer] and 0 <= x < n and 0 <= y < n:
-            if layer == "heat":
-                png = explorer.heat_tile(state.tracks, z, x, y, state.duplicates)
-            else:
-                png = explorer.visited_tile(state.stats[LAYERS[layer]], z, x, y)
-        png = png or explorer.EMPTY_PNG
+        if z < MIN_ZOOM[layer] or not (0 <= x < n and 0 <= y < n):
+            return explorer.EMPTY_PNG, state.revision
+        if layer == "heat":
+            return self._heat(state, z, x, y), state.revision
+        key = (layer, z, x, y, state.revision)
+        png = self._cached(key)
+        if png is None:
+            png = self._drawing.submit(self._draw_visited, state, key).result()
+        return png, state.revision
+
+    def _draw_visited(self, state: MapState, key: tuple) -> bytes:
+        layer, z, x, y, _ = key
+        zoom = min(z, ZOOM_TILES_MAX) if layer == "zoom" else LAYERS[layer]
+        png = explorer.visited_tile(state.stats_at(zoom), z, x, y) or explorer.EMPTY_PNG
+        self._remember(key, png)
+        return png
+
+    def _cached(self, key: tuple) -> bytes | None:
+        with self._cache_lock:
+            png = self._cache.get(key)
+            if png is not None:
+                self._cache.move_to_end(key)
+            return png
+
+    def _remember(self, key: tuple, png: bytes) -> None:
         with self._cache_lock:
             self._cache[key] = png
             while len(self._cache) > TILE_CACHE:
                 self._cache.popitem(last=False)
-        return png, state.revision
+
+    def _heat(self, state: MapState, z: int, x: int, y: int) -> bytes:
+        pieces = state.heat.pieces(z, x, y)
+        if not pieces:
+            return explorer.EMPTY_PNG
+        # by what the tile shows, not by the revision: a ride elsewhere leaves it valid
+        key = ("heat", z, x, y, state.heat.key(pieces))
+        png = self._cached(key)
+        if png is not None:
+            return png
+        stored = z <= STORE_ZOOM
+        png = self._heat_cache.get(z, x, y, key[-1]) if stored else None
+        if png is None:
+            png = self._drawing.submit(self._draw_heat, state, pieces, key, stored).result()
+        else:
+            self._remember(key, png)
+        return png
+
+    def _draw_heat(self, state: MapState, pieces: list, key: tuple, stored: bool) -> bytes:
+        png = self._cached(key)         # drawn while this request waited?
+        if png is None:
+            _, z, x, y, shows = key
+            png = state.heat.draw(pieces, z, x, y) or explorer.EMPTY_PNG
+            if stored:
+                self._heat_cache.put(z, x, y, shows, png)
+            self._remember(key, png)
+        return png
+
+    # --- drawing ahead -----------------------------------------------------------------
+
+    def start(self) -> None:
+        """Keep the stored heat tiles up to date in the background (the service does this)."""
+        if self._filler and self._filler.is_alive():
+            return
+        self._stop.clear()
+        self._changed.set()
+        self._filler = threading.Thread(target=self._fill_loop, name="bikelog-heatmap", daemon=True)
+        self._filler.start()
+
+    def stop(self) -> None:
+        self._stop.set()
+        self._changed.set()
+        if self._filler:
+            self._filler.join(timeout=10)
+            if self._filler.is_alive():
+                return                  # still in a tile: leave it the open file
+        self._heat_cache.close()
+
+    def _fill_loop(self) -> None:
+        while True:
+            self._changed.wait()
+            if self._stop.is_set():
+                return
+            self._changed.clear()
+            try:
+                state = self.state()
+                self._changed.clear()   # building this very state is no news
+                if state is not self._state:
+                    self._changed.set()
+                self.fill(state)
+            except Exception:           # the next change tries again
+                log.exception("map: drawing ahead failed")
+
+    def fill(self, state: MapState | None = None) -> int:
+        """Draw the stored heat tiles that are missing or out of date; how many. Gives way to
+        requests, and gives up when the tracks change (the loop then starts over)."""
+        state = state or self.state()
+        began = time.monotonic()
+        drawn = 0
+        for z in range(MIN_ZOOM["zoom"], ZOOM_TILES_MAX + 1):       # so the first view need not
+            self._give_way()
+            self._drawing.submit(state.stats_at, z).result()
+            if z <= explorer.INDEX_ZOOM:
+                self._drawing.submit(state.heat.tiles, z).result()
+        for z in range(MIN_ZOOM["heat"], STORE_ZOOM + 1):
+            have = self._heat_cache.keys(z)
+            if have is None:
+                break
+            tiles = state.heat.tiles(z)
+            for (x, y), pieces in tiles.items():
+                self._give_way()        # also from just looking through them
+                key = state.heat.key(pieces)
+                if have.get((x, y)) == key:
+                    continue
+                if self._stop.is_set() or state is not self._state or self._dirty:
+                    return drawn
+                self._drawing.submit(self._draw_ahead, state, pieces, z, x, y, key).result()
+                drawn += 1
+            gone = have.keys() - tiles.keys()
+            if gone:
+                self._heat_cache.drop(z, gone)
+        if drawn:
+            log.info("map: %d heat tile(s) drawn ahead in %.0f s", drawn, time.monotonic() - began)
+        return drawn
+
+    def _give_way(self) -> None:
+        while time.monotonic() - self._asked < QUIET_S and not self._stop.is_set():
+            self._stop.wait(0.2)
+
+    def _draw_ahead(self, state: MapState, pieces: list, z: int, x: int, y: int, key: str) -> None:
+        png = state.heat.draw(pieces, z, x, y) or explorer.EMPTY_PNG
+        self._heat_cache.put(z, x, y, key, png)
 
     def summary(self) -> dict:
         state = self.state()

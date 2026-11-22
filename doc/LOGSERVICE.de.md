@@ -384,7 +384,7 @@ Body = die Datei).
 
 ## Karte: besuchte Kacheln und Heatmap
 
-Die Seite **Karte** (`/map`) zeigt, wo du schon gefahren bist, zum Planen neuer Touren. Drei
+Die Seite **Karte** (`/map`) zeigt, wo du schon gefahren bist, zum Planen neuer Touren. Vier
 Ebenen über OpenStreetMap, dieselben als Overlay in BRouter-Web:
 
 - **Kacheln**: die OSM-Kacheln auf Zoom 14 (≈ 1,6 km, die „Explorer-Kacheln“ von VeloViewer und
@@ -393,6 +393,9 @@ Ebenen über OpenStreetMap, dieselben als Overlay in BRouter-Web:
   zusammenhängende Gruppe davon (dunkelviolett), das **Max Square** das größte Quadrat
   besuchter Kacheln (gelber Rahmen). Ab Zoom 11 liegt das Kachelgitter darüber.
 - **Squadrats**: dasselbe auf Zoom 17 (≈ 200 m).
+- **Zoom-Kacheln**: dasselbe für die Kartenkacheln des angezeigten Zooms: herausgezoomt groß
+  (Zoom 10 ≈ 25 km, Zoom 8 ≈ 100 km), hineingezoomt klein, bis Zoom 17. Ab dort zeigt die Ebene
+  Squadrats: Bei 100 m und weniger entschiede die GPS-Streuung, was als besucht gilt.
 - **Heatmap**: alle Fahrten aufsummiert, in Cyan wie die Heatmap des Campers. Gezählt werden
   Fahrten pro Pixel, nicht Punkte; je öfter ein Weg gefahren wurde, desto kräftiger.
 
@@ -440,13 +443,20 @@ var bikelogTiles = 'https://bikelog.example.org/api/v1/map/tiles/';
 BR.conf.overlays = {
     'BikeLog Kacheln': bikelogTiles + 'visited/{z}/{x}/{y}.png',
     'BikeLog Squadrats': bikelogTiles + 'squadrats/{z}/{x}/{y}.png',
+    'BikeLog Zoom-Kacheln': bikelogTiles + 'zoom/{z}/{x}/{y}.png',
     'BikeLog Heatmap': bikelogTiles + 'heat/{z}/{x}/{y}.png',
 };
 ```
 
-Die Kacheln (256 px, PNG mit Palette) zeichnet der Dienst bei Bedarf in reinem Python, typisch
-20–90 ms je Kachel, und hält die letzten 4000 im Speicher. Der ETag ist der Stand der
-Track-Sammlung, ändert sich also mit jeder neuen Fahrt. Ändert sich, wie Tracks gelesen oder
+Die Kacheln (256 px, PNG mit Palette) zeichnet der Dienst in reinem Python und in einem einzigen
+Thread und hält die letzten 4000 im Speicher. Ein Index je Zoom weiß, welche Streckenstücke in
+welcher Kachel liegen, eine leere Kachel kostet also nichts. Heatmap-Kacheln bis Zoom 14 zeichnet
+er außerdem im Hintergrund voraus und legt sie in `<data>/map/heat-cache.sqlite` ab (rund 10 MB
+bei 277 Fahrten, darf gelöscht werden): Das erste Füllen dauert bis zu einer Minute, eine neue
+Fahrt lässt nur die Kacheln neu zeichnen, durch die sie führt. Nach einem Neustart braucht der
+Dienst ein paar Sekunden, um die Tracks zu lesen. Der ETag ist der Stand der Track-Sammlung,
+ändert sich also mit jeder neuen Fahrt; stimmt er, wird ohne Zeichnen geantwortet. Ändern sich
+die Pixel einer Heatmap-Kachel, `explorer.HEAT_VERSION` erhöhen. Ändert sich, wie Tracks gelesen oder
 ausgedünnt werden, `MAP_VERSION` erhöhen: Der Dienst liest dann alle Tracks beim Start neu.
 
 ## Geplante und regelmäßige Strecken

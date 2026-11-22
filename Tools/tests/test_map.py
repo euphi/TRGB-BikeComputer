@@ -4,6 +4,7 @@ import datetime
 import http.client
 import io
 import json
+import threading
 import urllib.error
 import zipfile
 
@@ -266,3 +267,86 @@ def test_komoot_skips_foreign_and_deleted_tours(tmp_path, monkeypatch):
     state = again.komoot_import()
     assert (state["new"], state["deleted"], fetched) == (0, 1, ["1.gpx"])
     assert again.tracks() == []
+
+
+def _tile_at(z, lat=50.01, lon=8.60):
+    x, y = explorer.mercator(lat, lon)
+    return z, int(x * 2 ** z), int(y * 2 ** z)
+
+
+def test_zoom_layer_counts_the_tiles_of_the_zoom_shown(settings):
+    store = maptracks.MapStore(settings)
+    store.add_upload(timed_gpx(), "a.gpx")
+    state = store.state()
+    runs = [run for track in state.tracks for run in track.runs]
+    for z in range(3, 18):
+        assert state.stats_at(z).tiles == explorer.tiles_of(runs, z), z
+        tile = _tile_at(z)
+        expected = explorer.visited_tile(state.stats_at(z), *tile)
+        assert store.tile("zoom", *tile)[0] == expected, z
+    tile = _tile_at(19)                                     # no finer than the squadrats
+    assert store.tile("zoom", *tile)[0] == store.tile("squadrats", *tile)[0]
+
+
+def test_zoom_layer_route_and_page(client):
+    client.put(f"{API}/map/tracks", content=timed_gpx())
+    z, x, y = _tile_at(9)
+    r = client.get(f"{API}/map/tiles/zoom/{z}/{x}/{y}.png")
+    assert r.status_code == 200 and r.content != explorer.EMPTY_PNG
+    assert "BikeLog Zoom-Kacheln" in client.get("/map").text
+
+
+def test_stored_heat_tiles_survive_restart_and_only_follow_their_rides(settings, monkeypatch):
+    store = maptracks.MapStore(settings)
+    store.add_upload(timed_gpx(), "a.gpx")
+    assert store.fill() > 0 and store.fill() == 0
+    tile = _tile_at(13)
+    png = store.state().heat.draw(store.state().heat.pieces(*tile), *tile)
+    store.stop()
+
+    draws = []
+    draw = explorer.HeatIndex.draw
+    monkeypatch.setattr(explorer.HeatIndex, "draw", lambda self, *a: draws.append(a[1:]) or draw(self, *a))
+    again = maptracks.MapStore(settings)
+    assert again.tile("heat", *tile)[0] == png and draws == []      # from the file
+    assert again.fill() == 0
+
+    again.add_upload(timed_gpx(lat0=52.0, lon0=10.0, start=START + datetime.timedelta(days=1)), "b.gpx")
+    again.state()
+    assert again.fill() > 0
+    assert tile not in draws                                        # the ride is elsewhere
+    assert _tile_at(13, 52.01, 10.0) in draws
+    again.stop()
+
+
+def test_heat_cache_is_only_a_cache(settings):
+    path = settings.data_dir / "map" / "heat-cache.sqlite"
+    path.parent.mkdir(parents=True)
+    path.write_bytes(b"no database" * 1000)
+    store = maptracks.MapStore(settings)
+    store.add_upload(timed_gpx(), "a.gpx")
+    assert store.fill() > 0                                         # rebuilt
+    assert store.tile("heat", *_tile_at(12))[0] != explorer.EMPTY_PNG
+    store.stop()
+
+
+def test_background_thread_fills_and_stops(settings, monkeypatch):
+    monkeypatch.setattr(maptracks, "QUIET_S", 0)
+    store = maptracks.MapStore(settings)
+    store.add_upload(timed_gpx(), "a.gpx")
+    done = threading.Event()
+    fill = store.fill
+    monkeypatch.setattr(store, "fill", lambda state=None: (fill(state), done.set()))
+    store.start()
+    assert done.wait(30)
+    store.stop()
+    assert not store._filler.is_alive()
+
+
+def test_revalidation_draws_nothing(client, monkeypatch):
+    client.put(f"{API}/map/tracks", content=timed_gpx())
+    z, x, y = _tile_at(16)
+    url = f"{API}/map/tiles/heat/{z}/{x}/{y}.png"
+    etag = client.get(url).headers["etag"]
+    monkeypatch.setattr(client.app.state.map, "tile", lambda *a: pytest.fail("drawn for a 304"))
+    assert client.get(url, headers={"If-None-Match": etag}).status_code == 304
