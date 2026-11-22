@@ -43,8 +43,8 @@ static void testUrls() {
 
 static void testShareLinks() {
 	char base[256], tok[TOKEN_MAX + 1];
-	CHECK(shareLink("https://nc.1337.cx/s/cDNFwtdPRx7jsRA", base, sizeof(base), tok, sizeof(tok))
-	      && !strcmp(base, "https://nc.1337.cx/public.php/webdav") && !strcmp(tok, "cDNFwtdPRx7jsRA"), "link: %s %s", base, tok);
+	CHECK(shareLink("https://cloud.example.org/s/AbCdEf123456789", base, sizeof(base), tok, sizeof(tok))
+	      && !strcmp(base, "https://cloud.example.org/public.php/webdav") && !strcmp(tok, "AbCdEf123456789"), "link: %s %s", base, tok);
 	CHECK(shareLink("https://h/cloud/index.php/s/AbC12/", base, sizeof(base), tok, sizeof(tok))
 	      && !strcmp(base, "https://h/cloud/public.php/webdav") && !strcmp(tok, "AbC12"), "index.php + subdir: %s", base);
 	CHECK(!shareLink("https://h/s/AbC12/download", base, sizeof(base), tok, sizeof(tok)), "more after token");
