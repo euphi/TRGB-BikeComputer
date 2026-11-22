@@ -140,7 +140,7 @@ sensor), height calibration, IMU calibration, restart and power off.
 ```bash
 pio run -e trgb-esp32-s3 -t upload        # default: BLE + I²C sensors
 pio run -e trgb-esp32-s3-FL -t upload     # Forumslader variant
-pio run -e trgb-esp32-s3 -t uploadfs      # web interface files (data/site)
+pio run -e trgb-esp32-s3 -t uploadfs      # web interface files (data/site; text files are gzip-compressed at build time, gzip_site.py)
 ```
 
 `trgb-esp32-s3-ota` and `trgb-esp32-s3-FL-ota` are the same builds, uploaded over WiFi

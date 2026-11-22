@@ -156,7 +156,7 @@ vergessen), Höhenkalibrierung, IMU-Kalibrierung, Neustart und Ausschalten.
 ```bash
 pio run -e trgb-esp32-s3 -t upload        # Standard: BLE- und I²C-Sensoren
 pio run -e trgb-esp32-s3-FL -t upload     # Forumslader-Variante
-pio run -e trgb-esp32-s3 -t uploadfs      # Dateien der Web-Oberfläche (data/site)
+pio run -e trgb-esp32-s3 -t uploadfs      # Dateien der Web-Oberfläche (data/site; Textdateien werden beim Bauen gzip-komprimiert, gzip_site.py)
 ```
 
 `trgb-esp32-s3-ota` und `trgb-esp32-s3-FL-ota` sind dieselben Builds, hochgeladen per
