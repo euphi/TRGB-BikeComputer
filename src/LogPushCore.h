@@ -46,7 +46,7 @@ struct Blob {
 constexpr uint8_t BLOB_VERSION = 1;
 
 // http:// or https://, a host, no whitespace, quotes, '<>', query or fragment, no "user:pw@" and
-// no "/public.php/" (a share token goes in as the /s/ link only, see maskUrl()).
+// no "/public.php/", no "***" (a share token goes in as the /s/ link only, see maskUrl()).
 bool validUrl(const char* url);
 bool isHttps(const char* url);
 // A day directory the push takes: [A-Za-z0-9_]{1,16}, not the working directory "CUR".
@@ -71,10 +71,27 @@ bool shareLink(const char* url, char* davBase, size_t baseLen, char* token, size
 // The URL as it may be shown (page, CLI, JSON): the token of an upload link and a "user:password@"
 // in front of the host become "***". The whole upload link is the secret (the token is the WebDAV
 // user, there often is no password), so nothing that leaves the device may carry it. Other URLs are
-// copied as they are (also "/public.php/dav/files/<token>"). Truncated if it does not fit `len`.
+// copied as they are; everything behind "/s/" or "/public.php/dav/files/" is replaced, custom tokens
+// included. "" stays "". Truncated if it does not fit `len`.
 void maskUrl(const char* url, char* out, size_t len);
 // The user of this URL is a share token too (".../public.php/webdav"): do not show it either.
 bool userIsSecret(const char* url);
+// What stands in for a secret user and for the token in a shown URL; never a valid URL part.
+constexpr const char* MASKED = "***";
+
+// What the /push form sends (validUrl() and the length limits are checked before).
+struct ConfigForm {
+	bool enabled;
+	const char* url;		// empty = keep the stored target
+	const char* user;		// always sent; MASKED = the token user the page was shown, unchanged
+	const char* secret;		// empty = keep
+	bool clearSecret;
+	bool clearUrl;			// remove the target, its user and its secret
+};
+// The transition from the stored blob and the form to the new blob, as a pure function (host
+// test). A different target or user takes the stored password with it; a token user (".../public.php/")
+// never survives a change or removal of its target; an empty `user` is a change like any other.
+void applyConfig(Blob& cfg, const ConfigForm& f);
 // "<host>~<day>~<name>" ("<host>~~<name>" for a file directly in /BIKECOMP); the log service
 // splits it again (inbox.py). false if it does not fit.
 bool dropName(const char* host, const char* day, const char* name, char* out, size_t len);

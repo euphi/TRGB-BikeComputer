@@ -8,7 +8,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <initializer_list>
 
 namespace PushCore {
 
@@ -31,6 +30,7 @@ bool validUrl(const char* url) {
 	const char* slash = strchr(host, '/');
 	if (memchr(host, '@', slash ? static_cast<size_t>(slash - host) : strlen(host))) return false;	// user:password@ ends up in logs and pages
 	if (strstr(host, "/public.php/")) return false;		// the share token as user or in the path: use the /s/ link
+	if (strstr(url, MASKED)) return false;					// a masked URL copied back from the page or the CLI
 	for (const char* p = url; *p; p++) {
 		const unsigned char c = static_cast<unsigned char>(*p);
 		if (c <= ' ' || c >= 0x7f || c == '"' || c == '\'' || c == '<' || c == '>' || c == '?' || c == '#' || c == '\\') return false;
@@ -124,39 +124,74 @@ bool shareLink(const char* url, char* davBase, size_t baseLen, char* token, size
 	return true;
 }
 
-// Share token of a stored URL: after "/s/" or "/public.php/dav/files/" (validUrl() refuses the
-// second one and a userinfo now, but an older setting may still have them).
-static const char* tokenAt(const char* rest, size_t& n) {
-	for (const char* marker : {"/public.php/dav/files/", "/s/"}) {
-		if (const char* m = strstr(rest, marker)) {
-			const char* t = m + strlen(marker);
-			n = 0;
-			while (isalnum(static_cast<unsigned char>(t[n]))) n++;
-			if (n) return t;
-		}
-	}
-	return nullptr;
+// Where a stored URL carries a share token: from "/s/" or "/public.php/dav/files/" on (validUrl()
+// refuses the second one and a userinfo now, but an older setting may still have them). Everything
+// behind the marker is masked, not just the alphanumerics: Nextcloud takes custom tokens ("my-link").
+static const char* tokenAt(const char* rest) {
+	const char* s = strstr(rest, "/s/");
+	const char* d = strstr(rest, "/public.php/dav/files/");
+	if (d) d += strlen("/public.php/dav/files/") ;
+	if (s) s += 3;
+	if (s && d) return s < d ? s : d;
+	return s ? s : d;
 }
 
 void maskUrl(const char* url, char* out, size_t len) {
 	if (!len) return;
+	if (!url || !*url) {					// no target: nothing to hide
+		out[0] = 0;
+		return;
+	}
 	const char* host = afterScheme(url);
 	if (!host) {
-		snprintf(out, len, "***");			// not a URL we accept: show nothing of it
+		snprintf(out, len, "%s", MASKED);	// not a URL we accept: show nothing of it
 		return;
 	}
 	const char* slash = strchr(host, '/');
-	const char* at = static_cast<const char*>(memchr(host, '@', slash ? static_cast<size_t>(slash - host) : strlen(host)));
+	const size_t authLen = slash ? static_cast<size_t>(slash - host) : strlen(host);
+	const char* at = nullptr;				// the last '@' of the authority: "a:b@c@host" has the host behind it
+	for (size_t i = 0; i < authLen; i++) {
+		if (host[i] == '@') at = host + i;
+	}
 	const char* rest = at ? at + 1 : host;
-	size_t n = 0;
-	const char* tok = tokenAt(rest, n);
-	// scheme:// [***@] host/path [***] remainder
-	snprintf(out, len, "%.*s%s%.*s%s%s", static_cast<int>(host - url), url, at ? "***@" : "",
-	         static_cast<int>(tok ? tok - rest : strlen(rest)), rest, tok ? "***" : "", tok ? tok + n : "");
+	const char* tok = tokenAt(rest);
+	// scheme:// [***@] host/path [***]
+	snprintf(out, len, "%.*s%s%.*s%s", static_cast<int>(host - url), url, at ? "***@" : "",
+	         static_cast<int>(tok ? tok - rest : strlen(rest)), rest, tok ? MASKED : "");
 }
 
 bool userIsSecret(const char* url) {
 	return url && strstr(url, "/public.php/") != nullptr;		// there the Basic auth user is the share token
+}
+
+static void copyStr(char* dst, size_t cap, const char* src) {
+	snprintf(dst, cap, "%s", src);
+}
+
+void applyConfig(Blob& cfg, const ConfigForm& f) {
+	const bool oldUserSecret = userIsSecret(cfg.url);		// the user of the stored target is a share token
+	const bool targetChanged = f.clearUrl || (f.url[0] && strcmp(f.url, cfg.url) != 0);
+	if (f.clearUrl) {
+		cfg.url[0] = 0;
+		cfg.user[0] = 0;
+		cfg.secret[0] = 0;
+	} else if (targetChanged) {
+		copyStr(cfg.url, sizeof(cfg.url), f.url);
+		cfg.secret[0] = 0;
+	}
+	cfg.enabled = f.enabled && cfg.url[0] ? 1 : 0;
+	if (f.clearUrl) {
+		// the user went with the target above
+	} else if (strcmp(f.user, MASKED) == 0) {
+		// The page's stand-in for a token user: "keep" only while the target is the same one. A
+		// token must not move to another target (or stay behind after the target is gone).
+		if (oldUserSecret && targetChanged) cfg.user[0] = 0;
+	} else {
+		if (strcmp(f.user, cfg.user) != 0) cfg.secret[0] = 0;	// the password belongs to the user it was entered for
+		copyStr(cfg.user, sizeof(cfg.user), f.user);
+	}
+	if (f.clearSecret) cfg.secret[0] = 0;
+	else if (f.secret[0]) copyStr(cfg.secret, sizeof(cfg.secret), f.secret);
 }
 
 bool dropName(const char* host, const char* day, const char* name, char* out, size_t len) {

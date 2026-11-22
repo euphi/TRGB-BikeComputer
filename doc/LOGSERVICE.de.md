@@ -116,7 +116,8 @@ wie ein Passwort:
 - Er gehört in das Formular auf `/push` und sonst nirgends hin. Die Seite, `/push/state` und
   `push status` zeigen ihn als `https://<cloud>/s/***`; das Feld bleibt leer, leer = behalten, und
   ein anderer Link, Ordner oder Nutzer entfernt das gespeicherte Passwort (neu eintippen). *Remove the target*
-  löscht beides. `…/public.php/…` und `nutzer:passwort@host` werden beim Speichern abgelehnt, sie würden das
+  löscht Ziel, Nutzer und Passwort. „Leer = behalten“ gilt nur für Link und Passwort: Der Nutzer wird
+  immer so genommen, wie er kommt, ein POST an `/push/config` ohne `user` leert ihn und damit das Passwort. `…/public.php/…` und `nutzer:passwort@host` werden beim Speichern abgelehnt, sie würden das
   Token an anderer Stelle ablegen; ein so von älterer Firmware gespeichertes Ziel läuft weiter, wird
   maskiert angezeigt und lässt sich abschalten, entfernen oder ersetzen.
 - Nie in einem Test, einer Doku-Seite, einer Logzeile, einem Commit oder Chat: nur erfundene Links
@@ -129,9 +130,10 @@ denselben Ordner, ein neuer Link auf denselben Ordner ändert am Dienst nichts.
 
 Einrichten: den Eingangsordner in Nextcloud als „File drop“ teilen -> Link kopieren -> `/push` am
 Fahrradcomputer: Link ins Feld, *Save*, *Test target* (schreibt `<netzwerkname>~push-test.txt`).
-Wechseln oder widerrufen: neuen Link anlegen, an jedem Rad eintragen (`/push`, *Test target*), dann
-die alte Freigabe in Nextcloud löschen. `/bcpush.txt` auf der Karte behalten, sonst wird alles neu
-hochgeladen. Wer im WLAN des Fahrradcomputers ist, kann `/push` weiterhin öffnen und das Ziel
+Geplanter Wechsel: neuen Link anlegen, an jedem Rad eintragen (`/push`, *Test target*), dann die alte
+Freigabe in Nextcloud löschen. **Ist der Link durchgesickert: zuerst widerrufen**, in Nextcloud, dann
+den neuen einrichten (bis dahin lädt nichts hoch, das ist der Zweck). `/bcpush.txt` auf der Karte
+behalten, sonst wird alles neu hochgeladen. Wer im WLAN des Fahrradcomputers ist, kann `/push` weiterhin öffnen und das Ziel
 ersetzen; die Seiten haben keine Anmeldung.
 
 Wann: 20 s nach jedem WLAN-Connect, danach alle 10 min, solange er online ist (eine mit langem

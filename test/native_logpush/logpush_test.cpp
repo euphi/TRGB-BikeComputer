@@ -41,6 +41,73 @@ static void testUrls() {
 	CHECK(!parentUrl("https://h/", out, sizeof(out)), "host/ has no parent");
 }
 
+static Blob blobWith(const char* url, const char* user, const char* secret, bool enabled = true) {
+	Blob b;
+	memset(&b, 0, sizeof(b));
+	b.version = BLOB_VERSION;
+	b.enabled = enabled;
+	snprintf(b.url, sizeof(b.url), "%s", url);
+	snprintf(b.user, sizeof(b.user), "%s", user);
+	snprintf(b.secret, sizeof(b.secret), "%s", secret);
+	return b;
+}
+
+// The form as the page sends it: the URL field empty, the user as /push/state showed it.
+static ConfigForm form(const char* url, const char* user, const char* secret = "", bool enabled = true,
+                       bool clearSecret = false, bool clearUrl = false) {
+	return ConfigForm{enabled, url, user, secret, clearSecret, clearUrl};
+}
+
+static void testApplyConfig() {
+	// loading the page and saving with only "enabled" changed loses nothing
+	Blob b = blobWith("https://h/s/AbC12", "", "sharepw");
+	applyConfig(b, form("", "", "", false));
+	CHECK(!b.enabled && !strcmp(b.url, "https://h/s/AbC12") && !b.user[0] && !strcmp(b.secret, "sharepw"), "toggle enabled (link)");
+	applyConfig(b, form("", "", "", true));
+	CHECK(b.enabled && !strcmp(b.secret, "sharepw"), "toggle back");
+	b = blobWith("https://h/remote.php/dav/files/bike/In", "bike", "apppw");
+	applyConfig(b, form("", "bike"));
+	CHECK(b.enabled && !strcmp(b.user, "bike") && !strcmp(b.secret, "apppw") && !strcmp(b.url, "https://h/remote.php/dav/files/bike/In"), "toggle (account)");
+	// a stored target of the old form: the page shows the token user as "***" and sends it back
+	b = blobWith("https://h/public.php/webdav", "TOKEN123", "");
+	applyConfig(b, form("", MASKED));
+	CHECK(!strcmp(b.user, "TOKEN123") && b.enabled, "legacy: kept while the target stays");
+	// A) the token does not survive a change or removal of its target
+	b = blobWith("https://h/public.php/webdav", "TOKEN123", "");
+	applyConfig(b, form("", MASKED, "", true, false, true));
+	CHECK(!b.url[0] && !b.user[0] && !b.enabled, "A: clearurl with ***: user '%s'", b.user);
+	b = blobWith("https://h/public.php/webdav", "TOKEN123", "");
+	applyConfig(b, form("https://h/s/NewLink1", MASKED));
+	CHECK(!strcmp(b.url, "https://h/s/NewLink1") && !b.user[0], "A: new link with ***: user '%s'", b.user);
+	b = blobWith("https://h/public.php/webdav", "TOKEN123", "");
+	applyConfig(b, form("http://other.example/x", MASKED));
+	CHECK(!b.user[0], "A: other server with ***: user '%s'", b.user);
+	// clearurl clears the user in any case
+	b = blobWith("https://h/remote.php/dav/files/bike/In", "bike", "apppw");
+	applyConfig(b, form("", "bike", "", true, false, true));
+	CHECK(!b.url[0] && !b.user[0] && !b.secret[0] && !b.enabled, "clearurl: everything of the target goes");
+	// a different target or user takes the password with it, unless a new one comes along
+	b = blobWith("https://h/remote.php/dav/files/bike/In", "bike", "apppw");
+	applyConfig(b, form("https://h/s/AbC12", ""));
+	CHECK(!b.secret[0] && !b.user[0], "link instead of account: no password carried over");
+	b = blobWith("https://h/remote.php/dav/files/bike/In", "bike", "apppw");
+	applyConfig(b, form("https://h/remote.php/dav/files/bike/Other", "bike", "newpw"));
+	CHECK(!strcmp(b.secret, "newpw"), "new target with a new password");
+	b = blobWith("https://h/remote.php/dav/files/bike/In", "bike", "apppw");
+	applyConfig(b, form("", "other"));
+	CHECK(!strcmp(b.user, "other") && !b.secret[0], "other user: password gone");
+	b = blobWith("https://h/remote.php/dav/files/bike/In", "bike", "apppw");
+	applyConfig(b, form("", ""));
+	CHECK(!b.user[0] && !b.secret[0], "a POST without user clears the user, and with it the password");
+	b = blobWith("https://h/remote.php/dav/files/bike/In", "bike", "apppw");
+	applyConfig(b, form("", "bike", "", true, true));
+	CHECK(!b.secret[0] && !strcmp(b.user, "bike"), "clear = 1 removes only the password");
+	// no target: enabling stays off
+	b = blobWith("", "", "", false);
+	applyConfig(b, form("", "", "", true));
+	CHECK(!b.enabled, "enabled without a target");
+}
+
 static void testShareLinks() {
 	char base[256], tok[TOKEN_MAX + 1];
 	CHECK(shareLink("https://cloud.example.org/s/AbCdEf123456789", base, sizeof(base), tok, sizeof(tok))
@@ -53,11 +120,11 @@ static void testShareLinks() {
 	maskUrl("https://cloud.example.org/s/AbC12", shown, sizeof(shown));
 	CHECK(!strcmp(shown, "https://cloud.example.org/s/***"), "mask link: %s", shown);
 	maskUrl("https://h/cloud/index.php/s/AbC12/", shown, sizeof(shown));
-	CHECK(!strcmp(shown, "https://h/cloud/index.php/s/***/"), "mask link, index.php, slash: %s", shown);
+	CHECK(!strcmp(shown, "https://h/cloud/index.php/s/***"), "mask link, index.php, slash: %s", shown);
 	maskUrl("https://bike:Pw9@h/remote.php/dav/files/bike/In", shown, sizeof(shown));
 	CHECK(!strcmp(shown, "https://***@h/remote.php/dav/files/bike/In"), "mask userinfo: %s", shown);
 	maskUrl("https://h/public.php/dav/files/AbC12/sub", shown, sizeof(shown));
-	CHECK(!strcmp(shown, "https://h/public.php/dav/files/***/sub"), "mask dav path: %s", shown);
+	CHECK(!strcmp(shown, "https://h/public.php/dav/files/***"), "mask dav path: %s", shown);
 	CHECK(userIsSecret("https://h/public.php/webdav") && !userIsSecret("https://h/remote.php/dav/files/bike/In") && !userIsSecret("https://h/s/AbC12"), "user is secret");
 	CHECK(!validUrl("https://bike:Pw9@h/x") && !validUrl("https://h/public.php/webdav") && !validUrl("https://h/public.php/dav/files/AbC12")
 	      && validUrl("https://h/s/AbC12") && validUrl("https://h/remote.php/dav/files/me@x.org/In"), "validUrl refuses userinfo and public.php");
@@ -67,6 +134,15 @@ static void testShareLinks() {
 	CHECK(!strcmp(shown, "http://srv:8080/api/v1/devices/TRGB-BC/files"), "service url stays: %s", shown);
 	maskUrl("https://h/s/AbC12", shown, 12);
 	CHECK(strlen(shown) == 11 && !strstr(shown, "AbC12"), "truncated: %s", shown);
+	maskUrl("https://h/s/my-bike-link", shown, sizeof(shown));
+	CHECK(!strcmp(shown, "https://h/s/***"), "custom token: %s", shown);
+	maskUrl("https://h/s/x/index.php/s/TOKEN123", shown, sizeof(shown));
+	CHECK(!strcmp(shown, "https://h/s/***"), "second marker: %s", shown);
+	maskUrl("https://bike:Pw@Rest9@h/In", shown, sizeof(shown));
+	CHECK(!strcmp(shown, "https://***@h/In"), "last @: %s", shown);
+	maskUrl("", shown, sizeof(shown));
+	CHECK(!shown[0], "no target stays empty: '%s'", shown);
+	CHECK(!validUrl("https://h/s/***") && !validUrl("https://h/***"), "a masked URL is not a URL");
 	maskUrl("gopher://x/s/AbC12", shown, sizeof(shown));
 	CHECK(!strcmp(shown, "***"), "no scheme: %s", shown);
 	CHECK(!shareLink("https://h/s/", base, sizeof(base), tok, sizeof(tok)), "no token");
@@ -131,6 +207,7 @@ static void testManifest() {
 int main() {
 	testUrls();
 	testShareLinks();
+	testApplyConfig();
 	testNames();
 	testManifest();
 	if (failures) {

@@ -6,7 +6,7 @@
  *   GET  /push           the page: target, credentials, state, buttons
  *   GET  /push/state     LogPushStatus as JSON (never the password; the URL masked, an upload link is a secret)
  *   POST /push/config    enabled=0|1, url (empty = keep), user, secret (empty = keep), clear=1 (remove secret),
- *                        clearurl=1 (remove the target and its secret)
+ *                        clearurl=1 (remove the target, its user and secret). user is always taken (empty too).
  *   POST /push/now       upload now
  *   POST /push/test      create/check the target folder (MKCOL), report the HTTP answer
  *   POST /push/mark      record every file on the card as uploaded, without uploading
@@ -230,25 +230,12 @@ LogPush::SaveResult LogPush::configure(bool enabled, const char* url, const char
 	{
 		Lock lock(mtx);
 		cfg.version = BLOB_VERSION;
-		// An empty URL keeps the stored one: the page never gets it back (maskUrl()). A different
-		// target takes its secret with it -- the old password must not go to a new server, and an
-		// account's app password is no share password -- so it is typed in again. A stored target
-		// that validUrl() would refuse today (/public.php/, user:pw@) is not checked here: only the
-		// URL that comes in is, so such a target can still be switched off, removed or replaced.
-		if (clearUrl) {
-			cfg.url[0] = 0;
-			cfg.secret[0] = 0;
-		} else if (url[0] && strcmp(url, cfg.url) != 0) {
-			strlcpy(cfg.url, url, sizeof(cfg.url));
-			cfg.secret[0] = 0;
-		}
-		cfg.enabled = enabled && cfg.url[0];
-		if (strcmp(user, MASKED) != 0) {		// MASKED: the page's stand-in for a user that is a token, sent back unchanged
-			if (strcmp(user, cfg.user) != 0) cfg.secret[0] = 0;		// the password belongs to the user it was entered for
-			strlcpy(cfg.user, user, sizeof(cfg.user));
-		}
-		if (clearSecret) cfg.secret[0] = 0;
-		else if (secret[0]) strlcpy(cfg.secret, secret, sizeof(cfg.secret));
+		// The transition (empty URL = keep, a different target or user drops the password, a token
+		// user does not move) is PushCore::applyConfig(), host-tested. Only the URL that comes in is
+		// validated above, so a stored target that is refused today can still be switched off,
+		// removed or replaced.
+		const ConfigForm f{enabled, url, user, secret, clearSecret, clearUrl};
+		applyConfig(cfg, f);
 		save();
 	}
 	nextDue = 0;		// try the new target right away (after SETTLE_MS if just connected)
@@ -750,7 +737,7 @@ takes pushed and pulled files alike.</p>
 </form>
 <p class="eyebrow"><b>The upload link is a secret</b> (whoever has it can write into the inbox), so the page never shows it:
 the field above stays empty and the stored target is only shown with its token masked. Empty = keep. A different
-link or folder removes the stored password, enter it again if there is one.</p>
+link, folder or user removes the stored password, enter it again if there is one.</p>
 <p class="eyebrow">Simplest: a Nextcloud <b>upload link</b> (share a folder, "File drop"), e.g.
 <code>https://cloud.example.com/s/TOKEN</code> - user empty, password only if the share has one. The files
 arrive there flat as <code>DEVICE~DAY~FILE</code> (this device: <b id="host"></b>).<br>

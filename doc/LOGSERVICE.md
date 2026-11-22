@@ -110,7 +110,9 @@ the file name, replacing a stored file whose content differs. So the link counts
 
 - It goes into the form on `/push` and nowhere else. The page, `/push/state` and `push status`
   show it as `https://<cloud>/s/***`; the field stays empty, empty = keep, and a different link,
-  folder or user removes the stored password (type it in again). *Remove the target* clears both.
+  folder or user removes the stored password (type it in again). *Remove the target* clears
+  the target, its user and its password. "Empty = keep" holds for the link and the password only: the
+  user is always taken as sent, so a POST to `/push/config` without `user` empties it, and with it the password.
   `…/public.php/…` and `user:password@host` are refused when saving, they would put the token
   elsewhere; a target of that form stored by older firmware keeps working, is shown masked and can be
   switched off, removed or replaced.
@@ -123,8 +125,10 @@ folder, so a new link to the same folder changes nothing on the service.
 
 Setting up: share the inbox folder in Nextcloud as "File drop" -> copy the link -> `/push` on the
 bike computer: link into the field, *Save*, *Test target* (writes `<network name>~push-test.txt`).
-Changing or revoking: create the new link, enter it on every bike (`/push`, *Test target*), then
-delete the old share in Nextcloud. Keep `/bcpush.txt` on the card, or everything is uploaded again.
+Planned change: create the new link, enter it on every bike (`/push`, *Test target*), then delete
+the old share in Nextcloud. **If the link has leaked: revoke it first**, in Nextcloud, then set up
+the new one (until then nothing can upload, which is the point). Keep `/bcpush.txt` on the card, or
+everything is uploaded again.
 Anyone in the bike computer's WiFi can still open `/push` and replace the target; the pages have no login.
 
 When: 20 s after every WiFi connect, then every 10 min while online (a ride ended with a long

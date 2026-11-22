@@ -51,7 +51,7 @@ struct LogPushStatus {
 
 class LogPush {
 public:
-	static constexpr const char* MASKED = "***";		// shown for a secret user; sent back = keep
+	static constexpr const char* MASKED = PushCore::MASKED;		// shown for a secret user; sent back = keep
 	static constexpr const char* MANIFEST_PATH = "/bcpush.txt";
 	static constexpr uint32_t SETTLE_MS = 20 * 1000;
 	static constexpr uint32_t PERIOD_MS = 10 * 60 * 1000;
