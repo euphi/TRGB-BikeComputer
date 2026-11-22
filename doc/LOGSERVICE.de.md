@@ -117,8 +117,9 @@ wie ein Passwort:
   `push status` zeigen ihn als `https://<cloud>/s/***`; das Feld bleibt leer, leer = behalten, und
   ein anderer Link, Ordner oder Nutzer entfernt das gespeicherte Passwort (neu eintippen). *Remove the target*
   löscht Ziel, Nutzer und Passwort. „Leer = behalten“ gilt nur für Link und Passwort: Der Nutzer wird
-  immer so genommen, wie er kommt, ein POST an `/push/config` ohne `user` leert ihn und damit das Passwort. `…/public.php/…` und `nutzer:passwort@host` werden beim Speichern abgelehnt, sie würden das
-  Token an anderer Stelle ablegen; ein so von älterer Firmware gespeichertes Ziel läuft weiter, wird
+  immer so genommen, wie er kommt, ein POST an `/push/config` ohne `user` leert ihn und damit das
+  Passwort. `…/public.php/…` und `nutzer:passwort@host` werden beim Speichern abgelehnt, sie würden
+  das Token an anderer Stelle ablegen; ein so von älterer Firmware gespeichertes Ziel läuft weiter, wird
   maskiert angezeigt und lässt sich abschalten, entfernen oder ersetzen.
 - Nie in einem Test, einer Doku-Seite, einer Logzeile, einem Commit oder Chat: nur erfundene Links
   (`https://cloud.example.com/s/AbC12`). Ein echter in einem öffentlichen Repository muss widerrufen
@@ -133,8 +134,8 @@ Fahrradcomputer: Link ins Feld, *Save*, *Test target* (schreibt `<netzwerkname>~
 Geplanter Wechsel: neuen Link anlegen, an jedem Rad eintragen (`/push`, *Test target*), dann die alte
 Freigabe in Nextcloud löschen. **Ist der Link durchgesickert: zuerst widerrufen**, in Nextcloud, dann
 den neuen einrichten (bis dahin lädt nichts hoch, das ist der Zweck). `/bcpush.txt` auf der Karte
-behalten, sonst wird alles neu hochgeladen. Wer im WLAN des Fahrradcomputers ist, kann `/push` weiterhin öffnen und das Ziel
-ersetzen; die Seiten haben keine Anmeldung.
+behalten, sonst wird alles neu hochgeladen. Wer im WLAN des Fahrradcomputers ist, kann `/push`
+weiterhin öffnen und das Ziel ersetzen; die Seiten haben keine Anmeldung.
 
 Wann: 20 s nach jedem WLAN-Connect, danach alle 10 min, solange er online ist (eine mit langem
 Druck beendete Fahrt erscheint ohne Reconnect), nach einem Fehler nach 5 min. Nur fertige
