@@ -453,8 +453,10 @@ def _line(x0: float, y0: float, x1: float, y1: float, brush, out: set) -> None:
         y += dy
 
 
-def heat_tile(tracks: list[Track], z: int, tx: int, ty: int) -> bytes | None:
-    """The heatmap tile (z, tx, ty): per pixel the number of tracks through it. None = empty."""
+def heat_tile(tracks: list[Track], z: int, tx: int, ty: int,
+              same_ride: dict[str, str] | None = None) -> bytes | None:
+    """The heatmap tile (z, tx, ty): per pixel the number of rides through it. None = empty.
+    same_ride (duplicates()): recordings of one ride are drawn all, and counted once."""
     n = 2 ** z
     scale = TILE_PX * n
     margin = 2.0 / scale
@@ -465,11 +467,13 @@ def heat_tile(tracks: list[Track], z: int, tx: int, ty: int) -> bytes | None:
     halo_brush = _halo(brush) if z >= 9 else ()
     counts: dict[int, int] = {}
     halo: set[int] = set()
+    same_ride = same_ride or {}
+    rides: dict[str, set[int]] = {}
     for track in tracks:
         minx, miny, maxx, maxy = track.bbox
         if maxx < wx0 or minx > wx1 or maxy < wy0 or miny > wy1:
             continue
-        pix: set[int] = set()
+        pix = rides.setdefault(same_ride.get(track.id, track.id), set())
         for c in track.chunks(z):
             if c.maxx < wx0 or c.minx > wx1 or c.maxy < wy0 or c.miny > wy1:
                 continue
@@ -483,6 +487,7 @@ def heat_tile(tracks: list[Track], z: int, tx: int, ty: int) -> bytes | None:
                         or (py < -2 and qy < -2) or (py > TILE_PX + 2 and qy > TILE_PX + 2)):
                     _line(px, py, qx, qy, brush, pix)
                 px, py = qx, qy
+    for pix in rides.values():
         for i in pix:
             counts[i] = counts.get(i, 0) + 1
     if not counts:
@@ -515,27 +520,28 @@ def overlap_share(a: tuple[float, float], b: tuple[float, float]) -> float:
 
 def duplicates(items: list[tuple[str, int, float | None, float | None]],
                min_share: float = 0.5) -> dict[str, str]:
-    """{id: id of the track it duplicates} for items (id, priority, start, end): a track
-    recorded at the same time as one with a better (lower) priority is the same ride
+    """{id: id of the track standing for the ride} for items (id, priority, start, end):
+    tracks recorded at the same time are one ride (also a long tour and the fragments of
+    it another device recorded), the best (lowest) priority stands for it. It is the same ride
     again (a BikeLog ride uploaded to Komoot and imported back, a file uploaded twice).
     Items without times are never duplicates here."""
     timed = sorted((i for i in items if i[2] is not None and i[3] is not None), key=lambda i: i[2])
-    out: dict[str, str] = {}
+    root = {i[0]: i[0] for i in timed}
+
+    def find(key: str) -> str:
+        while root[key] != key:
+            root[key] = key = root[root[key]]
+        return key
+
+    rank = {i[0]: (i[1], i[2]) for i in timed}
     for k, a in enumerate(timed):
         for b in timed[k + 1:]:
             if b[2] > a[3]:
                 break
             if overlap_share((a[2], a[3]), (b[2], b[3])) >= min_share:
-                loser, winner = (b, a) if (a[1], a[2]) <= (b[1], b[2]) else (a, b)
-                if loser[0] not in out:
-                    out[loser[0]] = winner[0]
-    # a winner that lost elsewhere passes its losers on to whoever beat it
-    for k in list(out):
-        seen = {k}
-        while out[k] in out and out[k] not in seen:
-            seen.add(out[k])
-            out[k] = out[out[k]]
-    return out
+                winner, loser = sorted((find(a[0]), find(b[0])), key=rank.__getitem__)
+                root[loser] = winner
+    return {key: find(key) for key in root if find(key) != key}
 
 
 # --- GPX ------------------------------------------------------------------------------------

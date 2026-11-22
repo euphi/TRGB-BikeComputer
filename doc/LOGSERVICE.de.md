@@ -378,10 +378,11 @@ Quellen, alle unter `<data>/map/`
   229 Fahrten eines Handys; alle vier, die der Fahrradcomputer zugleich aufgezeichnet hat,
   wurden als Rad erkannt.
 - **Komoot** (einmalig, „Von Komoot importieren“): alle aufgezeichneten Touren des Kontos aus
-  `BIKELOG_KOMOOT_EMAIL`, standardmäßig nur Radsportarten. Noch einmal geholt werden nur neue.
+  `BIKELOG_KOMOOT_EMAIL`, standardmäßig nur Radsportarten (die übersprungenen nennt die Seite). Noch einmal geholt werden nur neue.
 
 **Doppelte Fahrten** zählen einmal: Ein Track, der zur selben Zeit aufgezeichnet wurde wie einer
-aus einer besseren Quelle (BikeLog vor Hochgeladen vor Komoot), wird ausgeblendet, etwa eine
+aus einer besseren Quelle (BikeLog vor Hochgeladen vor Komoot), gehört zu dessen Fahrt: Er wird
+mitgezeichnet (ein Teilstück darf den Rest der Tour nicht verdecken), zählt aber nicht noch einmal, etwa eine
 BikeLog-Fahrt, die nach Komoot hochgeladen war und mit dem Import zurückkommt.
 
 **Overlay in BRouter-Web** (`~/brouter/web/config.js`, `BR.conf.overlays`; die Namen müssen so

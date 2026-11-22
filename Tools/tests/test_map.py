@@ -1,8 +1,10 @@
 """The map in the log service: tracks from rides, uploads and Komoot; overlay tiles."""
 
 import datetime
+import http.client
 import io
 import json
+import urllib.error
 import zipfile
 
 import pytest
@@ -179,3 +181,63 @@ def test_route_page_counts_new_tiles(client):
     assert "Neue Kacheln" in page
     fresh = client.app.state.map.new_tiles(explorer.read_gpx(timed_gpx(km=12.0)).points)
     assert 2 <= fresh["explorer"] <= 6 and fresh["squadrats"] >= 20
+
+
+def test_fragment_does_not_hide_the_rest_of_a_tour(settings):
+    store = maptracks.MapStore(settings)
+    later = START + datetime.timedelta(minutes=60)
+    store.add_upload(timed_gpx(km=2.0), "a.gpx")
+    store.add_upload(timed_gpx(km=2.0, lat0=50.18, start=later), "b.gpx")
+    store._add_file(timed_gpx(km=25.0), "komoot", "9", "Tour")
+    state = store.state()
+    assert len(set(state.duplicates.values())) == 1 and store.summary()["tracks"] == 1
+    whole = explorer.tiles_of(explorer.runs_of(explorer.read_gpx(timed_gpx(km=25.0)).points), 14)
+    assert whole <= state.stats[14].tiles
+
+
+def test_recordings_of_one_ride_count_once_in_the_heatmap():
+    points = [(50.00, 8.60), (50.01, 8.60)]
+    a, b = explorer.make_track("a", points), explorer.make_track("b", points)
+    z, (x, y) = 13, explorer.mercator(50.005, 8.60)
+    tile = (z, int(x * 2 ** z), int(y * 2 ** z))
+    assert explorer.heat_tile([a, b], *tile, {"b": "a"}) == explorer.heat_tile([a], *tile)
+
+
+@pytest.mark.parametrize("paged", [False, True])
+def test_komoot_lists_every_page(tmp_path, paged):
+    def fetch(url, email, password):
+        if "/account/" in url:
+            return b'{"username": "1"}'
+        page = int(url.split("page=")[1].split("&")[0])
+        tours = [{"id": i, "sport": "hike"} for i in range(page * 100, min(page * 100 + 100, 250))]
+        info = {"page": {"totalPages": 3, "totalElements": 250}} if paged else {}
+        return json.dumps({"_embedded": {"tours": tours}, **info}).encode()
+    settings = Settings(data_dir=tmp_path, komoot_email="a@b.de", komoot_password="pw")
+    state = maptracks.MapStore(settings, fetch=fetch).komoot_import()
+    assert (state["total"], state["skipped_sports"], state["errors"]) == (250, {"hike": 250}, [])
+
+
+def test_komoot_broken_download_does_not_end_the_import(tmp_path, monkeypatch):
+    monkeypatch.setattr(maptracks, "KOMOOT_PAUSE_S", 0)
+
+    def fetch(url, email, password):
+        if "/account/" in url:
+            return b'{"username": "1"}'
+        if url.endswith("/1.gpx"):
+            raise http.client.IncompleteRead(b"")
+        if url.endswith("/2.gpx"):
+            return timed_gpx()
+        tours = [{"id": i, "sport": "mtb"} for i in (1, 2)]
+        return json.dumps({"_embedded": {"tours": tours}, "page": {"totalPages": 1}}).encode()
+    settings = Settings(data_dir=tmp_path, komoot_email="a@b.de", komoot_password="pw")
+    state = maptracks.MapStore(settings, fetch=fetch).komoot_import()
+    assert (state["new"], len(state["errors"])) == (1, 1)
+
+
+def test_komoot_error_does_not_show_the_address(monkeypatch):
+    def fail(req, timeout):
+        raise urllib.error.HTTPError(req.full_url, 500, "x", {}, None)
+    monkeypatch.setattr(maptracks.urllib.request, "urlopen", fail)
+    with pytest.raises(maptracks.KomootError) as err:
+        maptracks._komoot_get("https://komoot.invalid/account/email/a%40b.de/", "a@b.de", "pw")
+    assert "b.de" not in str(err.value)

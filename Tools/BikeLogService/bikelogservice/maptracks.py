@@ -18,7 +18,8 @@ keeps only the trips bikelog.tripmode judges as cycling, each stored as an uploa
 index.json lists the tracks, points/<id>.bin holds each one's thinned points (int32 lat/lon
 in 1e-6 degrees, explorer.THIN_M apart). A ride recorded at the same time as one from a
 better source is a duplicate (a BikeLog ride uploaded to Komoot comes back with the import)
-and counts once: explorer.duplicates(), ride before upload before komoot.
+and counts once: explorer.duplicates(), ride before upload before komoot. Every recording
+is still drawn: a fragment of a tour must not take the rest of the tour off the map.
 
 MAP_VERSION: raise it when how a track is read or thinned changes -- the store then reads
 every track again from its source on the next start.
@@ -30,11 +31,13 @@ import base64
 import datetime
 import gzip
 import hashlib
+import http.client
 import io
 import json
 import logging
 import threading
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 import zipfile
@@ -135,8 +138,9 @@ def _komoot_get(url: str, email: str, password: str, timeout: float = 60) -> byt
     except urllib.error.HTTPError as exc:
         if exc.code in (401, 403):
             raise KomootError("Komoot lehnt die Anmeldung ab (BIKELOG_KOMOOT_EMAIL/-PASSWORD prüfen)") from exc
-        raise KomootError(f"Komoot: HTTP {exc.code} für {url.split('?')[0]}") from exc
-    except OSError as exc:
+        # not the URL: the login's holds the e-mail address, and this text is logged and shown
+        raise KomootError(f"Komoot: HTTP {exc.code}") from exc
+    except (OSError, http.client.HTTPException) as exc:
         raise KomootError(f"Komoot nicht erreichbar: {exc}") from exc
 
 
@@ -405,7 +409,7 @@ class MapStore:
             if self.komoot.get("running"):
                 return self.komoot
             self.komoot = {"running": True, "started_at": _now(), "total": 0, "done": 0, "new": 0,
-                           "known": 0, "skipped": 0, "errors": [], "all_sports": all_sports}
+                           "known": 0, "skipped": 0, "skipped_sports": {}, "errors": [], "all_sports": all_sports}
         state = self.komoot
         try:
             if not s.komoot_enabled:
@@ -414,20 +418,29 @@ class MapStore:
             account = json.loads(fetch(f"{KOMOOT_API}/v006/account/email/"
                                        f"{urllib.parse.quote(s.komoot_email)}/"))
             user = account["username"]
-            tours, page, pages = [], 0, 1
-            while page < pages:
+            found, page, pages, expected = {}, 0, None, None
+            while pages is None or page < pages:
                 data = json.loads(fetch(f"{KOMOOT_API}/v007/users/{urllib.parse.quote(str(user))}/tours/?"
                                         + urllib.parse.urlencode({"type": "tour_recorded", "page": page,
                                                                   "limit": 100})))
-                tours += (data.get("_embedded") or {}).get("tours", [])
-                pages = int((data.get("page") or {}).get("totalPages", 0))
+                before = len(found)
+                found.update((str(t.get("id")), t) for t in (data.get("_embedded") or {}).get("tours", []))
+                info = data.get("page") or {}
+                if "totalPages" in info:
+                    pages = int(info["totalPages"])
+                expected = info.get("totalElements", expected)
                 page += 1
-            state["total"] = len(tours)
-            for tour in tours:
+                if len(found) == before:        # nothing new: the end, whatever the page count says
+                    break
+            if expected is not None and len(found) != expected:
+                state["errors"].append(f"Komoot meldet {expected} Touren, gelistet wurden {len(found)}")
+            state["total"] = len(found)
+            for tour in found.values():
                 tid, sport = str(tour.get("id")), tour.get("sport")
                 state["done"] += 1
                 if not all_sports and sport not in BIKE_SPORTS:
                     state["skipped"] += 1
+                    state["skipped_sports"][str(sport)] = state["skipped_sports"].get(str(sport), 0) + 1
                     continue
                 with self._lock:
                     if "k" + tid[:16] in self._index:
@@ -439,7 +452,7 @@ class MapStore:
                     status, _ = self._add_file(gpx, "komoot", tid, tour.get("name") or f"Komoot {tid}",
                                                sport=sport, start=start)
                     state["new" if status == "new" else "known"] += 1
-                except (KomootError, ValueError) as exc:
+                except (KomootError, ValueError, OSError, http.client.HTTPException) as exc:
                     state["errors"].append(f"{tour.get('name') or tid}: {exc}")
                 if KOMOOT_PAUSE_S:
                     time.sleep(KOMOOT_PAUSE_S)
@@ -480,7 +493,7 @@ class MapStore:
             tracks, t14, t17 = [], set(), set()
             for info in infos:
                 track, a, b = self._drawable(info)
-                if track is None or info.id in dups:
+                if track is None:
                     continue
                 tracks.append(track)
                 t14 |= a
@@ -497,7 +510,7 @@ class MapStore:
                 south, east = explorer.unmercator(maxx, maxy)
                 bounds = (south, west, north, east)
             digest = hashlib.sha1(json.dumps(sorted((i.id, i.sig, i.points) for i in infos)).encode()
-                                  + json.dumps(sorted(dups.items())).encode()).hexdigest()[:12]
+                                  + json.dumps(sorted(dups.items())).encode() + b"all-drawn").hexdigest()[:12]
             self._state = MapState(digest, tracks, dups,
                                    {explorer.EXPLORER_ZOOM: explorer.tile_stats(t14, explorer.EXPLORER_ZOOM),
                                     explorer.SQUADRAT_ZOOM: explorer.tile_stats(t17, explorer.SQUADRAT_ZOOM)},
@@ -518,7 +531,7 @@ class MapStore:
         png = None
         if z >= MIN_ZOOM[layer] and 0 <= x < n and 0 <= y < n:
             if layer == "heat":
-                png = explorer.heat_tile(state.tracks, z, x, y)
+                png = explorer.heat_tile(state.tracks, z, x, y, state.duplicates)
             else:
                 png = explorer.visited_tile(state.stats[LAYERS[layer]], z, x, y)
         png = png or explorer.EMPTY_PNG
@@ -541,7 +554,7 @@ class MapStore:
                 entry["distance_km"] += i.distance_m / 1000
         for entry in by_source.values():
             entry["distance_km"] = round(entry["distance_km"], 1)
-        return {"revision": state.revision, "tracks": len(state.tracks), "sources": by_source,
+        return {"revision": state.revision, "tracks": sum(t.id not in state.duplicates for t in state.tracks), "sources": by_source,
                 "explorer": state.stats[explorer.EXPLORER_ZOOM].as_dict(),
                 "squadrats": state.stats[explorer.SQUADRAT_ZOOM].as_dict(),
                 "bounds": [round(v, 6) for v in state.bounds] if state.bounds else None,

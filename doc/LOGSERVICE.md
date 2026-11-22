@@ -364,10 +364,11 @@ Sources, all under `<data>/map/`
   every trip found with its verdict and the reason. Tuned on 229 trips of one phone; all four
   the bike computer recorded at the same time were recognised as cycling.
 - **Komoot** (one-off, "Von Komoot importieren"): every recorded tour of the account in
-  `BIKELOG_KOMOOT_EMAIL`, bike sports only by default. Running it again fetches only new ones.
+  `BIKELOG_KOMOOT_EMAIL`, bike sports only by default (the page names the ones skipped). Running it again fetches only new ones.
 
 **Duplicate rides** count once: a track recorded at the same time as one from a better source
-(BikeLog before upload before Komoot) is hidden, e.g. a BikeLog ride uploaded to Komoot that
+(BikeLog before upload before Komoot) belongs to that ride: it is drawn (a fragment must not hide
+the rest of a tour) but not counted again, e.g. a BikeLog ride uploaded to Komoot that
 comes back with the import.
 
 **Overlay in BRouter-Web** (`~/brouter/web/config.js`, `BR.conf.overlays`; keep the names, the
