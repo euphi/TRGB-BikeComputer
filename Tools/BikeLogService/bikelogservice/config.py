@@ -146,6 +146,9 @@ class Settings:
     nextcloud_inbox: str | None = None
     #: How often the inbox is looked at.
     inbox_interval_s: float = 300.0
+    #: A bigger file is not fetched from the inbox, it stays there and is reported (a file is
+    #: read into memory whole, and whoever has the upload link decides how big it is).
+    inbox_max_bytes: int = 128 * 1024 * 1024
 
     @property
     def inbox_enabled(self) -> bool:
@@ -179,6 +182,7 @@ class Settings:
             nextcloud_dir=env.get("BIKELOG_NEXTCLOUD_DIR", "BikeLog"),
             nextcloud_inbox=(env.get("BIKELOG_NEXTCLOUD_INBOX") or "").strip("/") or None,
             inbox_interval_s=float(env.get("BIKELOG_INBOX_INTERVAL_S", 300)),
+            inbox_max_bytes=int(env.get("BIKELOG_INBOX_MAX_BYTES", 128 * 1024 * 1024)),
             athlete_file=Path(env["BIKELOG_ATHLETE_FILE"]) if env.get("BIKELOG_ATHLETE_FILE") else None,
             wind=_flag(env.get("BIKELOG_WIND", "1")),
             idle_archive_days=float(env.get("BIKELOG_IDLE_ARCHIVE_DAYS", 7)),
@@ -199,6 +203,11 @@ class Settings:
     @property
     def archive_dir(self) -> Path:
         return self.data_dir / "archive"
+
+    @property
+    def replaced_dir(self) -> Path:
+        """First originals of files the push inbox overwrote (Storage.keep_original)."""
+        return self.data_dir / "replaced"
 
     @property
     def db_path(self) -> Path:

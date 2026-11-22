@@ -16,11 +16,16 @@ then the row too. Nothing is queued: offline means "not now". Idle sessions dele
 on the device itself (its cleanup) are archived by the pull the same way
 (``archive_gone_idle()``), without a delete request. An explicit upload
 of one of its files revives the session, same as for a deleted one.
+
+A different file of the same name that is already in the archive (the index forgot the
+session, then the name arrived again, possibly through the push inbox) is not lost to the
+move: Storage.keep_original() saves it first.
 """
 
 from __future__ import annotations
 
 import datetime
+import filecmp
 import logging
 import shutil
 
@@ -37,7 +42,10 @@ def move_files(store: Storage, session) -> None:
         src = store.path_for(session, f.name)
         if src.exists():
             target.mkdir(parents=True, exist_ok=True)
-            shutil.move(str(src), str(target / f.name))
+            dst = target / f.name
+            if dst.is_file() and not filecmp.cmp(src, dst, shallow=False):
+                store.keep_original(dst, session.device, session.day)
+            shutil.move(str(src), str(dst))
     if session.gpx_file:
         (store.settings.gpx_dir / session.gpx_file).unlink(missing_ok=True)
 

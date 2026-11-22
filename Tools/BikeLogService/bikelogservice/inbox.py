@@ -22,6 +22,10 @@ dropped from the inbox unread. ``<host>`` is the device's network name; BIKELOG_
 maps it to the device name the sessions are filed under (``pendler=TRGB-FL``), a host without
 a target is filed under its own name.
 
+Whoever has the upload link decides what arrives, hence two limits: what gets overwritten is
+kept once under <data>/replaced/ (Storage.keep_original), and a file over ``inbox_max_bytes``
+is not read -- it stays in the inbox and is reported on every pass.
+
 Uses the Nextcloud login of the GPX sync (nextcloud.py). requests is only imported when the
 inbox is actually read, like there.
 """
@@ -55,6 +59,7 @@ _PROBE = re.compile(r"^[A-Za-z0-9_-]{1,32}~push-test(?: \(\d+\))?\.txt$")
 #: An emptied day folder is removed only when nothing has been written to it for this long --
 #: the bike computer may be uploading into it right now.
 FOLDER_IDLE_S = 3600
+CHUNK = 256 * 1024
 
 
 @dataclass(frozen=True)
@@ -65,6 +70,10 @@ class Entry:
     modified: datetime.datetime | None
 
 
+class TooLarge(Exception):
+    """The file in the inbox is bigger than Settings.inbox_max_bytes."""
+
+
 @dataclass
 class InboxResult:
     files: int = 0
@@ -72,12 +81,14 @@ class InboxResult:
     unchanged: int = 0
     dropped: int = 0         # deleted here, or not a log file
     failed: int = 0
+    too_large: int = 0       # left in the inbox, not read
     folders_removed: int = 0
     errors: list[str] = field(default_factory=list)
 
     def summary(self) -> str:
         return (f"{self.files} file(s): {self.stored} stored, {self.unchanged} unchanged, "
-                f"{self.dropped} dropped, {self.failed} failed")
+                f"{self.dropped} dropped, {self.failed} failed"
+                + (f", {self.too_large} too large" if self.too_large else ""))
 
 
 def parse_multistatus(body: bytes) -> list[Entry]:
@@ -125,9 +136,20 @@ class Inbox:
         return parse_multistatus(resp.content)
 
     def get(self, *parts: str) -> bytes:
-        resp = self.http.get(self.url(*parts))
-        resp.raise_for_status()
-        return resp.content
+        """The file, read in chunks: the listed size can be missing or out of date.
+        Raises TooLarge as soon as it passes inbox_max_bytes."""
+        resp = self.http.get(self.url(*parts), stream=True)
+        try:
+            resp.raise_for_status()
+            chunks, size = [], 0
+            for chunk in resp.iter_content(CHUNK):
+                size += len(chunk)
+                if size > self.settings.inbox_max_bytes:
+                    raise TooLarge(f"over {size} byte")
+                chunks.append(chunk)
+            return b"".join(chunks)
+        finally:
+            resp.close()
 
     def delete(self, *parts: str) -> None:
         resp = self.http.delete(self.url(*parts))
@@ -231,8 +253,14 @@ def _take(store, inbox: Inbox, device: str, parts: tuple[str, ...], day: str, na
         _delete(inbox, parts, result)
         result.dropped += 1
         return
+    if entry.size is not None and entry.size > store.settings.inbox_max_bytes:
+        _too_large(store, label, f"{entry.size} byte", result)
+        return
     try:
         payload = inbox.get(*parts)
+    except TooLarge as exc:
+        _too_large(store, label, str(exc), result)
+        return
     except Exception as exc:
         result.failed += 1
         result.errors.append(f"{label}: {exc}")
@@ -246,13 +274,20 @@ def _take(store, inbox: Inbox, device: str, parts: tuple[str, ...], day: str, na
         _delete(inbox, parts, result)
         result.dropped += 1
         return
-    put = store.put_file(device, sdfile, payload, source="inbox:" + label)
+    put = store.put_file(device, sdfile, payload, source="inbox:" + label, keep_original=True)
     if put.status == "unchanged":
         result.unchanged += 1
     else:
         result.stored += 1
         log.info("inbox: %s %s (%d byte) -> %s", put.status, label, len(payload), device)
     _delete(inbox, parts, result)
+
+
+def _too_large(store, label: str, what: str, result: InboxResult) -> None:
+    result.too_large += 1
+    limit = store.settings.inbox_max_bytes
+    result.errors.append(f"{label}: too large ({what}, limit {limit}), left in the inbox")
+    log.warning("inbox: %s is too large (%s, limit %d) - left there, not stored", label, what, limit)
 
 
 def _delete(inbox: Inbox, parts, result: InboxResult) -> None:

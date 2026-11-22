@@ -12,9 +12,10 @@ from fastapi.testclient import TestClient
 
 from bikelog import fixtures
 from bikelog.record import write_records
-from bikelogservice import inbox
+from bikelogservice import archive, inbox
 from bikelogservice.app import create_app
 from bikelogservice.config import Settings
+from bikelogservice.sdlayout import parse_path
 from bikelogservice.storage import Storage
 
 API = "/api/v1"
@@ -31,6 +32,13 @@ class _Resp:
     def raise_for_status(self):
         if self.status_code >= 400:
             raise RuntimeError(f"HTTP {self.status_code}")
+
+    def iter_content(self, chunk_size):
+        for i in range(0, len(self.content), chunk_size):
+            yield self.content[i:i + chunk_size]
+
+    def close(self):
+        pass
 
 
 class FakeDav:
@@ -85,7 +93,8 @@ class FakeDav:
         body = '<?xml version="1.0"?><d:multistatus xmlns:d="DAV:">' + "".join(parts) + "</d:multistatus>"
         return _Resp(207, body.encode())
 
-    def get(self, url):
+    def get(self, url, stream=False):
+        assert stream, "a file of unknown size must not be read in one go"
         path = self._path(url)
         self.calls.append(("GET", path))
         return _Resp(200, self.files[path]) if path in self.files else _Resp(404)
@@ -150,7 +159,6 @@ def test_collect_files_pushed_sessions_like_pulled_ones(settings, ride_bytes):
 
 def test_same_bytes_as_pulled_are_unchanged(settings, ride_bytes):
     store = Storage(settings)
-    from bikelogservice.sdlayout import parse_path
     store.put_file("pendler", parse_path("20261018/L_143012.bin"), ride_bytes, source="http://pull")
     dav = FakeDav({"BikeLog-Inbox/TRGB-FL/20261018/L_143012.bin": ride_bytes})
     result = _collect(store, dav)
@@ -160,7 +168,6 @@ def test_same_bytes_as_pulled_are_unchanged(settings, ride_bytes):
 
 def test_deleted_sessions_stay_deleted(settings, ride_bytes):
     store = Storage(settings)
-    from bikelogservice.sdlayout import parse_path
     put = store.put_file("pendler", parse_path("20261018/L_143012.bin"), ride_bytes)
     store.delete(put.session.id)
     dav = FakeDav({"BikeLog-Inbox/TRGB-FL/20261018/L_143012.bin": ride_bytes})
@@ -220,6 +227,112 @@ def test_renamed_copies_newest_wins(settings):
     assert result.stored == 2 and dav.files == {}
     session = store.find("pendler", "20261018", "_143012")
     assert store.path_for(session, "I_143012.txt").read_bytes() == new_summary
+
+
+def test_the_first_original_is_kept(settings, ride_bytes):
+    store = Storage(settings)
+    sdfile = parse_path("20261018/L_143012.bin")
+    store.put_file("pendler", sdfile, ride_bytes, source="http://pull")
+    kept = settings.replaced_dir / "pendler" / "20261018" / "L_143012.bin"
+    for payload in (b"broken upload", b"another one"):
+        result = _collect(store, FakeDav({"BikeLog-Inbox/TRGB-FL~20261018~L_143012.bin": payload}))
+        assert result.stored == 1
+        assert kept.read_bytes() == ride_bytes                  # the second one does not push it out
+    session = store.find("pendler", "20261018", "_143012")
+    assert store.path_for(session, "L_143012.bin").read_bytes() == b"another one"
+    store.delete(session.id)                                    # deleting the junk keeps the original
+    assert kept.read_bytes() == ride_bytes
+
+
+def test_original_is_kept_when_only_the_folder_is_the_same(settings, ride_bytes):
+    """Day "_" is another session than day "", but both live in the folder "_"."""
+    store = Storage(settings)
+    store.put_file("pendler", parse_path("L0042.bin"), ride_bytes)
+    _collect(store, FakeDav({"BikeLog-Inbox/TRGB-FL~_~L0042.bin": b"not the ride"}))
+    assert (settings.replaced_dir / "pendler" / "_" / "L0042.bin").read_bytes() == ride_bytes
+
+
+def test_no_copy_without_a_change(settings, ride_bytes):
+    store = Storage(settings)
+    name = "BikeLog-Inbox/TRGB-FL~20261018~L_143012.bin"
+    assert _collect(store, FakeDav({name: ride_bytes})).stored == 1
+    assert _collect(store, FakeDav({name: ride_bytes})).unchanged == 1
+    store.put_file("pendler", parse_path("20261018/L_143012.bin"), b"newer, by pull")
+    assert not settings.replaced_dir.exists()                   # only the inbox is mistrusted
+
+
+def test_nothing_is_overwritten_if_the_original_cannot_be_kept(settings, ride_bytes):
+    store = Storage(settings)
+    sdfile = parse_path("20261018/L_143012.bin")
+    session = store.put_file("pendler", sdfile, ride_bytes).session
+    settings.replaced_dir.write_text("in the way")
+    dav = FakeDav({"BikeLog-Inbox/TRGB-FL~20261018~L_143012.bin": b"broken upload"})
+    with pytest.raises(OSError):
+        _collect(store, dav)
+    assert store.path_for(session, sdfile.name).read_bytes() == ride_bytes and dav.files
+
+
+def test_archiving_keeps_what_is_already_in_the_archive(settings):
+    """The index forgot an archived session, then the inbox brings a file of the same name."""
+    store = Storage(settings)
+    target = settings.archive_dir / "pendler" / "20261018"
+    target.mkdir(parents=True)
+    (target / "D_143012.log").write_bytes(b"original")
+    _collect(store, FakeDav({"BikeLog-Inbox/TRGB-FL~20261018~D_143012.log": b"fake"}))
+    archive.move_files(store, store.find("pendler", "20261018", "_143012"))
+    assert (settings.replaced_dir / "pendler" / "20261018" / "D_143012.log").read_bytes() == b"original"
+    assert (target / "D_143012.log").read_bytes() == b"fake"
+
+
+def test_too_large_is_not_fetched_and_stays(settings):
+    settings.inbox_max_bytes = 10
+    store = Storage(settings)
+    big = "BikeLog-Inbox/TRGB-FL~20261018~D_143012.log"
+    fits = "BikeLog-Inbox/TRGB-FL~20261018~D_150000.log"
+    dav = FakeDav({big: b"x" * 11, fits: b"y" * 10})
+    result = _collect(store, dav)
+    assert (result.stored, result.too_large, result.failed) == (1, 1, 0)
+    assert set(dav.files) == {big} and ("GET", big) not in dav.calls
+    assert "too large" in result.errors[0] and "1 too large" in result.summary()
+    assert set(store.known_files("pendler")) == {"20261018/D_150000.log"}
+
+
+def test_too_large_day_folder_is_not_removed(settings):
+    settings.inbox_max_bytes = 10
+    big = "BikeLog-Inbox/TRGB-FL/20261018/D_143012.log"
+    dav = FakeDav({big: b"x" * 11})
+    result = _collect(Storage(settings), dav)
+    assert (result.too_large, result.folders_removed) == (1, 0) and set(dav.files) == {big}
+
+
+def test_download_stops_at_the_limit_whatever_was_listed(settings, monkeypatch):
+    monkeypatch.setattr(inbox, "CHUNK", 8)
+    settings.inbox_max_bytes = 20
+    store = Storage(settings)
+    read = []
+
+    class Endless(_Resp):
+        def iter_content(self, chunk_size):
+            while len(read) < 1000:
+                read.append(chunk_size)
+                yield b"x" * chunk_size
+
+        def close(self):
+            read.append("closed")
+
+    class Dav(FakeDav):
+        def get(self, url, stream=False):
+            return Endless(200)
+
+    dav = Dav({"BikeLog-Inbox/TRGB-FL~20261018~D_143012.log": b"small"})
+    result = _collect(store, dav)
+    assert (result.stored, result.too_large) == (0, 1) and dav.files
+    assert read == [8, 8, 8, "closed"]
+
+
+def test_inbox_limit_setting():
+    assert Settings.from_env({}).inbox_max_bytes == 128 * 1024 * 1024
+    assert Settings.from_env({"BIKELOG_INBOX_MAX_BYTES": "1000"}).inbox_max_bytes == 1000
 
 
 def test_inbox_path_with_umlauts_and_spaces(settings):

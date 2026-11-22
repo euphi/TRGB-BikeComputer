@@ -110,8 +110,8 @@ Passwort kommt nur über das Formular herein, wird nie wieder angezeigt und nie 
 **Der Upload-Link ist ein Geheimnis.** Bei einem „File drop“ ist das Token in `https://<cloud>/s/<token>`
 der ganze Zugang (es geht als WebDAV-Nutzer hinein, ein Freigabe-Passwort gibt es meist nicht): Wer
 den Link hat, kann in den Eingang schreiben, und der Dienst legt ab, was ankommt -- Gerät und Tag
-stehen im Dateinamen, eine gespeicherte Datei mit anderem Inhalt wird ersetzt. Der Link zählt also
-wie ein Passwort:
+stehen im Dateinamen, eine gespeicherte Datei mit anderem Inhalt wird ersetzt ([ein Original](#inbox-safeguards)
+bleibt erhalten). Der Link zählt also wie ein Passwort:
 
 - Er gehört in das Formular auf `/push` und sonst nirgends hin. Die Seite, `/push/state` und
   `push status` zeigen ihn als `https://<cloud>/s/***`; das Feld bleibt leer, leer = behalten, und
@@ -167,6 +167,19 @@ wurde. Der Ordner unter dem Eingang ist der Netzwerkname des Fahrradcomputers;
 `Push-Inbox/TRGB-FL/...` unter `pendler` ab, dieselben Sitzungen wie der Pull von
 `TRGB-FL.local`), ein Name ohne Ziel wird so übernommen. Von Hand: `POST /api/v1/inbox` oder
 `bikelogservice inbox`.
+
+<a id="inbox-safeguards"></a>Zwei Absicherungen, denn der Dienst weiß nicht, wer hochgeladen hat:
+
+- **Das Original bleibt.** Bevor ein Upload aus dem Eingang eine gespeicherte Datei überschreibt,
+  wird sie nach `<data>/replaced/<gerät>/<tag>/<name>` kopiert (`_` = ohne Tag). Nur das erste
+  Original, so verdrängen wiederholte Uploads es nicht und füllen die Platte nicht; eine spätere
+  Fassung, die überschrieben wird, wird nicht noch einmal aufgehoben. Dasselbe gilt, wenn das
+  Archivieren eine Datei in `<data>/archive/` überschreiben würde. Löschen der Sitzung lässt die
+  Kopie liegen, den Ordner räumt niemand auf. Zurückholen: die Kopie per `PUT` an
+  `/api/v1/devices/{device}/files/{day}/{name}` (ohne Tag: `.../files/{name}`).
+- **Keine Datei über 128 MiB** (`BIKELOG_INBOX_MAX_BYTES`). Sie wird nicht geholt, bleibt im Eingang
+  und wird in jeder Runde gemeldet: `too_large` und `last_error` in `GET /api/v1/inbox` und im Log
+  des Dienstes. In Nextcloud löschen oder die Grenze anheben.
 
 Zwei Ordner im Nextcloud-Konto des Dienstes, leicht zu verwechseln (beide relativ zur Wurzel dieses
 Kontos, dasselbe App-Passwort):
@@ -744,6 +757,7 @@ Umgebungsvariablen (im Dienst: `~/bikelog/bikelog.env`):
 | `BIKELOG_NEXTCLOUD_DIR` | `BikeLog` | Zielverzeichnis (WebDAV-Pfad, wird bei Bedarf angelegt) |
 | `BIKELOG_NEXTCLOUD_INBOX` | -- | Ordner, in den die Fahrradcomputer [hochladen](#hochladen-vom-fahrradcomputer-push) (WebDAV-Pfad); leer = wird nicht abgeholt |
 | `BIKELOG_INBOX_INTERVAL_S` | `300` | wie oft der Eingang angeschaut wird |
+| `BIKELOG_INBOX_MAX_BYTES` | 128 MiB | eine größere Datei bleibt im Eingang ([Absicherungen](#inbox-safeguards)) |
 | `BIKELOG_ATHLETE_FILE` | `<data>/athlete.json` | Fahrerdaten für den Sitzungsbericht |
 | `BIKELOG_WIND` | `1` | Wind von Open-Meteo im Fahrtbericht; `0` = Berichte ohne Wind, kein Netzzugriff |
 | `BIKELOG_IDLE_ARCHIVE_DAYS` | `7` | Leerlauf-Sitzungen nach so vielen Tagen nach `archive/`, 0 = nie |

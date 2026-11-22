@@ -106,7 +106,8 @@ only taken from the form, never shown again or logged.
 **The upload link is a secret.** For a "File drop" the token in `https://<cloud>/s/<token>` is the
 whole login (it goes in as the WebDAV user, and there is usually no share password): whoever has the
 link can write into the inbox, and the service files what arrives under the device and day named in
-the file name, replacing a stored file whose content differs. So the link counts like a password:
+the file name, replacing a stored file whose content differs (it keeps [one original](#inbox-safeguards)).
+So the link counts like a password:
 
 - It goes into the form on `/push` and nowhere else. The page, `/push/state` and `push status`
   show it as `https://<cloud>/s/***`; the field stays empty, empty = keep, and a different link,
@@ -158,6 +159,18 @@ The folder below the inbox is the network name of the bike computer; `BIKELOG_PU
 it to the device name (`pendler=TRGB-FL` files `Push-Inbox/TRGB-FL/...` under `pendler`, the
 same sessions as the pull of `TRGB-FL.local`), a name without a target is used as it is. By hand:
 `POST /api/v1/inbox` or `bikelogservice inbox`.
+
+<a id="inbox-safeguards"></a>Two safeguards, because the service cannot know who uploaded:
+
+- **The original is kept.** Before an upload from the inbox overwrites a stored file, that file is
+  copied to `<data>/replaced/<device>/<day>/<name>` (`_` = no day). Only the first original, so
+  repeated uploads neither push it out nor fill the disk; a later version that gets overwritten is
+  not kept again. The same applies when archiving would overwrite a file in `<data>/archive/`.
+  Deleting the session leaves the copy; nothing cleans up this folder. To get a file back:
+  `PUT` the copy to `/api/v1/devices/{device}/files/{day}/{name}` (no day: `.../files/{name}`).
+- **No file over 128 MiB** (`BIKELOG_INBOX_MAX_BYTES`). It is not fetched, stays in the inbox and is
+  reported in every round: `too_large` and `last_error` in `GET /api/v1/inbox`, and in the service's
+  log. Delete it in Nextcloud or raise the limit.
 
 Two folders on the service's Nextcloud account, easy to mix up (both relative to the root of that
 account, same app password):
@@ -719,6 +732,7 @@ Environment variables (in the service: `~/bikelog/bikelog.env`):
 | `BIKELOG_NEXTCLOUD_DIR` | `BikeLog` | target directory (WebDAV path, created if needed) |
 | `BIKELOG_NEXTCLOUD_INBOX` | -- | folder the bike computers [push](#uploading-from-the-bike-computer-push) to (WebDAV path); empty = not looked at |
 | `BIKELOG_INBOX_INTERVAL_S` | `300` | how often the inbox is looked at |
+| `BIKELOG_INBOX_MAX_BYTES` | 128 MiB | a bigger file stays in the inbox ([safeguards](#inbox-safeguards)) |
 | `BIKELOG_ATHLETE_FILE` | `<data>/athlete.json` | rider data for the session report |
 | `BIKELOG_WIND` | `1` | wind from Open-Meteo in the ride report; `0` = reports without wind, no network access |
 | `BIKELOG_IDLE_ARCHIVE_DAYS` | `7` | idle sessions to `archive/` after this many days, 0 = never |

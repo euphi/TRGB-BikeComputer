@@ -22,6 +22,8 @@ import datetime
 import hashlib
 import io
 import json
+import logging
+import shutil
 import sqlite3
 import threading
 from dataclasses import asdict, dataclass, field
@@ -32,6 +34,8 @@ from bikelog.record import ReadStats, UnknownLogFormat, read_stream
 
 from . import sdlayout
 from .sdlayout import SdFile
+
+log = logging.getLogger("bikelog.storage")
 
 SCHEMA_VERSION = 10
 
@@ -307,6 +311,19 @@ class Storage:
     def path_for(self, session: Session, name: str) -> Path:
         return self.dir_for(session) / name
 
+    def keep_original(self, path: Path, device: str, day: str) -> None:
+        """Copy the file at `path` to replaced/<device>/<day>/<name> before it is overwritten.
+        Only the first original is kept, so repeated uploads can neither push it out nor
+        fill the disk. Deleting the session leaves the copy alone."""
+        kept = self.settings.replaced_dir / device / (day or "_") / path.name
+        if kept.exists():
+            return
+        kept.parent.mkdir(parents=True, exist_ok=True)
+        tmp = kept.with_name(kept.name + ".part")
+        shutil.copy2(path, tmp)
+        tmp.replace(kept)
+        log.warning("%s is overwritten, the original is kept as %s", path, kept)
+
     # --- queries -------------------------------------------------------
 
     def _session(self, row) -> Session:
@@ -417,8 +434,9 @@ class Storage:
     # --- mutations -----------------------------------------------------
 
     def put_file(self, device: str, sdfile: SdFile, payload: bytes,
-                 source: str | None = None) -> PutResult:
+                 source: str | None = None, keep_original: bool = False) -> PutResult:
         """Store one file of a session, creating the session on first sight.
+        keep_original: save what gets overwritten, see keep_original() (the push inbox).
 
         A tombstoned session is revived: an explicit upload means someone wants it.
         (The puller never gets here for those -- known_files() tells it to skip.)
@@ -446,6 +464,9 @@ class Storage:
                 return PutResult(session, "unchanged")
 
             path.parent.mkdir(parents=True, exist_ok=True)
+            # Ask the disk, not the index: days "" and "_" are two sessions, but one folder.
+            if keep_original and path.is_file() and hashlib.sha256(path.read_bytes()).hexdigest() != digest:
+                self.keep_original(path, device, sdfile.day)
             # Temp name first: an interrupted write must not leave a half file
             # under a name the index claims is complete.
             tmp = path.with_name(path.name + ".part")

@@ -56,7 +56,7 @@ def _inbox(args) -> int:
     for err in result.errors:
         print("  " + err, file=sys.stderr)
     analysis.refresh(store, background=False)
-    return 1 if result.failed else 0
+    return 1 if result.failed or result.too_large else 0
 
 
 def _import(args) -> int:

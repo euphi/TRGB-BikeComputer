@@ -158,7 +158,8 @@ Mobilfunk); danach das Netz mit `cmd wifi forget-network <id>` wieder vergessen.
   hoch, `src/LogPush.*` (Seite `/push`, CLI `push`, Manifest `/bcpush.txt` auf der SD, TLS-Puffer
   während des Laufs im PSRAM), reiner Teil `src/LogPushCore.*` (Host-Test `test/native_logpush/`).
   Dienst holt aus dem Nextcloud-Eingang `BIKELOG_NEXTCLOUD_INBOX` ab (`bikelogservice/inbox.py`),
-  gleiche Ablage wie Pull, Grabsteine gelten. Doku `doc/LOGSERVICE.md` „Push“.
+  gleiche Ablage wie Pull, Grabsteine gelten; was er überschreibt, liegt einmal unter `<data>/replaced/`,
+  über `BIKELOG_INBOX_MAX_BYTES` holt er nicht. Doku `doc/LOGSERVICE.md` „Push“.
   **Der Upload-Link (`/s/<token>`) ist ein Geheimnis** (das Token ist der ganze Zugang): nie in
   Tests, Doku, Logs, Commits oder Chats -- nur erfundene Links (`https://cloud.example.com/s/AbC12`).
   Die Firmware zeigt ihn nur maskiert (`PushCore::maskUrl()`). Ist einer öffentlich geworden, zuerst
