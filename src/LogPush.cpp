@@ -4,8 +4,9 @@
  * Web interface (the page is linked from /wifi):
  *
  *   GET  /push           the page: target, credentials, state, buttons
- *   GET  /push/state     LogPushStatus as JSON (never the password)
- *   POST /push/config    enabled=0|1, url, user, secret (empty = keep), clear=1 (remove secret)
+ *   GET  /push/state     LogPushStatus as JSON (never the password; the URL masked, an upload link is a secret)
+ *   POST /push/config    enabled=0|1, url (empty = keep), user, secret (empty = keep), clear=1 (remove secret),
+ *                        clearurl=1 (remove the target and its secret)
  *   POST /push/now       upload now
  *   POST /push/test      create/check the target folder (MKCOL), report the HTTP answer
  *   POST /push/mark      record every file on the card as uploaded, without uploading
@@ -21,6 +22,7 @@
 #include <Preferences.h>
 #include <esp_heap_caps.h>
 #include <mbedtls/platform.h>
+#include <mbedtls/platform_util.h>
 #include "LogSessions.h"
 #include "NvsUtil.h"
 #include "ClockSync.h"
@@ -222,22 +224,31 @@ void LogPush::save() {
 	p.end();
 }
 
-LogPush::SaveResult LogPush::configure(bool enabled, const char* url, const char* user, const char* secret, bool clearSecret) {
+LogPush::SaveResult LogPush::configure(bool enabled, const char* url, const char* user, const char* secret, bool clearSecret, bool clearUrl) {
 	if (url[0] && !validUrl(url)) return SaveResult::BAD_URL;
 	if (strlen(user) > USER_MAX || strlen(secret) > SECRET_MAX) return SaveResult::TOO_LONG;
 	{
 		Lock lock(mtx);
 		cfg.version = BLOB_VERSION;
-		cfg.enabled = enabled && url[0];
-		strlcpy(cfg.url, url, sizeof(cfg.url));
-		strlcpy(cfg.user, user, sizeof(cfg.user));
+		// An empty URL keeps the stored one: the page never gets it back (maskUrl()). A different
+		// target takes its secret with it -- the old password must not go to a new server, and an
+		// account's app password is no share password -- so it is typed in again.
+		if (clearUrl) {
+			cfg.url[0] = 0;
+			cfg.secret[0] = 0;
+		} else if (url[0] && strcmp(url, cfg.url) != 0) {
+			strlcpy(cfg.url, url, sizeof(cfg.url));
+			cfg.secret[0] = 0;
+		}
+		cfg.enabled = enabled && cfg.url[0];
+		if (strcmp(user, MASKED) != 0) strlcpy(cfg.user, user, sizeof(cfg.user));		// MASKED: the page's stand-in for a user that is a token
 		if (clearSecret) cfg.secret[0] = 0;
 		else if (secret[0]) strlcpy(cfg.secret, secret, sizeof(cfg.secret));
 		save();
 	}
 	nextDue = 0;		// try the new target right away (after SETTLE_MS if just connected)
 	lastRunMs = 0;
-	bclog.logf(BCLogger::Log_Info, TAG, "Log push settings saved: %s", enabled && url[0] ? "on" : "off");
+	bclog.logf(BCLogger::Log_Info, TAG, "Log push settings saved: %s", cfg.enabled ? "on" : "off");
 	return SaveResult::OK;
 }
 
@@ -256,8 +267,8 @@ void LogPush::getStatus(LogPushStatus& out) {
 	out.configured = cfg.url[0] != 0;
 	out.hasSecret = cfg.secret[0] != 0;
 	out.running = running;
-	strlcpy(out.url, cfg.url, sizeof(out.url));
-	strlcpy(out.user, cfg.user, sizeof(out.user));
+	maskUrl(cfg.url, out.url, sizeof(out.url));
+	strlcpy(out.user, userIsSecret(cfg.url) ? MASKED : cfg.user, sizeof(out.user));
 	out.lastRunAgoS = lastRunMs ? (millis() - lastRunMs) / 1000 : 0;
 }
 
@@ -354,6 +365,13 @@ void LogPush::taskMain(void* p) {
 // ---------------------------------------------------------------------------
 
 namespace {
+
+// Overwrites on scope exit, on every return of run(); mbedtls_platform_zeroize() is not optimised away.
+struct Wipe {
+	void* p;
+	size_t n;
+	~Wipe() {mbedtls_platform_zeroize(p, n);}
+};
 
 // Reads the manifest; returns the number of lines (for the compaction).
 size_t loadManifest(Manifest& man) {
@@ -467,10 +485,12 @@ void LogPush::run(Mode m, bool manual) {
 		st.filesDone = st.filesTodo = st.bytesDone = st.bytesTodo = 0;
 		st.current[0] = 0;
 	}
+	Wipe wipeCfg{&c, sizeof(c)};
 	lastRunMs = millis();
 	if (m == Mode::PUSH) nextDue = lastRunMs + RETRY_MS;		// overwritten below on success
 	// A Nextcloud upload link instead of a WebDAV folder: no account, the token is the user.
 	char dropBase[URL_MAX + 1], token[TOKEN_MAX + 1], host[WifiCfg::HOSTNAME_MAX + 1];
+	Wipe wipeToken{token, sizeof(token)};
 	const bool drop = shareLink(c.url, dropBase, sizeof(dropBase), token, sizeof(token));
 	webserver.getHostname(host, sizeof(host));
 	const char* user = drop ? token : c.user;
@@ -715,6 +735,7 @@ takes pushed and pulled files alike.</p>
   <label><input type="checkbox" id="en"> upload automatically</label>
   <label for="url">Upload link or folder URL (WebDAV)</label>
   <input type="text" id="url" maxlength="200" placeholder="https://cloud.example.com/s/TOKEN">
+  <label><input type="checkbox" id="clrurl"> remove the target</label>
   <label for="user">User</label>
   <input type="text" id="user" maxlength="64" placeholder="empty for an upload link">
   <label for="pw">Password</label>
@@ -722,10 +743,13 @@ takes pushed and pulled files alike.</p>
   <label><input type="checkbox" id="clr"> remove the stored password</label>
   <div class="row"><input type="submit" value="Save"></div>
 </form>
+<p class="eyebrow"><b>The upload link is a secret</b> (whoever has it can write into the inbox), so the page never shows it:
+the field above stays empty and the stored target is only shown with its token masked. Empty = keep. A different
+link or folder removes the stored password, enter it again if there is one.</p>
 <p class="eyebrow">Simplest: a Nextcloud <b>upload link</b> (share a folder, "File drop"), e.g.
 <code>https://cloud.example.com/s/TOKEN</code> - user empty, password only if the share has one. The files
 arrive there flat as <code>DEVICE~DAY~FILE</code> (this device: <b id="host"></b>).<br>
-Or a WebDAV folder with an account: <code>https://CLOUD/remote.php/dav/files/USER/BikeLog-Inbox/DEVICE</code>
+Or a WebDAV folder with an account: <code>https://CLOUD/remote.php/dav/files/USER/Push-Inbox/DEVICE</code>
 plus user and app password (Settings, Security, "Devices &amp; sessions"); missing folders are created.<br>
 Or directly to the log service: <code>http://SERVER:8080/api/v1/devices/DEVICE/files</code>, user empty.<br>
 The log service files the sessions under the device BIKELOG_PULL_TARGETS maps the network name to.</p>
@@ -754,13 +778,13 @@ async function load(){
     if(s.manifest)d.push(s.manifest+' file(s) known as uploaded');
     $('detail').textContent=d.join(' · ')||' ';
     $('host').textContent=s.hostname;
-    if(!filled){filled=true;$('en').checked=s.enabled;$('url').value=s.url;$('user').value=s.user;
+    if(!filled){filled=true;$('en').checked=s.enabled;$('url').value='';$('url').placeholder=s.url||'https://cloud.example.com/s/TOKEN';$('user').value=s.user;
       $('pw').placeholder=s.hasSecret?'stored - leave empty to keep it':'not set';}
   }catch(e){$('status').textContent='No answer from the device';}
 }
 async function save(){
   if(await post('/push/config',{enabled:$('en').checked?1:0,url:$('url').value.trim(),user:$('user').value.trim(),
-      secret:$('pw').value,clear:$('clr').checked?1:0})){$('pw').value='';$('clr').checked=false;filled=false;load();}
+      secret:$('pw').value,clear:$('clr').checked?1:0,clearurl:$('clrurl').checked?1:0})){$('pw').value='';$('clr').checked=false;$('clrurl').checked=false;filled=false;load();}
 }
 async function act(u){if(await post(u))setTimeout(load,500);}
 function mark(){if(confirm('Record every file on the card as uploaded, without uploading it? Only new sessions will be uploaded then.'))act('/push/mark');}
@@ -780,7 +804,7 @@ void LogPush::registerRoutes() {
 		doc["enabled"] = s.enabled;
 		doc["configured"] = s.configured;
 		doc["running"] = s.running;
-		doc["url"] = s.url;
+		doc["url"] = s.url;			// masked
 		doc["user"] = s.user;
 		doc["hasSecret"] = s.hasSecret;
 		doc["state"] = s.state;
@@ -807,10 +831,10 @@ void LogPush::registerRoutes() {
 	server.on("/push/config", HTTP_POST, [this](AsyncWebServerRequest* request) {
 		const SaveResult r = configure(param(request, "enabled") == "1", param(request, "url").c_str(),
 		                               param(request, "user").c_str(), param(request, "secret").c_str(),
-		                               param(request, "clear") == "1");
+		                               param(request, "clear") == "1", param(request, "clearurl") == "1");
 		switch (r) {
 		case SaveResult::OK: request->send(200, "text/plain", "Saved"); break;
-		case SaveResult::BAD_URL: request->send(400, "text/plain", "The URL must start with http:// or https:// and contain no spaces, '?' or '#'"); break;
+		case SaveResult::BAD_URL: request->send(400, "text/plain", "The URL must start with http:// or https:// and contain no spaces, '?', '#', user:password@ or /public.php/ (use the /s/ upload link)"); break;
 		case SaveResult::TOO_LONG: request->send(400, "text/plain", "User or password too long"); break;
 		}
 	});

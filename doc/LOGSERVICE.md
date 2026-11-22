@@ -88,7 +88,7 @@ page `/push`, linked from the start page and from `/wifi`):
 | Target | URL | User / password |
 |---|---|---|
 | **Upload link** (simplest) | the share link of a folder shared as "File drop", `https://<cloud>/s/<token>` | empty / the share password, if it has one |
-| WebDAV folder with an account | `https://<cloud>/remote.php/dav/files/<user>/BikeLog-Inbox/<network name>` | Nextcloud user / an **app password** (Settings -> Security -> "Devices & sessions") of its own, revocable alone |
+| WebDAV folder with an account | `https://<cloud>/remote.php/dav/files/<user>/Push-Inbox/<network name>` | Nextcloud user / an **app password** (Settings -> Security -> "Devices & sessions") of its own, revocable alone |
 
 An upload link needs no account on the bike computer. The firmware turns it into its WebDAV side
 (`/public.php/webdav`, the token as user). A files drop takes nothing but `PUT` and keeps only the
@@ -102,6 +102,28 @@ an upload link it writes `<network name>~push-test.txt`, which the service delet
 not wait for the next round, *Mark all as uploaded* records what is on the card without
 uploading it -- for a card whose sessions the service already has by pull. The password is
 only taken from the form, never shown again or logged.
+
+**The upload link is a secret.** For a "File drop" the token in `https://<cloud>/s/<token>` is the
+whole login (it goes in as the WebDAV user, and there is usually no share password): whoever has the
+link can write into the inbox, and the service files what arrives under the device and day named in
+the file name, replacing a stored file whose content differs. So the link counts like a password:
+
+- It goes into the form on `/push` and nowhere else. The page, `/push/state` and `push status`
+  show it as `https://<cloud>/s/***`; the field stays empty, empty = keep, and a different link or
+  folder removes the stored password (type it in again). *Remove the target* clears both.
+  `…/public.php/…` and `user:password@host` are refused; they would put the token elsewhere.
+- Never in a test, a doc page, a log line, a commit or a chat: use made-up links (`https://cloud.example.com/s/AbC12`).
+  A real one in a public repository has to be revoked, rewriting the history does not help.
+
+Who needs what: the **bike computer** needs the link, the **service** needs the Nextcloud account
+(`BIKELOG_NEXTCLOUD_*`) and `BIKELOG_NEXTCLOUD_INBOX`, and does not know the link. Both mean the same
+folder, so a new link to the same folder changes nothing on the service.
+
+Setting up: share the inbox folder in Nextcloud as "File drop" -> copy the link -> `/push` on the
+bike computer: link into the field, *Save*, *Test target* (writes `<network name>~push-test.txt`).
+Changing or revoking: create the new link, enter it on every bike (`/push`, *Test target*), then
+delete the old share in Nextcloud. Keep `/bcpush.txt` on the card, or everything is uploaded again.
+Anyone in the bike computer's WiFi can still open `/push` and replace the target; the pages have no login.
 
 When: 20 s after every WiFi connect, then every 10 min while online (a ride ended with a long
 press shows up without a reconnect), 5 min after a failure. Only finished sessions, never
@@ -120,16 +142,30 @@ middle of a ride; it only sends finished sessions, a few hundred KB per ride.
 needs the Nextcloud login of the [sync](#nextcloud-sync) and the inbox folder:
 
 ```
-BIKELOG_NEXTCLOUD_INBOX=BikeLog-Inbox
+BIKELOG_NEXTCLOUD_INBOX=Push-Inbox
 ```
 
 `BIKELOG_NEXTCLOUD_INBOX` is the folder behind the upload link (or above the device folders),
 seen from the service's Nextcloud account. It looks into the inbox every `BIKELOG_INBOX_INTERVAL_S` (5 min), stores each file and then
 deletes it there; an emptied day folder goes once nothing has been written to it for an hour.
 The folder below the inbox is the network name of the bike computer; `BIKELOG_PULL_TARGETS` maps
-it to the device name (`pendler=TRGB-FL` files `BikeLog-Inbox/TRGB-FL/...` under `pendler`, the
+it to the device name (`pendler=TRGB-FL` files `Push-Inbox/TRGB-FL/...` under `pendler`, the
 same sessions as the pull of `TRGB-FL.local`), a name without a target is used as it is. By hand:
 `POST /api/v1/inbox` or `bikelogservice inbox`.
+
+Two folders on the service's Nextcloud account, easy to mix up (both relative to the root of that
+account, same app password):
+
+| | `BIKELOG_NEXTCLOUD_INBOX` | `BIKELOG_NEXTCLOUD_DIR` (default `BikeLog`) |
+|---|---|---|
+| Direction | **in**: bike computer -> Nextcloud -> service | **out**: service -> Nextcloud |
+| Content | raw session files; the service collects them and deletes them there | finished GPX of real rides, [sync](#nextcloud-sync) |
+| Read by the service | yes, every 5 min | never |
+| Upload link | **only this folder** is shared as "File drop" | none, nobody uploads there |
+
+Use clearly different names (`Push-Inbox` and `BikeLog` here). A missing or misspelled inbox folder
+goes unnoticed: the service reads a 404 as an empty list and reports no error. So after setting up,
+press *Test target* on `/push` and check that the test file is gone from the folder within 5 min.
 
 Without a Nextcloud the bike computer can also upload straight to the service, if it can reach it
 (VPN, port forwarding): folder URL `http://<server>:8080/api/v1/devices/<device>/files`, user

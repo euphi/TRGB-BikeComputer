@@ -19,7 +19,7 @@ static int failures = 0;
 #define CHECK(cond, ...) do { if (!(cond)) { failures++; printf("  FAIL %s:%d: ", __FILE__, __LINE__); printf(__VA_ARGS__); printf("\n"); } } while (0)
 
 static void testUrls() {
-	CHECK(validUrl("https://cloud.example.com/remote.php/dav/files/bike/BikeLog-Inbox/TRGB-FL"), "nextcloud");
+	CHECK(validUrl("https://cloud.example.com/remote.php/dav/files/bike/Push-Inbox/TRGB-FL"), "nextcloud");
 	CHECK(validUrl("http://192.168.0.5:8080/api/v1/devices/trgb/files"), "service");
 	CHECK(!validUrl("ftp://x/y"), "scheme");
 	CHECK(!validUrl("https://"), "no host");
@@ -49,6 +49,26 @@ static void testShareLinks() {
 	      && !strcmp(base, "https://h/cloud/public.php/webdav") && !strcmp(tok, "AbC12"), "index.php + subdir: %s", base);
 	CHECK(!shareLink("https://h/s/AbC12/download", base, sizeof(base), tok, sizeof(tok)), "more after token");
 	CHECK(!shareLink("https://h/remote.php/dav/files/u/In", base, sizeof(base), tok, sizeof(tok)), "dav url");
+	char shown[256];
+	maskUrl("https://cloud.example.org/s/AbC12", shown, sizeof(shown));
+	CHECK(!strcmp(shown, "https://cloud.example.org/s/***"), "mask link: %s", shown);
+	maskUrl("https://h/cloud/index.php/s/AbC12/", shown, sizeof(shown));
+	CHECK(!strcmp(shown, "https://h/cloud/index.php/s/***/"), "mask link, index.php, slash: %s", shown);
+	maskUrl("https://bike:Pw9@h/remote.php/dav/files/bike/In", shown, sizeof(shown));
+	CHECK(!strcmp(shown, "https://***@h/remote.php/dav/files/bike/In"), "mask userinfo: %s", shown);
+	maskUrl("https://h/public.php/dav/files/AbC12/sub", shown, sizeof(shown));
+	CHECK(!strcmp(shown, "https://h/public.php/dav/files/***/sub"), "mask dav path: %s", shown);
+	CHECK(userIsSecret("https://h/public.php/webdav") && !userIsSecret("https://h/remote.php/dav/files/bike/In") && !userIsSecret("https://h/s/AbC12"), "user is secret");
+	CHECK(!validUrl("https://bike:Pw9@h/x") && !validUrl("https://h/public.php/webdav") && !validUrl("https://h/public.php/dav/files/AbC12")
+	      && validUrl("https://h/s/AbC12") && validUrl("https://h/remote.php/dav/files/me@x.org/In"), "validUrl refuses userinfo and public.php");
+	maskUrl("https://h/remote.php/dav/files/bike/In", shown, sizeof(shown));
+	CHECK(!strcmp(shown, "https://h/remote.php/dav/files/bike/In"), "plain folder stays: %s", shown);
+	maskUrl("http://srv:8080/api/v1/devices/TRGB-BC/files", shown, sizeof(shown));
+	CHECK(!strcmp(shown, "http://srv:8080/api/v1/devices/TRGB-BC/files"), "service url stays: %s", shown);
+	maskUrl("https://h/s/AbC12", shown, 12);
+	CHECK(strlen(shown) == 11 && !strstr(shown, "AbC12"), "truncated: %s", shown);
+	maskUrl("gopher://x/s/AbC12", shown, sizeof(shown));
+	CHECK(!strcmp(shown, "***"), "no scheme: %s", shown);
 	CHECK(!shareLink("https://h/s/", base, sizeof(base), tok, sizeof(tok)), "no token");
 	char name[128];
 	CHECK(dropName("TRGB-BC", "20261008", "L_204725.bin", name, sizeof(name)) && !strcmp(name, "TRGB-BC~20261008~L_204725.bin"), "drop: %s", name);

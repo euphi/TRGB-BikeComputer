@@ -9,7 +9,7 @@
  * outside the home WiFi: whenever it is online it uploads every finished session file it has
  * not uploaded yet with a plain WebDAV PUT to
  *
- *   <base URL>/<day>/<name>          e.g. .../BikeLog-Inbox/TRGB-FL/20261018/L_143012.bin
+ *   <base URL>/<day>/<name>          e.g. .../Push-Inbox/TRGB-FL/20261018/L_143012.bin
  *   <base URL>/<name>                files directly in /BIKECOMP (old layout)
  *
  * -- the same relative paths the pull uses (/log/<day>/<name>). The base URL is a folder on a
@@ -45,7 +45,8 @@ struct Blob {
 };
 constexpr uint8_t BLOB_VERSION = 1;
 
-// http:// or https://, a host, no whitespace, quotes, '<>', query or fragment.
+// http:// or https://, a host, no whitespace, quotes, '<>', query or fragment, no "user:pw@" and
+// no "/public.php/" (a share token goes in as the /s/ link only, see maskUrl()).
 bool validUrl(const char* url);
 bool isHttps(const char* url);
 // A day directory the push takes: [A-Za-z0-9_]{1,16}, not the working directory "CUR".
@@ -67,6 +68,13 @@ bool parentUrl(const char* url, char* out, size_t len);
 // FilesDropPlugin), so uploads to it get a flat name: dropName().
 constexpr size_t TOKEN_MAX = 64;
 bool shareLink(const char* url, char* davBase, size_t baseLen, char* token, size_t tokenLen);
+// The URL as it may be shown (page, CLI, JSON): the token of an upload link and a "user:password@"
+// in front of the host become "***". The whole upload link is the secret (the token is the WebDAV
+// user, there often is no password), so nothing that leaves the device may carry it. Other URLs are
+// copied as they are (also "/public.php/dav/files/<token>"). Truncated if it does not fit `len`.
+void maskUrl(const char* url, char* out, size_t len);
+// The user of this URL is a share token too (".../public.php/webdav"): do not show it either.
+bool userIsSecret(const char* url);
 // "<host>~<day>~<name>" ("<host>~~<name>" for a file directly in /BIKECOMP); the log service
 // splits it again (inbox.py). false if it does not fit.
 bool dropName(const char* host, const char* day, const char* name, char* out, size_t len);

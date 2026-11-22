@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <initializer_list>
 
 namespace PushCore {
 
@@ -27,6 +28,9 @@ bool validUrl(const char* url) {
 	if (len > URL_MAX) return false;
 	const char* host = afterScheme(url);
 	if (!host || !*host || *host == '/') return false;
+	const char* slash = strchr(host, '/');
+	if (memchr(host, '@', slash ? static_cast<size_t>(slash - host) : strlen(host))) return false;	// user:password@ ends up in logs and pages
+	if (strstr(host, "/public.php/")) return false;		// the share token as user or in the path: use the /s/ link
 	for (const char* p = url; *p; p++) {
 		const unsigned char c = static_cast<unsigned char>(*p);
 		if (c <= ' ' || c >= 0x7f || c == '"' || c == '\'' || c == '<' || c == '>' || c == '?' || c == '#' || c == '\\') return false;
@@ -118,6 +122,41 @@ bool shareLink(const char* url, char* davBase, size_t baseLen, char* token, size
 	memcpy(token, tok, n);
 	token[n] = 0;
 	return true;
+}
+
+// Share token of a stored URL: after "/s/" or "/public.php/dav/files/" (validUrl() refuses the
+// second one and a userinfo now, but an older setting may still have them).
+static const char* tokenAt(const char* rest, size_t& n) {
+	for (const char* marker : {"/public.php/dav/files/", "/s/"}) {
+		if (const char* m = strstr(rest, marker)) {
+			const char* t = m + strlen(marker);
+			n = 0;
+			while (isalnum(static_cast<unsigned char>(t[n]))) n++;
+			if (n) return t;
+		}
+	}
+	return nullptr;
+}
+
+void maskUrl(const char* url, char* out, size_t len) {
+	if (!len) return;
+	const char* host = afterScheme(url);
+	if (!host) {
+		snprintf(out, len, "***");			// not a URL we accept: show nothing of it
+		return;
+	}
+	const char* slash = strchr(host, '/');
+	const char* at = static_cast<const char*>(memchr(host, '@', slash ? static_cast<size_t>(slash - host) : strlen(host)));
+	const char* rest = at ? at + 1 : host;
+	size_t n = 0;
+	const char* tok = tokenAt(rest, n);
+	// scheme:// [***@] host/path [***] remainder
+	snprintf(out, len, "%.*s%s%.*s%s%s", static_cast<int>(host - url), url, at ? "***@" : "",
+	         static_cast<int>(tok ? tok - rest : strlen(rest)), rest, tok ? "***" : "", tok ? tok + n : "");
+}
+
+bool userIsSecret(const char* url) {
+	return url && strstr(url, "/public.php/") != nullptr;		// there the Basic auth user is the share token
 }
 
 bool dropName(const char* host, const char* day, const char* name, char* out, size_t len) {

@@ -20,8 +20,9 @@
  * a run is going, mbedTLS allocates from PSRAM (setTlsPsram()), the task stack (9 KB) is in PSRAM
  * as well, and a run only starts with MIN_FREE_INTERNAL free.
  *
- * Secrets: the password/token only comes in through the POST body of /push/config, never goes
- * back out (the page shows "set") and is never logged.
+ * Secrets: the password and the upload link only come in through the POST body of /push/config,
+ * never go back out (the page shows "set", status and CLI show the link with its token masked,
+ * PushCore::maskUrl()) and are never logged. run() overwrites its copy when it ends.
  */
 
 #pragma once
@@ -50,6 +51,7 @@ struct LogPushStatus {
 
 class LogPush {
 public:
+	static constexpr const char* MASKED = "***";		// shown for a secret user; sent back = keep
 	static constexpr const char* MANIFEST_PATH = "/bcpush.txt";
 	static constexpr uint32_t SETTLE_MS = 20 * 1000;
 	static constexpr uint32_t PERIOD_MS = 10 * 60 * 1000;
@@ -73,7 +75,7 @@ public:
 
 	// /push/config. `secret` empty = keep the stored one, unless clearSecret.
 	enum class SaveResult : uint8_t {OK, BAD_URL, TOO_LONG};
-	SaveResult configure(bool enabled, const char* url, const char* user, const char* secret, bool clearSecret);
+	SaveResult configure(bool enabled, const char* url, const char* user, const char* secret, bool clearSecret, bool clearUrl = false);
 	void setEnabled(bool on);
 
 private:

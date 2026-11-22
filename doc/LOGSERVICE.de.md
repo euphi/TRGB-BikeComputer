@@ -91,7 +91,7 @@ Seite `/push`, verlinkt von der Startseite und von `/wifi`):
 | Ziel | URL | User / Password |
 |---|---|---|
 | **Upload-Link** (am einfachsten) | der Freigabe-Link eines als „Dateien ablegen“ (File drop) geteilten Ordners, `https://<cloud>/s/<token>` | leer / das Freigabe-Passwort, falls eins gesetzt ist |
-| WebDAV-Ordner mit Konto | `https://<cloud>/remote.php/dav/files/<nutzer>/BikeLog-Inbox/<netzwerkname>` | Nextcloud-Nutzer / ein eigenes **App-Passwort** (Einstellungen -> Sicherheit -> „Geräte & Sitzungen“), allein widerrufbar |
+| WebDAV-Ordner mit Konto | `https://<cloud>/remote.php/dav/files/<nutzer>/Push-Inbox/<netzwerkname>` | Nextcloud-Nutzer / ein eigenes **App-Passwort** (Einstellungen -> Sicherheit -> „Geräte & Sitzungen“), allein widerrufbar |
 
 Ein Upload-Link braucht kein Konto auf dem Fahrradcomputer. Die Firmware macht daraus die
 WebDAV-Seite (`/public.php/webdav`, der Token als Nutzer). Ein File Drop nimmt nur `PUT` und behält
@@ -106,6 +106,32 @@ der Dienst löscht), *Upload now*
 wartet nicht auf die nächste Runde, *Mark all as uploaded* trägt ein, was auf der Karte liegt,
 ohne es hochzuladen -- für eine Karte, deren Sitzungen der Dienst schon per Pull hat. Das
 Passwort kommt nur über das Formular herein, wird nie wieder angezeigt und nie geloggt.
+
+**Der Upload-Link ist ein Geheimnis.** Bei einem „File drop“ ist das Token in `https://<cloud>/s/<token>`
+der ganze Zugang (es geht als WebDAV-Nutzer hinein, ein Freigabe-Passwort gibt es meist nicht): Wer
+den Link hat, kann in den Eingang schreiben, und der Dienst legt ab, was ankommt -- Gerät und Tag
+stehen im Dateinamen, eine gespeicherte Datei mit anderem Inhalt wird ersetzt. Der Link zählt also
+wie ein Passwort:
+
+- Er gehört in das Formular auf `/push` und sonst nirgends hin. Die Seite, `/push/state` und
+  `push status` zeigen ihn als `https://<cloud>/s/***`; das Feld bleibt leer, leer = behalten, und
+  ein anderer Link oder Ordner entfernt das gespeicherte Passwort (neu eintippen). *Remove the target*
+  löscht beides. `…/public.php/…` und `nutzer:passwort@host` werden abgelehnt, sie würden das Token
+  an anderer Stelle ablegen.
+- Nie in einem Test, einer Doku-Seite, einer Logzeile, einem Commit oder Chat: nur erfundene Links
+  (`https://cloud.example.com/s/AbC12`). Ein echter in einem öffentlichen Repository muss widerrufen
+  werden; die Historie umzuschreiben hilft nicht.
+
+Wer braucht was: der **Fahrradcomputer** braucht den Link, der **Dienst** das Nextcloud-Konto
+(`BIKELOG_NEXTCLOUD_*`) und `BIKELOG_NEXTCLOUD_INBOX` und kennt den Link nicht. Beide meinen
+denselben Ordner, ein neuer Link auf denselben Ordner ändert am Dienst nichts.
+
+Einrichten: den Eingangsordner in Nextcloud als „File drop“ teilen -> Link kopieren -> `/push` am
+Fahrradcomputer: Link ins Feld, *Save*, *Test target* (schreibt `<netzwerkname>~push-test.txt`).
+Wechseln oder widerrufen: neuen Link anlegen, an jedem Rad eintragen (`/push`, *Test target*), dann
+die alte Freigabe in Nextcloud löschen. `/bcpush.txt` auf der Karte behalten, sonst wird alles neu
+hochgeladen. Wer im WLAN des Fahrradcomputers ist, kann `/push` weiterhin öffnen und das Ziel
+ersetzen; die Seiten haben keine Anmeldung.
 
 Wann: 20 s nach jedem WLAN-Connect, danach alle 10 min, solange er online ist (eine mit langem
 Druck beendete Fahrt erscheint ohne Reconnect), nach einem Fehler nach 5 min. Nur fertige
@@ -126,7 +152,7 @@ pro Fahrt.
 braucht den Nextcloud-Zugang des [Syncs](#nextcloud-sync) und den Eingangsordner:
 
 ```
-BIKELOG_NEXTCLOUD_INBOX=BikeLog-Inbox
+BIKELOG_NEXTCLOUD_INBOX=Push-Inbox
 ```
 
 `BIKELOG_NEXTCLOUD_INBOX` ist der Ordner hinter dem Upload-Link (bzw. über den Geräteordnern),
@@ -134,9 +160,24 @@ vom Nextcloud-Konto des Dienstes aus gesehen. Er schaut alle `BIKELOG_INBOX_INTE
 sie dort; ein geleerter Tagesordner verschwindet, sobald eine Stunde nichts mehr hineingeschrieben
 wurde. Der Ordner unter dem Eingang ist der Netzwerkname des Fahrradcomputers;
 `BIKELOG_PULL_TARGETS` ordnet ihn dem Gerätenamen zu (`pendler=TRGB-FL` legt
-`BikeLog-Inbox/TRGB-FL/...` unter `pendler` ab, dieselben Sitzungen wie der Pull von
+`Push-Inbox/TRGB-FL/...` unter `pendler` ab, dieselben Sitzungen wie der Pull von
 `TRGB-FL.local`), ein Name ohne Ziel wird so übernommen. Von Hand: `POST /api/v1/inbox` oder
 `bikelogservice inbox`.
+
+Zwei Ordner im Nextcloud-Konto des Dienstes, leicht zu verwechseln (beide relativ zur Wurzel dieses
+Kontos, dasselbe App-Passwort):
+
+| | `BIKELOG_NEXTCLOUD_INBOX` | `BIKELOG_NEXTCLOUD_DIR` (Standard `BikeLog`) |
+|---|---|---|
+| Richtung | **Eingang**: Fahrradcomputer -> Nextcloud -> Dienst | **Ausgang**: Dienst -> Nextcloud |
+| Inhalt | rohe Sitzungsdateien; der Dienst holt sie ab und löscht sie dort | fertige GPX echter Fahrten, [Sync](#nextcloud-sync) |
+| Vom Dienst gelesen | ja, alle 5 min | nie |
+| Upload-Link | **nur dieser Ordner** wird als „File drop“ geteilt | keiner, dorthin lädt niemand hoch |
+
+Die Namen deutlich verschieden wählen (hier `Push-Inbox` und `BikeLog`). Ein fehlender oder falsch
+geschriebener Eingangsordner fällt nicht auf: Der Dienst liest ein 404 als leere Liste und meldet
+keinen Fehler. Nach dem Einrichten deshalb auf `/push` *Test target* drücken und prüfen, dass die
+Testdatei innerhalb von 5 min aus dem Ordner verschwindet.
 
 Ohne Nextcloud kann der Fahrradcomputer auch direkt zum Dienst hochladen, wenn er ihn erreicht
 (VPN, Portfreigabe): Folder URL `http://<server>:8080/api/v1/devices/<gerät>/files`, User leer,

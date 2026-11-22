@@ -365,6 +365,15 @@ Wert in "the comparison reduces to ...".
   schreiben die URL bzw. die Befehlszeile auf die SD-Karte, die der Log-Dienst hochlädt.
   `/wifi/add` und `/wifi/ap` nehmen deshalb POST-Bodies, und `SerialConsole::run()` loggt
   `wifi add|apset` ohne Argumente. Alles Neue, das ein Geheimnis verarbeitet, braucht dasselbe.
+- **Ein Nextcloud-Upload-Link (Log-Push) ist ein Geheimnis, obwohl er kein Passwort hat.** Das Token
+  in `/s/<token>` ist der ganze Zugang. `LogPush` gibt die URL deshalb nie unmaskiert heraus
+  (`/push/state`, `push status`: `PushCore::maskUrl()`), behält bei leerem URL-Feld die gespeicherte,
+  löscht bei einem anderen Ziel das gespeicherte Passwort und lehnt `nutzer:pw@` und `/public.php/` in
+  der URL ab. Tests, Doku und Chats bekommen nur erfundene Links; ein echter, der in einem öffentlichen
+  Repository landet, muss widerrufen werden (2026-11, er stand im Host-Test). Ein **Core-Dump kann ihn
+  trotzdem enthalten**: `run()` arbeitet mit einer Kopie auf dem Task-Stack und überschreibt sie am Ende,
+  ein Absturz mitten im Lauf wird aber mit ihr gedumpt, und `/debug/coredump.elf` ist für alle im WLAN
+  offen. Einen Dump nicht ungesehen weitergeben.
 - **Der Hotspot kostet ~14 KB internen Heap** (AP + STA, DNS-Task, Clients). Im Leerlauf
   bleiben ~26 KB; mit einem angeschlossenen Handy drückte `/debug/ui/snap` (Screenshot über
   HTTP) das Minimum auf 3,8 KB (2026-10-03). Keine Screenshots über den Hotspot; normale Seiten

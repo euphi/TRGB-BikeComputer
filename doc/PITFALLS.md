@@ -335,6 +335,14 @@ reports the real value in "the comparison reduces to ...".
   URL / the command line to the SD card, which the log service uploads. `/wifi/add` and
   `/wifi/ap` therefore take POST bodies, and `SerialConsole::run()` logs `wifi add|apset`
   without its arguments. Anything new that handles a secret needs the same.
+- **A Nextcloud upload link (log push) is a secret, although it has no password.** The token in
+  `/s/<token>` is the whole login. `LogPush` therefore never sends the URL out unmasked (`/push/state`,
+  `push status`: `PushCore::maskUrl()`), keeps an empty URL field as "keep", drops the stored password
+  when the target changes, and refuses `user:pw@` and `/public.php/` in the URL. Tests, docs and chats get
+  made-up links only; a real one that reaches a public repository must be revoked (2026-11, it was in the
+  host test). A **core dump can still contain it**: `run()` works on a copy on the task stack and overwrites
+  it when it ends, but a crash in the middle of a run is dumped with it, and `/debug/coredump.elf` is
+  open to everyone in the WiFi. Don't pass a dump on without looking.
 - **The hotspot costs ~14 KB of internal heap** (AP + STA mode, DNS task, clients). Idle that
   leaves ~26 KB; with a phone attached, `/debug/ui/snap` (screenshot over HTTP) took the
   minimum down to 3.8 KB (2026-10-03). Don't take screenshots over the hotspot; normal pages
