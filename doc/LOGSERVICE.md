@@ -382,6 +382,7 @@ OpenStreetMap, the same ones as overlays in BRouter-Web:
 - **Zoom tiles**: the same for the map tiles of the zoom on screen: zoomed out the tiles are
   large (zoom 10 ≈ 25 km, zoom 8 ≈ 100 km), zoomed in small, down to zoom 17. From there on
   the layer shows squadrats: at 100 m and less GPS scatter would decide what counts as visited.
+  The fill is paler than in the other layers, a tile here covers a large part of the screen.
 - **Heatmap**: all rides summed up, in cyan like the camper's heatmap. It counts rides per pixel,
   not points; the more often a way was ridden, the stronger.
 

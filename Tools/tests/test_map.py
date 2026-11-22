@@ -282,7 +282,7 @@ def test_zoom_layer_counts_the_tiles_of_the_zoom_shown(settings):
     for z in range(3, 18):
         assert state.stats_at(z).tiles == explorer.tiles_of(runs, z), z
         tile = _tile_at(z)
-        expected = explorer.visited_tile(state.stats_at(z), *tile)
+        expected = explorer.visited_tile(state.stats_at(z), *tile, faint=True)
         assert store.tile("zoom", *tile)[0] == expected, z
     tile = _tile_at(19)                                     # no finer than the squadrats
     assert store.tile("zoom", *tile)[0] == store.tile("squadrats", *tile)[0]

@@ -662,7 +662,7 @@ class MapStore:
     def _draw_visited(self, state: MapState, key: tuple) -> bytes:
         layer, z, x, y, _ = key
         zoom = min(z, ZOOM_TILES_MAX) if layer == "zoom" else LAYERS[layer]
-        png = explorer.visited_tile(state.stats_at(zoom), z, x, y) or explorer.EMPTY_PNG
+        png = explorer.visited_tile(state.stats_at(zoom), z, x, y, faint=layer == "zoom") or explorer.EMPTY_PNG
         self._remember(key, png)
         return png
 

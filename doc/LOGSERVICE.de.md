@@ -396,6 +396,7 @@ Ebenen über OpenStreetMap, dieselben als Overlay in BRouter-Web:
 - **Zoom-Kacheln**: dasselbe für die Kartenkacheln des angezeigten Zooms: herausgezoomt groß
   (Zoom 10 ≈ 25 km, Zoom 8 ≈ 100 km), hineingezoomt klein, bis Zoom 17. Ab dort zeigt die Ebene
   Squadrats: Bei 100 m und weniger entschiede die GPS-Streuung, was als besucht gilt.
+  Die Füllung ist blasser als in den anderen Ebenen, hier deckt eine Kachel viel vom Bildschirm ab.
 - **Heatmap**: alle Fahrten aufsummiert, in Cyan wie die Heatmap des Campers. Gezählt werden
   Fahrten pro Pixel, nicht Punkte; je öfter ein Weg gefahren wurde, desto kräftiger.
 

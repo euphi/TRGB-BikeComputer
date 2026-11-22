@@ -362,9 +362,10 @@ def _fill(px: bytearray, x0: int, y0: int, x1: int, y1: int, value: int) -> None
         px[y * TILE_PX + x0:y * TILE_PX + x1] = row
 
 
-def visited_tile(stats: TileStats, z: int, tx: int, ty: int) -> bytes | None:
+def visited_tile(stats: TileStats, z: int, tx: int, ty: int, faint: bool = False) -> bytes | None:
     """The overlay tile (z, tx, ty) showing stats' tiles: visited, cluster and max cluster
-    filled, the grid once a tile is 24 px wide, the max square outlined. None = empty."""
+    filled, the grid once a tile is 24 px wide, the max square outlined. None = empty.
+    faint: the pale fill also at the tiles' own zoom (a layer where each fills the map tile)."""
     scale = TILE_PX * 2.0 ** (z - stats.zoom)          # pixels per visited tile
     ox, oy = tx * TILE_PX, ty * TILE_PX
     # the visited tiles under this map tile
@@ -418,7 +419,7 @@ def visited_tile(stats: TileStats, z: int, tx: int, ty: int) -> bytes | None:
             _fill(px, x0, y0, x0 + w, y1, 5)
             _fill(px, x1 - w, y0, x1, y1, 5)
             drawn = True
-    return png(px, VISITED_PALETTE_CLOSE if z > stats.zoom else VISITED_PALETTE) if drawn else None
+    return png(px, VISITED_PALETTE_CLOSE if faint or z > stats.zoom else VISITED_PALETTE) if drawn else None
 
 
 # --- overlay: heatmap -------------------------------------------------------------------------
