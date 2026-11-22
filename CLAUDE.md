@@ -208,7 +208,8 @@ Mobilfunk); danach das Netz mit `cmd wifi forget-network <id>` wieder vergessen.
   Pillow), Speicher `bikelogservice/maptracks.py` (`<data>/map/`, Quellen Fahrt/Upload/Komoot,
   Doppelte über die Zeit, `MAP_VERSION`). Gezeichnet wird über `explorer.HeatIndex` und nur im Thread
   `bikelog-tiles`; Heatmap bis z14 liegt in `heat-cache.sqlite` (andere Pixel: `HEAT_VERSION` erhöhen). Handy-Aufzeichnungen: `bikelog/tripmode.py` trennt Rad
-  von zu Fuß/Auto/Bahn. Tests `tests/test_explorer.py`, `test_tripmode.py`, `test_map.py`.
+  von zu Fuß/Auto/Bahn. Zeitraum (`from`/`to`): `MapState.period()`, Regler für `/map` und BRouter-Web ein
+  Skript in `bikelogservice/timefilter.py`. Tests `tests/test_explorer.py`, `test_tripmode.py`, `test_map.py`.
 - GPX-Import (`bikelog/gpximport.py`, `importer.py`): Sitzungen des Geräts `import`, nie
   exportiert; optional als frühere Teilnahme eines Ziels (`Event.participations`).
 

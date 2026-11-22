@@ -1552,7 +1552,8 @@ const osm=L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:
 const topo=L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',{maxZoom:17,
  attribution:'&copy; OpenStreetMap, SRTM | &copy; <a href="https://opentopomap.org">OpenTopoMap</a>'});
 const period=window.BikeLogPeriod;
-if(period)period.attach(L,map,{always:true,change:()=>{figures();upd()}});
+// wide: up by the zoom buttons, in sight without scrolling; narrow: out of the layer list's way
+if(period)period.attach(L,map,{always:true,position:innerWidth<700?'bottomleft':'topleft',change:()=>{figures();upd()}});
 const over={};const keep=JSON.parse(localStorage.getItem('bikelog.map.layers')||'["BikeLog Kacheln","BikeLog Heatmap"]');
 for(const [id,name] of cfg.layers){over[name]=L.tileLayer('/api/v1/map/tiles/'+id+'/{z}/{x}/{y}.png?r='+cfg.revision,
  {maxZoom:20,zIndex:id=='heat'?3:id=='visited'?1:2});if(keep.includes(name))over[name].addTo(map)}
@@ -1702,11 +1703,11 @@ def map_page(summary: dict, tracks: list, dups: dict, planner_url: str | None = 
     body = f"""<h1>Karte</h1>
 <p class="mut">Wo du schon warst: besuchte Kacheln (Zoom 14 wie VeloViewer/StatsHunters, Squadrats auf Zoom 17,
 Zoom-Kacheln wachsen beim Herauszoomen mit, höchstens so fein wie Squadrats)
-und die Heatmap aller Fahrten, auf Wunsch nur aus einem Zeitraum (unten links in der Karte).
+und die Heatmap aller Fahrten, auf Wunsch nur aus einem Zeitraum (Knopf „Zeitraum“ in der Karte).
 Dieselben Ebenen gibt es als Overlay in BRouter-Web.</p>
 {note}
 {_map_tiles(summary)}
-<p>{plan}<span class="mut">Ebenen oben rechts, Zeitraum unten links in der Karte.<span id="period-note"></span></span></p>
+<p>{plan}<span class="mut">Ebenen oben rechts, Zeitraum links in der Karte.<span id="period-note"></span></span></p>
 <div id="map" data-cfg="{escape(_json.dumps(cfg))}"></div>
 {legend}
 <h2>GPX hochladen</h2>

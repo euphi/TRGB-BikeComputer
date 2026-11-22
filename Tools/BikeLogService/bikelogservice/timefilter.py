@@ -5,8 +5,9 @@ brouter-web needs no patch and no rebuild). It puts a control on the map (button
 and end in months, two date fields for exact days, presets) and appends from/to to the URL of
 every BikeLog tile, nothing else.
 
-  window.BikeLogPeriod.attach(L, map, {always, change})   the /map page calls it; in BRouter-Web
-                                                          the script finds the map itself
+  window.BikeLogPeriod.attach(L, map, options)            the /map page calls it ({always, change,
+                                                          position}); in BRouter-Web the script
+                                                          finds the map itself
   window.BikeLogPeriod.query()                            "from=...&to=...", "" = all rides
   window.BikeLogPeriod.link()                             query for a link to the other map
 
@@ -115,7 +116,7 @@ function presets() {
 
 var CSS = [
   '.blp{background:#161B1F;color:#E7E2D6;border:1.5px solid #3A362E;border-radius:14px;',
-  ' font:13px/1.4 "IBM Plex Sans",system-ui,sans-serif;max-width:calc(100vw - 24px);cursor:default}',
+  ' font:13px/1.4 "IBM Plex Sans",system-ui,sans-serif;max-width:calc(100vw - 64px);cursor:default}',
   '.blp [hidden],.blp[hidden]{display:none!important}',
   '.blp button.blp-head{display:block;width:100%;margin:0;padding:8px 14px;border:0;border-radius:12px;',
   ' background:none;color:inherit;font:inherit;text-align:left;white-space:nowrap;cursor:pointer;box-shadow:none}',
@@ -252,7 +253,7 @@ function control(L, map, options) {
     box.hidden = !any;
   }
   show();
-  var Control = L.Control.extend({options: {position: 'bottomleft'}, onAdd: function () { return box; }});
+  var Control = L.Control.extend({options: {position: options.position || 'bottomright'}, onAdd: function () { return box; }});
   new Control().addTo(map);
   visible();
   map.on('layeradd layerremove', function () { setTimeout(visible, 0); });

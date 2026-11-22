@@ -414,6 +414,14 @@ Ebenen über OpenStreetMap, dieselben als Overlay in BRouter-Web:
 - **Heatmap**: alle Fahrten aufsummiert, in Cyan wie die Heatmap des Campers. Gezählt werden
   Fahrten pro Pixel, nicht Punkte; je öfter ein Weg gefahren wurde, desto kräftiger.
 
+**Zeitraum:** Der Knopf „Zeitraum“ in der Karte schränkt alle vier Ebenen (und die Kennzahlen über
+der Karte) auf die Fahrten eines Zeitraums ein: ein Schieber für Beginn und Ende in Monaten, zwei
+Datumsfelder für genaue Tage (beide eingeschlossen) und Vorgaben (letzte 30 Tage, letzte 12 Monate,
+jedes Jahr). Ein offenes Ende nimmt neue Fahrten mit. Eine Fahrt gehört zu dem Tag, an dem sie
+begann (Ortszeit des Servers), auch über Mitternacht und mit allen ihren Aufzeichnungen; ein Track
+ohne Zeit erscheint nur ohne Zeitraum. Der Browser merkt sich den Zeitraum, „In BRouter planen“
+nimmt ihn mit. Die „neuen Kacheln“ einer geplanten Strecke zählen immer gegen alle Fahrten.
+
 Eine Kachel zählt, wenn eine Strecke zwischen zwei Punkten sie kreuzt. Ein Abschnitt über
 2 km ohne Punkt (Tunnel, Zug, GPS weg) zählt nicht. Die Seite zeigt die Kennzahlen, „In BRouter
 planen“ öffnet BRouter-Web an derselben Stelle mit denselben Ebenen (`BIKELOG_PLANNER_URL`). Die
@@ -461,7 +469,16 @@ BR.conf.overlays = {
     'BikeLog Zoom-Kacheln': bikelogTiles + 'zoom/{z}/{x}/{y}.png',
     'BikeLog Heatmap': bikelogTiles + 'heat/{z}/{x}/{y}.png',
 };
+// der Zeitraum-Regler (optional)
+var bikelogPeriod = document.createElement('script');
+bikelogPeriod.src = bikelogTiles.replace(/tiles\/$/, 'timefilter.js');
+document.head.appendChild(bikelogPeriod);
 ```
+
+Die letzten drei Zeilen bringen den Zeitraum-Regler nach BRouter-Web, ohne Patch und ohne Neubau: Das
+Skript ([`timefilter.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/BikeLogService/bikelogservice/timefilter.py))
+zeigt den Knopf unten rechts, solange ein BikeLog-Overlay an ist, und hängt `from`/`to` an dessen
+Kachel-URLs. Ein Skript kann jede Webseite laden, darum steht von den Fahrten nur der Monat der ersten darin.
 
 Die Kacheln (256 px, PNG mit Palette) zeichnet der Dienst in reinem Python und in einem einzigen
 Thread und hält die letzten 4000 im Speicher. Ein Index je Zoom weiß, welche Streckenstücke in
@@ -469,7 +486,9 @@ welcher Kachel liegen, eine leere Kachel kostet also nichts. Heatmap-Kacheln bis
 er außerdem im Hintergrund voraus und legt sie in `<data>/map/heat-cache.sqlite` ab (rund 10 MB
 bei 277 Fahrten, darf gelöscht werden): Das erste Füllen dauert bis zu einer Minute, eine neue
 Fahrt lässt nur die Kacheln neu zeichnen, durch die sie führt. Nach einem Neustart braucht der
-Dienst ein paar Sekunden, um die Tracks zu lesen. Der ETag ist der Stand der Track-Sammlung,
+Dienst ein paar Sekunden, um die Tracks zu lesen. Ein Zeitraum zeichnet aus demselben Index und
+teilt sich jede gespeicherte Heatmap-Kachel, die er nicht verändert; seine eigenen bleiben nur im
+Speicher. Der ETag ist der Stand der Track-Sammlung (oder des Anteils im Zeitraum),
 ändert sich also mit jeder neuen Fahrt; stimmt er, wird ohne Zeichnen geantwortet. Ändern sich
 die Pixel einer Heatmap-Kachel, `explorer.HEAT_VERSION` erhöhen. Ändert sich, wie Tracks gelesen oder
 ausgedünnt werden, `MAP_VERSION` erhöhen: Der Dienst liest dann alle Tracks beim Start neu.
@@ -803,8 +822,9 @@ eines bestehenden Ziels beibehalten, die gespeicherten Sitzungen liegen darunter
 | `GET` | `/api/v1/trailbridge/route` | die für TrailBridge markierte Strecke, siehe [oben](#strecken-fur-trailbridge) |
 | `GET` | `/api/v1/trailbridge/routes/{id}.gpx` | ihre Datei, für die App |
 | `GET` | `/map` | Karte mit besuchten Kacheln und Heatmap (HTML) |
-| `GET` | `/api/v1/map` | Kennzahlen (Kacheln, Cluster, Max Square, Squadrats), Tracks je Quelle, Stand des Komoot-Imports |
-| `GET` | `/api/v1/map/tiles/{visited\|squadrats\|heat}/{z}/{x}/{y}.png` | Overlay-Kachel (XYZ wie OSM) |
+| `GET` | `/api/v1/map` | Kennzahlen (Kacheln, Cluster, Max Square, Squadrats), Tracks je Quelle, Stand des Komoot-Imports; `from`/`to` (`JJJJ-MM-TT`, beide eingeschlossen, jedes optional): aus diesem Zeitraum |
+| `GET` | `/api/v1/map/tiles/{visited\|squadrats\|zoom\|heat}/{z}/{x}/{y}.png` | Overlay-Kachel (XYZ wie OSM); `from`/`to` wie oben |
+| `GET` | `/api/v1/map/timefilter.js` | der Zeitraum-Regler als Skript, für `/map` und BRouter-Web |
 | `GET`/`PUT` | `/api/v1/map/tracks` | Tracks der Karte (mit `duplicate_of`) / GPX, `.gpx.gz` oder ZIP hochladen (`filename`; `mixed=true` mit `track`, `name`: gemischte Aufzeichnung, nur Radfahrten) |
 | `DELETE` | `/api/v1/map/tracks/{id}` | hochgeladenen oder importierten Track löschen (BikeLog-Fahrten: 409) |
 | `POST` | `/api/v1/map/komoot` | Komoot-Import starten (`all_sports=true`: auch Wandern usw.) |

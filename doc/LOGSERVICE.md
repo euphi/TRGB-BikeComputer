@@ -400,6 +400,14 @@ OpenStreetMap, the same ones as overlays in BRouter-Web:
 - **Heatmap**: all rides summed up, in cyan like the camper's heatmap. It counts rides per pixel,
   not points; the more often a way was ridden, the stronger.
 
+**Period:** the button "Zeitraum" in the map restricts all four layers (and the figures above
+the map) to the rides of a period: a slider for start and end in months, two date fields for
+exact days (both included) and presets (last 30 days, last 12 months, each year). An open end
+follows new rides. A ride belongs to the day it began (local time of the server), also past
+midnight and with all its recordings; a track without a time shows only without a period. The
+browser remembers the period, "In BRouter planen" takes it along. A planned route's "new
+tiles" always count against all rides.
+
 A tile counts when the line between two points crosses it. A stretch of more than 2 km without
 a point (tunnel, train, GPS lost) does not count. The page shows the figures; "In BRouter
 planen" opens BRouter-Web at the same spot with the same layers (`BIKELOG_PLANNER_URL`). A
@@ -444,15 +452,26 @@ BR.conf.overlays = {
     'BikeLog Zoom-Kacheln': bikelogTiles + 'zoom/{z}/{x}/{y}.png',
     'BikeLog Heatmap': bikelogTiles + 'heat/{z}/{x}/{y}.png',
 };
+// the period control (optional)
+var bikelogPeriod = document.createElement('script');
+bikelogPeriod.src = bikelogTiles.replace(/tiles\/$/, 'timefilter.js');
+document.head.appendChild(bikelogPeriod);
 ```
+
+The last three lines bring the period control into BRouter-Web, without patch or rebuild: the
+script ([`timefilter.py`](https://github.com/euphi/TRGB-BikeComputer/blob/main/Tools/BikeLogService/bikelogservice/timefilter.py))
+shows the button at the bottom right while a BikeLog overlay is on and adds `from`/`to` to its tile
+URLs. Any web page can load a script, so it holds nothing of the rides but the month of the first one.
 
 The service draws the tiles (256 px, palette PNG) in plain Python and in a single thread, and
 keeps the last 4000 in memory. An index per zoom knows which pieces of track lie in which tile,
 so an empty tile costs nothing. Heat tiles up to zoom 14 are also drawn ahead in the background
 and kept in `<data>/map/heat-cache.sqlite` (about 10 MB with 277 rides, may be deleted): the
 first fill takes up to a minute, a new ride only redraws the tiles it runs through. After a
-restart the service needs a few seconds to read the tracks. The ETag is the state of the track
-collection, so it changes with every new ride; a matching one is answered without drawing.
+restart the service needs a few seconds to read the tracks. A period draws from the same
+index and shares every stored heat tile it does not change; its own tiles stay in memory only.
+The ETag is the state of the track
+collection (or of the period's share of it), so it changes with every new ride; a matching one is answered without drawing.
 When the pixels of a heat tile change, raise `explorer.HEAT_VERSION`. When how tracks are read or thinned changes, raise `MAP_VERSION`:
 the service then reads every track again on start.
 
@@ -778,8 +797,9 @@ name of an existing target, the stored sessions are filed under it.
 | `GET` | `/api/v1/trailbridge/route` | the route marked for TrailBridge, see [above](#routes-for-trailbridge) |
 | `GET` | `/api/v1/trailbridge/routes/{id}.gpx` | its file, for the app |
 | `GET` | `/map` | map with visited tiles and heatmap (HTML) |
-| `GET` | `/api/v1/map` | figures (tiles, cluster, max square, squadrats), tracks per source, the Komoot import's progress |
-| `GET` | `/api/v1/map/tiles/{visited\|squadrats\|heat}/{z}/{x}/{y}.png` | overlay tile (XYZ like OSM) |
+| `GET` | `/api/v1/map` | figures (tiles, cluster, max square, squadrats), tracks per source, the Komoot import's progress; `from`/`to` (`YYYY-MM-DD`, both included, each optional): of that period |
+| `GET` | `/api/v1/map/tiles/{visited\|squadrats\|zoom\|heat}/{z}/{x}/{y}.png` | overlay tile (XYZ like OSM); `from`/`to` as above |
+| `GET` | `/api/v1/map/timefilter.js` | the period control as a script, for `/map` and BRouter-Web |
 | `GET`/`PUT` | `/api/v1/map/tracks` | the map's tracks (with `duplicate_of`) / upload GPX, `.gpx.gz` or ZIP (`filename`; `mixed=true` with `track`, `name`: mixed recording, cycling only) |
 | `DELETE` | `/api/v1/map/tracks/{id}` | delete an uploaded or imported track (BikeLog rides: 409) |
 | `POST` | `/api/v1/map/komoot` | start the Komoot import (`all_sports=true`: hiking etc. too) |
