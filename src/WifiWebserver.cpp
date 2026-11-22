@@ -26,8 +26,33 @@
 const char* ntpServer = "pool.ntp.org";
 
 static const BCLogger::LogTag TAG = BCLogger::TAG_WIFI;
-// Refuse new HTTP requests below this much free internal heap (see the middleware in begin()).
-static const size_t LOW_HEAP_REJECT_BYTES = 20 * 1024;
+// Request admission (see the middleware in begin()). Per-request peaks of internal heap, measured
+// 2026-11-22 with WebInstr's "peak" (device without sensors, one request at a time):
+//   light  /log/get, /push/state, /wifi/state, /stat/getDistance*, /stat/calibration,
+//          /debug/route.json, /debug/climb.json                          0.8 .. 2.9 KB
+//   heavy  every HTML page, every file from LittleFS, SD downloads       6.7 .. 17.7 KB
+// 8 heavy requests at once took the free internal heap from 54 KB down to 4.7 KB. A light
+// request is admitted above LIGHT_MIN_FREE; a heavy one needs HEAVY_MIN_FREE plus a reserve for
+// every heavy request already in flight -- their peaks are not all reached yet when the next
+// one arrives. 6 KB (the average drop per request in the 8-parallel test) was not enough, the peaks of
+// requests that start together coincide; 18 KB (the worst single peak) left ~24 KB but admitted only two
+// heavy requests at idle, which breaks a page load with an empty browser cache. 14 KB: three at idle (54 KB),
+// two with one peer connected, one with two or more.
+static const size_t LOW_HEAP_REJECT_BYTES = 20 * 1024;		// = HEAVY_MIN_FREE, used by LogPush too
+static constexpr size_t LIGHT_MIN_FREE = 8 * 1024;
+static constexpr size_t HEAVY_MIN_FREE = LOW_HEAP_REJECT_BYTES;
+static constexpr size_t HEAVY_RESERVE  = 14 * 1024;
+static uint8_t heavyInFlight = 0;		// only touched on the async_tcp task (middleware and disconnect hook)
+
+static bool isLightPath(const String& u) {
+	static const char* const LIGHT[] = {"/log/get", "/push/state", "/wifi/state", "/stat/getDistanceInfo",
+	                                    "/stat/getDistance", "/stat/calibration", "/debug/route.json", "/debug/climb.json"};
+	for (const char* l : LIGHT) if (u == l) return true;
+	return false;
+}
+// Connections that stay open for long (the SSE log, the firmware upload): neither counted nor limited
+// by the in-flight rule, which would hold a slot for as long as the page is open.
+static bool isLongLivedPath(const String& u) { return u == "/debug/logevent" || u == "/update"; }
 
 // --- path extraction for the prefix routes below ------------------------------------
 // These replace three regex routes. ASYNCWEBSERVER_REGEX looks cheap but isn't:
@@ -890,16 +915,33 @@ void WifiWebserver::setupWebserver() {
 			// down to 1.2 KB -- the point where WiFi/BLE/SD allocations fail and the device
 			// hangs or crashes. Below the threshold, refuse cheaply instead; the pages' pollers
 			// simply try again on their next tick.
-			if (internalFree < LOW_HEAP_REJECT_BYTES) {
-				request->send(503, "text/plain", "Busy (low memory) - retry");
+			const String& url = request->url();
+			size_t needFree;
+			bool counted = false;
+			if (isLongLivedPath(url)) {
+				needFree = (url == "/update") ? HEAVY_MIN_FREE : LIGHT_MIN_FREE;
+			} else if (isLightPath(url)) {
+				needFree = LIGHT_MIN_FREE;
+			} else {
+				needFree = HEAVY_MIN_FREE + heavyInFlight * HEAVY_RESERVE;
+				counted = true;
+			}
+			if (internalFree < needFree) {
+				bclog.logf(BCLogger::Log_Debug, TAG, "503 %s: internal free %u < %u (heavy in flight %u)",
+				           url.c_str(), (unsigned) internalFree, (unsigned) needFree, (unsigned) heavyInFlight);
+				AsyncWebServerResponse* busy = request->beginResponse(503, "text/plain", "Busy (low memory) - retry");
+				busy->addHeader("Retry-After", "1");
+				request->send(busy);
 				return;
 			}
+			if (counted) heavyInFlight++;
 			WebInstr::onStart(request);
 			// onDisconnect() fires after the response is done (or the client gave up), and
 			// _onDisconnect() invokes it before the request object is deleted, so url() is
 			// still readable in there. NOTE: _onDisconnectfn is a single slot -- a handler
 			// that calls request->onDisconnect() itself silently replaces this hook.
-			request->onDisconnect([request, startMs, internalFree]() {
+			request->onDisconnect([request, startMs, internalFree, counted]() {
+				if (counted && heavyInFlight > 0) heavyInFlight--;
 				WebInstr::onEnd(request, startMs, internalFree);
 			});
 			next();

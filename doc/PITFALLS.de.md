@@ -429,9 +429,28 @@ hängen Webserver/mDNS, und das Gerät kann abstürzen.
 
 Regel: Jeden neuen dauerhaften Puffer/Stack/offenen File im internen RAM mit
 `mem` vorher/nachher messen (Leerlauf und unter Web-Last). Dateien, die selten
-geschrieben werden, nicht die ganze Sitzung offen halten. Die Middleware in
-`WifiWebserver.cpp` lehnt Requests unter 20 KB freiem internem Heap mit 503
-ab -- das schützt aber erst nach dem Annehmen der Verbindung.
+geschrieben werden, nicht die ganze Sitzung offen halten.
+
+**Web-Requests und der interne Heap.** Was ein Request kostet, ist seine *Spitze* während der
+Bearbeitung, nicht das, was danach noch gehalten wird. Gemessen 2026-11-22 (Gerät ohne Sensoren,
+ein Request nach dem anderen, Spitze = niedrigster freier interner Heap, solange der Request offen
+war, das `peak` in den `REQ`-Zeilen des Debug-Logs): leichte JSON-Endpunkte (`/log/get`,
+`/push/state`, `/wifi/state`, `/stat/getDistance*`, `/stat/calibration`, `/debug/route.json`,
+`/debug/climb.json`) 0,8-2,9 KB; jede HTML-Seite 6,7-12,6 KB; `/logfiles/` 10,7-15,9 KB; jede Datei
+aus LittleFS 6,7 KB auch bei wenigen hundert Byte, ab etwa 6 KB 15-17 KB (nicht der TCP-Sendepuffer:
+ein Deckel auf das, was `AsyncClient::space()` meldet, änderte nichts). Acht schwere Requests
+gleichzeitig zogen den freien internen Heap ohne angeschlossenen Sensor von 54 KB auf 4,7 KB; mit vier
+BLE-Peers (nach dem Boot 12-20 KB frei) ist schon einer zu viel. Daher die Zulassungsregel in der
+Middleware von `WifiWebserver.cpp`: leichte Endpunkte brauchen 8 KB frei, jeder andere Request 20 KB
+plus 14 KB für jeden schweren Request, der schon läuft (also drei im Leerlauf, zwei mit einem Peer,
+einer mit zwei oder mehr), sonst 503 mit `Retry-After: 1` (der Puller des Log-Dienstes wiederholt bei
+503). Das SSE-Log und der Firmware-Upload zählen nicht mit. Die Regel kann nur ablehnen, die
+Bibliothek ruft die Middleware synchron auf, eine Warteschlange gibt es also nicht. Ein Browser mit
+leerem Cache, der Seite, CSS, Fonts und Skript gleichzeitig lädt, bekommt deshalb teils 503 --
+neu laden. Die Textdateien der Seite werden gzip-komprimiert ausgeliefert (`gzip_site.py` legt sie
+für das LittleFS-Image an: 105 KB -> 43 KB, Spitze von `stylesheet.css` 15 -> 11,5 KB). Die
+`MEM int=`-Zeile kommt auf Debug alle 5 s, auf Info alle 60 s; `loglevel WEB DEBUG -file` oder
+`/log/set?tag=WEB&level=DEBUG` holt die 5-s-Zeilen zurück ins Debug-Log.
 
 **TLS (Log-Push) passt nicht in den internen Heap.** mbedTLS braucht pro Verbindung zwei
 16-KB-Record-Puffer plus den Handshake-Zustand, und dieser Build legt alles intern an

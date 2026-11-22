@@ -392,9 +392,27 @@ that. If the internal heap runs empty, web server and mDNS hang, and the device 
 
 Rule: measure every new permanent buffer, stack or open file in internal RAM with `mem`
 before and after (idle and under web load). Don't keep files that are rarely written open
-for the whole session. The middleware in `WifiWebserver.cpp` rejects requests below 20 KB
-of free internal heap with 503 -- but that only protects after the connection has been
-accepted.
+for the whole session.
+
+**Web requests and the internal heap.** What a request costs is its *peak* while it is served, not
+what it still holds afterwards. Measured 2026-11-22 (device without sensors, one request at a
+time, peak = lowest free internal heap while the request was open, the `peak` in the `REQ` lines
+of the debug log): light JSON endpoints (`/log/get`, `/push/state`, `/wifi/state`,
+`/stat/getDistance*`, `/stat/calibration`, `/debug/route.json`, `/debug/climb.json`) 0.8-2.9 KB;
+every HTML page 6.7-12.6 KB; `/logfiles/` 10.7-15.9 KB; every file from LittleFS 6.7 KB even if it is
+a few hundred bytes, 15-17 KB from about 6 KB up (not the TCP send buffer: capping what
+`AsyncClient::space()` reports changed nothing). Eight heavy requests at once took the free
+internal heap from 54 KB to 4.7 KB with no sensor connected; with four BLE peers (12-20 KB free
+after boot) a single one is too much. Hence the admission rule in the middleware of
+`WifiWebserver.cpp`: light endpoints need 8 KB free, every other request 20 KB plus 14 KB for
+each heavy request already in flight (so three at idle, two with one peer, one with two or more),
+else 503 with `Retry-After: 1` (the log service's puller retries on 503). The SSE log and the
+firmware upload are not counted. The rule can only reject, the library calls the middleware
+synchronously, so there is no queue. A browser with an empty cache that loads page, CSS, fonts and
+script at once therefore gets some 503s -- reload. The site's text files are served gzip-compressed
+(`gzip_site.py` stages them for the LittleFS image: 105 KB -> 43 KB, `stylesheet.css` peak 15 -> 11.5
+KB). `mem` (and `MEM int=` at Debug every 5 s, Info every 60 s): `loglevel WEB DEBUG -file`
+or `/log/set?tag=WEB&level=DEBUG` brings the 5 s lines back into the debug log.
 
 **TLS (log push) does not fit into the internal heap.** mbedTLS takes two 16 KB record buffers
 plus the handshake state per connection, and this build allocates all of it internally
