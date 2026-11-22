@@ -38,6 +38,7 @@ struct Entry {
 	uint32_t startMs;
 	uint16_t durMs;
 	int32_t  heapDelta;		// internal free after - before, in byte (negative = consumed)
+	uint32_t peakDrop;		// burst start free - lowest free while requests were open (true low, see onStart)
 	uint32_t bytes;			// response body size, 0 until the handler calls noteBytes()
 	char     url[URL_LEN];
 };
@@ -72,6 +73,7 @@ struct Pending {
 Pending pending[PENDING_SLOTS] = {};
 
 std::atomic<uint16_t> openCount{0};
+std::atomic<uint32_t> burstStartFree{0};	// internal free when the first request of a burst began
 std::atomic<uint16_t> openPeakCount{0};
 
 Pending* findPending(AsyncWebServerRequest* req) {
@@ -95,6 +97,14 @@ void setup() {
 
 void onStart(AsyncWebServerRequest* request) {
 	const uint16_t now = openCount.fetch_add(1, std::memory_order_relaxed) + 1;
+	if (now == 1) {
+		// Burst start (nothing else open): restart the IDF's low-watermark tracking so that
+		// heap_caps_get_minimum_free_size() below is the true low since NOW, including spikes
+		// a sampler would miss. Global, so it also sees other tasks' dips (BLE connects).
+		heap_caps_monitor_local_minimum_free_size_stop();
+		heap_caps_monitor_local_minimum_free_size_start();
+		burstStartFree.store(internalFree(), std::memory_order_relaxed);
+	}
 	uint16_t peak = openPeakCount.load(std::memory_order_relaxed);
 	while (now > peak && !openPeakCount.compare_exchange_weak(peak, now, std::memory_order_relaxed)) {
 		// retry: peak was refreshed by compare_exchange_weak
@@ -116,11 +126,15 @@ void onEnd(AsyncWebServerRequest* request, uint32_t startMs, size_t internalFree
 		slot->req = nullptr;
 	}
 
+	const size_t localMin = heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+	const uint32_t burstStart = burstStartFree.load(std::memory_order_relaxed);
+	const uint32_t peakDrop = burstStart > localMin ? burstStart - static_cast<uint32_t>(localMin) : 0;
 	uint16_t cur = openCount.load(std::memory_order_relaxed);
 	while (cur > 0 && !openCount.compare_exchange_weak(cur, cur - 1, std::memory_order_relaxed)) {
 		// retry
 	}
 
+	if (openCount.load(std::memory_order_relaxed) == 0) heap_caps_monitor_local_minimum_free_size_stop();
 	const uint8_t head = ringHead.load(std::memory_order_relaxed);
 	const uint8_t tail = ringTail.load(std::memory_order_acquire);
 	if (static_cast<uint8_t>(head - tail) >= RING_SIZE) {
@@ -134,6 +148,7 @@ void onEnd(AsyncWebServerRequest* request, uint32_t startMs, size_t internalFree
 	e.durMs     = (dur > UINT16_MAX) ? UINT16_MAX : static_cast<uint16_t>(dur);
 	e.heapDelta = static_cast<int32_t>(internalFree()) - static_cast<int32_t>(internalFreeAtStart);
 	e.bytes     = bytes;
+	e.peakDrop  = peakDrop;
 	// request->url() is still valid here: _onDisconnect() invokes the callback before
 	// AsyncWebServer::_handleDisconnect() deletes the request (WebRequest.cpp).
 	strlcpy(e.url, request->url().c_str(), URL_LEN);
@@ -241,8 +256,8 @@ void drain(bool all) {
 		// One page load is ~9 requests. Only the ones worth a look go out at Info: slow, or
 		// holding on to a lot of internal heap. The rest at Debug; "mem" shows all of them.
 		const bool notable = e.durMs > SLOW_REQ_MS || e.heapDelta < -HEAVY_REQ_HEAP;
-		bclog.logf((all || notable) ? BCLogger::Log_Info : BCLogger::Log_Debug, TAG, "REQ %-32s %ums %d byte heap, %u byte body",
-		           e.url, e.durMs, e.heapDelta, e.bytes);
+		bclog.logf((all || notable) ? BCLogger::Log_Info : BCLogger::Log_Debug, TAG, "REQ %-32s %ums %d byte heap, peak -%u, %u byte body",
+		           e.url, e.durMs, e.heapDelta, (unsigned)e.peakDrop, e.bytes);
 		tail++;
 		ringTail.store(tail, std::memory_order_release);
 	}
