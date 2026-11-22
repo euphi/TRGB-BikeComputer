@@ -232,7 +232,9 @@ LogPush::SaveResult LogPush::configure(bool enabled, const char* url, const char
 		cfg.version = BLOB_VERSION;
 		// An empty URL keeps the stored one: the page never gets it back (maskUrl()). A different
 		// target takes its secret with it -- the old password must not go to a new server, and an
-		// account's app password is no share password -- so it is typed in again.
+		// account's app password is no share password -- so it is typed in again. A stored target
+		// that validUrl() would refuse today (/public.php/, user:pw@) is not checked here: only the
+		// URL that comes in is, so such a target can still be switched off, removed or replaced.
 		if (clearUrl) {
 			cfg.url[0] = 0;
 			cfg.secret[0] = 0;
@@ -241,7 +243,10 @@ LogPush::SaveResult LogPush::configure(bool enabled, const char* url, const char
 			cfg.secret[0] = 0;
 		}
 		cfg.enabled = enabled && cfg.url[0];
-		if (strcmp(user, MASKED) != 0) strlcpy(cfg.user, user, sizeof(cfg.user));		// MASKED: the page's stand-in for a user that is a token
+		if (strcmp(user, MASKED) != 0) {		// MASKED: the page's stand-in for a user that is a token, sent back unchanged
+			if (strcmp(user, cfg.user) != 0) cfg.secret[0] = 0;		// the password belongs to the user it was entered for
+			strlcpy(cfg.user, user, sizeof(cfg.user));
+		}
 		if (clearSecret) cfg.secret[0] = 0;
 		else if (secret[0]) strlcpy(cfg.secret, secret, sizeof(cfg.secret));
 		save();

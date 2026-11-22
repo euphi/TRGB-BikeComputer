@@ -115,9 +115,10 @@ wie ein Passwort:
 
 - Er gehört in das Formular auf `/push` und sonst nirgends hin. Die Seite, `/push/state` und
   `push status` zeigen ihn als `https://<cloud>/s/***`; das Feld bleibt leer, leer = behalten, und
-  ein anderer Link oder Ordner entfernt das gespeicherte Passwort (neu eintippen). *Remove the target*
-  löscht beides. `…/public.php/…` und `nutzer:passwort@host` werden abgelehnt, sie würden das Token
-  an anderer Stelle ablegen.
+  ein anderer Link, Ordner oder Nutzer entfernt das gespeicherte Passwort (neu eintippen). *Remove the target*
+  löscht beides. `…/public.php/…` und `nutzer:passwort@host` werden beim Speichern abgelehnt, sie würden das
+  Token an anderer Stelle ablegen; ein so von älterer Firmware gespeichertes Ziel läuft weiter, wird
+  maskiert angezeigt und lässt sich abschalten, entfernen oder ersetzen.
 - Nie in einem Test, einer Doku-Seite, einer Logzeile, einem Commit oder Chat: nur erfundene Links
   (`https://cloud.example.com/s/AbC12`). Ein echter in einem öffentlichen Repository muss widerrufen
   werden; die Historie umzuschreiben hilft nicht.

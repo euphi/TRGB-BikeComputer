@@ -109,9 +109,11 @@ link can write into the inbox, and the service files what arrives under the devi
 the file name, replacing a stored file whose content differs. So the link counts like a password:
 
 - It goes into the form on `/push` and nowhere else. The page, `/push/state` and `push status`
-  show it as `https://<cloud>/s/***`; the field stays empty, empty = keep, and a different link or
-  folder removes the stored password (type it in again). *Remove the target* clears both.
-  `…/public.php/…` and `user:password@host` are refused; they would put the token elsewhere.
+  show it as `https://<cloud>/s/***`; the field stays empty, empty = keep, and a different link,
+  folder or user removes the stored password (type it in again). *Remove the target* clears both.
+  `…/public.php/…` and `user:password@host` are refused when saving, they would put the token
+  elsewhere; a target of that form stored by older firmware keeps working, is shown masked and can be
+  switched off, removed or replaced.
 - Never in a test, a doc page, a log line, a commit or a chat: use made-up links (`https://cloud.example.com/s/AbC12`).
   A real one in a public repository has to be revoked, rewriting the history does not help.
 
