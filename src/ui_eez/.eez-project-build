@@ -40,7 +40,6 @@
     "ui_image_rr_icon_temp.c",
     "ui_image_rr_icon_turn.c",
     "ui_image_rr_icon_turn_64.c",
-    "ui_image_rr_icon_turn_large.c",
     "ui_image_rr_icon_wifi.c",
     "ui_image_settings_icon.c",
     "vars.h"

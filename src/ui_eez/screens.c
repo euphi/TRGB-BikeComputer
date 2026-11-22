@@ -827,7 +827,6 @@ void create_screen_rim_ridge_nav() {
                     objects.rrnav_ic_turn = obj;
                     lv_obj_set_pos(obj, 0, 0);
                     lv_obj_set_size(obj, 192, 192);
-                    lv_img_set_src(obj, &img_rr_icon_turn_large);
                     lv_obj_add_flag(obj, LV_OBJ_FLAG_CLICKABLE);
                     lv_obj_clear_flag(obj, LV_OBJ_FLAG_ADV_HITTEST|LV_OBJ_FLAG_SCROLLABLE);
                     lv_obj_set_style_align(obj, LV_ALIGN_TOP_MID, LV_PART_MAIN | LV_STATE_DEFAULT);

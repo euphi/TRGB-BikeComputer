@@ -24,7 +24,6 @@ extern const lv_img_dsc_t img_rr_icon_state_stop;
 extern const lv_img_dsc_t img_rr_icon_state_break;
 extern const lv_img_dsc_t img_rr_icon_state_power;
 extern const lv_img_dsc_t img_rr_icon_state_coasting;
-extern const lv_img_dsc_t img_rr_icon_turn_large;
 extern const lv_img_dsc_t img_rr_icon_turn_64;
 extern const lv_img_dsc_t img_rr_icon_stopwatch;
 extern const lv_img_dsc_t img_rr_icon_clock;
@@ -42,7 +41,7 @@ typedef struct _ext_img_desc_t {
 } ext_img_desc_t;
 #endif
 
-extern const ext_img_desc_t images[26];
+extern const ext_img_desc_t images[25];
 
 #ifdef __cplusplus
 }
