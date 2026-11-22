@@ -378,7 +378,8 @@ Quellen, alle unter `<data>/map/`
   229 Fahrten eines Handys; alle vier, die der Fahrradcomputer zugleich aufgezeichnet hat,
   wurden als Rad erkannt.
 - **Komoot** (einmalig, „Von Komoot importieren“): alle aufgezeichneten Touren des Kontos aus
-  `BIKELOG_KOMOOT_EMAIL`, standardmäßig nur Radsportarten (die übersprungenen nennt die Seite). Noch einmal geholt werden nur neue.
+  `BIKELOG_KOMOOT_EMAIL`, standardmäßig nur Radsportarten (die übersprungenen nennt die Seite). Noch einmal geholt werden nur neue. Touren anderer, in denen das Konto nur markiert
+  ist, bleiben draußen; eine hier gelöschte Tour kommt nicht zurück.
 
 **Doppelte Fahrten** zählen einmal: Ein Track, der zur selben Zeit aufgezeichnet wurde wie einer
 aus einer besseren Quelle (BikeLog vor Hochgeladen vor Komoot), gehört zu dessen Fahrt: Er wird

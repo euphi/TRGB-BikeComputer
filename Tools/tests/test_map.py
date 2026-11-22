@@ -241,3 +241,28 @@ def test_komoot_error_does_not_show_the_address(monkeypatch):
     with pytest.raises(maptracks.KomootError) as err:
         maptracks._komoot_get("https://komoot.invalid/account/email/a%40b.de/", "a@b.de", "pw")
     assert "b.de" not in str(err.value)
+
+
+def test_komoot_skips_foreign_and_deleted_tours(tmp_path, monkeypatch):
+    monkeypatch.setattr(maptracks, "KOMOOT_PAUSE_S", 0)
+    fetched = []
+
+    def fetch(url, email, password):
+        if "/account/" in url:
+            return b'{"username": "4711"}'
+        if url.endswith(".gpx"):
+            fetched.append(url.rsplit("/", 1)[1])
+            return timed_gpx()
+        # Komoot also lists the tours of others one is tagged in
+        tours = [{"id": 1, "sport": "mtb", "_embedded": {"creator": {"username": "4711"}}},
+                 {"id": 2, "sport": "mtb", "_embedded": {"creator": {"username": "999"}}}]
+        return json.dumps({"_embedded": {"tours": tours}, "page": {"totalPages": 1}}).encode()
+    settings = Settings(data_dir=tmp_path, komoot_email="a@b.de", komoot_password="pw")
+    store = maptracks.MapStore(settings, fetch=fetch)
+    state = store.komoot_import()
+    assert (state["new"], state["foreign"], fetched) == (1, 1, ["1.gpx"])
+    assert store.delete("k1")
+    again = maptracks.MapStore(settings, fetch=fetch)       # also after a restart
+    state = again.komoot_import()
+    assert (state["new"], state["deleted"], fetched) == (0, 1, ["1.gpx"])
+    assert again.tracks() == []

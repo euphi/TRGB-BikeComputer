@@ -364,7 +364,8 @@ Sources, all under `<data>/map/`
   every trip found with its verdict and the reason. Tuned on 229 trips of one phone; all four
   the bike computer recorded at the same time were recognised as cycling.
 - **Komoot** (one-off, "Von Komoot importieren"): every recorded tour of the account in
-  `BIKELOG_KOMOOT_EMAIL`, bike sports only by default (the page names the ones skipped). Running it again fetches only new ones.
+  `BIKELOG_KOMOOT_EMAIL`, bike sports only by default (the page names the ones skipped). Running it again fetches only new ones. Tours of others the account is
+  only tagged in are left out; a tour deleted here does not come back.
 
 **Duplicate rides** count once: a track recorded at the same time as one from a better source
 (BikeLog before upload before Komoot) belongs to that ride: it is drawn (a fragment must not hide

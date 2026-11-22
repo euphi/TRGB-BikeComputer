@@ -10,7 +10,8 @@ Three sources, one store under <data>/map/:
            older rides from Garmin, Strava & Co. that need no report. Kept as upload/<sha>.gpx.
   komoot   the one-off import of all recorded Komoot tours (komoot_import(); bike sports
            unless asked otherwise). Kept as komoot/<tour id>.gpx; importing again only
-           fetches tours not yet here.
+           fetches tours not yet here. Tours of others (Komoot lists those one is tagged in)
+           are skipped, and a deleted tour stays deleted (komoot-deleted.json).
 
 An upload marked "mixed" is a phone's all-day recording (walking, car, train): add_mixed()
 keeps only the trips bikelog.tripmode judges as cycling, each stored as an upload of its own.
@@ -227,6 +228,17 @@ class MapStore:
             self._put(info, gpx)
         self._save()
 
+    @property
+    def _deleted_path(self) -> Path:
+        return self.root / "komoot-deleted.json"
+
+    def _deleted_tours(self) -> set[str]:
+        """Komoot tour ids deleted here: an import must not bring them back."""
+        try:
+            return set(json.loads(self._deleted_path.read_text(encoding="utf-8")))
+        except FileNotFoundError:
+            return set()
+
     def tracks(self) -> list[TrackInfo]:
         with self._lock:
             return sorted(self._index.values(), key=lambda t: (t.start or 0, t.id))
@@ -395,6 +407,11 @@ class MapStore:
             info = self._index.get(track_id)
             if info is None or info.source == "ride":
                 return False
+            if info.source == "komoot":
+                gone = sorted(self._deleted_tours() | {info.ref})
+                tmp = self._deleted_path.with_suffix(".part")
+                tmp.write_text(json.dumps(gone), encoding="utf-8")
+                tmp.replace(self._deleted_path)
             self._remove(track_id)
             self._save()
         return True
@@ -409,7 +426,7 @@ class MapStore:
             if self.komoot.get("running"):
                 return self.komoot
             self.komoot = {"running": True, "started_at": _now(), "total": 0, "done": 0, "new": 0,
-                           "known": 0, "skipped": 0, "skipped_sports": {}, "errors": [], "all_sports": all_sports}
+                           "known": 0, "skipped": 0, "skipped_sports": {}, "foreign": 0, "deleted": 0, "errors": [], "all_sports": all_sports}
         state = self.komoot
         try:
             if not s.komoot_enabled:
@@ -435,9 +452,17 @@ class MapStore:
             if expected is not None and len(found) != expected:
                 state["errors"].append(f"Komoot meldet {expected} Touren, gelistet wurden {len(found)}")
             state["total"] = len(found)
+            deleted = self._deleted_tours()
             for tour in found.values():
                 tid, sport = str(tour.get("id")), tour.get("sport")
                 state["done"] += 1
+                creator = ((tour.get("_embedded") or {}).get("creator") or {}).get("username")
+                if creator is not None and str(creator) != str(user):
+                    state["foreign"] += 1
+                    continue
+                if tid in deleted:
+                    state["deleted"] += 1
+                    continue
                 if not all_sports and sport not in BIKE_SPORTS:
                     state["skipped"] += 1
                     state["skipped_sports"][str(sport)] = state["skipped_sports"].get(str(sport), 0) + 1

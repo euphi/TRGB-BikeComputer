@@ -1612,6 +1612,8 @@ def _komoot_panel(summary: dict) -> str:
     if k.get("finished_at"):
         out.append(f'<p class="mut">Letzter Import {_local_time(k["finished_at"])}: {k.get("new", 0)} neu, '
                    f'{k.get("known", 0)} schon da, {k.get("skipped", 0)} andere Sportart'
+                   + (f', {k["foreign"]} von anderen' if k.get("foreign") else "")
+                   + (f', {k["deleted"]} hier gelöscht' if k.get("deleted") else "")
                    + (f', {len(k["errors"])} Fehler' if k.get("errors") else "") + ".</p>")
         if k.get("skipped_sports"):
             out.append('<p class="mut">Übersprungene Sportarten: ' + ", ".join(
